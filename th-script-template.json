@@ -1,17 +1,1 @@
-{
-  "type": "script",
-  "enabled": false,
-  "name": "NE Memory Engine",
-  "id": "ne_memory_engine",
-  "content": "import('https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@223cc54/dist/index.js').catch(e => console.error('[NE] Import failed:', e))",
-  "info": "长对话结构化记忆管理引擎。自动提取短期记忆 → 整合长期记忆 → 注入上下文。",
-  "button": {
-    "enabled": false,
-    "buttons": []
-  },
-  "data": {},
-  "export_with": {
-    "data": true,
-    "button": true
-  }
 }
