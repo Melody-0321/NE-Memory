@@ -26,6 +26,20 @@ function freezeIframeHeight() {
     try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
 }
 
+function setVaultActivity(active) {
+    var el = byId('narrative_vault_activity');
+    if (!el) return;
+    if (active) {
+        el.innerHTML = '&#9696;';
+        el.style.color = '#4caf50';
+        el.style.animation = 'fa-spin 1s linear infinite';
+    } else {
+        el.innerHTML = '&#9679;';
+        el.style.color = '#888';
+        el.style.animation = '';
+    }
+}
+
 function injectPinCSS() {
     if (byId('ne_pin_style')) return;
     var style = PD.createElement('style');
@@ -137,8 +151,11 @@ async function updateVaultViewerPopout(getChatId) {
         // State template change
         var stateSel = byId('narrative_state_template_sel');
         if (stateSel) {
-            stateSel.onchange = function () {
+            stateSel.onchange = async function () {
                 lastVaultStateTemplate = stateSel.value;
+                var vault2 = await read(getChatId());
+                vault2.content.state_template = stateSel.value;
+                await write(getChatId(), vault2);
                 renderStateBlock();
             };
         }
@@ -172,15 +189,197 @@ function renderStateBlock() {
 }
 
 async function extractState(getChatId) {
+    setVaultActivity(true);
     try {
         var vault = await read(getChatId());
         if (!vault.content.state) vault.content.state = {};
         lastVaultStateJson = JSON.stringify(vault.content.state, null, 2);
-        byId('narrative_vault_loading').style.display = '';
         await executeConsolidation(getChatId());
         await updateVaultViewerPopout(getChatId);
     } catch (e) {
         console.error('[NE] Extract failed:', e);
+    } finally {
+        setVaultActivity(false);
+    }
+}
+
+/* ──────── 编辑模式 ──────── */
+
+var vaultEditData = null;
+
+async function toggleVaultEditMode(getChatId) {
+    var isEditing = byId('narrative_vault_panel_save_btn').style.display !== 'none';
+    if (isEditing) {
+        byId('narrative_vault_panel_ltm_view').style.display = '';
+        byId('narrative_vault_panel_ltm_edit').style.display = 'none';
+        byId('narrative_vault_panel_stm_view').style.display = '';
+        byId('narrative_vault_panel_stm_edit').style.display = 'none';
+        byId('narrative_vault_panel_edit_btn').textContent = t('Edit');
+        byId('narrative_vault_panel_save_btn').style.display = 'none';
+        vaultEditData = null;
+        qsa('.narrative_opening_block').forEach(function (el) { el.style.display = ''; });
+        qsa('.narrative_state_block').forEach(function (el) { el.style.display = ''; });
+        var oe = byId('narrative_vault_panel_opening_edit');
+        if (oe) oe.remove();
+        var se = byId('narrative_vault_panel_state_edit');
+        if (se) se.remove();
+        updateVaultViewerPopout(getChatId);
+    } else {
+        var vault = await read(getChatId());
+        vaultEditData = vault;
+        buildEditForms(vault, getChatId);
+        byId('narrative_vault_panel_edit_btn').textContent = t('Cancel');
+        byId('narrative_vault_panel_save_btn').style.display = '';
+    }
+}
+
+function buildEditForms(vault, getChatId) {
+    var c = vault.content || {};
+    byId('narrative_vault_panel_ltm_view').style.display = 'none';
+    byId('narrative_vault_panel_stm_view').style.display = 'none';
+    qsa('.narrative_opening_block').forEach(function (el) { el.style.display = 'none'; });
+    qsa('.narrative_state_block').forEach(function (el) { el.style.display = 'none'; });
+
+    var ltmEdit = byId('narrative_vault_panel_ltm_edit');
+    ltmEdit.style.display = '';
+    ltmEdit.innerHTML = '';
+    var stmEdit = byId('narrative_vault_panel_stm_edit');
+    stmEdit.style.display = '';
+    stmEdit.innerHTML = '';
+
+    // Opening summary edit
+    var openingText = c.opening_summary && c.opening_summary.text ? c.opening_summary.text : '';
+    if (openingText || true) {
+        var oe = PD.createElement('div');
+        oe.id = 'narrative_vault_panel_opening_edit';
+        oe.style.marginBottom = '10px';
+        oe.innerHTML = '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
+            '<textarea id="narrative_vault_opening_textarea" style="width:100%;box-sizing:border-box;font-size:0.9em;resize:vertical;min-height:80px;" placeholder="Opening scene summary...">' + escapeHtml(openingText) + '</textarea>';
+        byId('narrative_vault_panel_ltm_view').parentNode.insertBefore(oe, byId('narrative_vault_panel_ltm_view'));
+    }
+
+    // State edit
+    if (lastVaultStateJson) {
+        var se = PD.createElement('div');
+        se.id = 'narrative_vault_panel_state_edit';
+        se.style.marginBottom = '10px';
+        se.innerHTML = '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State (JSON)') + '</div>' +
+            '<textarea id="narrative_vault_state_textarea" style="width:100%;box-sizing:border-box;font-size:0.85em;resize:vertical;min-height:120px;font-family:monospace;" placeholder="{}">' + escapeHtml(lastVaultStateJson) + '</textarea>';
+        var ltmView = byId('narrative_vault_panel_ltm_view');
+        ltmView.parentNode.insertBefore(se, ltmView);
+    }
+
+    // LTM entry edit cards
+    (c.ltm_entries || []).forEach(function (entry, i) {
+        var card = PD.createElement('div');
+        card.style.cssText = 'margin:4px 0;padding:6px;background:var(--black30a);border-radius:4px;';
+        card.innerHTML = '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<input class="narrative_edit_period" data-id="' + entry.id + '" value="' + escapeHtml(entry.period || '') + '" style="width:80px;font-size:0.85em;" placeholder="Period">' +
+            '<input class="narrative_edit_scene" data-id="' + entry.id + '" value="' + escapeHtml(entry.scene || '') + '" style="flex:1;font-size:0.85em;" placeholder="Scene">' +
+            '<span class="narrative_del_entry" data-id="' + entry.id + '" style="cursor:pointer;color:#f44336;font-size:0.85em;" title="' + t('Delete') + '">&#10005;</span>' +
+            '</div>' +
+            '<textarea class="narrative_edit_event" data-id="' + entry.id + '" style="width:100%;box-sizing:border-box;margin-top:4px;min-height:40px;font-size:0.85em;" placeholder="Event">' + escapeHtml(entry.event || '') + '</textarea>';
+        ltmEdit.appendChild(card);
+    });
+
+    // STM entry edit cards
+    (c.unconsolidated_stm || []).forEach(function (entry, i) {
+        var card = PD.createElement('div');
+        card.style.cssText = 'margin:4px 0;padding:6px;background:var(--black30a);border-radius:4px;';
+        card.innerHTML = '<div style="display:flex;align-items:center;gap:6px;">' +
+            '<input class="narrative_edit_period" data-id="' + entry.id + '" value="' + escapeHtml(entry.period || '') + '" style="width:80px;font-size:0.85em;" placeholder="Period">' +
+            '<input class="narrative_edit_scene" data-id="' + entry.id + '" value="' + escapeHtml(entry.scene || '') + '" style="flex:1;font-size:0.85em;" placeholder="Scene">' +
+            '<span class="narrative_del_entry" data-id="' + entry.id + '" style="cursor:pointer;color:#f44336;font-size:0.85em;" title="' + t('Delete') + '">&#10005;</span>' +
+            '</div>' +
+            '<input class="narrative_edit_time_label" data-id="' + entry.id + '" value="' + escapeHtml(entry.time_label || '') + '" style="width:100%;margin-top:4px;font-size:0.85em;" placeholder="Time label">' +
+            '<textarea class="narrative_edit_event" data-id="' + entry.id + '" style="width:100%;box-sizing:border-box;margin-top:4px;min-height:40px;font-size:0.85em;" placeholder="Event">' + escapeHtml(entry.event || '') + '</textarea>';
+        stmEdit.appendChild(card);
+    });
+
+    // Delete entry toggle
+    qsa('.narrative_del_entry').forEach(function (el) {
+        el.onclick = function () {
+            el.classList.toggle('deleted');
+            el.style.opacity = el.classList.contains('deleted') ? '0.3' : '1';
+            var card = el.parentElement.parentElement;
+            if (card) card.style.opacity = el.classList.contains('deleted') ? '0.3' : '1';
+        };
+    });
+}
+
+async function saveVaultEdits(getChatId) {
+    setVaultActivity(true);
+    try {
+        var vault = await read(getChatId());
+        var c = vault.content || {};
+
+        var openingTextarea = byId('narrative_vault_opening_textarea');
+        if (openingTextarea) {
+            var text = String(openingTextarea.value || '').trim();
+            c.opening_summary = c.opening_summary || {};
+            c.opening_summary.text = text;
+            c.opening_summary.updated_at = new Date().toISOString();
+        }
+
+        var stateTextarea = byId('narrative_vault_state_textarea');
+        if (stateTextarea) {
+            var st = String(stateTextarea.value || '').trim();
+            if (st) {
+                try { c.state = JSON.parse(st); } catch (e) { alert(t('State JSON invalid:') + ' ' + e.message); }
+            } else {
+                c.state = {};
+            }
+        }
+
+        var ltmEntries = [];
+        var deleteLtmIds = [];
+        var ltmEdit = byId('narrative_vault_panel_ltm_edit');
+        var cards = ltmEdit ? ltmEdit.querySelectorAll('[style*="background"]') : [];
+        cards.forEach(function (card) {
+            if (card.style.opacity === '0.3') {
+                var delEl = card.querySelector('.narrative_del_entry');
+                if (delEl && delEl.classList.contains('deleted')) deleteLtmIds.push(delEl.getAttribute('data-id'));
+                return;
+            }
+            var periodEl = card.querySelector('.narrative_edit_period');
+            if (!periodEl) return;
+            var id = periodEl.getAttribute('data-id');
+            ltmEntries.push({ id: id, period: periodEl.value || '', scene: (card.querySelector('.narrative_edit_scene') || {}).value || '', event: (card.querySelector('.narrative_edit_event') || {}).value || '' });
+        });
+
+        var stmEntries = [];
+        var deleteStmIds = [];
+        var stmEdit = byId('narrative_vault_panel_stm_edit');
+        var cards2 = stmEdit ? stmEdit.querySelectorAll('[style*="background"]') : [];
+        cards2.forEach(function (card) {
+            if (card.style.opacity === '0.3') {
+                var delEl = card.querySelector('.narrative_del_entry');
+                if (delEl && delEl.classList.contains('deleted')) deleteStmIds.push(delEl.getAttribute('data-id'));
+                return;
+            }
+            var periodEl = card.querySelector('.narrative_edit_period');
+            if (!periodEl) return;
+            var id = periodEl.getAttribute('data-id');
+            stmEntries.push({ id: id, period: periodEl.value || '', scene: (card.querySelector('.narrative_edit_scene') || {}).value || '', event: (card.querySelector('.narrative_edit_event') || {}).value || '', time_label: (card.querySelector('.narrative_edit_time_label') || {}).value || '' });
+        });
+
+        var ltmList = c.ltm_entries || [];
+        ltmEntries.forEach(function (e) { var f = ltmList.find(function (x) { return x.id === e.id; }); if (f) { f.period = e.period; f.scene = e.scene; f.event = e.event; } });
+        deleteLtmIds.forEach(function (id) { c.ltm_entries = ltmList.filter(function (x) { return x.id !== id; }); });
+        c.ltm_entries = ltmList.filter(function (x) { return deleteLtmIds.indexOf(x.id) === -1; });
+
+        var stmList = c.unconsolidated_stm || [];
+        stmEntries.forEach(function (e) { var f = stmList.find(function (x) { return x.id === e.id; }); if (f) { f.period = e.period; f.scene = e.scene; f.event = e.event; if (e.time_label) f.time_label = e.time_label; } });
+        c.unconsolidated_stm = stmList.filter(function (x) { return deleteStmIds.indexOf(x.id) === -1; });
+
+        vault.content = c;
+        await write(getChatId(), vault);
+        toggleVaultEditMode(getChatId);
+    } catch (e) {
+        console.error('[NE] Save edits failed:', e);
+        alert(t('Save') + ' failed: ' + e.message);
+    } finally {
+        setVaultActivity(false);
     }
 }
 
@@ -325,7 +524,12 @@ export async function renderVaultPanel(getChatId) {
         }
 
         byId('narrative_vault_toggle').onclick = function () { createVaultPopout(getChatId); };
-        byId('narrative_vault_panel_refresh').onclick = function () { updateVaultViewerPopout(getChatId); };
+        byId('narrative_vault_panel_refresh').onclick = function () {
+            setVaultActivity(true);
+            updateVaultViewerPopout(getChatId).finally(function () { setVaultActivity(false); });
+        };
+        byId('narrative_vault_panel_edit_btn').onclick = function () { toggleVaultEditMode(getChatId); };
+        byId('narrative_vault_panel_save_btn').onclick = function () { saveVaultEdits(getChatId); };
 
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
@@ -350,6 +554,17 @@ export async function renderVaultPanel(getChatId) {
             byId('narrative_vault_llm_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('LLM Operation Log');
             if (!h) renderLLMLog();
         };
+
+        // LLM log entry expand/collapse
+        PD.addEventListener('click', function (e) {
+            var header = e.target.closest('.ne_log_header');
+            if (!header) return;
+            var body = header.parentElement.querySelector('.ne_log_body');
+            if (!body) return;
+            var vis = body.style.display !== 'none';
+            body.style.display = vis ? 'none' : '';
+            header.textContent = (vis ? '\u25B6' : '\u25BC') + header.textContent.substring(1);
+        });
 
         // Tool call toggle
         byId('narrative_vault_tool_call_toggle').onclick = function () {
