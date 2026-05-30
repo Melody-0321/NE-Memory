@@ -1,0 +1,209 @@
+#narrative_settings {
+    display: flex;
+    flex-direction: column;
+    gap: 1em;
+}
+
+#narrative_settings .narrative-section {
+    padding: 0.5em 0;
+}
+
+#narrative_settings .narrative-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5em;
+}
+
+#narrative_settings .narrative-toggle label {
+    flex: 1;
+}
+
+#narrative_settings .narrative-sub-toggle {
+    margin-left: 1.5em;
+    opacity: 0.7;
+}
+
+#narrative_settings .narrative-sub-toggle.enabled {
+    opacity: 1;
+}
+
+#narrative_status {
+    font-size: 0.9em;
+    color: var(--grey-70);
+    margin-top: 0.5em;
+}
+
+.narrative_memory_table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9em;
+}
+
+.narrative_memory_table th,
+.narrative_memory_table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--black50a);
+    text-align: left;
+}
+
+.narrative_memory_table th {
+    font-weight: bold;
+    color: var(--grey-50);
+    white-space: nowrap;
+}
+
+.narrative_memory_table tr:hover {
+    background: var(--black30a);
+}
+
+.narrative_link {
+    color: #64b5f6;
+    cursor: pointer;
+    font-size: 0.85em;
+    margin-right: 4px;
+}
+
+.narrative_link:hover {
+    text-decoration: underline;
+}
+
+#narrative_vault_pin {
+    display: none;
+}
+#narrative_vault_pin:checked+label .checked {
+    display: inline;
+}
+#narrative_vault_pin:checked+label .unchecked {
+    display: none;
+}
+#narrative_vault_pin:not(:checked)+label .checked {
+    display: none;
+}
+#narrative_vault_pin:not(:checked)+label .unchecked {
+    display: inline;
+}
+
+.narrative_vault_textarea {
+    background: #1e1e1e;
+    color: var(--text);
+    border: 1px solid var(--black50a);
+    border-radius: 4px;
+    padding: 8px;
+    font-family: var(--monoFontFamily);
+    font-size: 0.9em;
+    resize: vertical;
+    box-sizing: border-box;
+}
+
+.narrative_vault_textarea:focus {
+    outline: none;
+    border-color: var(--interactable-border-highlight);
+    box-shadow: 0 0 4px var(--interactable-border-highlight);
+}
+
+#narrative_vault_editor {
+    margin-top: 8px;
+}
+
+#narrative_vault_editor .narrative-section {
+    margin-bottom: 8px;
+}
+
+#narrative_vault_save_btn {
+    background: var(--primary);
+    color: var(--white);
+}
+
+#narrative_vault_save_btn:hover {
+    filter: brightness(1.1);
+}
+
+.narrative_memory_table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85em;
+    line-height: 1.5;
+    margin-top: 4px;
+}
+
+.narrative_memory_table th {
+    background: var(--black50a);
+    padding: 6px 8px;
+    text-align: left;
+    font-weight: bold;
+    border-bottom: 2px solid var(--black70a);
+    white-space: nowrap;
+}
+
+.narrative_memory_table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid var(--black30a);
+    vertical-align: top;
+}
+
+.narrative_memory_table tr:hover {
+    background: var(--black20a);
+}
+
+.stm-link { color: #81c784; cursor: pointer; }
+.stm-link:hover { text-decoration: underline; }
+.msg-link { color: #64b5f6; cursor: pointer; }
+.msg-link:hover { text-decoration: underline; }
+
+.narrative_ltm_toggle {
+    cursor: pointer;
+    font-size: 0.9em;
+    margin-right: 4px;
+    user-select: none;
+    color: var(--grey-30, #aaa);
+    transition: color 0.15s, transform 0.15s;
+    display: inline-block;
+}
+.narrative_ltm_toggle:hover {
+    color: var(--text, #ddd);
+    transform: scale(1.2);
+}
+
+.narrative_ltm_detail td {
+    padding: 0 !important;
+    border-bottom: none !important;
+}
+
+.narrative_ltm_detail_container {
+    background: var(--black30a, rgba(0,0,0,0.1));
+    padding: 6px 8px 6px 24px;
+    border-left: 3px solid var(--grey-50, #666);
+    margin: 0;
+}
+
+.narrative_ltm_stm_entry {
+    padding: 4px 0;
+    border-bottom: 1px solid var(--black20a, rgba(0,0,0,0.05));
+    font-size: 0.9em;
+    line-height: 1.5;
+}
+.narrative_ltm_stm_entry:last-child {
+    border-bottom: none;
+}
+
+.narrative_ltm_stm_label {
+    color: var(--grey-40, #999);
+    font-size: 0.85em;
+    margin-right: 6px;
+    white-space: nowrap;
+}
+
+.narrative_ltm_stm_scene {
+    color: var(--grey-50, #888);
+    font-size: 0.85em;
+    margin-right: 6px;
+}
+
+.narrative_ltm_stm_event {
+    color: var(--text, #ddd);
+}
+
+.narrative_ltm_stm_missing {
+    color: #888;
+    font-style: italic;
+}
