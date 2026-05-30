@@ -13,8 +13,8 @@ SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern He
   "enabled": true,
   "name": "NE Memory Engine",
   "id": "ne_memory_engine",
-  "content": "import 'https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@v0.2.0/dist/index.js'",
-  "info": "长对话结构化记忆管理引擎。"
+  "content": "import 'https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@main/dist/index.js'",
+   "info": "长对话结构化记忆管理引擎。"
 }
 ```
 

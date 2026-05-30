@@ -207,3 +207,290 @@
     color: #888;
     font-style: italic;
 }
+
+/* ========== 右侧抽屉布局 ========== */
+
+/* 展开按钮 */
+.ne_vault_toggle {
+    position: fixed;
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%);
+    z-index: 99999;
+    width: 32px;
+    height: 48px;
+    background: var(--SmartThemeBlurTintColor, #2a2a3a);
+    border: 1px solid var(--grey5050a, #444);
+    border-right: none;
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: var(--grey-50, #aaa);
+    transition: right 0.3s ease, color 0.15s, background 0.15s;
+    box-shadow: -2px 0 8px rgba(0,0,0,0.3);
+}
+.ne_vault_toggle:hover {
+    color: var(--text, #ddd);
+    background: var(--SmartThemeBlurTintColor, #3a3a4a);
+    width: 36px;
+}
+.ne_vault_toggle.panel-open {
+    right: 420px;
+    border-radius: 0 0 0 8px;
+    border-right: 1px solid var(--grey5050a, #444);
+    box-shadow: none;
+}
+
+/* 主抽屉 */
+.ne_vault_drawer {
+    position: fixed;
+    top: 0;
+    right: 0;
+    width: 420px;
+    height: 100vh;
+    z-index: 99998;
+    background: var(--SmartThemeBlurTintColor, #1e1e2e);
+    border-left: 1px solid var(--grey5050a, #333);
+    box-shadow: -4px 0 24px rgba(0,0,0,0.5);
+    transform: translateX(100%);
+    transition: transform 0.3s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+/* 头部 */
+.ne_vault_header {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--black50a);
+    flex-shrink: 0;
+}
+.ne_vault_title {
+    font-weight: bold;
+    font-size: 1.05em;
+    white-space: nowrap;
+}
+.ne_vault_version {
+    font-size: 0.8em;
+    color: var(--grey-50, #888);
+    margin-left: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.ne_vault_close {
+    margin-left: auto;
+    cursor: pointer;
+    font-size: 1.3em;
+    color: var(--grey-50, #888);
+    padding: 0 4px;
+    line-height: 1;
+}
+.ne_vault_close:hover {
+    color: var(--text, #ddd);
+}
+
+/* 标签栏 */
+.ne_vault_tabs {
+    display: flex;
+    border-bottom: 1px solid var(--black50a);
+    flex-shrink: 0;
+    overflow-x: auto;
+}
+.ne_vault_tab {
+    padding: 8px 10px;
+    font-size: 0.85em;
+    cursor: pointer;
+    color: var(--grey-50, #888);
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+    transition: color 0.15s, border-color 0.15s;
+    user-select: none;
+}
+.ne_vault_tab:hover {
+    color: var(--text, #ccc);
+}
+.ne_vault_tab.active {
+    color: var(--text, #ddd);
+    border-bottom-color: var(--primary, #64b5f6);
+}
+
+/* 内容体 */
+.ne_vault_body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 10px;
+}
+.ne_vault_tab_content {
+    display: none;
+}
+.ne_vault_tab_content.active {
+    display: block;
+}
+
+/* 底部栏 */
+.ne_vault_footer {
+    display: flex;
+    gap: 6px;
+    padding: 8px 10px;
+    border-top: 1px solid var(--black50a);
+    flex-shrink: 0;
+}
+.ne_vault_btn {
+    font-size: 0.85em;
+    padding: 4px 10px;
+    cursor: pointer;
+    border: 1px solid var(--grey5050a);
+    border-radius: 4px;
+    background: var(--black30a);
+    color: var(--text);
+    white-space: nowrap;
+}
+.ne_vault_btn:hover {
+    background: var(--black50a);
+}
+
+/* 通用区块 */
+.ne_section {
+    margin-bottom: 6px;
+}
+.ne_section_title {
+    font-weight: bold;
+    font-size: 0.9em;
+    margin: 6px 0 3px;
+    border-bottom: 1px solid var(--black50a);
+    padding-bottom: 2px;
+}
+.ne_empty {
+    color: #888;
+    padding: 12px 0;
+    text-align: center;
+}
+.ne_state_render {
+    background: var(--black50a, rgba(0,0,0,0.15));
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+}
+.ne_state_toolbar {
+    margin-top: 4px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+.ne_inline_label {
+    font-size: 0.85em;
+    white-space: nowrap;
+}
+.ne_select {
+    font-size: 0.85em;
+    width: auto;
+    max-width: 120px;
+}
+.ne_vault_btn_small {
+    font-size: 0.8em;
+    padding: 2px 6px;
+    cursor: pointer;
+    border: 1px solid var(--grey5050a);
+    border-radius: 3px;
+    background: var(--black30a);
+    color: var(--text);
+}
+.ne_vault_btn_small:hover {
+    background: var(--black50a);
+}
+.ne_vault_btn_tiny {
+    font-size: 0.78em;
+    padding: 1px 5px;
+    cursor: pointer;
+    border: 1px solid var(--grey5050a);
+    border-radius: 3px;
+    background: var(--black30a);
+    color: var(--text);
+}
+.ne_vault_btn_tiny:hover {
+    background: var(--black50a);
+}
+.ne_textarea {
+    width: 100%;
+    background: #1a1a1a;
+    color: var(--text);
+    border: 1px solid var(--grey5050a);
+    border-radius: 3px;
+    padding: 6px;
+    font-family: var(--monoFontFamily);
+    font-size: 0.85em;
+    resize: vertical;
+    box-sizing: border-box;
+    margin-top: 4px;
+}
+.ne_opening_text {
+    background: var(--black50a);
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
+    white-space: pre-wrap;
+}
+
+/* 日志 */
+.ne_log_entry {
+    margin: 4px 0;
+    padding: 4px;
+    background: var(--black30a);
+    border-radius: 3px;
+}
+.ne_log_header {
+    cursor: pointer;
+    font-weight: bold;
+    color: var(--grey-70);
+    font-size: 0.85em;
+}
+.ne_log_body {
+    margin-top: 4px;
+}
+.ne_log_pre {
+    margin: 2px 0 6px;
+    white-space: pre-wrap;
+    max-height: 200px;
+    overflow-y: auto;
+    background: var(--black50a);
+    padding: 4px;
+    border-radius: 2px;
+    font-size: 0.83em;
+    font-family: var(--monoFontFamily);
+}
+.ne_log_label {
+    color: #aaa;
+    font-size: 0.83em;
+    margin-top: 4px;
+}
+.ne_tool_entry {
+    margin: 3px 0;
+    padding: 3px 4px;
+    background: var(--black30a);
+    border-radius: 3px;
+    font-size: 0.85em;
+}
+
+/* 设置弹窗 */
+#ne_config {
+    position: fixed;
+    top: 5%;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 100000;
+    background: var(--SmartThemeBlurTintColor);
+    border: 1px solid var(--grey5050a);
+    border-radius: 8px;
+    padding: 16px;
+    max-width: 500px;
+    max-height: 85vh;
+    overflow-y: auto;
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
