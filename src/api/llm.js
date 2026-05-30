@@ -4,9 +4,20 @@
  * 优先级：localStorage 中的副 API 配置 → TavernHelper.generateRaw() 回退
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
-let telemetryCallback = null;
+export let telemetryBuffer = [];
 
-export function setTelemetryCallback(cb) { telemetryCallback = cb; }
+export function recordTelemetry(entry) {
+    telemetryBuffer.push({ ts: new Date().toISOString(), ...entry });
+    if (telemetryBuffer.length > 200) telemetryBuffer.shift();
+}
+
+export function isTelemetryEnabled() {
+    try {
+        const raw = localStorage.getItem('ne_settings');
+        if (raw) return JSON.parse(raw).enableTelemetry || false;
+    } catch (e) {}
+    return false;
+}
 
 export async function callMemoryLLM(messages, options = {}) {
     const secondaryConfig = loadSecondaryApiConfig();
@@ -29,12 +40,13 @@ export async function callMemoryLLM(messages, options = {}) {
     }
 
     const durationMs = Date.now() - startTime;
-    if (telemetryCallback) {
-        telemetryCallback({
+    if (isTelemetryEnabled()) {
+        recordTelemetry({
             operation: options.operation || 'memory',
             api_source: apiSource,
             duration_ms: durationMs,
-            response_length: response ? response.length : 0
+            response_length: response ? response.length : 0,
+            tokens: usage ? usage.total_tokens : undefined
         });
     }
     return response;
@@ -77,9 +89,7 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        if (data.usage && telemetryCallback) {
-            telemetryCallback({ tokens: data.usage.total_tokens });
-        }
+        usage = data.usage || null;
         return data.choices?.[0]?.message?.content || '';
     } finally {
         clearTimeout(timeout);

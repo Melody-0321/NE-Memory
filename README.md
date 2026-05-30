@@ -8,7 +8,7 @@ SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern He
 2. 在 TH 脚本管理器中粘贴以下 URL：
 
 ```
-https://cdn.jsdelivr.net/gh/xxxx/ne-memory@v0.2.0/dist/index.js
+https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@v0.2.0/dist/index.js
 ```
 
 3. 完成。Vault 面板会自动出现在 TH 弹窗中。
