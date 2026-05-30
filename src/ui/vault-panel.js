@@ -55,8 +55,13 @@ function hideVaultPanel() {
 
 async function createVaultPanel(getChatId) {
     if ($('#' + NE_VAULT_ID).length) return;
+    var wrapper = $('#ne_vault_wrapper');
+    if (!wrapper.length) {
+        wrapper = $('<div id="ne_vault_wrapper" style="position:fixed;top:0;left:0;width:0;height:0;overflow:hidden;pointer-events:none;"></div>');
+        $('body').append(wrapper);
+    }
     const toggleBtn = $('<div id="ne_vault_toggle" class="ne_vault_toggle" title="' + t('Memory Vault') + '">\u25C0</div>');
-    $('body').append(toggleBtn);
+    wrapper.append(toggleBtn);
     toggleBtn.on('click', () => toggleVaultPanel(getChatId));
 
     const panel = $(`<div id="${NE_VAULT_ID}" class="ne_vault_drawer">
@@ -85,7 +90,7 @@ async function createVaultPanel(getChatId) {
             <button class="ne_vault_btn" id="ne_vault_btn_settings">\u2699</button>
         </div>
     </div>`);
-    $('body').append(panel);
+    wrapper.append(panel);
 
     $('#ne_vault_close').on('click', hideVaultPanel);
     $('.ne_vault_tab').on('click', function () {
