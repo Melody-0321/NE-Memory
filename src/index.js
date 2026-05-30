@@ -146,8 +146,16 @@ function setupEventListeners() {
     });
 }
 
-$(async function () {
+function bootNE(retries) {
+    if (retries > 10) return console.error('[NE] Boot failed after 10 retries');
+    if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
     if (typeof window.__NE_MEMORY_LOADED__ !== 'undefined') return;
     window.__NE_MEMORY_LOADED__ = true;
-    try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
-});
+    console.log('[NE] Engine starting...');
+    $(async function () {
+        try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function () { bootNE(); });
+if (document.readyState === 'complete' || document.readyState === 'interactive') { bootNE(); }
