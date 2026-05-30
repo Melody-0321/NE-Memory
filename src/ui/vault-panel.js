@@ -595,6 +595,7 @@ export async function renderVaultPanel(getChatId) {
         };
 
         freezeIframeHeight();
+        renderConfigDialog(getChatId);
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
