@@ -26,6 +26,18 @@ function freezeIframeHeight() {
     try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
 }
 
+function injectPinCSS() {
+    if (byId('ne_pin_style')) return;
+    var style = PD.createElement('style');
+    style.id = 'ne_pin_style';
+    style.textContent = '#narrative_vault_pin{display:none}' +
+        '#narrative_vault_pin:checked+label .checked{display:inline}' +
+        '#narrative_vault_pin:checked+label .unchecked{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}';
+    PD.head.appendChild(style);
+}
+
 var vaultLLMLog = [];
 var lastVaultStateJson = '{}';
 var lastVaultStateTemplate = 'auto';
@@ -239,6 +251,7 @@ export function formatVaultForPrompt(vault) {
 export async function renderVaultPanel(getChatId) {
     try {
         if (byId('narrative_vault_holder')) return;
+        injectPinCSS();
         var vault = await read(getChatId());
         var c = vault.content || {};
 
