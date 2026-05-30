@@ -1,73 +1,84 @@
+/**
+ * ui/config-dialog.js — 设置面板（ST 扩展设置 inline-drawer）
+ *
+ * 通过 window.parent.document 操作主 ST 页面 DOM，#extensions_settings 挂载。
+ */
 import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
 
+function $pd(selector) {
+    return $(selector, window.parent.document);
+}
+
 export function renderConfigDialog(getChatId) {
-    const html = `<div id="ne_config" style="display:none;position:fixed;top:5%;left:50%;transform:translateX(-50%);z-index:10000;background:var(--SmartThemeBlurTintColor);border:1px solid var(--grey5050a);border-radius:8px;padding:16px;max-width:500px;max-height:85vh;overflow-y:auto;box-shadow:0 4px 24px rgba(0,0,0,0.5);">
-        <h3 style="margin-top:0;">Narrative Engine Settings</h3>
-        <div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>${t_config('narrative_label_enable_telemetry')}</span></label></div>
-        <hr style="border-color:var(--black30a);margin:8px 0;">
-        <h4>${t_config('副 API')}</h4>
-        <div style="margin:4px 0;"><label style="font-size:0.85em;">${t_config('API URL')}</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="https://api.openai.com/v1/chat/completions"></div>
-        <div style="margin:4px 0;"><label style="font-size:0.85em;">${t_config('API Key')}</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>
-        <div style="margin:4px 0 8px;"><label style="font-size:0.85em;">${t_config('Model')}</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="gpt-4o-mini"></div>
-        <hr style="border-color:var(--black30a);margin:8px 0;">
-        <div style="display:flex;gap:4px;flex-wrap:wrap;">
-            <button id="ne_config_save" class="menu_button">${t_narrative('Save')}</button>
-            <button id="ne_config_close" class="menu_button" style="color:#888;">${t_narrative('Cancel')}</button>
-            <button id="ne_export_telemetry" class="menu_button" style="margin-left:auto;">${t_narrative('Export Logs')} / Report</button>
-        </div>
-    </div>`;
-    const existing = $('#ne_config');
-    if (existing.length) existing.remove();
-    $('body').append(html);
+    if ($pd('#ne_config_settings').length) return;
+
+    var html = '<div id="ne_config_settings" class="inline-drawer">' +
+        '<div class="inline-drawer-toggle inline-drawer-header">' +
+        '<b>' + t_narrative('Narrative Engine') + '</b>' +
+        '<div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>' +
+        '</div>' +
+        '<div class="inline-drawer-content" style="padding:10px;">' +
+        '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
+        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
+        '<h4 style="margin:0 0 4px;">' + t_config('副 API') + '</h4>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="https://api.openai.com/v1/chat/completions"></div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API Key') + '</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>' +
+        '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('Model') + '</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="gpt-4o-mini"></div>' +
+        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<button id="ne_config_save" class="menu_button">' + t_narrative('Save') + '</button>' +
+        '<button id="ne_export_telemetry" class="menu_button" style="margin-left:auto;">' + t_narrative('Export Logs') + ' / Report</button>' +
+        '</div>' +
+        '</div>' +
+        '</div>';
+
+    $pd('#extensions_settings').append(html);
     loadConfigUI();
-    $('#ne_config_save').on('click', saveConfigUI);
-    $('#ne_config_close').on('click', () => $('#ne_config').hide());
-    $('#ne_export_telemetry').on('click', () => {
-        const data = collectTelemetryData(getChatId ? getChatId() : 'default');
+    $pd('#ne_config_save').on('click', saveConfigUI);
+    $pd('#ne_export_telemetry').on('click', function () {
+        var data = collectTelemetryData(getChatId ? getChatId() : 'default');
         uploadTelemetryToIssue(data);
     });
-    $('#ne_config').show();
 }
 
 function loadConfigUI() {
     try {
-        const raw = localStorage.getItem('ne_settings');
+        var raw = localStorage.getItem('ne_settings');
         if (raw) {
-            const s = JSON.parse(raw);
-            $('#ne_enable_telemetry').prop('checked', s.enableTelemetry || false);
+            var s = JSON.parse(raw);
+            $pd('#ne_enable_telemetry').prop('checked', s.enableTelemetry || false);
         }
     } catch (e) {}
     try {
-        const raw = localStorage.getItem('ne_secondary_api');
+        var raw = localStorage.getItem('ne_secondary_api');
         if (raw) {
-            const api = JSON.parse(raw);
-            $('#ne_secondary_url').val(api.url || '');
-            $('#ne_secondary_key').val(api.key || '');
-            $('#ne_secondary_model').val(api.model || '');
+            var api = JSON.parse(raw);
+            $pd('#ne_secondary_url').val(api.url || '');
+            $pd('#ne_secondary_key').val(api.key || '');
+            $pd('#ne_secondary_model').val(api.model || '');
         }
     } catch (e) {}
 }
 
 function saveConfigUI() {
-    const settings = { enableTelemetry: $('#ne_enable_telemetry').prop('checked') };
+    var settings = { enableTelemetry: $pd('#ne_enable_telemetry').prop('checked') };
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     saveSecondaryApiConfig({
-        url: $('#ne_secondary_url').val().trim(),
-        key: $('#ne_secondary_key').val().trim(),
-        model: $('#ne_secondary_model').val().trim()
+        url: $pd('#ne_secondary_url').val().trim(),
+        key: $pd('#ne_secondary_key').val().trim(),
+        model: $pd('#ne_secondary_model').val().trim()
     });
-    $('#ne_config').hide();
 }
 
 function collectTelemetryData(chatId) {
-    const totalCalls = telemetryBuffer.length;
-    let totalDurationMs = 0;
-    const byOperation = {};
-    const bySource = {};
-    let totalTokens = 0;
-    let totalErrors = 0;
-    let p95LatencyMs = 0;
+    var totalCalls = telemetryBuffer.length;
+    var totalDurationMs = 0;
+    var byOperation = {};
+    var bySource = {};
+    var totalTokens = 0;
+    var totalErrors = 0;
+    var p95LatencyMs = 0;
 
     telemetryBuffer.forEach(function (entry) {
         totalDurationMs += entry.duration_ms || 0;
