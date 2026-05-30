@@ -5,13 +5,20 @@ SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern He
 ## 安装
 
 1. 确保已安装 [酒馆助手 (JS-Slash-Runner)](https://github.com/N0VI028/JS-Slash-Runner)
-2. 在 TH 脚本管理器中粘贴以下 URL：
+2. 在 TH 脚本管理器中点击**导入**，粘贴以下 JSON：
 
-```
-https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@v0.2.0/dist/index.js
+```json
+{
+  "type": "script",
+  "enabled": true,
+  "name": "NE Memory Engine",
+  "id": "ne_memory_engine",
+  "content": "import 'https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@v0.2.0/dist/index.js'",
+  "info": "长对话结构化记忆管理引擎。"
+}
 ```
 
-3. 完成。Vault 面板会自动出现在 TH 弹窗中。
+3. 启用脚本，完成。Vault 面板会自动出现在 TH 弹窗中。
 
 ## 功能
 
