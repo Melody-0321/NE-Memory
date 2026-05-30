@@ -4,27 +4,9 @@
  * 替代 Python vault_store.py 中的历史快照逻辑。
  * IndexedDB 独立 store 存储快照，上限 30。
  */
-const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 1;
-const SNAPSHOT_STORE = 'snapshots';
+import { openDB } from './store.js';
 
-function openDB() {
-    return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            if (!db.objectStoreNames.contains('vaults')) {
-                db.createObjectStore('vaults', { keyPath: 'chat_id' });
-            }
-            if (!db.objectStoreNames.contains(SNAPSHOT_STORE)) {
-                const store = db.createObjectStore(SNAPSHOT_STORE, { keyPath: 'id' });
-                store.createIndex('chat_id', 'chat_id', { unique: false });
-            }
-        };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
-    });
-}
+const SNAPSHOT_STORE = 'snapshots';
 
 export async function saveSnapshot(chatId, vault) {
     const db = await openDB();

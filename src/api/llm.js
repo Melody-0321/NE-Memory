@@ -89,8 +89,11 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        usage = data.usage || null;
-        return data.choices?.[0]?.message?.content || '';
+        var usage = data.usage || null;
+        if (usage) recordTelemetry({ operation: 'stm_extract', tokens: usage.total_tokens, duration_ms: Date.now() - startTime, api_source: 'secondary' });
+        var content = data.choices?.[0]?.message?.content;
+        if (!content) throw new Error('LLM returned empty response');
+        return content;
     } finally {
         clearTimeout(timeout);
     }

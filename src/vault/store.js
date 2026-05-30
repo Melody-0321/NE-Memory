@@ -16,11 +16,16 @@ function openDB() {
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.createObjectStore(STORE_NAME, { keyPath: 'chat_id' });
             }
+            if (!db.objectStoreNames.contains('snapshots')) {
+                db.createObjectStore('snapshots', { keyPath: 'id' });
+            }
         };
         req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
 }
+
+export { openDB };
 
 export async function read(chatId) {
     const db = await openDB();

@@ -91,6 +91,7 @@ export function parseConsolidateResponse(llmResponse) {
 
 export function applyConsolidation(vault, consolidationResult) {
     const content = vault.content || {};
+    content.stm_entries = content.stm_entries || [];
     const ltmEntries = consolidationResult.ltm_entries || [];
     ltmEntries.forEach(ltm => {
         if (!ltm.id) ltm.id = findNextId(vault);
@@ -99,11 +100,17 @@ export function applyConsolidation(vault, consolidationResult) {
             if (vault.stm_index && vault.stm_index[stmId]) {
                 vault.stm_index[stmId].ltm_id = ltm.id;
             }
-            const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-            const found = allSTM.find(s => s.id === stmId);
+            var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+            var found = allSTM.find(s => s.id === stmId);
             if (found) found.parent_ltm = ltm.id;
         });
     });
+    var unconsolidated = content.unconsolidated_stm || [];
+    var consolidated = unconsolidated.filter(function (s) { return s.parent_ltm; });
+    if (consolidated.length > 0) {
+        content.stm_entries = (content.stm_entries || []).concat(consolidated);
+        content.unconsolidated_stm = unconsolidated.filter(function (s) { return !s.parent_ltm; });
+    }
     return ltmEntries.length;
 }
 

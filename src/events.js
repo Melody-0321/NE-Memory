@@ -9,8 +9,6 @@ let getChatIdFn = null;
 let getChatMessagesFn = null;
 let onVaultUpdateCallback = null;
 let pendingMessages = [];
-let messagesSinceLastFlush = 0;
-let lastKnownMaxMsgId = -1;
 const MEMORY_BATCH_SIZE = 10;
 const MEMORY_FORCE_WORDS = 500;
 
@@ -26,7 +24,6 @@ export function onMessageSent(messageId) {
     const message = chat.find(m => (m.id || m.mes_id) === messageId);
     if (message) {
         pendingMessages.push({ role: 'user', content: message.mes || '', id: messageId, timestamp: Date.now() });
-        if (messageId > lastKnownMaxMsgId) lastKnownMaxMsgId = messageId;
     }
 }
 
@@ -36,8 +33,6 @@ export async function onMessageReceived(messageId) {
     const message = chat.find(m => (m.id || m.mes_id) === messageId);
     if (message) {
         pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageId, timestamp: Date.now() });
-        if (messageId > lastKnownMaxMsgId) lastKnownMaxMsgId = messageId;
-        messagesSinceLastFlush++;
         await checkAndFlush();
     }
 }
@@ -52,16 +47,18 @@ async function checkAndFlush() {
 async function flushPendingMessages() {
     if (pendingMessages.length === 0) return;
     const batch = pendingMessages.splice(0);
-    messagesSinceLastFlush = 0;
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     try {
         const result = await executeIncrementalUpdate(chatId, batch);
+        var latestVault = result.vault;
         if (result.added > 0) {
             const consResult = await executeConsolidation(chatId);
-            if (onVaultUpdateCallback) onVaultUpdateCallback(result.vault);
+            latestVault = consResult.vault;
         }
+        if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
+        pendingMessages.unshift.apply(pendingMessages, batch);
     }
 }
 

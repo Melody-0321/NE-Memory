@@ -443,11 +443,14 @@ export function formatVaultForPrompt(vault) {
         parts.push('## ' + t('Long-term Memory (LTM) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event (Summary)') + ' |\n|' + '---|'.repeat(4) + '\n' + ltmLines.join('\n'));
     }
     if (content.unconsolidated_stm && content.unconsolidated_stm.length > 0) {
-        var stmLines = content.unconsolidated_stm.map(function (e, i) {
+        var unconsolidated = content.unconsolidated_stm.filter(function (e) { return !e.parent_ltm; });
+        if (unconsolidated.length > 0) {
+            var stmLines = unconsolidated.map(function (e, i) {
             var label = e.period ? e.period + (e.time_label ? '\u00b7' + e.time_label : '') : '';
             return '| ' + (i + 1) + ' | ' + label + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192msg#' + (e.msg_ids || []).join(',msg#') + '] |';
         });
         parts.push('## ' + t('Short-term Memory (Unconsolidated) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event') + ' |\n|' + '---|'.repeat(4) + '\n' + stmLines.join('\n'));
+        }
     }
     parts.push('---', t('The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.'));
     return parts.join('\n\n');
