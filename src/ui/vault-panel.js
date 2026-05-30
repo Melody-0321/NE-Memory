@@ -97,28 +97,34 @@ async function updateVaultViewerPopout(getChatId) {
                 var sel = tkeys[ti] === lastVaultStateTemplate ? ' selected' : '';
                 templateOpts += '<option value="' + tkeys[ti] + '"' + sel + '>' + tkeys[ti] + '</option>';
             }
-            panelBody.insertAdjacentHTML('afterend',
-                '<div class="narrative_state_block" style="margin-bottom:14px;">' +
-                '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State') + '</div>' +
-                '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;">' + stateHtml + '</div>' +
-                '<div style="margin-top:4px;">' +
-                '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">' +
-                '<span style="font-size:0.85em;">' + t('State Template') + ':</span>' +
-                '<select id="narrative_state_template_sel" class="text_pole" style="font-size:0.85em;width:auto;">' + templateOpts + '</select>' +
-                '</div>' +
-                '<div style="margin-top:4px;display:flex;gap:4px;">' +
-                '<button class="narrative_btn_extract_state menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Extract State') + '</button>' +
-                '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
-                '</div></div></div>'
-            );
+            var stmView = byId('narrative_vault_panel_stm_view');
+            if (stmView) {
+                stmView.insertAdjacentHTML('beforebegin',
+                    '<div class="narrative_state_block" style="margin-bottom:14px;">' +
+                    '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State') + '</div>' +
+                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;">' + stateHtml + '</div>' +
+                    '<div style="margin-top:4px;">' +
+                    '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">' +
+                    '<span style="font-size:0.85em;">' + t('State Template') + ':</span>' +
+                    '<select id="narrative_state_template_sel" class="text_pole" style="font-size:0.85em;width:auto;">' + templateOpts + '</select>' +
+                    '</div>' +
+                    '<div style="margin-top:4px;display:flex;gap:4px;">' +
+                    '<button class="narrative_btn_extract_state menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Extract State') + '</button>' +
+                    '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
+                    '</div></div></div>'
+                );
+            }
         }
 
         // Opening 区块
         if (c.opening_summary && c.opening_summary.text) {
-            panelBody.insertAdjacentHTML('afterend',
-                '<div class="narrative_opening_block" style="margin-bottom:14px;"><div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
-                '<div style="background:var(--black50a);padding:8px;border-radius:4px;white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div></div>'
-            );
+            var stmView2 = byId('narrative_vault_panel_stm_view');
+            if (stmView2) {
+                stmView2.insertAdjacentHTML('beforebegin',
+                    '<div class="narrative_opening_block" style="margin-bottom:14px;"><div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
+                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div></div>'
+                );
+            }
         }
 
         var stmIndexMap = {};
