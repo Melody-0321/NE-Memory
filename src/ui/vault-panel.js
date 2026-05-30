@@ -1,99 +1,168 @@
 /**
- * ui/vault-panel.js — Vault 面板（ST 原生顶栏 drawer 风格）
+ * ui/vault-panel.js — Vault 面板（精确复制 v0.1.0 UI）
  *
- * 所有 DOM 操作直接使用 window.parent.document 访问主 ST 页面。
- * 不使用 jQuery 的 context 参数，用原生 API 查询父文档元素。
+ * 通过 window.parent.document 操作主 ST 页面 DOM。
+ * Drawer HTML 结构与 v0.1.0 完全一致。
  */
-import { read } from '../vault/store.js';
+import { read, write, rollbackByMsgIds } from '../vault/store.js';
+import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
+import { executeConsolidation } from '../engine/consolidate.js';
 import { t_narrative } from '../i18n.js';
-import { escapeHtml } from './utils.js';
-import { renderStateWithTemplate } from './state-templates.js';
+import { escapeHtml, formatLocalTime } from './utils.js';
+import { renderStateWithTemplate, STATE_TEMPLATES } from './state-templates.js';
+import { renderConfigDialog } from './config-dialog.js';
+import { telemetryBuffer } from '../api/llm.js';
 
 /* ──────── 工具 ──────── */
 
 function t(key) { return t_narrative(key); }
 
-var P = window.parent;              // 父窗口
-var PD = P.document;                 // 父文档
-
+var PD = window.parent.document;
 function qs(sel) { return PD.querySelector(sel); }
 function qsa(sel) { return PD.querySelectorAll(sel); }
-
-/* ──────── iframe 高度冻结 ──────── */
+function byId(id) { return PD.getElementById(id); }
 
 function freezeIframeHeight() {
-    try {
-        if (window.frameElement) {
-            window.frameElement.style.height = '0px';
-            window.frameElement.style.minHeight = '0px';
-        }
-    } catch (e) {}
+    try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
 }
 
-/* ──────── Drawer 创建与切换 ──────── */
+var vaultLLMLog = [];
+var lastVaultStateJson = '{}';
+var lastVaultStateTemplate = 'auto';
 
-export function toggleVaultPanel(getChatId) {
-    var drawer = qs('#narrative_vault_drawer');
+/* ──────── 面板切换 ──────── */
+
+function createVaultPopout(getChatId) {
+    var drawer = byId('narrative_vault_drawer');
     var icon = qs('#narrative_vault_toggle .drawer-icon');
     if (!drawer) return;
     var opening = !drawer.classList.contains('openDrawer');
-
-    qsa('.openDrawer').forEach(function (el) {
-        if (!el.classList.contains('pinnedOpen')) {
-            el.classList.remove('openDrawer');
-            el.classList.add('closedDrawer');
-        }
-    });
-    qsa('.openIcon').forEach(function (el) {
-        if (!el.classList.contains('drawerPinnedOpen')) {
-            el.classList.remove('openIcon');
-            el.classList.add('closedIcon');
-        }
-    });
-
+    qsa('.openDrawer').forEach(function (el) { if (!el.classList.contains('pinnedOpen')) { el.classList.remove('openDrawer'); el.classList.add('closedDrawer'); } });
+    qsa('.openIcon').forEach(function (el) { if (!el.classList.contains('drawerPinnedOpen')) { el.classList.remove('openIcon'); el.classList.add('closedIcon'); } });
     drawer.classList.toggle('openDrawer');
     drawer.classList.toggle('closedDrawer');
     if (icon) { icon.classList.toggle('openIcon'); icon.classList.toggle('closedIcon'); }
-
-    if (opening) refreshVaultPanel(getChatId);
+    if (opening) updateVaultViewerPopout(getChatId);
 }
 
-/* ──────── 刷新面板 ──────── */
+export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
 
-export async function refreshVaultPanel(getChatId) {
+/* ──────── 面板内容渲染 ──────── */
+
+async function updateVaultViewerPopout(getChatId) {
+    var loading = byId('narrative_vault_loading');
+    var errDiv = byId('narrative_vault_panel_error');
+    if (loading) loading.style.display = '';
+    if (errDiv) errDiv.style.display = 'none';
     try {
         var vault = await read(getChatId());
         var c = vault.content || {};
-        var html = '';
-        html += '<div style="font-weight:bold;font-size:0.9em;">' + t('Version:') + ' ' + (vault.version || 0) + '</div>';
-        if (c.state && Object.keys(c.state).length > 0) {
-            html += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Current State') + '</div>';
-            html += '<div style="font-size:0.9em;">' + renderStateWithTemplate(c.state, c.state_template || 'auto') + '</div>';
-        }
-        if (c.opening_summary && c.opening_summary.text) {
-            html += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Opening Scene') + '</div>';
-            html += '<div style="white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div>';
-        }
-        html += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Long-term Memory (LTM)') + '</div>';
-        html += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event (Summary)') + '</th></tr></thead><tbody id="ne_vault_ltm_body"></tbody></table>';
-        html += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Short-term Memory (STM)') + '</div>';
-        html += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th></tr></thead><tbody id="ne_vault_stm_body"></tbody></table>';
-        html += '<div style="margin-top:8px;display:flex;gap:4px;"><button class="menu_button" style="font-size:0.85em;padding:2px 8px;" id="ne_vault_refresh">' + t('Refresh') + '</button></div>';
+        lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
+        lastVaultStateTemplate = c.state_template || 'auto';
 
-        var container = qs('#narrative_vault_drawer .scrollableInner');
-        if (container) container.innerHTML = html;
+        var verEl = byId('narrative_vault_panel_version');
+        if (verEl) {
+            var verText = t('Version:') + ' ' + (vault.version || 0);
+            var ts = formatLocalTime(vault.updated_at);
+            if (ts) verText += ' \u00b7 ' + ts;
+            verEl.textContent = verText;
+        }
+
+        var panelBody = verEl ? verEl.parentElement : null;
+        if (!panelBody) return;
+
+        // 移除旧区块
+        qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
+        qsa('.narrative_opening_block').forEach(function (el) { el.remove(); });
+
+        // State 区块
+        if (c.state && Object.keys(c.state).length > 0) {
+            var stateHtml = renderStateWithTemplate(c.state, lastVaultStateTemplate);
+            var templateOpts = '';
+            var tkeys = Object.keys(STATE_TEMPLATES);
+            if (tkeys.indexOf('auto') === -1) tkeys.unshift('auto');
+            for (var ti = 0; ti < tkeys.length; ti++) {
+                var sel = tkeys[ti] === lastVaultStateTemplate ? ' selected' : '';
+                templateOpts += '<option value="' + tkeys[ti] + '"' + sel + '>' + tkeys[ti] + '</option>';
+            }
+            panelBody.insertAdjacentHTML('afterend',
+                '<div class="narrative_state_block" style="margin-bottom:14px;">' +
+                '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State') + '</div>' +
+                '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;">' + stateHtml + '</div>' +
+                '<div style="margin-top:4px;">' +
+                '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">' +
+                '<span style="font-size:0.85em;">' + t('State Template') + ':</span>' +
+                '<select id="narrative_state_template_sel" class="text_pole" style="font-size:0.85em;width:auto;">' + templateOpts + '</select>' +
+                '</div>' +
+                '<div style="margin-top:4px;display:flex;gap:4px;">' +
+                '<button class="narrative_btn_extract_state menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Extract State') + '</button>' +
+                '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
+                '</div></div></div>'
+            );
+        }
+
+        // Opening 区块
+        if (c.opening_summary && c.opening_summary.text) {
+            panelBody.insertAdjacentHTML('afterend',
+                '<div class="narrative_opening_block" style="margin-bottom:14px;"><div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
+                '<div style="background:var(--black50a);padding:8px;border-radius:4px;white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div></div>'
+            );
+        }
 
         var stmIndexMap = {};
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
 
-        renderMemoryTable('#ne_vault_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
-        renderMemoryTable('#ne_vault_stm_body', c.unconsolidated_stm || [], 'stm');
+        renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
+        renderMemoryTable('#narrative_vault_panel_stm_body', c.unconsolidated_stm || [], 'stm');
 
-        var refreshBtn = qs('#ne_vault_refresh');
-        if (refreshBtn) refreshBtn.onclick = function () { refreshVaultPanel(getChatId); };
+        // State template change
+        var stateSel = byId('narrative_state_template_sel');
+        if (stateSel) {
+            stateSel.onchange = function () {
+                lastVaultStateTemplate = stateSel.value;
+                renderStateBlock();
+            };
+        }
+        // Extract state
+        qsa('.narrative_btn_extract_state').forEach(function (btn) {
+            btn.onclick = function () { extractState(getChatId); };
+        });
+        // Clear state
+        qsa('.narrative_clear_state_btn').forEach(function (btn) {
+            btn.onclick = function () {
+                if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
+                    c.state = {};
+                    write(getChatId(), vault).then(function () { updateVaultViewerPopout(getChatId()); });
+                }
+            };
+        });
     } catch (e) {
-        console.error('[NE] Refresh failed:', e);
+        if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
+    } finally {
+        if (loading) loading.style.display = 'none';
+    }
+}
+
+function renderStateBlock() {
+    try {
+        var vault = JSON.parse(lastVaultStateJson || '{}');
+        var rendered = renderStateWithTemplate(vault, lastVaultStateTemplate);
+        var container = qs('.narrative_state_block div[style*="background:var(--black50a);padding:8px"]');
+        if (container) container.innerHTML = rendered;
+    } catch (e) {}
+}
+
+async function extractState(getChatId) {
+    try {
+        var vault = await read(getChatId());
+        if (!vault.content.state) vault.content.state = {};
+        lastVaultStateJson = JSON.stringify(vault.content.state, null, 2);
+        byId('narrative_vault_loading').style.display = '';
+        await executeConsolidation(getChatId());
+        await updateVaultViewerPopout(getChatId);
+    } catch (e) {
+        console.error('[NE] Extract failed:', e);
     }
 }
 
@@ -129,11 +198,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             el.onclick = function () {
                 var ltmId = el.getAttribute('data-ltm-id');
                 var detailRow = qs('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
-                if (detailRow) {
-                    var isHidden = detailRow.style.display === 'none';
-                    detailRow.style.display = isHidden ? '' : 'none';
-                    el.textContent = isHidden ? '\u25BC' : '\u25B6';
-                }
+                if (detailRow) { var h = detailRow.style.display === 'none'; detailRow.style.display = h ? '' : 'none'; el.textContent = h ? '\u25BC' : '\u25B6'; }
             };
         });
     }
@@ -173,67 +238,213 @@ export function formatVaultForPrompt(vault) {
 
 export async function renderVaultPanel(getChatId) {
     try {
-        if (qs('#narrative_vault_holder')) return;
+        if (byId('narrative_vault_holder')) return;
         var vault = await read(getChatId());
         var c = vault.content || {};
 
-        var drawerHtml = [
-            '<div id="narrative_vault_holder" class="drawer">',
-            '  <div class="drawer-toggle" id="narrative_vault_toggle">',
-            '    <div class="drawer-icon fa-solid fa-book fa-fw closedIcon" title="' + t('Memory Vault') + '"></div>',
-            '  </div>',
-            '  <div id="narrative_vault_drawer" class="drawer-content closedDrawer fillRight">',
-            '    <div id="narrative_vault_panel_header" style="padding:10px;display:flex;align-items:center;border-bottom:1px solid var(--black50a);cursor:move;" class="fa-solid fa-grip drag-grabber">',
-            '      <span style="margin-left:8px;font-weight:bold;font-size:1.05em;">' + t('Memory Vault') + '</span>',
-            '      <span style="font-size:0.8em;color:var(--grey-50,#888);margin-left:8px;">' + t('Version:') + ' ' + (vault.version || 0) + '</span>',
-            '    </div>',
-            '    <div class="scrollableInner" style="padding:10px;overflow-y:auto;font-size:var(--mainFontSize);"></div>',
-            '  </div>',
-            '</div>'
-        ].join('\n');
+        var drawerHtml = '<div id="narrative_vault_holder" class="drawer">' +
+            '<div class="drawer-toggle" id="narrative_vault_toggle">' +
+            '<div class="drawer-icon fa-solid fa-book fa-fw closedIcon" title="' + t('Memory Vault') + '"></div>' +
+            '</div>' +
+            '<div id="narrative_vault_drawer" class="drawer-content closedDrawer fillRight">' +
+            '<div id="narrative_vault_panel_header" class="fa-solid fa-grip drag-grabber"></div>' +
+            '<div class="flex-container flexnowrap">' +
+            '<div class="flexFlowColumn flex-container">' +
+            '<div id="narrative_vault_pin_div" class="alignitemsflexstart" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
+            '<input type="checkbox" id="narrative_vault_pin">' +
+            '<label for="narrative_vault_pin">' +
+            '<div class="fa-solid unchecked fa-unlock right_menu_button" alt=""></div>' +
+            '<div class="fa-solid checked fa-lock right_menu_button" alt=""></div>' +
+            '</label></div></div></div>' +
+            '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:auto;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
+            '<div class="scrollableInner" style="padding:10px;overflow-y:auto;font-size:var(--mainFontSize);">' +
+            '<div style="display:flex;align-items:center;margin-bottom:6px;">' +
+            '<div id="narrative_vault_panel_version" style="font-weight:bold;"></div>' +
+            '<span id="narrative_vault_activity" style="margin-left:6px;font-size:0.8em;color:#888;">\u25CF</span></div>' +
+            '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
+            '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
+            '<div style="margin-bottom:10px;">' +
+            '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Short-term Memory (STM)') + '</div>' +
+            '<div id="narrative_vault_panel_stm_view">' +
+            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event') + '</th></tr></thead>' +
+            '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
+            '<div id="narrative_vault_panel_stm_edit" style="display:none;"></div></div>' +
+            '<div>' +
+            '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Long-term Memory (LTM)') + '</div>' +
+            '<div id="narrative_vault_panel_ltm_view">' +
+            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th></tr></thead>' +
+            '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
+            '<div id="narrative_vault_panel_ltm_edit" style="display:none;"></div></div>' +
+            '<div style="margin-top:8px;display:flex;gap:4px;white-space:nowrap;">' +
+            '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Refresh') + '</button>' +
+            '<button id="narrative_vault_panel_edit_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Edit') + '</button>' +
+            '<button id="narrative_vault_panel_save_btn" class="menu_button" style="display:none;font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Save') + '</button>' +
+            '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
+            '</div>' +
+            '<div id="narrative_vault_llm_log" style="margin-top:10px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
+            '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
+            '<div id="narrative_vault_llm_entries" style="display:none;max-height:250px;overflow-y:auto;"></div></div>' +
+            '<div id="narrative_vault_tool_call_log" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
+            '<div id="narrative_vault_tool_call_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('Tool Calling Log') + '</div>' +
+            '<div id="narrative_vault_tool_calls" style="display:none;max-height:200px;overflow-y:auto;"></div></div>' +
+            '<div style="margin-top:8px;display:flex;gap:4px;">' +
+            '<button id="narrative_vault_export_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export Logs') + '</button>' +
+            '</div>' +
+            '<div id="narrative_vault_history_section" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
+            '<div id="narrative_vault_history_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('History') + '</div>' +
+            '<div id="narrative_vault_history_list" style="display:none;max-height:250px;overflow-y:auto;font-size:0.85em;"></div></div>' +
+            '</div></div></div>';
 
-        var holder = qs('#top-settings-holder');
+        var holder = byId('top-settings-holder');
         if (holder) {
             holder.insertAdjacentHTML('beforeend', drawerHtml);
-            console.log('[NE] Drawer appended to #top-settings-holder');
         } else {
-            console.error('[NE] #top-settings-holder not found in parent document');
+            console.error('[NE] #top-settings-holder not found');
             return;
         }
 
-        var toggle = qs('#narrative_vault_toggle');
-        if (toggle) toggle.onclick = function () { toggleVaultPanel(getChatId); };
+        byId('narrative_vault_toggle').onclick = function () { createVaultPopout(getChatId); };
+        byId('narrative_vault_panel_refresh').onclick = function () { updateVaultViewerPopout(getChatId); };
 
-        var stmIndexMap = {};
-        (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
-        (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
-
-        var panelHtml = '';
-        if (c.state && Object.keys(c.state).length > 0) {
-            panelHtml += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Current State') + '</div>';
-            panelHtml += '<div style="font-size:0.9em;">' + renderStateWithTemplate(c.state, c.state_template || 'auto') + '</div>';
+        var consolidateBtn = qs('.narrative_btn_consolidate');
+        if (consolidateBtn) {
+            consolidateBtn.onclick = async function () {
+                await executeConsolidation(getChatId());
+                updateVaultViewerPopout(getChatId());
+            };
         }
-        if (c.opening_summary && c.opening_summary.text) {
-            panelHtml += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Opening Scene') + '</div>';
-            panelHtml += '<div style="white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div>';
-        }
-        panelHtml += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Long-term Memory (LTM)') + '</div>';
-        panelHtml += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event (Summary)') + '</th></tr></thead><tbody id="ne_vault_ltm_body_1"></tbody></table>';
-        panelHtml += '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);font-size:0.9em;">' + t('Short-term Memory (STM)') + '</div>';
-        panelHtml += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th></tr></thead><tbody id="ne_vault_stm_body_1"></tbody></table>';
-        panelHtml += '<div style="margin-top:8px;display:flex;gap:4px;"><button class="menu_button" style="font-size:0.85em;padding:2px 8px;" id="ne_vault_refresh_1">' + t('Refresh') + '</button></div>';
 
-        var scrollable = qs('#narrative_vault_drawer .scrollableInner');
-        if (scrollable) scrollable.innerHTML = panelHtml;
+        // Pin
+        byId('narrative_vault_pin').onchange = function () {
+            var checked = byId('narrative_vault_pin').checked;
+            byId('narrative_vault_drawer').classList.toggle('pinnedOpen', checked);
+            qs('#narrative_vault_toggle .drawer-icon').classList.toggle('drawerPinnedOpen', checked);
+        };
 
-        renderMemoryTable('#ne_vault_ltm_body_1', c.ltm_entries || [], 'ltm', stmIndexMap);
-        renderMemoryTable('#ne_vault_stm_body_1', c.unconsolidated_stm || [], 'stm');
+        // LLM log toggle
+        byId('narrative_vault_llm_toggle').onclick = function () {
+            var entries = byId('narrative_vault_llm_entries');
+            var h = entries.style.display !== 'none';
+            entries.style.display = h ? 'none' : '';
+            byId('narrative_vault_llm_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('LLM Operation Log');
+            if (!h) renderLLMLog();
+        };
 
-        var refreshBtn = qs('#ne_vault_refresh_1');
-        if (refreshBtn) refreshBtn.onclick = function () { refreshVaultPanel(getChatId); };
+        // Tool call toggle
+        byId('narrative_vault_tool_call_toggle').onclick = function () {
+            var entries = byId('narrative_vault_tool_calls');
+            var h = entries.style.display !== 'none';
+            entries.style.display = h ? 'none' : '';
+            byId('narrative_vault_tool_call_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('Tool Calling Log');
+            if (!h) renderToolCallLog();
+        };
+
+        // History toggle
+        byId('narrative_vault_history_toggle').onclick = function () {
+            var list = byId('narrative_vault_history_list');
+            var h = list.style.display !== 'none';
+            list.style.display = h ? 'none' : '';
+            byId('narrative_vault_history_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('History');
+            if (!h) renderHistory(getChatId);
+        };
+
+        // Export logs
+        byId('narrative_vault_export_btn').onclick = function () {
+            var data = { llm_log: vaultLLMLog, tool_log: narrativeToolCalls, telemetry: telemetryBuffer };
+            var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            var a = PD.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = 'ne_telemetry_' + new Date().toISOString().split('T')[0] + '.json';
+            a.click();
+        };
 
         freezeIframeHeight();
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
+    }
+}
+
+/* ──────── LLM 日志 ──────── */
+
+var narrativeToolCalls = [];
+
+function renderLLMLog() {
+    var container = byId('narrative_vault_llm_entries');
+    if (!container) return;
+    var html = '';
+    if (vaultLLMLog.length === 0) {
+        html = '<div style="color:#888;padding:8px 0;">' + t('No operations logged') + '</div>';
+    } else {
+        vaultLLMLog.slice().reverse().forEach(function (entry) {
+            html += '<div class="ne_log_entry"><div class="ne_log_header" style="cursor:pointer;font-weight:bold;color:var(--grey70);font-size:0.85em;">\u25BC ' + (entry.type || '') + ' \u00b7 ' + formatLocalTime(entry.time) + (entry.api_source ? ' \u00b7 [' + escapeHtml(entry.api_source) + ']' : '') + '</div>' +
+                '<div class="ne_log_body"><div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Request:') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.request || '') + '</pre>' +
+                '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Response:') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.response || '') + '</pre></div></div>';
+        });
+    }
+    container.innerHTML = html;
+}
+
+function renderToolCallLog() {
+    var container = byId('narrative_vault_tool_calls');
+    if (!container) return;
+    var html = '';
+    if (narrativeToolCalls.length === 0) {
+        html = '<div style="color:#888;padding:8px 0;">' + t('No tool calls recorded') + '</div>';
+    } else {
+        narrativeToolCalls.slice().reverse().forEach(function (entry) {
+            var emoji = entry.success ? '\uD83D\uDFE2' : '\uD83D\uDD34';
+            var dur = entry.duration_ms > 1000 ? (entry.duration_ms / 1000).toFixed(1) + 's' : entry.duration_ms + 'ms';
+            html += '<div class="ne_tool_entry" style="margin:3px 0;padding:3px 4px;background:var(--black30a);border-radius:3px;font-size:0.85em;">' + emoji + ' ' + escapeHtml(entry.tool) + ' \u00b7 ' + formatLocalTime(entry.ts) + ' \u00b7 ' + dur + (entry.result_summary ? ' \u00b7 ' + escapeHtml(entry.result_summary) : '') + (entry.error_info ? ' \u00b7 <span style="color:#f44336;">' + escapeHtml(entry.error_info) + '</span>' : '') + '</div>';
+        });
+    }
+    container.innerHTML = html;
+}
+
+/* ──────── 历史面板 ──────── */
+
+async function renderHistory(getChatId) {
+    var container = byId('narrative_vault_history_list');
+    if (!container) return;
+    try {
+        var snapshots = await listSnapshots(getChatId());
+        if (!snapshots || snapshots.length === 0) {
+            container.innerHTML = '<div style="color:#888;padding:8px 0;">' + t('No history yet') + '</div>';
+            return;
+        }
+        var html = '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.85em;">' +
+            '<thead><tr><th>v</th><th>' + t('Version:').replace(':', '') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th><th>' + t('Restore') + '</th><th>' + t('Delete') + '</th></tr></thead><tbody>';
+        snapshots.forEach(function (snap) {
+            var sc = snap.data && snap.data.content;
+            var ltmCount = sc && sc.ltm_entries ? sc.ltm_entries.length : 0;
+            var stmCount = sc && sc.unconsolidated_stm ? sc.unconsolidated_stm.length : 0;
+            html += '<tr><td>' + snap.version + '</td><td>' + formatLocalTime(snap.updated_at) + '</td><td>' + ltmCount + ' LTM</td><td>' + stmCount + ' STM</td>' +
+                '<td><button class="narrative_restore_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;">' + t('Restore') + '</button></td>' +
+                '<td><button class="narrative_del_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;color:#f44336;">' + t('Delete') + '</button></td></tr>';
+        });
+        html += '</tbody></table>';
+        container.innerHTML = html;
+
+        qsa('.narrative_restore_btn').forEach(function (btn) {
+            btn.onclick = async function () {
+                var ver = parseInt(btn.getAttribute('data-ver'));
+                if (confirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
+                    await restoreSnapshot(getChatId(), ver);
+                    updateVaultViewerPopout(getChatId());
+                }
+            };
+        });
+        qsa('.narrative_del_btn').forEach(function (btn) {
+            btn.onclick = async function () {
+                var ver = parseInt(btn.getAttribute('data-ver'));
+                if (confirm(t('Confirm delete v{VER}?').replace('{VER}', ver))) {
+                    await deleteSnapshot(getChatId(), ver);
+                    renderHistory(getChatId);
+                }
+            };
+        });
+    } catch (e) {
+        container.innerHTML = '<div style="color:#f44336;">' + t('Failed to load history') + '</div>';
     }
 }
