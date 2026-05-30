@@ -44,7 +44,9 @@ function injectPinCSS() {
     if (byId('ne_pin_style')) return;
     var style = PD.createElement('style');
     style.id = 'ne_pin_style';
-    style.textContent = '#narrative_vault_pin{display:none}' +
+    style.textContent = '#narrative_vault_pin_div{font-size:24px;display:inline;padding:1px;opacity:0.5;transition:0.2s}' +
+        '#narrative_vault_pin_div:hover,#narrative_vault_pin_div:has(:focus-visible){opacity:1}' +
+        '#narrative_vault_pin{display:none}' +
         '#narrative_vault_pin:checked+label .checked{display:inline}' +
         '#narrative_vault_pin:checked+label .unchecked{display:none}' +
         '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +

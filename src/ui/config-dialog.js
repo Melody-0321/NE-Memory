@@ -57,9 +57,9 @@ export function renderConfigDialog(getChatId) {
         '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。') + '</div>' +
         '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
-        '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
-        '<button id="ne_config_save" class="menu_button">' + t_narrative('Save') + '</button>' +
-        '<button id="ne_export_telemetry" class="menu_button" style="margin-left:auto;">' + t_narrative('Export Logs') + ' / Report</button>' +
+        '<div style="display:flex;gap:6px;white-space:nowrap;justify-content:space-between;">' +
+        '<button id="ne_config_save" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t_narrative('Save') + '</button>' +
+        '<button id="ne_export_telemetry" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t_narrative('Export Logs') + '</button>' +
         '</div>' +
         '</div>' +
         '</div>';
