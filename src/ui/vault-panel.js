@@ -1,8 +1,8 @@
 /**
  * ui/vault-panel.js — Vault 面板（ST 原生顶栏 drawer 风格）
  *
- * 通过 window.parent.document 操作主 ST 页面 DOM，#top-settings-holder 挂载。
- * 使用 ST 原生 drawer CSS 类体系（.drawer / .drawer-content / .fillRight 等）。
+ * 所有 DOM 操作直接使用 window.parent.document 访问主 ST 页面。
+ * 不使用 jQuery 的 context 参数，用原生 API 查询父文档元素。
  */
 import { read } from '../vault/store.js';
 import { t_narrative } from '../i18n.js';
@@ -13,22 +13,47 @@ import { renderStateWithTemplate } from './state-templates.js';
 
 function t(key) { return t_narrative(key); }
 
-function $pd(selector) {
-    return $(selector, window.parent.document);
+var P = window.parent;              // 父窗口
+var PD = P.document;                 // 父文档
+
+function qs(sel) { return PD.querySelector(sel); }
+function qsa(sel) { return PD.querySelectorAll(sel); }
+
+/* ──────── iframe 高度冻结 ──────── */
+
+function freezeIframeHeight() {
+    try {
+        if (window.frameElement) {
+            window.frameElement.style.height = '0px';
+            window.frameElement.style.minHeight = '0px';
+        }
+    } catch (e) {}
 }
 
 /* ──────── Drawer 创建与切换 ──────── */
 
 export function toggleVaultPanel(getChatId) {
-    var drawer = $pd('#narrative_vault_drawer');
-    var icon = $pd('#narrative_vault_toggle .drawer-icon');
-    var opening = !drawer.hasClass('openDrawer');
+    var drawer = qs('#narrative_vault_drawer');
+    var icon = qs('#narrative_vault_toggle .drawer-icon');
+    if (!drawer) return;
+    var opening = !drawer.classList.contains('openDrawer');
 
-    $pd('.openDrawer').not('.pinnedOpen').removeClass('openDrawer').addClass('closedDrawer');
-    $pd('.openIcon').not('.drawerPinnedOpen').removeClass('openIcon').addClass('closedIcon');
+    qsa('.openDrawer').forEach(function (el) {
+        if (!el.classList.contains('pinnedOpen')) {
+            el.classList.remove('openDrawer');
+            el.classList.add('closedDrawer');
+        }
+    });
+    qsa('.openIcon').forEach(function (el) {
+        if (!el.classList.contains('drawerPinnedOpen')) {
+            el.classList.remove('openIcon');
+            el.classList.add('closedIcon');
+        }
+    });
 
-    drawer.toggleClass('openDrawer closedDrawer');
-    icon.toggleClass('openIcon closedIcon');
+    drawer.classList.toggle('openDrawer');
+    drawer.classList.toggle('closedDrawer');
+    if (icon) { icon.classList.toggle('openIcon'); icon.classList.toggle('closedIcon'); }
 
     if (opening) refreshVaultPanel(getChatId);
 }
@@ -55,17 +80,18 @@ export async function refreshVaultPanel(getChatId) {
         html += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th></tr></thead><tbody id="ne_vault_stm_body"></tbody></table>';
         html += '<div style="margin-top:8px;display:flex;gap:4px;"><button class="menu_button" style="font-size:0.85em;padding:2px 8px;" id="ne_vault_refresh">' + t('Refresh') + '</button></div>';
 
-        var container = $pd('#narrative_vault_drawer .scrollableInner');
-        container.html(html);
+        var container = qs('#narrative_vault_drawer .scrollableInner');
+        if (container) container.innerHTML = html;
 
         var stmIndexMap = {};
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
 
-        renderMemoryTable('#ne_vault_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap, $pd);
-        renderMemoryTable('#ne_vault_stm_body', c.unconsolidated_stm || [], 'stm', null, $pd);
+        renderMemoryTable('#ne_vault_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
+        renderMemoryTable('#ne_vault_stm_body', c.unconsolidated_stm || [], 'stm');
 
-        $pd('#ne_vault_refresh').on('click', function () { refreshVaultPanel(getChatId); });
+        var refreshBtn = qs('#ne_vault_refresh');
+        if (refreshBtn) refreshBtn.onclick = function () { refreshVaultPanel(getChatId); };
     } catch (e) {
         console.error('[NE] Refresh failed:', e);
     }
@@ -73,10 +99,11 @@ export async function refreshVaultPanel(getChatId) {
 
 /* ──────── 表格渲染 ──────── */
 
-export function renderMemoryTable(tbodyId, entries, type, stmIndexMap, $sel) {
-    if (!$sel) $sel = $;
-    var tbody = $sel(tbodyId).empty();
-    if (!entries || entries.length === 0) { tbody.append('<tr><td colspan="4" style="color:#888;">(empty)</td></tr>'); return; }
+export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
+    var tbody = qs(tbodyId);
+    if (!tbody) return;
+    tbody.innerHTML = '';
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
         var periodCell = type === 'ltm' ? (entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
         var refs = type === 'ltm'
@@ -84,7 +111,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap, $sel) {
             : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192msg#' + mid + ']</span>'; }).join(' ');
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.append('<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td></tr>');
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -94,16 +121,20 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap, $sel) {
                     detailRows += '<div class="narrative_ltm_stm_entry"><span class="narrative_ltm_stm_label">' + (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '') + '</span><span class="narrative_ltm_stm_scene">' + (stm.scene || '') + '</span><span class="narrative_ltm_stm_event">' + (stm.event || stm.summary || '') + '</span>' + (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192msg#' + mid + ']</span>'; }).join(' ') + '</div>';
                 }
             });
-            if (detailRows) { tbody.append('' +
-                '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;">' +
-                '<td colspan="4"><div class="narrative_ltm_detail_container">' + detailRows + '</div></td></tr>'); }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="4"><div class="narrative_ltm_detail_container">' + detailRows + '</div></td></tr>'; }
         }
     });
     if (type === 'ltm') {
-        $sel('.narrative_ltm_toggle').off('click').on('click', function () {
-            var ltmId = $sel(this).data('ltm-id');
-            var detailRow = tbody.find('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
-            if (detailRow.length) { var isHidden = detailRow.css('display') === 'none'; detailRow.toggle(); $sel(this).text(isHidden ? '\u25BC' : '\u25B6'); }
+        qsa('.narrative_ltm_toggle').forEach(function (el) {
+            el.onclick = function () {
+                var ltmId = el.getAttribute('data-ltm-id');
+                var detailRow = qs('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
+                if (detailRow) {
+                    var isHidden = detailRow.style.display === 'none';
+                    detailRow.style.display = isHidden ? '' : 'none';
+                    el.textContent = isHidden ? '\u25BC' : '\u25B6';
+                }
+            };
         });
     }
 }
@@ -142,7 +173,7 @@ export function formatVaultForPrompt(vault) {
 
 export async function renderVaultPanel(getChatId) {
     try {
-        if ($pd('#narrative_vault_holder').length) return;
+        if (qs('#narrative_vault_holder')) return;
         var vault = await read(getChatId());
         var c = vault.content || {};
 
@@ -161,9 +192,17 @@ export async function renderVaultPanel(getChatId) {
             '</div>'
         ].join('\n');
 
-        $pd('#top-settings-holder').append(drawerHtml);
+        var holder = qs('#top-settings-holder');
+        if (holder) {
+            holder.insertAdjacentHTML('beforeend', drawerHtml);
+            console.log('[NE] Drawer appended to #top-settings-holder');
+        } else {
+            console.error('[NE] #top-settings-holder not found in parent document');
+            return;
+        }
 
-        $pd('#narrative_vault_toggle').on('click', function () { toggleVaultPanel(getChatId); });
+        var toggle = qs('#narrative_vault_toggle');
+        if (toggle) toggle.onclick = function () { toggleVaultPanel(getChatId); };
 
         var stmIndexMap = {};
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
@@ -184,10 +223,16 @@ export async function renderVaultPanel(getChatId) {
         panelHtml += '<table class="narrative_memory_table"><thead><tr><th>No.</th><th>' + t('Period') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th></tr></thead><tbody id="ne_vault_stm_body_1"></tbody></table>';
         panelHtml += '<div style="margin-top:8px;display:flex;gap:4px;"><button class="menu_button" style="font-size:0.85em;padding:2px 8px;" id="ne_vault_refresh_1">' + t('Refresh') + '</button></div>';
 
-        $pd('#narrative_vault_drawer .scrollableInner').html(panelHtml);
-        renderMemoryTable('#ne_vault_ltm_body_1', c.ltm_entries || [], 'ltm', stmIndexMap, $pd);
-        renderMemoryTable('#ne_vault_stm_body_1', c.unconsolidated_stm || [], 'stm', null, $pd);
-        $pd('#ne_vault_refresh_1').on('click', function () { refreshVaultPanel(getChatId); });
+        var scrollable = qs('#narrative_vault_drawer .scrollableInner');
+        if (scrollable) scrollable.innerHTML = panelHtml;
+
+        renderMemoryTable('#ne_vault_ltm_body_1', c.ltm_entries || [], 'ltm', stmIndexMap);
+        renderMemoryTable('#ne_vault_stm_body_1', c.unconsolidated_stm || [], 'stm');
+
+        var refreshBtn = qs('#ne_vault_refresh_1');
+        if (refreshBtn) refreshBtn.onclick = function () { refreshVaultPanel(getChatId); };
+
+        freezeIframeHeight();
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
