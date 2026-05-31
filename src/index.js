@@ -127,6 +127,7 @@ function setupEventListeners(retryCount) {
             if (eventSource.eventTypes.MESSAGE_UPDATED) eventSource.on(eventSource.eventTypes.MESSAGE_UPDATED, onMessageUpdated);
             console.log('[NE] Event listeners registered via eventSource');
         }
+        console.log('[NE] eventSource path failed. eventSource=' + (typeof eventSource) + ', eventTypes=' + (eventSource ? typeof eventSource.eventTypes : 'N/A') + ', TavernHelper=' + (typeof TavernHelper) + ', _eventOn=' + (typeof TavernHelper !== 'undefined' ? typeof TavernHelper._eventOn : 'N/A') + ', tavern_events=' + (typeof TavernHelper !== 'undefined' && TavernHelper.tavern_events ? 'OK' : 'MISSING'));
         return;
     }
 
@@ -163,6 +164,9 @@ function setupEventListeners(retryCount) {
     if (retryCount >= 60) {
         console.error('[NE] Cannot register events: no eventSource or TavernHelper._eventOn after 60 retries');
         return;
+    }
+    if (retryCount === 0) {
+        console.log('[NE] No event API available yet, will retry... eventSource=' + (typeof eventSource) + ', TH._eventOn=' + (typeof TavernHelper !== 'undefined' ? typeof TavernHelper._eventOn : 'N/A'));
     }
     var delay = Math.min(500 * Math.pow(2, retryCount), 30000);
     setTimeout(function () { setupEventListeners(retryCount + 1); }, delay);
