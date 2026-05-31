@@ -27,8 +27,22 @@ function openDB() {
 
 export { openDB };
 
+var _storageBlocked = false;
+
+export function isStorageBlocked() {
+    return _storageBlocked;
+}
+
 export async function read(chatId) {
-    const db = await openDB();
+    var db;
+    try {
+        db = await openDB();
+        _storageBlocked = false;
+    } catch (e) {
+        console.warn('[NE] IndexedDB open failed (tracking prevention?), using empty vault:', e.message);
+        _storageBlocked = true;
+        return emptyVault(chatId);
+    }
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readonly');
         const store = tx.objectStore(STORE_NAME);
@@ -38,6 +52,13 @@ export async function read(chatId) {
             if (result) {
                 const vault = result.vault;
                 migrateTimeRange(vault);
+                if (!vault._meta) {
+                    vault._meta = {
+                        created_at: vault.created_at || new Date().toISOString(),
+                        last_pipeline_task: null,
+                        last_pipeline_time: null
+                    };
+                }
                 resolve(vault);
             } else {
                 resolve(emptyVault(chatId));
@@ -48,7 +69,14 @@ export async function read(chatId) {
 }
 
 export async function write(chatId, vault) {
-    const db = await openDB();
+    var db;
+    try {
+        db = await openDB();
+    } catch (e) {
+        console.warn('[NE] IndexedDB write failed (tracking prevention?):', e.message);
+        _storageBlocked = true;
+        return;
+    }
     return new Promise((resolve, reject) => {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
@@ -88,6 +116,11 @@ export function emptyVault(chatId) {
         version: 0,
         tokens: 0,
         updated_at: new Date().toISOString(),
+        _meta: {
+            created_at: new Date().toISOString(),
+            last_pipeline_task: null,
+            last_pipeline_time: null
+        },
         content: {
             summary: '',
             opening_summary: { text: '', source_msg_ids: [] },

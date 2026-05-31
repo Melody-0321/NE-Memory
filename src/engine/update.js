@@ -5,8 +5,9 @@
  */
 import { read, appendSTMEntries } from '../vault/store.js';
 import { saveSnapshot } from '../vault/versions.js';
-import { callMemoryLLM, initPowerSlots } from '../api/llm.js';
+import { callMemoryLLM, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled } from '../vault/schema.js';
+import { formatStateSummary } from '../vault/schema.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { write } = await import('../vault/store.js');
@@ -41,6 +42,12 @@ export function buildSTMUpdatePrompt(newMessages, vault) {
     }).join('\n\n');
 
     const schemaEnabled = isStateSchemaEnabled();
+
+    var currentStateSnapshot = '';
+    if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
+        var s = formatStateSummary(content.state, content.state_schema || null);
+        if (s) currentStateSnapshot = 'Current state (for reference — only change what changes):\n' + s + '\n';
+    }
 
     const stateChangesEn = `
 Optionally, output a <state_changes> block with a JSON object of state field updates (dot-path keys to new values), e.g.:
@@ -157,7 +164,7 @@ Example quest updates:
 
     if (lang === 'en') {
         return {
-            system: `You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.
+            system: `${currentStateSnapshot}You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.
 
 Output a JSON array of STM entries. Each entry must have:
 - "period": copy the current state.time value (max 15 chars). Do NOT invent your own period label.
@@ -171,7 +178,7 @@ If nothing of narrative significance happened, output [].${schemaEnabled ? state
         };
     }
     return {
-        system: `你是故事记忆提取器。从对话中提取关键事件到短期记忆中。
+        system: `${currentStateSnapshot}你是故事记忆提取器。从对话中提取关键事件到短期记忆中。
 
 输出 JSON 数组。每个条目包含：
 - "period": 复制当前 state.time 值（最长15字）。禁止自行编造阶段标签。
@@ -263,6 +270,13 @@ export async function executeIncrementalUpdate(chatId, newMessages) {
 
     if (stmEntries.length === 0 && Object.keys(stateChanges).length === 0) return { vault: vault, added: 0 };
 
+    recordTelemetry({
+        pipeline_task: 'stm_extract',
+        new_stm_count: stmEntries.length,
+        new_state_change_count: Object.keys(stateChanges).length,
+        parse_error: parsed.error || null
+    });
+
     if (stmEntries.length > 0) {
         var perEntry = Math.max(1, Math.floor(filteredMessages.length / stmEntries.length));
         stmEntries.forEach(function (entry, i) {
@@ -320,6 +334,10 @@ export async function executeIncrementalUpdate(chatId, newMessages) {
             }
         }
     }
+
+    vault._meta = vault._meta || {};
+    vault._meta.last_pipeline_task = 'stm_extract';
+    vault._meta.last_pipeline_time = new Date().toISOString();
 
     await saveVaultWithSnapshot(chatId, vault);
     return { vault: vault, added: stmEntries.length };

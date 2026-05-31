@@ -11,6 +11,28 @@ import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
 
+var _retrievalEnabled = false;
+
+export function isRetrievalEnabled() {
+    return _retrievalEnabled;
+}
+
+export function setRetrievalEnabled(val) {
+    if (val) {
+        try {
+            var raw = localStorage.getItem('ne_settings');
+            if (raw) {
+                var s = JSON.parse(raw);
+                if (!s.memoryEnabled) {
+                    console.warn('[NE] Cannot enable Smart Retrieval: Memory System is not enabled');
+                    return;
+                }
+            }
+        } catch (e) {}
+    }
+    _retrievalEnabled = !!val;
+}
+
 function getChatId() {
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
@@ -46,6 +68,7 @@ async function init() {
     t(locale);
     var settings = loadSettings();
     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+    setRetrievalEnabled(settings && settings.retrievalEnabled || false);
     const chatId = getChatId();
     const vault = await read(chatId);
     if (vault.version === 0 && !vault.content.opening_summary.text) {
@@ -91,6 +114,7 @@ function setupEventListeners(retryCount) {
                     syncCurrentChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                    setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     const vault = await read(chatId);
                     if (vault.version === 0) {
                         vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
@@ -117,6 +141,7 @@ function setupEventListeners(retryCount) {
                 syncCurrentChatId(chatId);
                 var settings = loadSettings();
                 setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                 const vault = await read(chatId);
                 if (vault.version === 0) {
                     vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';

@@ -118,6 +118,10 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             'When enabled, the memory engine will track tasks, goals, and world events in state.',
         'Enable State Schema': 'Enable State Schema',
+        'Enable Smart Retrieval': 'Enable Smart Retrieval',
+        'Memory Budget': 'Memory Budget',
+        'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
+            'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
             'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.',
         'Power Slots Templates': 'Power Slots Templates',
@@ -152,6 +156,10 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             '启用后，记忆引擎将在状态中追踪任务、目标与世界事件。',
         'Enable State Schema': '启用状态Schema系统',
+        'Enable Smart Retrieval': '启用智能检索',
+        'Memory Budget': '记忆预算',
+        'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
+            '存储被阻止：记忆无法保存。请在浏览器设置中为此站点禁用追踪防护。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
             '启用后，状态Schema系统将追踪角色卡、势力、任务/战力槽，并进行结构化校验。禁用则仅使用纯记忆优化，无状态管理开销。状态Schema依赖记忆系统启用。',
         'Power Slots Templates': '战力槽模板',
@@ -186,6 +194,10 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             '啟用後，記憶引擎將在狀態中追蹤任務、目標與世界事件。',
         'Enable State Schema': '啟用狀態Schema系統',
+        'Enable Smart Retrieval': '啟用智能檢索',
+        'Memory Budget': '記憶預算',
+        'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
+            '存儲被阻止：記憶無法儲存。請在瀏覽器設定中為此網站停用追蹤防護。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
             '啟用後，狀態Schema系統將追蹤角色卡、勢力、任務/戰力槽，並進行結構化校驗。停用則僅使用純記憶最佳化，無狀態管理開銷。狀態Schema依賴記憶系統啟用。',
         'Power Slots Templates': '戰力槽模板',

@@ -4,6 +4,7 @@
 import { executeIncrementalUpdate } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, rollbackByMsgIds } from './vault/store.js';
+import { isRetrievalEnabled } from './index.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -13,6 +14,7 @@ let chatReady = true;
 let pendingMessages = [];
 const MEMORY_BATCH_SIZE = 10;
 const MEMORY_FORCE_WORDS = 500;
+var pipelineRunning = false;
 
 export function setContextFns(getChatId, getChatMessages) {
     getChatIdFn = getChatId;
@@ -55,6 +57,7 @@ async function flushPendingMessages() {
     if (pendingMessages.length === 0) return;
     const batch = pendingMessages.splice(0);
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
+    pipelineRunning = true;
     try {
         const result = await executeIncrementalUpdate(chatId, batch);
         var latestVault = result.vault;
@@ -66,6 +69,8 @@ async function flushPendingMessages() {
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
         pendingMessages.unshift.apply(pendingMessages, batch);
+    } finally {
+        pipelineRunning = false;
     }
 }
 
@@ -81,8 +86,29 @@ export async function onBeforeGenerate() {
     const vault = await read(chatId);
     if (!vault || !vault.content) return;
     try {
-        const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-        const formatted = formatVaultForPrompt(vault);
+        var formatted;
+        if (isRetrievalEnabled()) {
+            try {
+                const { formatSmartContext } = await import('./ui/vault-panel.js');
+                var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+                var budget = 800;
+                try {
+                    var raw = localStorage.getItem('ne_settings');
+                    if (raw) {
+                        var s = JSON.parse(raw);
+                        budget = Number(s.memoryBudget) || 800;
+                    }
+                } catch (e) {}
+                formatted = formatSmartContext(vault, chatMessages, budget);
+            } catch (e) {
+                console.warn('[NE] Smart Push failed, falling back to full injection:', e);
+                const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
+                formatted = formatVaultForPrompt(vault);
+            }
+        } else {
+            const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
+            formatted = formatVaultForPrompt(vault);
+        }
         if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
             TavernHelper.injectPrompts([{
                 id: 'ne_memory_vault',

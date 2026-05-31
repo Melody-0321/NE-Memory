@@ -7,6 +7,7 @@ import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { escapeHtml } from './utils.js';
+import { setRetrievalEnabled } from '../index.js';
 
 function $pd(selector) { return $(selector, window.parent.document); }
 var PD = window.parent.document;
@@ -37,6 +38,9 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle ne-sub-toggle" id="ne_gm_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_gm"> <span>' + t_config('Enable GM Agent') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-toggle" id="ne_memory_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_memory"> <span>' + t_config('Enable Memory System') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label></div>' +
+        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
+        '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
+        '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
@@ -103,19 +107,25 @@ function bindConfigEvents(getChatId) {
     $pd('#ne_memory_temperature').on('input', function () {
         $pd('#ne_memory_temperature_val').text(Number($pd('#ne_memory_temperature').val()).toFixed(1));
     });
+    $pd('#ne_memory_budget').on('input', function () {
+        $pd('#ne_memory_budget_val').text($pd('#ne_memory_budget').val());
+    });
     $pd('#ne_enable_engine').on('change', function () {
         var on = $pd('#ne_enable_engine').prop('checked');
         $pd('#ne_gm_section').toggleClass('enabled', on);
         $pd('#ne_memory_section').toggleClass('enabled', on);
         if (!on) {
             $pd('#ne_schema_section').hide();
+            $pd('#ne_retrieval_section').hide();
         } else {
             $pd('#ne_schema_section').toggle($pd('#ne_enable_memory').prop('checked'));
+            $pd('#ne_retrieval_section').toggle($pd('#ne_enable_memory').prop('checked'));
         }
     });
     $pd('#ne_enable_memory').on('change', function () {
         var on = $pd('#ne_enable_memory').prop('checked');
         $pd('#ne_schema_section').toggle(on);
+        $pd('#ne_retrieval_section').toggle(on);
     });
     // Tab switching
     $pd('.ne-tab').on('click', function () {
@@ -276,6 +286,11 @@ function loadConfigUI() {
         var ssEnabled = s.enableStateSchema || false;
         $pd('#ne_enable_state_schema').prop('checked', ssEnabled);
         $pd('#ne_schema_sub_sections').toggle(ssEnabled);
+        var retrievalEnabled = s.retrievalEnabled || false;
+        $pd('#ne_enable_retrieval').prop('checked', retrievalEnabled);
+        setRetrievalEnabled(retrievalEnabled);
+        $pd('#ne_memory_budget').val(s.memoryBudget || 800);
+        $pd('#ne_memory_budget_val').text(s.memoryBudget || 800);
         var mc = s.memoryConfig || defaultMemoryConfig;
         $pd('#ne_memory_temperature').val(mc.temperature || defaultMemoryConfig.temperature);
         $pd('#ne_memory_temperature_val').text(Number(mc.temperature || defaultMemoryConfig.temperature).toFixed(1));
@@ -289,6 +304,7 @@ function loadConfigUI() {
         $pd('#ne_gm_section').toggleClass('enabled', s.enabled);
         $pd('#ne_memory_section').toggleClass('enabled', s.enabled);
         $pd('#ne_schema_section').toggle(s.memoryEnabled && s.enabled);
+        $pd('#ne_retrieval_section').toggle(s.memoryEnabled && s.enabled);
         if (s.stateSchema) {
             $pd('#ne_state_schema').val(JSON.stringify(s.stateSchema, null, 2));
         } else {
@@ -320,6 +336,8 @@ function saveConfigUI() {
         enableTelemetry: $pd('#ne_enable_telemetry').prop('checked'),
         enableQuests: $pd('#ne_enable_quests').prop('checked'),
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
+        retrievalEnabled: $pd('#ne_enable_retrieval').prop('checked'),
+        memoryBudget: Number($pd('#ne_memory_budget').val()),
         memoryConfig: {
             temperature: Number($pd('#ne_memory_temperature').val()),
             stm_max_tokens: Number($pd('#ne_stm_max_tokens').val()),

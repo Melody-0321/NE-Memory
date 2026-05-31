@@ -4,7 +4,7 @@
  * 通过 window.parent.document 操作主 ST 页面 DOM。
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
-import { read, write, rollbackByMsgIds } from '../vault/store.js';
+import { read, write, rollbackByMsgIds, isStorageBlocked } from '../vault/store.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeConsolidation } from '../engine/consolidate.js';
 import { t_narrative } from '../i18n.js';
@@ -12,7 +12,9 @@ import { escapeHtml, formatLocalTime } from './utils.js';
 import { renderStateWithTemplate, STATE_TEMPLATES } from './state-templates.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
-import { telemetryBuffer } from '../api/llm.js';
+import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
+import { filterCandidates } from '../vault/retrieval-filter.js';
+import { buildRetrievalMessages } from '../engine/retrieval.js';
 
 /* ──────── 工具 ──────── */
 
@@ -440,6 +442,15 @@ async function updateVaultViewerPopout(getChatId) {
     var errDiv = byId('narrative_vault_panel_error');
     if (loading) loading.style.display = '';
     if (errDiv) errDiv.style.display = 'none';
+    var warnDiv = byId('narrative_vault_panel_storage_warn');
+    if (warnDiv) {
+        if (isStorageBlocked()) {
+            warnDiv.textContent = t('Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.');
+            warnDiv.style.display = '';
+        } else {
+            warnDiv.style.display = 'none';
+        }
+    }
     try {
         var vault = await read(getChatId());
         var c = vault.content || {};
@@ -874,6 +885,138 @@ export function formatVaultForPrompt(vault) {
     return parts.join('\n\n');
 }
 
+export function formatSmartContext(vault, chatMessages, budget) {
+    budget = budget || 800;
+    var content = vault.content || {};
+    var state = content.state || {};
+
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allLTM = content.ltm_entries || [];
+
+    if (allSTM.length === 0 && allLTM.length === 0) {
+        return formatMinimalState(vault);
+    }
+
+    var query;
+    if (chatMessages && chatMessages.length > 0) {
+        // Use recent user messages as query (get up to 5 most recent user messages)
+        var userMessages = [];
+        for (var i = chatMessages.length - 1; i >= 0 && userMessages.length < 5; i--) {
+            var m = chatMessages[i];
+            if (m && (m.role === 'user' || m.is_user)) {
+                var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
+                if (text && text.trim().length > 5) userMessages.unshift(text.trim().substring(0, 200));
+            }
+        }
+        query = userMessages.length > 0 ? userMessages.join(' ').substring(0, 500) : null;
+    }
+    if (!query) {
+        var queryParts = [];
+        if (state.time) queryParts.push(state.time);
+        if (state.scene) queryParts.push(state.scene);
+        if (state.main_event) queryParts.push(state.main_event);
+        query = queryParts.length > 0 ? queryParts.join(' · ') : 'recent events';
+    }
+
+    var topCandidates;
+    try {
+        topCandidates = filterCandidates(query, allSTM, allLTM, 40);
+    } catch (e) {
+        console.warn('[NE] BM25 filter failed, falling back to full injection:', e);
+        return formatVaultForPrompt(vault);
+    }
+
+    if (!topCandidates || topCandidates.length === 0) {
+        return formatMinimalState(vault);
+    }
+
+    var synthesized;
+    var smPushMethod;
+    try {
+        var messages = buildRetrievalMessages(query, topCandidates, vault, budget);
+        var result = callMemoryRetrieval(messages, { timeout: 3 });
+
+        if (result && typeof result.then === 'function') {
+            console.warn('[NE] Async retrieval not yet supported, using BM25 top results');
+            synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
+            smPushMethod = 'bm25_fallback';
+        } else {
+            synthesized = result;
+            smPushMethod = 'llm_synthesis';
+        }
+    } catch (e) {
+        console.warn('[NE] Retrieval LLM failed, using BM25 top results:', e);
+        synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
+        smPushMethod = 'bm25_fallback';
+    }
+
+    recordTelemetry({
+        sm_push_method: smPushMethod,
+        bm25_candidate_count: topCandidates ? topCandidates.length : 0,
+        injection_token_count: synthesized ? (typeof synthesized === 'string' ? synthesized.length : 0) : 0,
+        memory_budget: budget
+    });
+
+    var parts = [];
+    if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
+        parts.push(synthesized.trim());
+    }
+
+    var stateLines = [];
+    if (state.present_characters) {
+        stateLines.push('Present: ' + state.present_characters);
+    } else {
+        var activeChars = [];
+        var chars = state.characters || {};
+        Object.keys(chars).forEach(function(name) {
+            if (chars[name] && chars[name].status === '活跃') {
+                activeChars.push(name);
+            }
+        });
+        if (activeChars.length > 0) {
+            stateLines.push('Present: ' + activeChars.join(', '));
+        }
+    }
+    if (state.scene) stateLines.push('Scene: ' + state.scene);
+    if (state.time) stateLines.push('Time: ' + state.time + ' [→state:time]');
+
+    if (stateLines.length > 0) {
+        parts.push('---\n' + stateLines.join('\n'));
+    }
+
+    parts.push('---\nIf you need more historical details, use the recall_memory tool.');
+
+    return parts.join('\n\n');
+}
+
+function formatMinimalState(vault) {
+    var state = (vault.content || {}).state || {};
+    var lines = [];
+    if (state.scene) lines.push('Scene: ' + state.scene);
+    if (state.time) lines.push('Time: ' + state.time);
+    return lines.join('\n') || 'No state information available.';
+}
+
+function formatBM25Results(query, candidates) {
+    if (!candidates || candidates.length === 0) return '';
+    var lines = [];
+    lines.push('## Relevant memories for: ' + query);
+    lines.push('');
+    candidates.forEach(function(c) {
+        var timePart = (c.time_range || c.period || '');
+        if (c.time_label) timePart = timePart + '·' + c.time_label;
+        var refs = '';
+        if (c.msg_ids && c.msg_ids.length > 0) {
+            refs = ' [→msg#' + c.msg_ids.join(',msg#') + ']';
+        } else if (c.stm_refs && c.stm_refs.length > 0) {
+            refs = ' [→' + c.stm_refs.join(',') + ']';
+        }
+        lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || '') + refs);
+    });
+    lines.push('');
+    return lines.join('\n');
+}
+
 /* ──────── 面板初始化 ──────── */
 
 export async function renderVaultPanel(getChatId) {
@@ -904,6 +1047,7 @@ export async function renderVaultPanel(getChatId) {
             '<span id="narrative_vault_activity" style="margin-left:6px;font-size:0.8em;color:#888;">\u25CF</span></div>' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
+            '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
             '<div style="margin-bottom:10px;">' +
             '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Short-term Memory (STM)') + '</div>' +
             '<div id="narrative_vault_panel_stm_view">' +

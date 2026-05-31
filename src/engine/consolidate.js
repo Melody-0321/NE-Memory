@@ -5,7 +5,7 @@
  * 生成 LTM 摘要，标记原始 STM，不删除。
  * 这是 NE 最核心的差异化功能。
  */
-import { callMemoryLLM } from '../api/llm.js';
+import { callMemoryLLM, recordTelemetry } from '../api/llm.js';
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -21,7 +21,14 @@ export function checkConsolidateThreshold(vault) {
     const content = vault.content || {};
     const threshold = content.consolidate_threshold || 5;
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    return unconsolidated.length >= threshold;
+    if (unconsolidated.length < threshold) return false;
+    var totalText = 0;
+    unconsolidated.forEach(function(s) {
+        totalText += (s.event || '').length + (s.scene || '').length;
+    });
+    // Adaptive: skip consolidation if entries are too sparse (avg < 40 chars per entry)
+    if (totalText < threshold * 40) return false;
+    return true;
 }
 
 export function buildConsolidatePrompt(vault) {
@@ -155,6 +162,20 @@ export async function executeConsolidation(chatId) {
     const response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
     const result = parseConsolidateResponse(response);
     const merged = applyConsolidation(vault, result);
-    if (merged > 0) await saveVaultWithSnapshot(chatId, vault);
+    if (merged > 0) {
+        vault._meta = vault._meta || {};
+        vault._meta.last_pipeline_task = 'consolidation';
+        vault._meta.last_pipeline_time = new Date().toISOString();
+
+        var content = vault.content || {};
+        var stmInputCount = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; }).length;
+        recordTelemetry({
+            pipeline_task: 'consolidation',
+            consolidation_stm_input_count: stmInputCount,
+            consolidation_ltm_output_count: merged
+        });
+
+        await saveVaultWithSnapshot(chatId, vault);
+    }
     return { vault, merged };
 }

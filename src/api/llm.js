@@ -63,6 +63,14 @@ export async function callMemoryLLM(messages, options = {}) {
     return response;
 }
 
+export async function callMemoryPipeline(messages, options = {}) {
+    return callMemoryLLM(messages, Object.assign({}, options, { temperature: 0.1 }));
+}
+
+export async function callMemoryRetrieval(messages, options = {}) {
+    return callMemoryLLM(messages, Object.assign({}, options, { temperature: 0.3 }));
+}
+
 function loadSecondaryApiConfig() {
     try {
         const raw = localStorage.getItem('ne_secondary_api');

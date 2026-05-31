@@ -4,6 +4,10 @@
 import { read, rollbackByMsgIds } from './vault/store.js';
 import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
 import { saveVaultWithSnapshot } from './engine/update.js';
+import { isRetrievalEnabled } from './index.js';
+import { filterCandidates } from './vault/retrieval-filter.js';
+import { buildRetrievalMessages } from './engine/retrieval.js';
+import { callMemoryRetrieval, recordTelemetry } from './api/llm.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
@@ -14,6 +18,9 @@ export function registerAllTools(getChatId, getChatMessages) {
     if (isStateSchemaEnabled()) {
         registerVaultLookup(getChatId);
         registerUpdateState(getChatId);
+    }
+    if (isRetrievalEnabled()) {
+        registerRecallMemory(getChatId);
     }
 }
 
@@ -45,6 +52,62 @@ function registerLookupMemorySource(getChatId, getChatMessages) {
                 }).join('\n');
                 return result;
             } catch (e) {
+                return 'Error: ' + e.message;
+            }
+        }
+    });
+}
+
+function registerRecallMemory(getChatId) {
+    ToolManager.registerFunctionTool({
+        name: 'recall_memory',
+        displayName: 'Recall Memory',
+        description: 'Search all stored memories (LTM + STM) for information relevant to a query. Returns synthesized narrative answer with source references. For best results, structure your query to include: (1) what specific entity/event/person you want to know about, (2) what aspect — location, history, owner, properties, timeline, (3) any time constraints. Example: "Dragonfang sword: who mentioned it, where and when was it obtained, current location, any special properties or history." instead of "tell me about the sword".',
+        parameters: Object.freeze({
+            $schema: 'http://json-schema.org/draft-04/schema#',
+            type: 'object',
+            properties: {
+                query: { type: 'string', description: 'Structured natural language query. Include entity name + aspects of interest + time constraints if any.' }
+            },
+            required: ['query']
+        }),
+        action: async function (args) {
+            var startTime = Date.now();
+            try {
+                if (!args || !args.query) return 'Error: Missing query';
+
+                var chatId = getChatId ? getChatId() : 'default';
+                var vault = await read(chatId);
+                var content = vault.content || {};
+                var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+                var allLTM = content.ltm_entries || [];
+
+                if (allSTM.length === 0 && allLTM.length === 0) {
+                    return 'No memories stored yet.';
+                }
+
+                var topCandidates = filterCandidates(args.query, allSTM, allLTM, 40);
+                if (!topCandidates || topCandidates.length === 0) {
+                    return 'No relevant memories found for: ' + args.query;
+                }
+
+                var messages = buildRetrievalMessages(args.query, topCandidates, vault, 800);
+                var result = await callMemoryRetrieval(messages, { timeout: 3 });
+                var answer = result || 'No answer synthesized.';
+
+                recordTelemetry({
+                    recall_query: args.query,
+                    recall_result_length: answer.length,
+                    recall_method: result ? 'llm' : 'error'
+                });
+
+                return answer;
+            } catch (e) {
+                recordTelemetry({
+                    recall_query: args.query,
+                    recall_result_length: 0,
+                    recall_method: 'error'
+                });
                 return 'Error: ' + e.message;
             }
         }
