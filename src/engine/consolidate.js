@@ -50,7 +50,7 @@ ${stmText}
 
 Output ONLY a JSON object:
 {
-  "ltm_entries": [{ "period": "phase label (max 15)", "scene": "scene (max 20)", "event": "merged summary (max 100)", "stm_refs": ["stm_id1", "stm_id2"] }],
+  "ltm_entries": [{ "period": "time range from source STM entries (max 15). Use same format as state.time, e.g. 'Day 3-5' or 'Day 3·黄昏→Day 5·深夜'", "scene": "scene (max 20)", "event": "merged summary (max 100)", "stm_refs": ["stm_id1", "stm_id2"] }],
   "delete_stm_ids": []
 }
 
@@ -69,7 +69,7 @@ ${stmText}
 
 仅输出 JSON 对象：
 {
-  "ltm_entries": [{ "period": "阶段标签(最长15字)", "scene": "场景(最长20字)", "event": "合并摘要(最长100字)", "stm_refs": ["stm_id1", "stm_id2"] }],
+  "ltm_entries": [{ "period": "时间范围（最长15字）。使用与 state.time 相同的格式，如 'Day 3-5' 或 'Day 3·黄昏→Day 5·深夜'", "scene": "场景(最长20字)", "event": "合并摘要(最长100字)", "stm_refs": ["stm_id1", "stm_id2"] }],
   "delete_stm_ids": []
 }
 
@@ -92,16 +92,23 @@ export function parseConsolidateResponse(llmResponse) {
 export function applyConsolidation(vault, consolidationResult) {
     const content = vault.content || {};
     content.stm_entries = content.stm_entries || [];
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+
     const ltmEntries = consolidationResult.ltm_entries || [];
     ltmEntries.forEach(ltm => {
         if (!ltm.id) ltm.id = findNextId(vault);
+
+        var sourceSTM = allSTM.filter(function(s) {
+            return (ltm.stm_refs || []).indexOf(s.id) !== -1;
+        });
+        ltm.time_range = deriveTimeRange(sourceSTM);
+
         content.ltm_entries.push(ltm);
-        (ltm.stm_refs || []).forEach(stmId => {
+        (ltm.stm_refs || []).forEach(function(stmId) {
             if (vault.stm_index && vault.stm_index[stmId]) {
                 vault.stm_index[stmId].ltm_id = ltm.id;
             }
-            var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-            var found = allSTM.find(s => s.id === stmId);
+            var found = allSTM.find(function(s) { return s.id === stmId; });
             if (found) found.parent_ltm = ltm.id;
         });
     });
@@ -112,6 +119,31 @@ export function applyConsolidation(vault, consolidationResult) {
         content.unconsolidated_stm = unconsolidated.filter(function (s) { return !s.parent_ltm; });
     }
     return ltmEntries.length;
+}
+
+function deriveTimeRange(sourceSTMEntries) {
+    var timed = sourceSTMEntries.filter(function(s) {
+        return (s.period || s.time_label);
+    });
+
+    if (timed.length === 0) return null;
+
+    var first = timed[0];
+    var last = timed[timed.length - 1];
+
+    var fmt = function(s) {
+        var parts = [];
+        if (s.period) parts.push(s.period);
+        if (s.time_label) parts.push(s.time_label);
+        return parts.join('·');
+    };
+
+    if (timed.length === 1) return fmt(first);
+
+    if (first.period === last.period) {
+        return first.period + ': ' + (first.time_label || '?') + ' → ' + (last.time_label || '?');
+    }
+    return fmt(first) + ' → ' + fmt(last);
 }
 
 export async function executeConsolidation(chatId) {

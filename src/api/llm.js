@@ -5,6 +5,7 @@
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
 import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
+import { addLLMLog } from '../engine/telemetry.js';
 
 export let telemetryBuffer = [];
 
@@ -45,6 +46,9 @@ export async function callMemoryLLM(messages, options = {}) {
     }
 
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
+
+    var promptStr = JSON.stringify(messages, null, 2);
+    addLLMLog(options.operation || 'memory', promptStr.substring(0, 8000), (response || '').substring(0, 8000), Date.now() - startTime, apiSource);
 
     const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {

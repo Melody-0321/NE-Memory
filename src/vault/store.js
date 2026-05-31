@@ -36,7 +36,9 @@ export async function read(chatId) {
         req.onsuccess = () => {
             const result = req.result;
             if (result) {
-                resolve(result.vault);
+                const vault = result.vault;
+                migrateTimeRange(vault);
+                resolve(vault);
             } else {
                 resolve(emptyVault(chatId));
             }
@@ -54,6 +56,19 @@ export async function write(chatId, vault) {
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
     });
+}
+
+function migrateTimeRange(vault) {
+    const content = vault.content || {};
+    const ltms = content.ltm_entries || [];
+    var dirty = false;
+    ltms.forEach(function (ltm) {
+        if (!ltm.time_range && ltm.period) {
+            ltm.time_range = ltm.period;
+            dirty = true;
+        }
+    });
+    return dirty;
 }
 
 export async function remove(chatId) {

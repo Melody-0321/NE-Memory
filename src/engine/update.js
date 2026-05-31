@@ -160,10 +160,10 @@ Example quest updates:
             system: `You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.
 
 Output a JSON array of STM entries. Each entry must have:
-- "period": narrative phase label (max 15 chars)
+- "period": copy the current state.time value (max 15 chars). Do NOT invent your own period label.
 - "scene": location/scene name (max 20 chars)
 - "event": what happened (max 120 chars)
-- "time_label": time tag (max 8 chars)
+- "time_label": time within the period (max 8 chars). Only set if the event's time differs from the period's implied time. Otherwise leave empty.
 
 Be extremely concise. Telegraph-style. Do not include filler words.
 If nothing of narrative significance happened, output [].${schemaEnabled ? stateChangesEn : ''}`,
@@ -174,10 +174,10 @@ If nothing of narrative significance happened, output [].${schemaEnabled ? state
         system: `你是故事记忆提取器。从对话中提取关键事件到短期记忆中。
 
 输出 JSON 数组。每个条目包含：
-- "period": 叙事阶段标签（最长15字）
+- "period": 复制当前 state.time 值（最长15字）。禁止自行编造阶段标签。
 - "scene": 场景名称（最长20字）
 - "event": 事件描述（最长120字）
-- "time_label": 时间标签（最长8字）
+- "time_label": 阶段内的时间标签（最长8字）。仅当事件时间与 period 隐含时间不同时才填，否则留空。
 
 极度简洁，电报式。无填充词。
 如果没有叙事意义的事件，输出 []。${schemaEnabled ? stateChangesZh : ''}`,

@@ -790,7 +790,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     tbody.innerHTML = '';
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
-        var periodCell = type === 'ltm' ? (entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
+        var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
         var refs = type === 'ltm'
             ? (entry.stm_refs || []).map(function (r) { return '<span class="narrative_link stm-link" data-stm-id="' + r + '">[\u2192' + r + ']</span>'; }).join(' ')
             : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192msg#' + mid + ']</span>'; }).join(' ');
@@ -857,7 +857,7 @@ export function formatVaultForPrompt(vault) {
         }
     }
     if (content.ltm_entries && content.ltm_entries.length > 0) {
-        var ltmLines = content.ltm_entries.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
+        var ltmLines = content.ltm_entries.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.time_range || e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
         parts.push('## ' + t('Long-term Memory (LTM) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event (Summary)') + ' |\n|' + '---|'.repeat(4) + '\n' + ltmLines.join('\n'));
     }
     if (content.unconsolidated_stm && content.unconsolidated_stm.length > 0) {
