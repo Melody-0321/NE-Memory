@@ -20,7 +20,10 @@ export function setContextFns(getChatId, getChatMessages) {
     lastKnownChatId = getChatId();
 }
 export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
-export function syncCurrentChatId(chatId) { lastKnownChatId = chatId; }
+
+export function syncCurrentChatId(chatId) {
+    pendingMessages = [];
+}
 
 export function onMessageSent(messageId) {
     if (!getChatMessagesFn) return;
