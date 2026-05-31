@@ -30,16 +30,21 @@ export async function callMemoryLLM(messages, options = {}) {
 
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
+            console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
             response = await callCustomAPI(secondaryConfig, messages, options);
             apiSource = 'secondary';
         } catch (e) {
+            console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
             response = await callTavernHelper(messages, options);
             apiSource = 'tavern';
         }
     } else {
+        console.log('[NE] LLM call via TavernHelper (no secondary API configured)');
         response = await callTavernHelper(messages, options);
         apiSource = 'tavern';
     }
+
+    console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
 
     const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {
@@ -100,6 +105,7 @@ async function callCustomAPI(config, messages, options) {
 async function callTavernHelper(messages, options) {
     try {
         if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
+            console.log('[NE] callTavernHelper via generateRaw');
             const response = await TavernHelper.generateRaw({
                 ordered_prompts: messages,
                 should_stream: false
@@ -113,6 +119,7 @@ async function callTavernHelper(messages, options) {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             const ctx = SillyTavern.getContext();
             if (ctx.generateQuietPrompt) {
+                console.log('[NE] callTavernHelper via generateQuietPrompt');
                 const response = await ctx.generateQuietPrompt(
                     messages[messages.length - 1].content,
                     messages[0].content
