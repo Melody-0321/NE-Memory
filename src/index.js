@@ -102,7 +102,7 @@ function setupEventListeners(retryCount) {
         }
     } catch (e) {}
 
-    if (eventSource) {
+    if (eventSource && eventSource.eventTypes) {
         if (!eventSource.__ne_bound) {
             eventSource.__ne_bound = true;
             eventSource.on(eventSource.eventTypes.MESSAGE_SENT, onMessageSent);
@@ -132,26 +132,30 @@ function setupEventListeners(retryCount) {
 
     if (typeof TavernHelper !== 'undefined' && TavernHelper._eventOn && TavernHelper.tavern_events) {
         const { tavern_events } = TavernHelper;
-        TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
-        TavernHelper._eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived);
-        TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
-        if (tavern_events.CHAT_CHANGED) {
-            TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
-                const chatId = getChatId();
-                syncCurrentChatId(chatId);
-                var settings = loadSettings();
-                setStateSchemaEnabled(settings && settings.enableStateSchema || false);
-                setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                const vault = await read(chatId);
-                if (vault.version === 0) {
-                    vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
-                    await write(chatId, vault);
-                }
-            });
+        try {
+            if (tavern_events.MESSAGE_SENT) TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
+            if (tavern_events.MESSAGE_RECEIVED) TavernHelper._eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived);
+            if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
+            if (tavern_events.CHAT_CHANGED) {
+                TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
+                    const chatId = getChatId();
+                    syncCurrentChatId(chatId);
+                    var settings = loadSettings();
+                    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                    setRetrievalEnabled(settings && settings.retrievalEnabled || false);
+                    const vault = await read(chatId);
+                    if (vault.version === 0) {
+                        vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
+                        await write(chatId, vault);
+                    }
+                });
+            }
+            if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);
+            if (tavern_events.MESSAGE_SWIPED) TavernHelper._eventOn(tavern_events.MESSAGE_SWIPED, onMessageSwiped);
+            if (tavern_events.MESSAGE_UPDATED) TavernHelper._eventOn(tavern_events.MESSAGE_UPDATED, onMessageUpdated);
+        } catch (e2) {
+            console.warn('[NE] TavernHelper event registration failed:', e2);
         }
-        if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);
-        if (tavern_events.MESSAGE_SWIPED) TavernHelper._eventOn(tavern_events.MESSAGE_SWIPED, onMessageSwiped);
-        if (tavern_events.MESSAGE_UPDATED) TavernHelper._eventOn(tavern_events.MESSAGE_UPDATED, onMessageUpdated);
         console.log('[NE] Event listeners registered via TavernHelper._eventOn');
         return;
     }
