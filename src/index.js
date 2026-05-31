@@ -125,9 +125,33 @@ function setupEventListeners(retryCount) {
             if (eventSource.eventTypes.MESSAGE_DELETED) eventSource.on(eventSource.eventTypes.MESSAGE_DELETED, onMessageDeleted);
             if (eventSource.eventTypes.MESSAGE_SWIPED) eventSource.on(eventSource.eventTypes.MESSAGE_SWIPED, onMessageSwiped);
             if (eventSource.eventTypes.MESSAGE_UPDATED) eventSource.on(eventSource.eventTypes.MESSAGE_UPDATED, onMessageUpdated);
-            console.log('[NE] Event listeners registered via eventSource');
+            console.log('[NE] Event listeners registered via eventSource.eventTypes');
         }
-        console.log('[NE] eventSource path failed. eventSource=' + (typeof eventSource) + ', eventTypes=' + (eventSource ? typeof eventSource.eventTypes : 'N/A') + ', TavernHelper=' + (typeof TavernHelper) + ', _eventOn=' + (typeof TavernHelper !== 'undefined' ? typeof TavernHelper._eventOn : 'N/A') + ', tavern_events=' + (typeof TavernHelper !== 'undefined' && TavernHelper.tavern_events ? 'OK' : 'MISSING'));
+        console.log('[NE] eventSource path succeeded with eventTypes');
+        return;
+    }
+
+    // Fallback: use string event names on eventSource (eventTypes may not exist in all ST versions)
+    if (eventSource && typeof eventSource.on === 'function') {
+        if (!eventSource.__ne_bound_str) {
+            eventSource.__ne_bound_str = true;
+            try { eventSource.on('MESSAGE_SENT', onMessageSent); } catch (e) {} // ST has no MESSAGE_SENT, TH does
+            try { eventSource.on('MESSAGE_RECEIVED', onMessageReceived); } catch (e) {}
+            try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) {}
+            try { eventSource.on('CHAT_CHANGED', async () => {
+                const chatId = getChatId();
+                syncCurrentChatId(chatId);
+                var settings = loadSettings();
+                setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                setRetrievalEnabled(settings && settings.retrievalEnabled || false);
+                const vault = await read(chatId);
+                if (vault.version === 0) {
+                    vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
+                    await write(chatId, vault);
+                }
+            }); } catch (e) {}
+            console.log('[NE] Event listeners registered via eventSource (string events)');
+        }
         return;
     }
 
