@@ -5,6 +5,8 @@
  */
 import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
+import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
+import { escapeHtml } from './utils.js';
 
 function $pd(selector) { return $(selector, window.parent.document); }
 var PD = window.parent.document;
@@ -28,11 +30,13 @@ export function renderConfigDialog(getChatId) {
         '<div class="ne-tab active" data-tab="basic" style="flex:1;text-align:center;cursor:pointer;padding:4px 0;border-radius:4px;font-size:0.85em;background:color-mix(in srgb,var(--SmartThemeQuoteColor) 80%,transparent);color:var(--SmartThemeBodyColor);">' + t_config('基本设置') + '</div>' +
         '<div class="ne-tab" data-tab="api" style="flex:1;text-align:center;cursor:pointer;padding:4px 0;border-radius:4px;font-size:0.85em;color:var(--grey50);">' + t_config('副 API') + '</div>' +
         '<div class="ne-tab" data-tab="memory" style="flex:1;text-align:center;cursor:pointer;padding:4px 0;border-radius:4px;font-size:0.85em;color:var(--grey50);">' + t_config('记忆处理') + '</div>' +
+        '<div class="ne-tab" data-tab="schema" style="flex:1;text-align:center;cursor:pointer;padding:4px 0;border-radius:4px;font-size:0.85em;color:var(--grey50);">' + t_config('状态 Schema') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_basic">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_engine"> <span>' + t_config('Enable Narrative Engine') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-toggle" id="ne_gm_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_gm"> <span>' + t_config('Enable GM Agent') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-toggle" id="ne_memory_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_memory"> <span>' + t_config('Enable Memory System') + '</span></label></div>' +
+        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label></div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
@@ -55,6 +59,27 @@ export function renderConfigDialog(getChatId) {
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('开场摘要截断上限') + '</label><br><input id="ne_opening_max_chars" class="text_pole" type="number" style="width:100%;" min="20" max="500"></div>' +
         '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('状态初始化输出上限') + '</label><br><input id="ne_init_max_tokens" class="text_pole" type="number" style="width:100%;" min="100" max="4096"></div>' +
         '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。') + '</div>' +
+        '</div>' +
+        '<div class="ne-tab-content" id="ne_tab_schema" style="display:none;">' +
+        '<div id="ne_schema_sub_sections">' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('状态 Schema') + ' (Global)</label><br>' +
+        '<textarea id="ne_state_schema" style="width:100%;box-sizing:border-box;font-size:0.8em;resize:vertical;min-height:180px;font-family:monospace;"></textarea></div>' +
+        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Valid JSON defining state field types and constraints. Leave empty to disable schema validation.') + '</div>' +
+        '<div style="margin:10px 0 4px;"><label style="font-size:0.85em;">' + t_config('Character Schema') + ' (Character Cards)</label><br>' +
+        '<textarea id="ne_character_schema" style="width:100%;box-sizing:border-box;font-size:0.8em;resize:vertical;min-height:180px;font-family:monospace;"></textarea></div>' +
+        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.') + '</div>' +
+        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
+        '<div class="narrative-toggle" style="margin:6px 0;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_quests"> <span>' + t_config('Enable Quests Block') + '</span></label></div>' +
+        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('When enabled, the memory engine will track tasks, goals, and world events in state.') + '</div>' +
+        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
+        '<div style="font-weight:bold;font-size:0.9em;margin:6px 0 3px;cursor:pointer;color:var(--grey70);" id="ne_power_slots_toggle">\u25B6 ' + t_config('Power Slots Templates') + '</div>' +
+        '<div id="ne_power_slots_section" style="display:none;">' +
+        '<div style="color:var(--grey50);font-size:0.8em;margin-bottom:6px;">' + t_config('Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.') + '</div>' +
+        '<div id="ne_power_slots_entries"></div>' +
+        '<button id="ne_power_slots_add" class="menu_button" style="font-size:0.8em;padding:2px 8px;margin-top:6px;">' + t_config('Add Slot') + '</button>' +
+        '<button id="ne_power_slots_reset" class="menu_button" style="font-size:0.8em;padding:2px 8px;margin-top:6px;color:#f44336;">' + t_config('Reset to Defaults') + '</button>' +
+        '</div>' +
+        '</div>' +
         '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div style="display:flex;gap:6px;white-space:nowrap;justify-content:space-between;">' +
@@ -82,6 +107,15 @@ function bindConfigEvents(getChatId) {
         var on = $pd('#ne_enable_engine').prop('checked');
         $pd('#ne_gm_section').toggleClass('enabled', on);
         $pd('#ne_memory_section').toggleClass('enabled', on);
+        if (!on) {
+            $pd('#ne_schema_section').hide();
+        } else {
+            $pd('#ne_schema_section').toggle($pd('#ne_enable_memory').prop('checked'));
+        }
+    });
+    $pd('#ne_enable_memory').on('change', function () {
+        var on = $pd('#ne_enable_memory').prop('checked');
+        $pd('#ne_schema_section').toggle(on);
     });
     // Tab switching
     $pd('.ne-tab').on('click', function () {
@@ -91,6 +125,144 @@ function bindConfigEvents(getChatId) {
         $pd('.ne-tab-content').hide();
         $pd('#ne_tab_' + tab).show();
     });
+    $pd('#ne_power_slots_toggle').on('click', function () {
+        var section = $pd('#ne_power_slots_section');
+        var vis = section.is(':visible');
+        section.toggle(!vis);
+        $pd('#ne_power_slots_toggle').html((vis ? '\u25B6 ' : '\u25BC ') + t_config('Power Slots Templates'));
+        if (!vis) renderPowerSlotsEditor();
+    });
+    $pd('#ne_power_slots_add').on('click', addPowerSlot);
+    $pd('#ne_power_slots_reset').on('click', resetPowerSlotsTemplates);
+    $pd('#ne_enable_state_schema').on('change', function () {
+        var on = $pd('#ne_enable_state_schema').prop('checked');
+        $pd('#ne_schema_sub_sections').toggle(on);
+    });
+}
+
+function loadPowerSlotsTemplates() {
+    try {
+        var raw = localStorage.getItem('ne_power_slots_templates');
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return JSON.parse(JSON.stringify(POWER_SLOTS_TEMPLATES));
+}
+
+function savePowerSlotsTemplates(templates) {
+    localStorage.setItem('ne_power_slots_templates', JSON.stringify(templates));
+}
+
+function renderPowerSlotsEditor() {
+    var templates = loadPowerSlotsTemplates();
+    var container = $pd('#ne_power_slots_entries');
+    if (!container.length) return;
+    var html = '';
+    var tkeys = Object.keys(templates);
+    tkeys.forEach(function (tkey, ti) {
+        var t = templates[tkey];
+        html += '<div class="ne_ps_template" style="margin:6px 0;padding:6px;background:var(--black30a);border-radius:4px;">' +
+            '<div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">' +
+            '<input class="ne_ps_tname" data-tkey="' + tkey + '" value="' + escapeHtml(tkey) + '" style="width:100px;font-size:0.85em;" placeholder="Template key">' +
+            '<span style="font-size:0.8em;color:var(--grey50);">' + escapeHtml(t.label_zh || '') + ' / ' + escapeHtml(t.label_en || '') + '</span>' +
+            '<span class="ne_ps_del_tpl" data-tkey="' + tkey + '" style="cursor:pointer;color:#f44336;font-size:0.85em;margin-left:auto;" title="' + t_config('Delete') + '">&#10005;</span>' +
+            '</div>';
+        var slotKeys = Object.keys(t.slots || {});
+        slotKeys.forEach(function (skey) {
+            var s = t.slots[skey];
+            html += '<div class="ne_ps_slot" data-tkey="' + tkey + '" data-skey="' + skey + '" style="display:flex;align-items:center;gap:4px;margin:3px 0 3px 12px;">' +
+                '<input class="ne_ps_skey" value="' + escapeHtml(s.key) + '" style="width:80px;font-size:0.8em;" placeholder="key">' +
+                '<input class="ne_ps_slabel" value="' + escapeHtml(s.label) + '" style="width:80px;font-size:0.8em;" placeholder="label">' +
+                '<input class="ne_ps_sdesc" value="' + escapeHtml(s.description || '') + '" style="flex:1;font-size:0.8em;" placeholder="description">' +
+                '<span class="ne_ps_del_slot" data-tkey="' + tkey + '" data-skey="' + skey + '" style="cursor:pointer;color:#f44336;font-size:0.8em;">&#10005;</span>' +
+                '</div>';
+        });
+        html += '<button class="ne_ps_add_slot menu_button" data-tkey="' + tkey + '" style="font-size:0.75em;padding:1px 6px;margin-left:12px;">+ slot</button>';
+        html += '</div>';
+    });
+    container.html(html);
+
+    $pd('.ne_ps_del_slot').off('click').on('click', function () {
+        var templates = loadPowerSlotsTemplates();
+        var tkey = $pd(this).data('tkey');
+        var skey = $pd(this).data('skey');
+        if (templates[tkey] && templates[tkey].slots && templates[tkey].slots[skey]) {
+            delete templates[tkey].slots[skey];
+            savePowerSlotsTemplates(templates);
+            renderPowerSlotsEditor();
+        }
+    });
+
+    $pd('.ne_ps_add_slot').off('click').on('click', function () {
+        var templates = loadPowerSlotsTemplates();
+        var tkey = $pd(this).data('tkey');
+        if (!templates[tkey]) return;
+        if (!templates[tkey].slots) templates[tkey].slots = {};
+        var newKey = 'slot_' + Object.keys(templates[tkey].slots).length;
+        templates[tkey].slots[newKey] = { key: newKey, label: '', description: '' };
+        savePowerSlotsTemplates(templates);
+        renderPowerSlotsEditor();
+    });
+
+    $pd('.ne_ps_del_tpl').off('click').on('click', function () {
+        var templates = loadPowerSlotsTemplates();
+        var tkey = $pd(this).data('tkey');
+        if (templates[tkey]) {
+            delete templates[tkey];
+            savePowerSlotsTemplates(templates);
+            renderPowerSlotsEditor();
+        }
+    });
+}
+
+function addPowerSlot() {
+    var templates = loadPowerSlotsTemplates();
+    var newKey = 'custom_' + Object.keys(templates).length;
+    templates[newKey] = {
+        name: newKey,
+        label_en: 'Custom',
+        label_zh: '自定义',
+        slots: {
+            vitality: { key: 'vitality', label: '', description: '' },
+            energy: { key: 'energy', label: '', description: '' },
+            realm: { key: 'realm', label: '', description: '' }
+        }
+    };
+    savePowerSlotsTemplates(templates);
+    renderPowerSlotsEditor();
+}
+
+function resetPowerSlotsTemplates() {
+    var defaults = JSON.parse(JSON.stringify(POWER_SLOTS_TEMPLATES));
+    savePowerSlotsTemplates(defaults);
+    renderPowerSlotsEditor();
+}
+
+function savePowerSlotsFromEditor() {
+    var templates = loadPowerSlotsTemplates();
+    var entries = $pd('#ne_power_slots_entries');
+    if (!entries.length) return;
+
+    var newTemplates = {};
+    entries.find('.ne_ps_template').each(function () {
+        var tkey = $pd(this).find('.ne_ps_tname').val().trim() || $pd(this).find('.ne_ps_tname').data('tkey');
+        var tpl = templates[$pd(this).find('.ne_ps_tname').data('tkey')] || {};
+        var slots = {};
+        $pd(this).find('.ne_ps_slot').each(function () {
+            var skey = $pd(this).find('.ne_ps_skey').val().trim();
+            var slabel = $pd(this).find('.ne_ps_slabel').val().trim();
+            var sdesc = $pd(this).find('.ne_ps_sdesc').val().trim();
+            if (skey) {
+                slots[skey] = { key: skey, label: slabel, description: sdesc };
+            }
+        });
+        newTemplates[tkey] = {
+            name: tkey,
+            label_en: tpl.label_en || tkey,
+            label_zh: tpl.label_zh || tkey,
+            slots: slots
+        };
+    });
+    savePowerSlotsTemplates(newTemplates);
 }
 
 function loadConfigUI() {
@@ -101,6 +273,9 @@ function loadConfigUI() {
         $pd('#ne_enable_gm').prop('checked', s.gmEnabled || false);
         $pd('#ne_enable_memory').prop('checked', s.memoryEnabled || false);
         $pd('#ne_enable_telemetry').prop('checked', s.enableTelemetry || false);
+        var ssEnabled = s.enableStateSchema || false;
+        $pd('#ne_enable_state_schema').prop('checked', ssEnabled);
+        $pd('#ne_schema_sub_sections').toggle(ssEnabled);
         var mc = s.memoryConfig || defaultMemoryConfig;
         $pd('#ne_memory_temperature').val(mc.temperature || defaultMemoryConfig.temperature);
         $pd('#ne_memory_temperature_val').text(Number(mc.temperature || defaultMemoryConfig.temperature).toFixed(1));
@@ -113,6 +288,18 @@ function loadConfigUI() {
         $pd('#ne_init_max_tokens').val(mc.init_max_tokens || defaultMemoryConfig.init_max_tokens);
         $pd('#ne_gm_section').toggleClass('enabled', s.enabled);
         $pd('#ne_memory_section').toggleClass('enabled', s.enabled);
+        $pd('#ne_schema_section').toggle(s.memoryEnabled && s.enabled);
+        if (s.stateSchema) {
+            $pd('#ne_state_schema').val(JSON.stringify(s.stateSchema, null, 2));
+        } else {
+            $pd('#ne_state_schema').val(JSON.stringify(DEFAULT_GLOBAL_SCHEMA, null, 2));
+        }
+        if (s.characterSchema) {
+            $pd('#ne_character_schema').val(JSON.stringify(s.characterSchema, null, 2));
+        } else {
+            $pd('#ne_character_schema').val(JSON.stringify(DEFAULT_CHARACTER_SCHEMA, null, 2));
+        }
+        $pd('#ne_enable_quests').prop('checked', s.enableQuests || false);
     } catch (e) {}
     try {
         var raw = localStorage.getItem('ne_secondary_api');
@@ -131,6 +318,8 @@ function saveConfigUI() {
         gmEnabled: $pd('#ne_enable_gm').prop('checked'),
         memoryEnabled: $pd('#ne_enable_memory').prop('checked'),
         enableTelemetry: $pd('#ne_enable_telemetry').prop('checked'),
+        enableQuests: $pd('#ne_enable_quests').prop('checked'),
+        enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
         memoryConfig: {
             temperature: Number($pd('#ne_memory_temperature').val()),
             stm_max_tokens: Number($pd('#ne_stm_max_tokens').val()),
@@ -142,7 +331,30 @@ function saveConfigUI() {
             init_max_tokens: Number($pd('#ne_init_max_tokens').val())
         }
     };
+    var schemaText = $pd('#ne_state_schema').val().trim();
+    if (schemaText) {
+        try {
+            var parsed = JSON.parse(schemaText);
+            if (typeof parsed === 'object' && parsed !== null) {
+                settings.stateSchema = parsed;
+            }
+        } catch (e) {
+            console.warn('[NE] Schema JSON invalid, not saving:', e.message);
+        }
+    }
+    var charSchemaText = $pd('#ne_character_schema').val().trim();
+    if (charSchemaText) {
+        try {
+            var charParsed = JSON.parse(charSchemaText);
+            if (typeof charParsed === 'object' && charParsed !== null) {
+                settings.characterSchema = charParsed;
+            }
+        } catch (e) {
+            console.warn('[NE] Character Schema JSON invalid, not saving:', e.message);
+        }
+    }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
+    savePowerSlotsFromEditor();
     saveSecondaryApiConfig({
         url: $pd('#ne_secondary_url').val().trim(),
         key: $pd('#ne_secondary_key').val().trim(),

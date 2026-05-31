@@ -30,6 +30,9 @@ export const NARRATIVE_I18N = {
         'No.': 'No.', 'Period': 'Period', 'Scene': 'Scene', 'Event': 'Event', 'Event (Summary)': 'Event (Summary)',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.',
+        'Characters': 'Characters', '活跃': 'Active', '非活跃': 'Inactive', '已退场': 'Departed',
+        'Factions': 'Factions', 'Relations': 'Relations',
+        'Tasks': 'Tasks', 'Goals': 'Goals', 'World Events': 'World Events', 'Quests': 'Quests',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -53,6 +56,9 @@ export const NARRATIVE_I18N = {
         'No.': 'No.', 'Period': '时段', 'Scene': '场景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             '以下内容不直接注入。如需查看，使用 lookup_stm 或 lookup_memory_source 工具。',
+        'Characters': '角色卡', '活跃': '活跃', '非活跃': '非活跃', '已退场': '已退场',
+        'Factions': '势力', 'Relations': '势力关系',
+        'Tasks': '任务', 'Goals': '目标', 'World Events': '世界事件', 'Quests': '任务/目标/事件',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -76,6 +82,9 @@ export const NARRATIVE_I18N = {
         'No.': 'No.', 'Period': '時段', 'Scene': '場景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             '以下內容不直接注入。如需查看，使用 lookup_stm 或 lookup_memory_source 工具。',
+        'Characters': '角色卡', '活跃': '活躍', '非活跃': '非活躍', '已退场': '已退場',
+        'Factions': '勢力', 'Relations': '勢力關係',
+        'Tasks': '任務', 'Goals': '目標', 'World Events': '世界事件', 'Quests': '任務/目標/事件',
     }
 };
 
@@ -98,6 +107,25 @@ export const CONFIG_I18N = {
         'API URL': 'API URL', 'API Key': 'API Key', 'Model': 'Model',
         'Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.':
             'Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.',
+        '状态 Schema': 'State Schema',
+        'Schema JSON (editable)': 'Schema JSON (editable)',
+        'Valid JSON defining state field types and constraints. Leave empty to disable schema validation.':
+            'Valid JSON defining state field types and constraints. Leave empty to disable schema validation.',
+        'Character Schema': 'Character Schema',
+        'Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.':
+            'Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.',
+        'Enable Quests Block': 'Enable Quests Block',
+        'When enabled, the memory engine will track tasks, goals, and world events in state.':
+            'When enabled, the memory engine will track tasks, goals, and world events in state.',
+        'Enable State Schema': 'Enable State Schema',
+        'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
+            'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.',
+        'Power Slots Templates': 'Power Slots Templates',
+        'Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.':
+            'Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.',
+        'Add Slot': 'Add Slot',
+        'Reset to Defaults': 'Reset to Defaults',
+        'Delete': 'Delete',
     },
     'zh-cn': {
         'Enable Narrative Engine': '启用 Narrative Engine', 'Enable GM Agent': '启用 GM 代理',
@@ -113,6 +141,25 @@ export const CONFIG_I18N = {
         '开场摘要输出上限': '开场摘要输出上限', '开场摘要截断上限': '开场摘要截断上限',
         '状态初始化输出上限': '状态初始化输出上限',
         '以上参数将应用于记忆区 LLM 调用。修改后对下次对话生效。': '以上参数将应用于记忆区 LLM 调用。修改后对下次对话生效。',
+        '状态 Schema': '状态 Schema',
+        'Schema JSON (editable)': 'Schema JSON（可编辑）',
+        'Valid JSON defining state field types and constraints. Leave empty to disable schema validation.':
+            '定义状态字段类型和约束的 JSON。留空则禁用 Schema 校验。',
+        'Character Schema': '角色卡 Schema',
+        'Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.':
+            '定义角色卡字段结构的 JSON。包含 protagonist 和 npc 两个块。留空则使用默认值。',
+        'Enable Quests Block': '启用任务/目标/事件追踪',
+        'When enabled, the memory engine will track tasks, goals, and world events in state.':
+            '启用后，记忆引擎将在状态中追踪任务、目标与世界事件。',
+        'Enable State Schema': '启用状态Schema系统',
+        'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
+            '启用后，状态Schema系统将追踪角色卡、势力、任务/战力槽，并进行结构化校验。禁用则仅使用纯记忆优化，无状态管理开销。状态Schema依赖记忆系统启用。',
+        'Power Slots Templates': '战力槽模板',
+        'Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.':
+            '用于自动检测角色战力/能量系统的参考模板。可编辑标签以匹配您世界的命名方式。',
+        'Add Slot': '添加模板',
+        'Reset to Defaults': '恢复默认',
+        'Delete': '删除',
     },
     'zh-tw': {
         'Enable Narrative Engine': '啟用 Narrative Engine', 'Enable GM Agent': '啟用 GM 代理',
@@ -128,6 +175,25 @@ export const CONFIG_I18N = {
         '开场摘要输出上限': '開場摘要輸出上限', '开场摘要截断上限': '開場摘要截斷上限',
         '状态初始化输出上限': '狀態初始化輸出上限',
         '以上参数将应用于记忆区 LLM 调用。修改后对下次对话生效。': '以上參數將應用於記憶區 LLM 調用。修改後對下次對話生效。',
+        '状态 Schema': '狀態 Schema',
+        'Schema JSON (editable)': 'Schema JSON（可編輯）',
+        'Valid JSON defining state field types and constraints. Leave empty to disable schema validation.':
+            '定義狀態欄位類型與約束的 JSON。留空則停用 Schema 校驗。',
+        'Character Schema': '角色卡 Schema',
+        'Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.':
+            '定義角色卡欄位結構的 JSON。包含 protagonist 和 npc 兩個區塊。留空則使用預設值。',
+        'Enable Quests Block': '啟用任務/目標/事件追蹤',
+        'When enabled, the memory engine will track tasks, goals, and world events in state.':
+            '啟用後，記憶引擎將在狀態中追蹤任務、目標與世界事件。',
+        'Enable State Schema': '啟用狀態Schema系統',
+        'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
+            '啟用後，狀態Schema系統將追蹤角色卡、勢力、任務/戰力槽，並進行結構化校驗。停用則僅使用純記憶最佳化，無狀態管理開銷。狀態Schema依賴記憶系統啟用。',
+        'Power Slots Templates': '戰力槽模板',
+        'Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.':
+            '用於自動檢測角色戰力/能量系統的參考模板。可編輯標籤以匹配您世界的命名方式。',
+        'Add Slot': '新增模板',
+        'Reset to Defaults': '恢復預設',
+        'Delete': '刪除',
     }
 };
 

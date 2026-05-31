@@ -27,6 +27,11 @@
     opacity: 1;
 }
 
+#ne_config_settings .ne-sub-sub-toggle {
+    opacity: 0.6;
+    transition: opacity 0.2s;
+}
+
 #narrative_status {
     font-size: 0.9em;
     color: var(--grey-70);

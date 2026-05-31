@@ -3,11 +3,13 @@
  */
 import { executeIncrementalUpdate } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
-import { read } from './vault/store.js';
+import { read, rollbackByMsgIds } from './vault/store.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
 let onVaultUpdateCallback = null;
+let lastKnownChatId = null;
+let chatReady = true;
 let pendingMessages = [];
 const MEMORY_BATCH_SIZE = 10;
 const MEMORY_FORCE_WORDS = 500;
@@ -15,8 +17,10 @@ const MEMORY_FORCE_WORDS = 500;
 export function setContextFns(getChatId, getChatMessages) {
     getChatIdFn = getChatId;
     getChatMessagesFn = getChatMessages;
+    lastKnownChatId = getChatId();
 }
 export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
+export function syncCurrentChatId(chatId) { lastKnownChatId = chatId; }
 
 export function onMessageSent(messageId) {
     if (!getChatMessagesFn) return;
@@ -63,8 +67,14 @@ async function flushPendingMessages() {
 }
 
 export async function onBeforeGenerate() {
+    if (!lastKnownChatId) return;
+    chatReady = false;
     await flushPendingMessages();
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
+    if (chatId !== lastKnownChatId) {
+        console.warn('[NE] Context changed, skipping injection');
+        return;
+    }
     const vault = await read(chatId);
     if (!vault || !vault.content) return;
     try {
@@ -82,5 +92,36 @@ export async function onBeforeGenerate() {
         }
     } catch (e) {
         console.warn('[NE] Prompt injection failed:', e);
+    }
+    chatReady = true;
+}
+
+export async function onMessageDeleted(messageId) {
+    if (!getChatIdFn) return;
+    const chatId = getChatIdFn();
+    try {
+        await rollbackByMsgIds(chatId, [messageId]);
+    } catch (e) {
+        console.warn('[NE] Rollback on message delete failed:', e);
+    }
+}
+
+export async function onMessageSwiped(messageId) {
+    if (!getChatIdFn) return;
+    const chatId = getChatIdFn();
+    try {
+        await rollbackByMsgIds(chatId, [messageId]);
+    } catch (e) {
+        console.warn('[NE] Rollback on message swipe failed:', e);
+    }
+}
+
+export async function onMessageUpdated(messageId) {
+    if (!getChatIdFn) return;
+    const chatId = getChatIdFn();
+    try {
+        await rollbackByMsgIds(chatId, [messageId]);
+    } catch (e) {
+        console.warn('[NE] Rollback on message update failed:', e);
     }
 }

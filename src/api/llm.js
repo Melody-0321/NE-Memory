@@ -4,6 +4,8 @@
  * 优先级：localStorage 中的副 API 配置 → TavernHelper.generateRaw() 回退
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
+import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
+
 export let telemetryBuffer = [];
 
 export function recordTelemetry(entry) {
@@ -89,11 +91,7 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        var usage = data.usage || null;
-        if (usage) recordTelemetry({ operation: 'stm_extract', tokens: usage.total_tokens, duration_ms: Date.now() - startTime, api_source: 'secondary' });
-        var content = data.choices?.[0]?.message?.content;
-        if (!content) throw new Error('LLM returned empty response');
-        return content;
+        return data.choices?.[0]?.message?.content || '';
     } finally {
         clearTimeout(timeout);
     }
@@ -126,4 +124,134 @@ async function callTavernHelper(messages, options) {
         console.warn('[NE] Quiet prompt failed:', e);
     }
     throw new Error('No LLM backend available. Configure secondary API in NE settings or ensure TavernHelper is loaded.');
+}
+
+export async function initPowerSlots(characterName, existingSlotsForWorld) {
+    var contextText = '';
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            var chars = ctx.characters || [];
+            var char = chars.find(function (c) { return c.name === characterName; });
+            if (char) {
+                contextText += '=== Character Card ===\n';
+                contextText += 'Name: ' + (char.name || characterName) + '\n';
+                if (char.description) contextText += 'Description: ' + char.description + '\n';
+                if (char.personality) contextText += 'Personality: ' + char.personality + '\n';
+                if (char.scenario) contextText += 'Scenario: ' + char.scenario + '\n';
+            }
+            var worldInfo = ctx.worldInfo;
+            if (worldInfo && worldInfo.entries && Object.keys(worldInfo.entries).length > 0) {
+                contextText += '\n=== World Book Entries ===\n';
+                Object.keys(worldInfo.entries).forEach(function (key) {
+                    var entry = worldInfo.entries[key];
+                    if (entry && entry.content) {
+                        contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
+                    }
+                });
+            }
+        }
+    } catch (e) {}
+
+    if (!contextText) return null;
+
+    var lowerText = contextText.toLowerCase();
+    var powerKeywords = ['修炼', '灵力', '真气', '内力', '修为', '境界', '筑基', '金丹', '元婴',
+        'cultivation', 'mana', 'qi', 'chi', 'spiritual', 'realm', 'combat', '战斗',
+        'power level', 'energy', 'vitality', 'strength', '等级', '权限'];
+    var hasPowerSystem = false;
+    for (var i = 0; i < powerKeywords.length; i++) {
+        if (lowerText.indexOf(powerKeywords[i].toLowerCase()) !== -1) {
+            hasPowerSystem = true;
+            break;
+        }
+    }
+    if (!hasPowerSystem) return null;
+
+    var customTemplates = null;
+    try {
+        var raw = localStorage.getItem('ne_power_slots_templates');
+        if (raw) customTemplates = JSON.parse(raw);
+    } catch (e) {}
+    var templates = customTemplates || POWER_SLOTS_TEMPLATES;
+
+    var templateSummary = '';
+    var tkeys = Object.keys(templates);
+    tkeys.forEach(function (key) {
+        var t = templates[key];
+        templateSummary += key + ': vitality=' + t.slots.vitality.label + ', energy=' + t.slots.energy.label + ', realm=' + t.slots.realm.label + '\n';
+    });
+
+    var existingText = '';
+    if (existingSlotsForWorld && existingSlotsForWorld.length > 0) {
+        existingText = '\nIMPORTANT: Other characters in this world already use these slot labels. If this character belongs to the same cultivation/power system, REUSE the same labels:\n';
+        existingSlotsForWorld.forEach(function (s) {
+            existingText += '- ' + s.key + ': "' + s.label + '"\n';
+        });
+    }
+
+    var prompt = {
+        system: 'You analyze a character card and world book to determine if power/energy tracking slots are needed.\n\n' +
+            'Reference templates (guidance only, world book definitions take priority):\n' + templateSummary + '\n' +
+            'Rules:\n' +
+            '- At most 3 slots: 1 vitality, 1 energy, 1 realm\n' +
+            '- If world book has clear energy/power system definitions, use those exact names as labels\n' +
+            '- If world book has no clear definitions but the world implies a power system, infer appropriate names from context\n' +
+            '- If the character has no combat/cultivation/power elements, output NO_POWER_SLOTS\n' +
+            '- Templates are reference ONLY; always prioritize world book definitions\n' +
+            '- Labels should be in Chinese if the world is Chinese-themed, in English otherwise\n' +
+            existingText + '\n' +
+            'Output format:\n' +
+            'If power slots are needed: a JSON array of slot definitions\n' +
+            '[{"key":"vitality","label":"气血","description":"Physical health and vitality level"},...]\n' +
+            'If NOT needed: NO_POWER_SLOTS\n' +
+            'Only output the JSON array or NO_POWER_SLOTS. No other text.',
+        user: contextText + '\n\nDetermine if this character needs power_slots. If yes, output slot definitions.'
+    };
+
+    try {
+        var response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }], { operation: 'init_power_slots' });
+        var text = String(response || '').trim();
+
+        if (text.indexOf('NO_POWER_SLOTS') !== -1) return null;
+
+        var jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            var slots = JSON.parse(jsonMatch[0]);
+            if (Array.isArray(slots) && slots.length > 0) {
+                var validSlots = [];
+                var usedKeys = {};
+                var keyOrder = ['vitality', 'energy', 'realm'];
+                for (var k = 0; k < keyOrder.length; k++) {
+                    for (var j = 0; j < slots.length; j++) {
+                        var slot = slots[j];
+                        if (slot.key === keyOrder[k] && !usedKeys[slot.key]) {
+                            usedKeys[slot.key] = true;
+                            validSlots.push({
+                                key: slot.key,
+                                label: String(slot.label || '').substring(0, 20),
+                                description: String(slot.description || '').substring(0, 80)
+                            });
+                        }
+                    }
+                }
+                for (var j2 = 0; j2 < slots.length; j2++) {
+                    var slot2 = slots[j2];
+                    if (!usedKeys[slot2.key] && validSlots.length < 3) {
+                        usedKeys[slot2.key] = true;
+                        validSlots.push({
+                            key: String(slot2.key || '').substring(0, 20),
+                            label: String(slot2.label || '').substring(0, 20),
+                            description: String(slot2.description || '').substring(0, 80)
+                        });
+                    }
+                }
+                if (validSlots.length > 0) return validSlots;
+            }
+        }
+    } catch (e) {
+        console.warn('[NE] initPowerSlots LLM call failed:', e);
+    }
+
+    return null;
 }

@@ -9,9 +9,10 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, setContextFns } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, syncCurrentChatId } from './events.js';
 import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
+import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
 
 function getChatId() {
     try {
@@ -46,10 +47,14 @@ function getLocale() {
 async function init() {
     const locale = getLocale();
     t(locale);
+    var settings = loadSettings();
+    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
     const chatId = getChatId();
     const vault = await read(chatId);
     if (vault.version === 0 && !vault.content.opening_summary.text) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
+        vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
+        vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;
         await write(chatId, vault);
     }
     setContextFns(getChatId, getChatMessages);
@@ -58,9 +63,22 @@ async function init() {
     registerAllTools(getChatId, getChatMessages);
 }
 
-function setupEventListeners() {
+function loadSettings() {
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        return raw ? JSON.parse(raw) : null;
+    } catch (e) { return null; }
+}
+
+function setupEventListeners(retryCount) {
+    retryCount = retryCount || 0;
     if (typeof TavernHelper === 'undefined' || !TavernHelper._eventOn) {
-        setTimeout(setupEventListeners, 500);
+        if (retryCount >= 60) {
+            console.error('[NE] TavernHelper not available after 60 retries');
+            return;
+        }
+        var delay = Math.min(500 * Math.pow(2, retryCount), 30000);
+        setTimeout(function () { setupEventListeners(retryCount + 1); }, delay);
         return;
     }
     const { tavern_events } = TavernHelper;
@@ -69,12 +87,20 @@ function setupEventListeners() {
     TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
     TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
         const chatId = getChatId();
+        syncCurrentChatId(chatId);
+        var settings = loadSettings();
+        setStateSchemaEnabled(settings && settings.enableStateSchema || false);
         const vault = await read(chatId);
         if (vault.version === 0) {
             vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
+            vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
+            vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;
             await write(chatId, vault);
         }
     });
+    if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);
+    if (tavern_events.MESSAGE_SWIPED) TavernHelper._eventOn(tavern_events.MESSAGE_SWIPED, onMessageSwiped);
+    if (tavern_events.MESSAGE_UPDATED) TavernHelper._eventOn(tavern_events.MESSAGE_UPDATED, onMessageUpdated);
 }
 
 function bootNE(retries) {

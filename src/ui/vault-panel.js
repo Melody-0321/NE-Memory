@@ -10,6 +10,7 @@ import { executeConsolidation } from '../engine/consolidate.js';
 import { t_narrative } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { renderStateWithTemplate, STATE_TEMPLATES } from './state-templates.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
 import { telemetryBuffer } from '../api/llm.js';
 
@@ -75,6 +76,363 @@ function createVaultPopout(getChatId) {
 
 export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
 
+/* ──────── 角色卡面板渲染 ──────── */
+
+var ACTIVE_STATUSES = ['活跃'];
+var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
+
+function getCharacterCardType(name, state) {
+    var npcNames = state && state.npc_names;
+    if (npcNames && Array.isArray(npcNames) && npcNames.indexOf(name) !== -1) return 'npc';
+    return 'protagonist';
+}
+
+function renderCharacterCard(name, card, schema, cardType) {
+    var cardSchema = schema[cardType] || schema.npc;
+    var fields = cardSchema.fields || {};
+    var summaryLines = [];
+    var detailLines = [];
+
+    Object.keys(fields).forEach(function (key) {
+        var fieldDef = fields[key];
+        var val = card[key];
+        if (val === undefined || val === null || val === '') return;
+        if (key === 'status') return;
+
+        var displayVal = key === 'clothing_build' && card.clothing_mode === true
+            ? String(val).substring(0, 30) + '...'
+            : String(val).substring(0, 50);
+
+        if (fieldDef.expose_level === 'summary') {
+            summaryLines.push(key + ': ' + displayVal);
+        } else if (fieldDef.expose_level === 'detail') {
+            detailLines.push(key + ': ' + escapeHtml(String(val)));
+        }
+    });
+
+    // Virtual equipment: filter inventory items where equipped===true
+    var equipmentHtml = '';
+    var inventory = card.inventory;
+    if (inventory && typeof inventory === 'object' && Array.isArray(inventory.items)) {
+        var equipped = inventory.items.filter(function (item) { return item && item.equipped === true; });
+        if (equipped.length > 0) {
+            equipmentHtml = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;">Equipment: ';
+            equipped.forEach(function (item) {
+                equipmentHtml += escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : '') + ' ';
+            });
+            equipmentHtml += '</div>';
+        }
+    }
+
+    // Injuries / status_effects
+    if (card.injuries) {
+        detailLines.push('injuries: ' + escapeHtml(String(card.injuries)));
+    }
+    if (card.status_effects) {
+        detailLines.push('status_effects: ' + escapeHtml(String(card.status_effects)));
+    }
+
+    // Inventory detail
+    var invMode = card.inventory_mode || '关闭';
+    if (invMode !== '关闭' && inventory && Array.isArray(inventory.items)) {
+        var invLines = [];
+        var allItems = inventory.items.filter(function (item) { return item && !item.equipped; });
+        allItems.forEach(function (item) {
+            invLines.push(escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : ''));
+        });
+        if (invLines.length > 0 || (inventory.gold != null)) {
+            var invHtml = '<div style="margin-top:2px;font-size:0.85em;">Inventory' + (invMode === '静态' ? ' (static)' : '') + ': ';
+            if (inventory.gold != null) invHtml += escapeHtml(String(inventory.gold)) + 'G ';
+            invHtml += invLines.join(', ') + '</div>';
+            detailLines.push(invHtml);
+        }
+    }
+
+    var powerSlotDefs = card.power_slot_defs;
+    var powerSlotValues = card.power_slots;
+    var powerSlotBar = '';
+    if (powerSlotDefs && Array.isArray(powerSlotDefs) && powerSlotDefs.length > 0) {
+        var slotParts = [];
+        powerSlotDefs.forEach(function (def) {
+            var val = (powerSlotValues && typeof powerSlotValues === 'object' && powerSlotValues[def.key]) || '-';
+            slotParts.push(escapeHtml(String(def.label)) + ': ' + escapeHtml(String(val)));
+        });
+        if (slotParts.length > 0) {
+            powerSlotBar = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;padding:3px 6px;background:var(--black20a);border-radius:3px;">' + slotParts.join(' | ') + '</div>';
+        }
+    }
+
+    var cardId = 'ne_char_' + name.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+    var statusLabel = card.status || '未知';
+
+    var html = '<div class="ne_character_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
+        '<div class="ne_char_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
+        '<span class="ne_char_toggle" style="font-size:0.8em;">\u25B6</span>' +
+        '<b>' + escapeHtml(name) + '</b>' +
+        '<span style="font-size:0.8em;color:var(--grey70);">[' + statusLabel + ']</span>' +
+        '<span style="font-size:0.75em;color:var(--grey50);">' + (cardType === 'npc' ? 'NPC' : 'PC') + '</span>' +
+        '</div>' +
+        '<div class="ne_char_summary" style="font-size:0.85em;margin-top:3px;color:#ccc;">' + summaryLines.join(' | ') + '</div>' +
+        powerSlotBar +
+        equipmentHtml +
+        '<div class="ne_char_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
+        detailLines.map(function (l) { return '<div style="margin:2px 0;">' + l + '</div>'; }).join('') +
+        '</div>' +
+        '</div>';
+
+    return html;
+}
+
+function renderCharacterGroup(label, names, characters, schema, state) {
+    if (names.length === 0) return '';
+    var groupId = 'ne_char_group_' + label.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+    var headerColor = label === '活跃' ? '#4caf50' : (label === '已退场' ? '#f44336' : '#ff9800');
+
+    var html = '<div class="ne_character_group" style="margin:6px 0;">' +
+        '<div class="ne_group_header" data-group-id="' + groupId + '" style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
+        '<span class="ne_group_toggle">\u25BC</span> ' + t(label) + ' (' + names.length + ')' +
+        '</div>' +
+        '<div class="ne_group_cards" id="' + groupId + '_cards">';
+
+    names.forEach(function (name) {
+        var card = characters[name];
+        var cardType = getCharacterCardType(name, state);
+        html += renderCharacterCard(name, card, schema, cardType);
+    });
+
+    html += '</div></div>';
+    return html;
+}
+
+function renderCharacterPanelHTML(state, characterSchema) {
+    var characters = (state && state.characters) ? state.characters : {};
+    var schema = characterSchema || DEFAULT_CHARACTER_SCHEMA;
+    var names = Object.keys(characters);
+    if (names.length === 0) return '';
+
+    var activeNames = [];
+    var inactiveNames = [];
+    var departedNames = [];
+
+    names.forEach(function (name) {
+        var card = characters[name];
+        var status = (card && card.status) ? card.status : '未知';
+        if (ACTIVE_STATUSES.indexOf(status) !== -1) {
+            activeNames.push(name);
+        } else if (DEPARTED_STATUSES.indexOf(status) !== -1) {
+            departedNames.push(name);
+        } else {
+            inactiveNames.push(name);
+        }
+    });
+
+    var html = '<div class="narrative_character_block" style="margin-bottom:14px;">' +
+        '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Characters') + '</div>';
+
+    html += renderCharacterGroup('活跃', activeNames, characters, schema, state);
+    html += renderCharacterGroup('非活跃', inactiveNames, characters, schema, state);
+    html += renderCharacterGroup('已退场', departedNames, characters, schema, state);
+
+    html += '</div>';
+    return html;
+}
+
+function renderFactionCard(name, faction) {
+    var cardId = 'ne_faction_' + name.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+    var attitude = faction.attitude_toward_player || '未知';
+    var attitudeColor = attitude === '友好' ? '#4caf50' : (attitude === '敌对' ? '#f44336' : (attitude === '冷淡' ? '#ff9800' : '#ff9800'));
+
+    var summaryFields = [];
+    if (faction.name) summaryFields.push('name: ' + escapeHtml(String(faction.name).substring(0, 20)));
+    var displayAttitude = faction.attitude_toward_player || '未知';
+    summaryFields.push('attitude: <span style="color:' + attitudeColor + '">' + escapeHtml(displayAttitude) + '</span>');
+
+    var detailLines = [];
+    if (faction.description) detailLines.push('<div style="margin:2px 0;">description: ' + escapeHtml(String(faction.description)) + '</div>');
+    if (faction.leader) detailLines.push('<div style="margin:2px 0;">leader: ' + escapeHtml(String(faction.leader)) + '</div>');
+    if (faction.notes) detailLines.push('<div style="margin:2px 0;">notes: ' + escapeHtml(String(faction.notes)) + '</div>');
+
+    var relations = faction.relations;
+    if (relations && typeof relations === 'object') {
+        var relKeys = Object.keys(relations);
+        if (relKeys.length > 0) {
+            var relHtml = '<div style="margin-top:4px;font-size:0.83em;color:#e2b714;">' + t('Relations') + ':</div>';
+            relKeys.forEach(function (target) {
+                relHtml += '<div style="margin:1px 0 1px 8px;font-size:0.83em;">' + escapeHtml(target) + ': ' + escapeHtml(String(relations[target])) + '</div>';
+            });
+            detailLines.push(relHtml);
+        }
+    }
+
+    var html = '<div class="ne_faction_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
+        '<div class="ne_faction_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
+        '<span class="ne_faction_toggle" style="font-size:0.8em;">\u25B6</span>' +
+        '<b>' + escapeHtml(name) + '</b>' +
+        '<span style="font-size:0.8em;color:' + attitudeColor + ';">[' + escapeHtml(attitude) + ']</span>' +
+        '</div>' +
+        '<div class="ne_faction_summary" style="font-size:0.85em;margin-top:3px;color:#ccc;">' + summaryFields.join(' | ') + '</div>' +
+        '<div class="ne_faction_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
+        detailLines.join('') +
+        '</div>' +
+        '</div>';
+
+    return html;
+}
+
+function renderFactionPanelHTML(state) {
+    if (!state || !state.factions) return '';
+    var factions = state.factions;
+    var names = Object.keys(factions);
+    if (names.length === 0) return '';
+
+    var html = '<div class="narrative_faction_block" style="margin-bottom:14px;">' +
+        '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Factions') + '</div>';
+
+    names.forEach(function (name) {
+        var faction = factions[name];
+        if (!faction || typeof faction !== 'object') return;
+        html += renderFactionCard(name, faction);
+    });
+
+    html += '</div>';
+    return html;
+}
+
+function formatActiveFactionSummary(state) {
+    if (!state || !state.factions) return '';
+    var factions = state.factions;
+    var names = Object.keys(factions);
+    if (names.length === 0) return '';
+
+    var lines = [];
+    names.forEach(function (name) {
+        var faction = factions[name];
+        if (!faction || typeof faction !== 'object') return;
+        if (faction.attitude_toward_player === '中立') return;
+        var parts = [];
+        parts.push(name);
+        if (faction.attitude_toward_player) parts.push(faction.attitude_toward_player);
+        if (faction.leader) parts.push('leader=' + String(faction.leader).substring(0, 20));
+        if (faction.description) parts.push(String(faction.description).substring(0, 40));
+        if (faction.relations && typeof faction.relations === 'object') {
+            var relPairs = [];
+            Object.keys(faction.relations).forEach(function (target) {
+                relPairs.push(target + ':' + String(faction.relations[target]).substring(0, 20));
+            });
+            if (relPairs.length > 0) parts.push('relations={' + relPairs.join(', ') + '}');
+        }
+        lines.push(parts.join(' | '));
+    });
+
+    return lines.length > 0 ? lines.join('\n') : '';
+}
+
+function renderQuestCard(key, entry, sectionType) {
+    var cardId = 'ne_quest_' + sectionType + '_' + key.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
+    var statusLabel = entry.status || '未知';
+
+    var statusColors = { '已完成': '#4caf50', '已达成': '#4caf50', '已失败': '#f44336', '已过期': '#ff9800', '正在进行': '#2196f3', '进行中': '#2196f3', '已放弃': '#888', '持续中': '#ff9800', '已平息': '#4caf50', '已结束': '#888' };
+    var statusColor = statusColors[statusLabel] || '#888';
+
+    var iconMap = {
+        task: { open: '\u25CB', closed: '\u2714' },
+        goal: { open: '\u2192', closed: '\u2714' },
+        event: { open: '\u25B2', closed: '\u2714' }
+    };
+    var icons = iconMap[sectionType] || iconMap.task;
+    var isCompleted = statusLabel === '已完成' || statusLabel === '已达成' || statusLabel === '已放弃' || statusLabel === '已失败' || statusLabel === '已过期' || statusLabel === '已平息' || statusLabel === '已结束';
+    var iconChar = isCompleted ? icons.closed : icons.open;
+    var iconColor = isCompleted ? '#4caf50' : '#888';
+
+    var displayName = entry.name || key;
+    var deadlineOrStatus = '';
+    if (sectionType === 'task' && entry.deadline) {
+        deadlineOrStatus = entry.deadline;
+    }
+    var statusText = sectionType === 'task' ? (entry.deadline || statusLabel) : statusLabel;
+
+    var detailLines = [];
+    if (sectionType === 'task') {
+        if (entry.type) detailLines.push('<div style="margin:2px 0;">type: ' + escapeHtml(String(entry.type)) + '</div>');
+        if (entry.issuer) detailLines.push('<div style="margin:2px 0;">issuer: ' + escapeHtml(String(entry.issuer)) + '</div>');
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">progress: ' + escapeHtml(String(entry.progress)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">posted: ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.reward) detailLines.push('<div style="margin:2px 0;color:#4caf50;">reward: ' + escapeHtml(String(entry.reward)) + '</div>');
+        if (entry.penalty) detailLines.push('<div style="margin:2px 0;color:#f44336;">penalty: ' + escapeHtml(String(entry.penalty)) + '</div>');
+    } else if (sectionType === 'goal') {
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">progress: ' + escapeHtml(String(entry.progress)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">posted: ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.completed_time) detailLines.push('<div style="margin:2px 0;color:#4caf50;">completed: ' + escapeHtml(String(entry.completed_time)) + '</div>');
+    } else if (sectionType === 'event') {
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.started_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">started: ' + escapeHtml(String(entry.started_time)) + '</div>');
+        if (entry.ended_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">ended: ' + escapeHtml(String(entry.ended_time)) + '</div>');
+    }
+
+    var html = '<div class="ne_quest_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
+        '<div class="ne_quest_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
+        '<span class="ne_quest_toggle" style="font-size:0.8em;">\u25B6</span>' +
+        '<span style="color:' + iconColor + ';">' + iconChar + '</span>' +
+        '<b>' + escapeHtml(displayName) + '</b>' +
+        '<span style="font-size:0.8em;color:' + statusColor + ';">[' + escapeHtml(statusText) + ']</span>' +
+        '</div>' +
+        '<div class="ne_quest_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
+        detailLines.join('') +
+        '</div>' +
+        '</div>';
+
+    return html;
+}
+
+function renderQuestPanelHTML(state) {
+    if (!state || !state.quests) return '';
+    var quests = state.quests;
+
+    var sectionsHtml = '';
+
+    // Tasks
+    if (quests.tasks && typeof quests.tasks === 'object' && Object.keys(quests.tasks).length > 0) {
+        var taskHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
+            '<div style="font-weight:bold;font-size:0.9em;color:#2196f3;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25CB ' + t('Tasks') + '</div>';
+        Object.keys(quests.tasks).forEach(function (key) {
+            taskHtml += renderQuestCard(key, quests.tasks[key], 'task');
+        });
+        taskHtml += '</div>';
+        sectionsHtml += taskHtml;
+    }
+
+    // Goals
+    if (quests.goals && typeof quests.goals === 'object' && Object.keys(quests.goals).length > 0) {
+        var goalHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
+            '<div style="font-weight:bold;font-size:0.9em;color:#e2b714;padding:3px 0;border-bottom:1px solid var(--black30a);">\u2192 ' + t('Goals') + '</div>';
+        Object.keys(quests.goals).forEach(function (key) {
+            goalHtml += renderQuestCard(key, quests.goals[key], 'goal');
+        });
+        goalHtml += '</div>';
+        sectionsHtml += goalHtml;
+    }
+
+    // Events
+    if (quests.events && typeof quests.events === 'object' && Object.keys(quests.events).length > 0) {
+        var eventHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
+            '<div style="font-weight:bold;font-size:0.9em;color:#ff9800;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B2 ' + t('World Events') + '</div>';
+        Object.keys(quests.events).forEach(function (key) {
+            eventHtml += renderQuestCard(key, quests.events[key], 'event');
+        });
+        eventHtml += '</div>';
+        sectionsHtml += eventHtml;
+    }
+
+    if (!sectionsHtml) return '';
+
+    return '<div class="narrative_quest_block" style="margin-bottom:14px;">' +
+        '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Quests') + '</div>' +
+        sectionsHtml +
+        '</div>';
+}
+
 /* ──────── 面板内容渲染 ──────── */
 
 async function updateVaultViewerPopout(getChatId) {
@@ -102,9 +460,12 @@ async function updateVaultViewerPopout(getChatId) {
         // 移除旧区块
         qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
         qsa('.narrative_opening_block').forEach(function (el) { el.remove(); });
+        qsa('.narrative_faction_block').forEach(function (el) { el.remove(); });
+        qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
+        qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
         // State 区块
-        if (c.state && Object.keys(c.state).length > 0) {
+        if (isStateSchemaEnabled() && c.state && Object.keys(c.state).length > 0) {
             var stateHtml = renderStateWithTemplate(c.state, lastVaultStateTemplate);
             var templateOpts = '';
             var tkeys = Object.keys(STATE_TEMPLATES);
@@ -129,6 +490,36 @@ async function updateVaultViewerPopout(getChatId) {
                     '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
                     '</div></div></div>'
                 );
+            }
+        }
+
+        // Character panel
+        if (isStateSchemaEnabled()) {
+            var charSchema = c.character_schema || null;
+            var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
+            if (charHtml) {
+                var stmViewChar = byId('narrative_vault_panel_stm_view');
+                if (stmViewChar) {
+                    stmViewChar.insertAdjacentHTML('beforebegin', charHtml);
+                }
+            }
+
+            // Faction panel
+            var factionHtml = renderFactionPanelHTML(c.state || {});
+            if (factionHtml) {
+                var stmViewFaction = byId('narrative_vault_panel_stm_view');
+                if (stmViewFaction) {
+                    stmViewFaction.insertAdjacentHTML('beforebegin', factionHtml);
+                }
+            }
+
+            // Quest panel
+            var questHtml = renderQuestPanelHTML(c.state || {});
+            if (questHtml) {
+                var stmViewQuest = byId('narrative_vault_panel_stm_view');
+                if (stmViewQuest) {
+                    stmViewQuest.insertAdjacentHTML('beforebegin', questHtml);
+                }
             }
         }
 
@@ -221,6 +612,9 @@ async function toggleVaultEditMode(getChatId) {
         vaultEditData = null;
         qsa('.narrative_opening_block').forEach(function (el) { el.style.display = ''; });
         qsa('.narrative_state_block').forEach(function (el) { el.style.display = ''; });
+        qsa('.narrative_character_block').forEach(function (el) { el.style.display = ''; });
+        qsa('.narrative_faction_block').forEach(function (el) { el.style.display = ''; });
+        qsa('.narrative_quest_block').forEach(function (el) { el.style.display = ''; });
         var oe = byId('narrative_vault_panel_opening_edit');
         if (oe) oe.remove();
         var se = byId('narrative_vault_panel_state_edit');
@@ -241,6 +635,9 @@ function buildEditForms(vault, getChatId) {
     byId('narrative_vault_panel_stm_view').style.display = 'none';
     qsa('.narrative_opening_block').forEach(function (el) { el.style.display = 'none'; });
     qsa('.narrative_state_block').forEach(function (el) { el.style.display = 'none'; });
+    qsa('.narrative_character_block').forEach(function (el) { el.style.display = 'none'; });
+    qsa('.narrative_faction_block').forEach(function (el) { el.style.display = 'none'; });
+    qsa('.narrative_quest_block').forEach(function (el) { el.style.display = 'none'; });
 
     var ltmEdit = byId('narrative_vault_panel_ltm_edit');
     ltmEdit.style.display = '';
@@ -435,8 +832,29 @@ export function formatVaultForPrompt(vault) {
     }
     if (content.current_scene) { parts.push('## ' + t('Current Scene') + '\n' + content.current_scene); }
     if (content.state && Object.keys(content.state).length > 0) {
-        parts.push('## ' + t('Current State') + '\n' + renderStateWithTemplate(content.state, content.state_template || 'auto'));
-        parts.push('---');
+        if (isStateSchemaEnabled()) {
+            var stateSchema = content.state_schema || null;
+            var stateSummary = formatStateSummary(content.state, stateSchema);
+            if (stateSummary) {
+                parts.push('## ' + t('Current State') + '\n' + stateSummary);
+                parts.push('---');
+            }
+            var charSummary = formatActiveCharacterSummary(content.state, content.character_schema || null);
+            if (charSummary) {
+                parts.push('## ' + t('Characters') + ' (' + t('活跃') + ')\n' + charSummary);
+                parts.push('---');
+            }
+            var factionSummary = formatActiveFactionSummary(content.state);
+            if (factionSummary) {
+                parts.push('## ' + t('Factions') + '\n' + factionSummary);
+                parts.push('---');
+            }
+            var questSummary = formatQuestSummary(content.state);
+            if (questSummary) {
+                parts.push('## ' + t('Quests') + '\n' + questSummary);
+                parts.push('---');
+            }
+        }
     }
     if (content.ltm_entries && content.ltm_entries.length > 0) {
         var ltmLines = content.ltm_entries.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
@@ -563,12 +981,66 @@ export async function renderVaultPanel(getChatId) {
         // LLM log entry expand/collapse
         PD.addEventListener('click', function (e) {
             var header = e.target.closest('.ne_log_header');
-            if (!header) return;
-            var body = header.parentElement.querySelector('.ne_log_body');
-            if (!body) return;
-            var vis = body.style.display !== 'none';
-            body.style.display = vis ? 'none' : '';
-            header.textContent = (vis ? '\u25B6' : '\u25BC') + header.textContent.substring(1);
+            if (header) {
+                var body = header.parentElement.querySelector('.ne_log_body');
+                if (!body) return;
+                var vis = body.style.display !== 'none';
+                body.style.display = vis ? 'none' : '';
+                header.textContent = (vis ? '\u25B6' : '\u25BC') + header.textContent.substring(1);
+                return;
+            }
+            // Character card toggle
+            var charHeader = e.target.closest('.ne_char_header');
+            if (charHeader) {
+                var cardId = charHeader.getAttribute('data-card-id');
+                var detail = byId(cardId + '_detail');
+                var toggle = charHeader.querySelector('.ne_char_toggle');
+                if (detail) {
+                    var vis = detail.style.display !== 'none';
+                    detail.style.display = vis ? 'none' : '';
+                    if (toggle) toggle.textContent = vis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
+            // Faction card toggle
+            var factionHeader = e.target.closest('.ne_faction_header');
+            if (factionHeader) {
+                var fCardId = factionHeader.getAttribute('data-card-id');
+                var fDetail = byId(fCardId + '_detail');
+                var fToggle = factionHeader.querySelector('.ne_faction_toggle');
+                if (fDetail) {
+                    var fVis = fDetail.style.display !== 'none';
+                    fDetail.style.display = fVis ? 'none' : '';
+                    if (fToggle) fToggle.textContent = fVis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
+            // Quest card toggle
+            var questHeader = e.target.closest('.ne_quest_header');
+            if (questHeader) {
+                var qCardId = questHeader.getAttribute('data-card-id');
+                var qDetail = byId(qCardId + '_detail');
+                var qToggle = questHeader.querySelector('.ne_quest_toggle');
+                if (qDetail) {
+                    var qVis = qDetail.style.display !== 'none';
+                    qDetail.style.display = qVis ? 'none' : '';
+                    if (qToggle) qToggle.textContent = qVis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
+            // Character group toggle
+            var groupHeader = e.target.closest('.ne_group_header');
+            if (groupHeader) {
+                var groupId = groupHeader.getAttribute('data-group-id');
+                var cards = byId(groupId + '_cards');
+                var toggle = groupHeader.querySelector('.ne_group_toggle');
+                if (cards) {
+                    var vis = cards.style.display !== 'none';
+                    cards.style.display = vis ? 'none' : '';
+                    if (toggle) toggle.textContent = vis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
         });
 
         // Tool call toggle

@@ -1,6 +1,6 @@
 {
   "name": "ne-memory",
-  "version": "1.0.0",
+  "version": "0.3.0",
   "description": "SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern Helper) 运行。",
   "type": "module",
   "scripts": {
@@ -10,7 +10,6 @@
   "keywords": [],
   "author": "",
   "license": "ISC",
-  "type": "commonjs",
   "devDependencies": {
     "@babel/core": "^7.29.7",
     "@babel/preset-env": "^7.29.7",
