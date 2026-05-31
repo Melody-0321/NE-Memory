@@ -135,7 +135,7 @@ function setupEventListeners(retryCount) {
     if (eventSource && typeof eventSource.on === 'function') {
         if (!eventSource.__ne_bound_str) {
             eventSource.__ne_bound_str = true;
-            try { eventSource.on('MESSAGE_SENT', onMessageSent); } catch (e) {} // ST has no MESSAGE_SENT, TH does
+            try { eventSource.on('MESSAGE_SENT', onMessageSent); } catch (e) {}
             try { eventSource.on('MESSAGE_RECEIVED', onMessageReceived); } catch (e) {}
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) {}
             try { eventSource.on('CHAT_CHANGED', async () => {
@@ -150,6 +150,9 @@ function setupEventListeners(retryCount) {
                     await write(chatId, vault);
                 }
             }); } catch (e) {}
+            try { eventSource.on('MESSAGE_DELETED', onMessageDeleted); } catch (e) {}
+            try { eventSource.on('MESSAGE_SWIPED', onMessageSwiped); } catch (e) {}
+            try { eventSource.on('MESSAGE_UPDATED', onMessageUpdated); } catch (e) {}
             console.log('[NE] Event listeners registered via eventSource (string events)');
         }
         return;
