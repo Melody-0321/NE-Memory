@@ -45,7 +45,7 @@ export function renderConfigDialog(getChatId) {
         '<input type="range" id="ne_stm_batch" min="1" max="30" step="1" value="10" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('Max Unconsolidated STM') + ': <span id="ne_stm_max_unconsolidated_val">5</span></span>' +
-        '<input type="range" id="ne_stm_max_unconsolidated" min="1" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
+        '<input type="range" id="ne_stm_max_unconsolidated" min="2" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
