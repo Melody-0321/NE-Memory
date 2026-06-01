@@ -76,7 +76,7 @@ async function flushPendingMessages() {
 }
 
 export async function onBeforeGenerate() {
-    if (!lastKnownChatId) return;
+    if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
     chatReady = false;
     await flushPendingMessages();
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
@@ -86,7 +86,8 @@ export async function onBeforeGenerate() {
         chatReady = true;
     }
     const vault = await read(chatId);
-    if (!vault || !vault.content) return;
+    if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
+    console.log('[NE] onBeforeGenerate running, retrieval=' + isRetrievalEnabled() + ', stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
     var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
     try {
         var formatted;
