@@ -5,7 +5,7 @@
  * 每个 chat_id 对应 IndexedDB 中的一条记录。
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'vaults';
 
 function openDB() {
