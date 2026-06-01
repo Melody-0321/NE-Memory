@@ -13,8 +13,13 @@ export async function saveVaultWithSnapshot(chatId, vault) {
     const { write } = await import('../vault/store.js');
     vault.version = (vault.version || 0) + 1;
     vault.updated_at = new Date().toISOString();
-    await write(chatId, vault);
-    await saveSnapshot(chatId, vault);
+    try {
+        await write(chatId, vault);
+        await saveSnapshot(chatId, vault);
+    } catch (e) {
+        console.error('[NE] saveVaultWithSnapshot failed:', e);
+        throw e;
+    }
 }
 
 export function collectProcessedMsgIds(vault) {
