@@ -833,7 +833,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
 
 /* ──────── 注入格式化 ──────── */
 
-export function formatVaultForPrompt(vault) {
+export function formatVaultForPrompt(vault, chatMessages) {
     var content = vault.content || {};
     var parts = [];
     if (vault.memory_system_prompt) { parts.push(vault.memory_system_prompt); parts.push('---'); }
@@ -867,19 +867,55 @@ export function formatVaultForPrompt(vault) {
             }
         }
     }
-    if (content.ltm_entries && content.ltm_entries.length > 0) {
-        var ltmLines = content.ltm_entries.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.time_range || e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
+
+    // BM25 pre-filter: LTM + unconsolidated STM only (never stm_entries with parent_ltm)
+    var ltm = content.ltm_entries || [];
+    var unconsolidated = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+    var showLtm = ltm;
+    var showStm = unconsolidated;
+
+    if ((ltm.length > 0 || unconsolidated.length > 0) && typeof filterCandidates === 'function') {
+        try {
+            var query;
+            if (chatMessages && chatMessages.length > 0) {
+                var userMessages = [];
+                for (var mi = chatMessages.length - 1; mi >= 0 && userMessages.length < 5; mi--) {
+                    var m = chatMessages[mi];
+                    if (m && (m.role === 'user' || m.is_user)) {
+                        var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
+                        if (text && text.trim().length > 5) userMessages.unshift(text.trim().substring(0, 200));
+                    }
+                }
+                query = userMessages.length > 0 ? userMessages.join(' ').substring(0, 500) : null;
+            }
+            if (!query) {
+                var state = content.state || {};
+                query = (state.time || '') + ' ' + (state.scene || '') + ' ' + (state.main_event || '');
+                if (!query.trim()) query = 'recent events';
+            }
+
+            // Only pass LTM + unconsolidated STM candidates (stm_entries with parent_ltm are hidden)
+            var allCandidates = [].concat(ltm).concat(unconsolidated);
+            if (allCandidates.length > 25) {
+                var topK = filterCandidates(query, unconsolidated, ltm, 25);
+                showLtm = topK.filter(function (e) { return e.__type === 'ltm'; });
+                showStm = topK.filter(function (e) { return e.__type === 'stm'; });
+            }
+        } catch (e) {
+            console.warn('[NE] BM25 filter in formatVaultForPrompt failed, using full injection:', e);
+        }
+    }
+
+    if (showLtm.length > 0) {
+        var ltmLines = showLtm.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.time_range || e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
         parts.push('## ' + t('Long-term Memory (LTM) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event (Summary)') + ' |\n|' + '---|'.repeat(4) + '\n' + ltmLines.join('\n'));
     }
-    if (content.unconsolidated_stm && content.unconsolidated_stm.length > 0) {
-        var unconsolidated = content.unconsolidated_stm.filter(function (e) { return !e.parent_ltm; });
-        if (unconsolidated.length > 0) {
-            var stmLines = unconsolidated.map(function (e, i) {
+    if (showStm.length > 0) {
+        var stmLines = showStm.map(function (e, i) {
             var label = e.period ? e.period + (e.time_label ? '\u00b7' + e.time_label : '') : '';
             return '| ' + (i + 1) + ' | ' + label + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192msg#' + (e.msg_ids || []).join(',msg#') + '] |';
         });
         parts.push('## ' + t('Short-term Memory (Unconsolidated) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event') + ' |\n|' + '---|'.repeat(4) + '\n' + stmLines.join('\n'));
-        }
     }
     parts.push('---', t('The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.'));
     return parts.join('\n\n');

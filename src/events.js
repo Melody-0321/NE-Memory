@@ -24,6 +24,7 @@ export function setContextFns(getChatId, getChatMessages) {
 export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 
 export function syncCurrentChatId(chatId) {
+    console.log('[NE] syncCurrentChatId called, chatId=' + chatId + ', was=' + lastKnownChatId);
     pendingMessages = [];
     lastKnownChatId = chatId;
 }
@@ -86,12 +87,12 @@ export async function onBeforeGenerate() {
     }
     const vault = await read(chatId);
     if (!vault || !vault.content) return;
+    var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
     try {
         var formatted;
         if (isRetrievalEnabled()) {
             try {
                 const { formatSmartContext } = await import('./ui/vault-panel.js');
-                var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
                 var budget = 800;
                 try {
                     var raw = localStorage.getItem('ne_settings');
@@ -104,11 +105,11 @@ export async function onBeforeGenerate() {
             } catch (e) {
                 console.warn('[NE] Smart Push failed, falling back to full injection:', e);
                 const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-                formatted = formatVaultForPrompt(vault);
+                formatted = formatVaultForPrompt(vault, chatMessages);
             }
         } else {
             const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-            formatted = formatVaultForPrompt(vault);
+            formatted = formatVaultForPrompt(vault, chatMessages);
         }
         if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
             TavernHelper.injectPrompts([{
