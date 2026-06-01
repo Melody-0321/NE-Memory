@@ -135,9 +135,10 @@ function setupEventListeners(retryCount) {
     if (eventSource && typeof eventSource.on === 'function') {
         if (!eventSource.__ne_bound_str) {
             eventSource.__ne_bound_str = true;
-            try { eventSource.on('MESSAGE_SENT', onMessageSent); } catch (e) {}
-            try { eventSource.on('MESSAGE_RECEIVED', onMessageReceived); } catch (e) {}
-            try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) {}
+            try { eventSource.on('MESSAGE_SENT', onMessageSent); } catch (e) { console.warn('[NE] MESSAGE_SENT registration failed:', e); }
+            try { eventSource.on('MESSAGE_RECEIVED', onMessageReceived); } catch (e) { console.warn('[NE] MESSAGE_RECEIVED registration failed:', e); }
+            try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
+            console.log('[NE] All string event listeners registered, onBeforeGenerate=' + typeof onBeforeGenerate);
             try { eventSource.on('CHAT_CHANGED', async () => {
                 const chatId = getChatId();
                 neSyncChatId(chatId);
