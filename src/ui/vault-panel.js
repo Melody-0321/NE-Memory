@@ -869,13 +869,13 @@ export function formatVaultForPrompt(vault, chatMessages) {
         }
     }
 
-    // BM25 pre-filter: pass all STM for threshold, filterCandidates handles LTM/STM split
+    // BM25 pre-filter: LTM + unconsolidated STM only (never stm_entries with parent_ltm)
     var ltm = content.ltm_entries || [];
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var unconsolidated = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
     var showLtm = ltm;
-    var showStm = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+    var showStm = unconsolidated;
 
-    if ((ltm.length > 0 || showStm.length > 0) && typeof filterCandidates === 'function') {
+    if ((ltm.length > 0 || unconsolidated.length > 0) && typeof filterCandidates === 'function') {
         try {
             var query;
             if (chatMessages && chatMessages.length > 0) {
@@ -895,10 +895,11 @@ export function formatVaultForPrompt(vault, chatMessages) {
                 if (!query.trim()) query = 'recent events';
             }
 
-            // Only pass LTM + unconsolidated STM candidates (stm_entries with parent_ltm are hidden)
-            var allCandidates = [].concat(ltm).concat(showStm);
+            // Build full STM pool (unconsolidated + stm_entries)
+            var allStm = [].concat(unconsolidated).concat(content.stm_entries || []);
+            var allCandidates = [].concat(ltm).concat(allStm);
             if (allCandidates.length > 25) {
-                var topK = filterCandidates(query, allSTM, ltm, 25);
+                var topK = filterCandidates(query, allStm, ltm, 25);
                 showLtm = topK.filter(function (e) { return e.__type === 'ltm'; });
                 showStm = topK.filter(function (e) { return e.__type === 'stm'; });
             }

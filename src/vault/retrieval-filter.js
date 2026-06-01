@@ -100,10 +100,9 @@ export function filterCandidates(query, allSTM, allLTM, topK) {
     allSTM = allSTM || [];
     allLTM = allLTM || [];
 
+    var entries = [];
     var STM_COUNT_FOR_LTM = 500;
     var useLTM = allSTM.length >= STM_COUNT_FOR_LTM;
-
-    var entries = [];
 
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
