@@ -6,7 +6,7 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, syncCurrentChatId } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId } from './events.js';
 import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
@@ -111,7 +111,7 @@ function setupEventListeners(retryCount) {
             if (eventSource.eventTypes.CHAT_CHANGED) {
                 eventSource.on(eventSource.eventTypes.CHAT_CHANGED, async () => {
                     const chatId = getChatId();
-                    syncCurrentChatId(chatId);
+                    neSyncChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
@@ -140,7 +140,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) {}
             try { eventSource.on('CHAT_CHANGED', async () => {
                 const chatId = getChatId();
-                syncCurrentChatId(chatId);
+                neSyncChatId(chatId);
                 var settings = loadSettings();
                 setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                 setRetrievalEnabled(settings && settings.retrievalEnabled || false);
@@ -167,7 +167,7 @@ function setupEventListeners(retryCount) {
             if (tavern_events.CHAT_CHANGED) {
                 TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
                     const chatId = getChatId();
-                    syncCurrentChatId(chatId);
+                    neSyncChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);

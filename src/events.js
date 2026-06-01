@@ -23,8 +23,7 @@ export function setContextFns(getChatId, getChatMessages) {
 }
 export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 
-export function syncCurrentChatId(chatId) {
-    console.log('[NE] syncCurrentChatId called, chatId=' + chatId + ', was=' + lastKnownChatId);
+export function neSyncChatId(chatId) {
     pendingMessages = [];
     lastKnownChatId = chatId;
 }
