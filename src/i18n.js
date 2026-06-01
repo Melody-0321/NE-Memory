@@ -122,8 +122,8 @@ export const CONFIG_I18N = {
         'Memory Budget': 'Memory Budget',
         'STM Extraction Batch': 'STM Extraction Batch',
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': 'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.',
-        'LTM Consolidation Threshold': 'LTM Consolidation Threshold',
-        'Merge STM into LTM when this many unconsolidated entries accumulate. Lower = more frequent consolidation.': 'Merge STM into LTM when this many unconsolidated entries accumulate. Lower = more frequent consolidation.',
+        'Max Unconsolidated STM': 'Max Unconsolidated STM',
+        'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': 'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.',
         'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
             'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
@@ -164,8 +164,8 @@ export const CONFIG_I18N = {
         'Memory Budget': '记忆预算',
         'STM Extraction Batch': 'STM 提取批次',
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': '收集此数量的消息后提取 STM 条目。越小更新越快，越大 LLM 调用越少。',
-        'LTM Consolidation Threshold': 'LTM 整合阈值',
-        'Merge STM into LTM when this many unconsolidated entries accumulate. Lower = more frequent consolidation.': '累积此数量的未整合 STM 后合并为 LTM。越小整合越频繁。',
+        'Max Unconsolidated STM': '未整合 STM 上限',
+        'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 超过此上限时触发合并，保持记忆区整洁。',
         'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
             '存储被阻止：记忆无法保存。请在浏览器设置中为此站点禁用追踪防护。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
@@ -206,8 +206,8 @@ export const CONFIG_I18N = {
         'Memory Budget': '記憶預算',
         'STM Extraction Batch': 'STM 提取批次',
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': '收集此數量的訊息後提取 STM 條目。越小更新越快，越大 LLM 調用越少。',
-        'LTM Consolidation Threshold': 'LTM 整合閾值',
-        'Merge STM into LTM when this many unconsolidated entries accumulate. Lower = more frequent consolidation.': '累積此數量的未整合 STM 後合併為 LTM。越小整合越頻繁。',
+        'Max Unconsolidated STM': '未整合 STM 上限',
+        'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 超過此上限時觸發合併，保持記憶區整潔。',
         'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
             '存儲被阻止：記憶無法儲存。請在瀏覽器設定中為此網站停用追蹤防護。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':

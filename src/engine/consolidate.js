@@ -19,22 +19,21 @@ function findNextId(vault) {
 
 export function checkConsolidateThreshold(vault) {
     const content = vault.content || {};
-    var threshold = 5;
+    var maxUnconsolidated = 5;
     try {
         var raw = localStorage.getItem('ne_settings');
         if (raw) {
             var s = JSON.parse(raw);
-            threshold = Number(s.ltmConsolidate) || 5;
+            maxUnconsolidated = Number(s.stmMaxUnconsolidated) || 5;
         }
     } catch (e) {}
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    if (unconsolidated.length < threshold) return false;
+    if (unconsolidated.length < maxUnconsolidated) return false;
     var totalText = 0;
     unconsolidated.forEach(function(s) {
         totalText += (s.event || '').length + (s.scene || '').length;
     });
-    // Adaptive: skip consolidation if entries are too sparse (avg < 40 chars per entry)
-    if (totalText < threshold * 40) return false;
+    if (totalText < maxUnconsolidated * 40) return false;
     return true;
 }
 

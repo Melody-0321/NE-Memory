@@ -79,12 +79,10 @@ async function flushPendingMessages() {
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
     try {
+        const consResult = await executeConsolidation(chatId);
+        var latestVault = consResult.vault;
         const result = await executeIncrementalUpdate(chatId, batch);
-        var latestVault = result.vault;
-        if (result.added > 0) {
-            const consResult = await executeConsolidation(chatId);
-            latestVault = consResult.vault;
-        }
+        latestVault = result.vault;
         if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
