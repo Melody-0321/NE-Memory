@@ -25,6 +25,7 @@ export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 
 export function syncCurrentChatId(chatId) {
     pendingMessages = [];
+    lastKnownChatId = chatId;
 }
 
 export function onMessageSent(messageId) {
