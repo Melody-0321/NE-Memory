@@ -113,15 +113,18 @@ export function filterCandidates(query, allSTM, allLTM, topK) {
         });
     }
 
-    for (var i = 0; i < allLTM.length; i++) {
-        var ltm = allLTM[i];
-        var text = buildSearchableText(ltm);
-        entries.push({
-            _tokens: tokenize(text),
-            _entry: ltm,
-            _type: 'ltm',
-            _id: ltm.id
-        });
+    var STM_COUNT_FOR_LTM = 500;
+    if (allSTM.length >= STM_COUNT_FOR_LTM) {
+        for (var i = 0; i < allLTM.length; i++) {
+            var ltm = allLTM[i];
+            var text = buildSearchableText(ltm);
+            entries.push({
+                _tokens: tokenize(text),
+                _entry: ltm,
+                _type: 'ltm',
+                _id: ltm.id
+            });
+        }
     }
 
     var totalDocs = entries.length;
