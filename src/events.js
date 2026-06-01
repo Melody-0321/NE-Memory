@@ -68,14 +68,13 @@ export async function onMessageReceived(messageId) {
 }
 
 async function checkAndFlush() {
-    if (pendingMessages.length === 0) return;
-    const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-    const shouldFlush = pendingMessages.length >= getStmBatchSize() || totalWords >= getStmWordsThreshold();
-    if (shouldFlush) await flushPendingMessages();
+    await flushPendingMessages();
 }
 
 async function flushPendingMessages() {
     if (pendingMessages.length === 0) return;
+    const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
+    if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) return;
     const batch = pendingMessages.splice(0);
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
@@ -113,15 +112,14 @@ export async function onBeforeGenerate() {
         var formatted;
         if (isRetrievalEnabled()) {
             try {
-                const { formatSmartContext } = await import('./ui/vault-panel.js');
-                var budget = 800;
-                try {
-                    var raw = localStorage.getItem('ne_settings');
-                    if (raw) {
-                        var s = JSON.parse(raw);
-                        budget = Number(s.memoryBudget) || 800;
-                    }
-                } catch (e) {}
+                const { formatSmartContext, estimateComplexityBudget } = await import('./ui/vault-panel.js');
+                var raw = localStorage.getItem('ne_settings');
+                var userBudget = 800;
+                if (raw) {
+                    var s = JSON.parse(raw);
+                    userBudget = Number(s.memoryBudget) || 800;
+                }
+                var budget = estimateComplexityBudget(chatMessages, userBudget);
                 formatted = formatSmartContext(vault, chatMessages, budget);
             } catch (e) {
                 console.warn('[NE] Smart Push failed, falling back to full injection:', e);

@@ -535,17 +535,6 @@ async function updateVaultViewerPopout(getChatId) {
             }
         }
 
-        // Opening 区块
-        if (c.opening_summary && c.opening_summary.text) {
-            var stmView2 = byId('narrative_vault_panel_stm_view');
-            if (stmView2) {
-                stmView2.insertAdjacentHTML('beforebegin',
-                    '<div class="narrative_opening_block" style="margin-bottom:14px;"><div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
-                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;white-space:pre-wrap;font-size:0.9em;">' + escapeHtml(c.opening_summary.text) + '</div></div>'
-                );
-            }
-        }
-
         var stmIndexMap = {};
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
@@ -658,17 +647,6 @@ function buildEditForms(vault, getChatId) {
     stmEdit.style.display = '';
     stmEdit.innerHTML = '';
 
-    // Opening summary edit
-    var openingText = c.opening_summary && c.opening_summary.text ? c.opening_summary.text : '';
-    if (openingText || true) {
-        var oe = PD.createElement('div');
-        oe.id = 'narrative_vault_panel_opening_edit';
-        oe.style.marginBottom = '10px';
-        oe.innerHTML = '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Opening Scene') + '</div>' +
-            '<textarea id="narrative_vault_opening_textarea" style="width:100%;box-sizing:border-box;font-size:0.9em;resize:vertical;min-height:80px;" placeholder="Opening scene summary...">' + escapeHtml(openingText) + '</textarea>';
-        byId('narrative_vault_panel_ltm_view').parentNode.insertBefore(oe, byId('narrative_vault_panel_ltm_view'));
-    }
-
     // State edit
     if (lastVaultStateJson) {
         var se = PD.createElement('div');
@@ -723,14 +701,6 @@ async function saveVaultEdits(getChatId) {
     try {
         var vault = await read(getChatId());
         var c = vault.content || {};
-
-        var openingTextarea = byId('narrative_vault_opening_textarea');
-        if (openingTextarea) {
-            var text = String(openingTextarea.value || '').trim();
-            c.opening_summary = c.opening_summary || {};
-            c.opening_summary.text = text;
-            c.opening_summary.updated_at = new Date().toISOString();
-        }
 
         var stateTextarea = byId('narrative_vault_state_textarea');
         if (stateTextarea) {
@@ -805,7 +775,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
         var refs = type === 'ltm'
             ? (entry.stm_refs || []).map(function (r) { return '<span class="narrative_link stm-link" data-stm-id="' + r + '">[\u2192' + r + ']</span>'; }).join(' ')
-            : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192msg#' + mid + ']</span>'; }).join(' ');
+            : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
         tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td></tr>';
@@ -815,7 +785,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             stmRefs.forEach(function (stmId) {
                 var stm = stmIndexMap && stmIndexMap[stmId];
                 if (stm) {
-                    detailRows += '<div class="narrative_ltm_stm_entry"><span class="narrative_ltm_stm_label">' + (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '') + '</span><span class="narrative_ltm_stm_scene">' + (stm.scene || '') + '</span><span class="narrative_ltm_stm_event">' + (stm.event || stm.summary || '') + '</span>' + (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192msg#' + mid + ']</span>'; }).join(' ') + '</div>';
+                    detailRows += '<div class="narrative_ltm_stm_entry"><span class="narrative_ltm_stm_label">' + (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '') + '</span><span class="narrative_ltm_stm_scene">' + (stm.scene || '') + '</span><span class="narrative_ltm_stm_event">' + (stm.event || stm.summary || '') + '</span>' + (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ') + '</div>';
                 }
             });
             if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="4"><div class="narrative_ltm_detail_container">' + detailRows + '</div></td></tr>'; }
@@ -838,10 +808,6 @@ export function formatVaultForPrompt(vault, chatMessages) {
     var content = vault.content || {};
     var parts = [];
     if (vault.memory_system_prompt) { parts.push(vault.memory_system_prompt); parts.push('---'); }
-    if (content.opening_summary && content.opening_summary.text) {
-        parts.push('## ' + t('Opening Summary (always visible)') + '\n' + content.opening_summary.text);
-        parts.push('---');
-    }
     if (content.current_scene) { parts.push('## ' + t('Current Scene') + '\n' + content.current_scene); }
     if (content.state && Object.keys(content.state).length > 0) {
         if (isStateSchemaEnabled()) {
@@ -915,7 +881,7 @@ export function formatVaultForPrompt(vault, chatMessages) {
     if (showStm.length > 0) {
         var stmLines = showStm.map(function (e, i) {
             var label = e.period ? e.period + (e.time_label ? '\u00b7' + e.time_label : '') : '';
-            return '| ' + (i + 1) + ' | ' + label + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192msg#' + (e.msg_ids || []).join(',msg#') + '] |';
+            return '| ' + (i + 1) + ' | ' + label + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.msg_ids || []).join(',') + '] |';
         });
         parts.push('## ' + t('Short-term Memory (Unconsolidated) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event') + ' |\n|' + '---|'.repeat(4) + '\n' + stmLines.join('\n'));
     }
@@ -923,8 +889,43 @@ export function formatVaultForPrompt(vault, chatMessages) {
     return parts.join('\n\n');
 }
 
+export function estimateComplexityBudget(chatMessages, defaultBudget) {
+    defaultBudget = defaultBudget || 800;
+    if (!chatMessages || chatMessages.length === 0) return defaultBudget;
+
+    var lastMsg = chatMessages[chatMessages.length - 1];
+    var text = (typeof lastMsg.mes === 'string' ? lastMsg.mes : '') || '';
+
+    var len = text.length;
+    var questionCount = (text.match(/[？?！!]/g) || []).length;
+    var entityCount = (text.match(/(?:Dragonfang|Frost|爱丽丝|Ember|Elder Thorn|[A-Z][a-z]+)/g) || []).length;
+    var narrativeKeywords = (text.match(/(?:为什么|什么时候|怎么|之前|后来|原因|动机)/g) || []).length;
+
+    var score = 0;
+    if (len < 100) score += 0;
+    else if (len < 500) score += 1;
+    else score += 2;
+
+    if (questionCount <= 1) score += 0;
+    else if (questionCount <= 3) score += 1;
+    else score += 2;
+
+    if (entityCount <= 1) score += 0;
+    else if (entityCount <= 3) score += 1;
+    else score += 2;
+
+    if (narrativeKeywords <= 1) score += 0;
+    else score += 1;
+
+    if (score <= 1) return 500;
+    if (score <= 4) return 800;
+    return 1200;
+}
+
 export function formatSmartContext(vault, chatMessages, budget) {
-    budget = budget || 800;
+    if (!budget) {
+        budget = estimateComplexityBudget(chatMessages);
+    }
     var content = vault.content || {};
     var state = content.state || {};
 
@@ -1055,7 +1056,7 @@ function formatBM25Results(query, candidates) {
         if (c.time_label) timePart = timePart + '·' + c.time_label;
         var refs = '';
         if (c.msg_ids && c.msg_ids.length > 0) {
-            refs = ' [→msg#' + c.msg_ids.join(',msg#') + ']';
+            refs = ' [→' + c.msg_ids.join(',') + ']';
         } else if (c.stm_refs && c.stm_refs.length > 0) {
             refs = ' [→' + c.stm_refs.join(',') + ']';
         }

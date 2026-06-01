@@ -11,12 +11,9 @@ import { callMemoryRetrieval, recordTelemetry } from './api/llm.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
-    registerLookupMemorySource(getChatId, getChatMessages);
-    registerLookupSTM(getChatId);
-    registerUpdateOpeningSummary(getChatId);
+    registerAccess(getChatId, getChatMessages);
     registerRollbackMemory(getChatId);
     if (isStateSchemaEnabled()) {
-        registerVaultLookup(getChatId);
         registerUpdateState(getChatId);
     }
     if (isRetrievalEnabled()) {
@@ -24,33 +21,103 @@ export function registerAllTools(getChatId, getChatMessages) {
     }
 }
 
-function registerLookupMemorySource(getChatId, getChatMessages) {
+function registerAccess(getChatId, getChatMessages) {
     ToolManager.registerFunctionTool({
-        name: 'lookup_memory_source',
-        displayName: 'Lookup Memory Source',
-        description: 'Look up original conversation messages by their message IDs.',
+        name: 'access',
+        displayName: 'Access Memory & State',
+        description: 'A unified tool to read any memory or state data by reference. Use when you know exactly what to look up.\n\nSupported ref formats:\n  Memory: "stm_12" or "ltm_3" — returns full entry text + children for further drill-down.\n  Message: "95" or "msg#95" — returns original message text. Optionally filter to passages mentioning specific entities: access("95", ["Frost"]).\n  State: "characters.爱丽丝", "factions.House Frost", "quests.Main" — returns full entity detail.\n\nPrefer recall() when you need to discover which entries are relevant to a topic.',
         parameters: Object.freeze({
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
             properties: {
-                chat_id: { type: 'string', description: 'Chat session ID.' },
-                msg_ids: { type: 'array', items: { type: 'integer' }, description: 'Message IDs to retrieve (1-5 recommended).' }
+                ref: { type: 'string', description: 'Reference string: "stm_12", "ltm_3", "95", "characters.爱丽丝", "factions.House Frost", "quests.Main".' },
+                entities: { type: 'array', items: { type: 'string' }, description: 'Optional. When expanding a msg, only return passages mentioning these entity names.' }
             },
-            required: ['chat_id', 'msg_ids']
+            required: ['ref']
         }),
         action: async function (args) {
-            const startTime = Date.now();
             try {
-                if (!args || !args.msg_ids) return 'Error: Missing msg_ids';
-                const chat = getChatMessages();
-                const idSet = new Set(args.msg_ids);
-                const messages = chat.filter(m => idSet.has(m.id || m.mes_id));
-                if (messages.length === 0) return 'No matching messages found.';
-                const result = messages.map(m => {
-                    const name = m.name || '';
-                    return `[#${m.id || m.mes_id}] ${name ? name + ': ' : ''}${m.mes || ''}`;
-                }).join('\n');
-                return result;
+                var ref = args.ref || '';
+                var chatId = getChatId ? getChatId() : 'default';
+                var vault = await read(chatId);
+                var content = vault.content || {};
+                var state = content.state || {};
+
+                // msg#95 or bare digit 95 → original message
+                if (ref.indexOf('msg#') === 0 || /^\d+$/.test(ref)) {
+                    var msgId = parseInt(ref.replace('msg#', ''));
+                    var chat = getChatMessages();
+                    var msg = chat.find(function(m) { return (m.id || m.mes_id) === msgId; });
+                    if (!msg) return 'Message #' + msgId + ' not found.';
+                    var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
+                    if (args.entities && args.entities.length > 0) {
+                        var entitySet = {};
+                        args.entities.forEach(function(e) { entitySet[e.toLowerCase()] = true; });
+                        var sentences = text.split(/(?<=[。！？.!?\n])/);
+                        text = sentences.filter(function(s) {
+                            return args.entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
+                        }).join('').trim() || text.substring(0, 300) + '... [filtered]';
+                    }
+                    return '[→' + msgId + ']\n' + text;
+                }
+
+                // stm_12 or ltm_3 → memory entry
+                if (ref.indexOf('stm_') === 0 || ref.indexOf('ltm_') === 0) {
+                    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+                    var allLTM = content.ltm_entries || [];
+                    var allEntries = (ref.indexOf('ltm_') === 0 ? allLTM : allSTM);
+                    var entry = allEntries.find(function(e) { return e.id === ref; });
+                    if (!entry) return 'Entry ' + ref + ' not found.';
+
+                    var lines = [];
+                    lines.push('=== ' + ref + ' ===');
+                    if (entry.time_range || entry.period) lines.push('Period: ' + (entry.time_range || entry.period));
+                    if (entry.scene) lines.push('Scene: ' + entry.scene);
+                    if (entry.event) lines.push('Event: ' + entry.event);
+                    if (entry.entities && entry.entities.length > 0) {
+                        var prefixMap = {character:'@', item:'$', faction:'&', concept:'#', location:'~', event:'!'};
+                        lines.push('Entities: ' + entry.entities.map(function(e) { return (prefixMap[e.type] || '?') + e.name; }).join(', '));
+                    }
+
+                    if (ref.indexOf('ltm_') === 0 && entry.stm_refs && entry.stm_refs.length > 0) {
+                        lines.push('Children: ' + entry.stm_refs.map(function(id) { return '→stm_' + id; }).join(', '));
+                    }
+                    if (entry.msg_ids && entry.msg_ids.length > 0) {
+                        lines.push('Children: ' + entry.msg_ids.map(function(id) { return '→' + id; }).join(', '));
+                    }
+                    return lines.join('\n');
+                }
+
+                // chain.X → narrative chain (future: query-time entity chain)
+                if (ref.indexOf('chain.') === 0) {
+                    var entityName = ref.replace('chain.', '');
+                    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+                    var chainEntries = allSTM.filter(function(e) {
+                        return e.entities && e.entities.some(function(en) { return en.name === entityName; });
+                    });
+                    if (chainEntries.length === 0) return 'No narrative chain found for: ' + entityName;
+
+                    chainEntries.sort(function(a, b) { return new Date(a.timestamp || 0) - new Date(b.timestamp || 0); });
+                    var chainLines = ['=== Chain: ' + entityName + ' (' + chainEntries.length + ' events) ==='];
+                    chainEntries.forEach(function(e, i) {
+                        var label = (e.period || '') + (e.time_label ? '·' + e.time_label : '');
+                        var refs = (e.msg_ids || []).map(function(id) { return '→' + id; }).join(', ');
+                        chainLines.push((i + 1) + '. ' + (label ? '[' + label + '] ' : '') + (e.event || '') + (refs ? ' [' + refs + ']' : ''));
+                    });
+                    return chainLines.join('\n');
+                }
+
+                // characters.X / factions.X / quests.X → State detail
+                var dotIdx = ref.indexOf('.');
+                if (dotIdx > 0) {
+                    var domain = ref.substring(0, dotIdx);
+                    var name = ref.substring(dotIdx + 1);
+                    if (domain === 'characters') return lookupCharacter(state, name);
+                    if (domain === 'factions') return lookupFaction(state, name);
+                    if (domain === 'quests') return lookupQuest(state, name);
+                }
+
+                return 'Unknown ref format: ' + ref + '. Use stm_XX, ltm_XX, XX, characters.Name, factions.Name, quests.Name, or chain.Name.';
             } catch (e) {
                 return 'Error: ' + e.message;
             }
@@ -122,7 +189,7 @@ function registerRecallMemory(getChatId) {
                     var hasDedup = false;
                     topCandidates.forEach(function(c, i) {
                         if (c._already_covered) {
-                            dedupNote += '  Candidate #' + (i+1) + ' uses msg#' + c._already_covered.join(',msg#') + ' (already covered). Only include if the query asks for deeper detail.\n';
+                            dedupNote += '  Candidate #' + (i+1) + ' uses →' + c._already_covered.join(',→') + ' (already covered). Only include if the query asks for deeper detail.\n';
                             hasDedup = true;
                         }
                     });
@@ -137,9 +204,9 @@ function registerRecallMemory(getChatId) {
                 var answer = result || 'No answer synthesized.';
 
                 // Cache msg_ids from answer for next dedup
-                var msgIdMatch = answer.match(/→msg#(\d+)/g);
+                var msgIdMatch = answer.match(/→(\d+)/g);
                 if (msgIdMatch) {
-                    lastRecallMsgIds = msgIdMatch.map(function(m) { return m.replace('→msg#', ''); });
+                    lastRecallMsgIds = msgIdMatch.map(function(m) { return m.replace('→', ''); });
                 }
                 // Cache section headers for fallback dedup
                 var headerMatch = answer.match(/##\s+(.+?)(?:\n|$)/g);
@@ -160,77 +227,6 @@ function registerRecallMemory(getChatId) {
                     recall_result_length: 0,
                     recall_method: 'error'
                 });
-                return 'Error: ' + e.message;
-            }
-        }
-    });
-}
-
-function registerLookupSTM(getChatId) {
-    ToolManager.registerFunctionTool({
-        name: 'lookup_stm',
-        displayName: 'Lookup STM Details',
-        description: 'Look up detailed short-term memory entries by their IDs.',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: {
-                stm_ids: { type: 'array', items: { type: 'string' }, description: 'STM entry IDs (1-5 recommended).' }
-            },
-            required: ['stm_ids']
-        }),
-        action: async function (args) {
-            try {
-                const chatId = getChatId ? getChatId() : 'default';
-                const vault = await read(chatId);
-                const content = vault.content || {};
-                const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-                const idSet = new Set(args.stm_ids);
-                const found = allSTM.filter(e => idSet.has(e.id));
-                if (found.length === 0) return 'No STM entries found.';
-                return found.map(e => {
-                    const periodLabel = e.period ? `[${e.period}] ` : '';
-                    const timeLabel = e.time_label ? `${e.time_label}·` : '';
-                    const refs = (e.msg_ids || []).map(mid => `msg#${mid}`).join(', ');
-                    return `${periodLabel}${timeLabel}${e.scene || ''}: ${e.event || ''}${refs ? ' [→' + refs + ']' : ''}`;
-                }).join('\n');
-            } catch (e) {
-                return 'Error: ' + e.message;
-            }
-        }
-    });
-}
-
-function registerVaultLookup(getChatId) {
-    ToolManager.registerFunctionTool({
-        name: 'vault_lookup',
-        displayName: 'Vault Lookup',
-        description: 'Look up any tracked entity from the narrative vault. Type "character" for full character detail cards (personality, appearance, inner thoughts, affection, relationship, inventory, injuries, etc.). Type "faction" for faction details (leader, attitude, relations, notes). Type "quest" for tasks, goals, or world events (all fields including progress, reward, penalty).',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: {
-                type: { type: 'string', enum: ['character', 'faction', 'quest'], description: 'Entity type to look up.' },
-                name: { type: 'string', description: 'Exact name of the entity to look up.' }
-            },
-            required: ['type', 'name']
-        }),
-        action: async function (args) {
-            try {
-                const chatId = getChatId ? getChatId() : 'default';
-                const vault = await read(chatId);
-                const content = vault.content || {};
-                const state = content.state || {};
-
-                if (args.type === 'character') {
-                    return lookupCharacter(state, args.name);
-                } else if (args.type === 'faction') {
-                    return lookupFaction(state, args.name);
-                } else if (args.type === 'quest') {
-                    return lookupQuest(state, args.name);
-                }
-                return 'Unknown entity type: ' + args.type;
-            } catch (e) {
                 return 'Error: ' + e.message;
             }
         }
@@ -399,30 +395,6 @@ function lookupQuest(state, name) {
     }
 
     return lines.join('\n');
-}
-
-function registerUpdateOpeningSummary(getChatId) {
-    ToolManager.registerFunctionTool({
-        name: 'update_opening_summary',
-        displayName: 'Update Opening Summary',
-        description: 'Provide an updated summary of the story opening.',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: { text: { type: 'string', description: 'Updated opening summary text.' } },
-            required: ['text']
-        }),
-        action: async function (args) {
-            const chatId = getChatId ? getChatId() : 'default';
-            const vault = await read(chatId);
-            vault.content = vault.content || {};
-            vault.content.opening_summary = vault.content.opening_summary || {};
-            vault.content.opening_summary.text = args.text;
-            vault.content.opening_summary.updated_at = new Date().toISOString();
-            await saveVaultWithSnapshot(chatId, vault);
-            return 'Opening summary updated successfully';
-        }
-    });
 }
 
 function registerUpdateState(getChatId) {

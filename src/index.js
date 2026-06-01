@@ -71,7 +71,7 @@ async function init() {
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
     const chatId = getChatId();
     const vault = await read(chatId);
-    if (vault.version === 0 && !vault.content.opening_summary.text) {
+    if (vault.version === 0 && !vault.content.language) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
         vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
         vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;

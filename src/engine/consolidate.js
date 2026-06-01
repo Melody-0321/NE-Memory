@@ -49,7 +49,7 @@ export function buildConsolidatePrompt(vault) {
     }).join('\n');
     const stmText = unconsolidated.map((e, i) => {
         const refs = (e.msg_ids || []).join(', ');
-        return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} [→msg#${refs}]`;
+        return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} [→${refs}]`;
     }).join('\n');
 
     if (lang === 'en') {

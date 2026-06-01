@@ -7,15 +7,13 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
     var currentTime = state.time || '';
-    var openingSummary = content.opening_summary || {};
-    var openingText = openingSummary.text ? openingSummary.text.substring(0, 100) : '';
 
     var candidatesText = candidates.map(function(e, i) {
         var timePart = (e.time_range || e.period || '');
         if (e.time_label) timePart = timePart + '·' + e.time_label;
         var refs;
         if (e.msg_ids && e.msg_ids.length > 0) {
-            refs = ' [→msg#' + e.msg_ids.join(',msg#') + ']';
+            refs = ' [→' + e.msg_ids.join(',') + ']';
         } else if (e.stm_refs && e.stm_refs.length > 0) {
             refs = ' [→' + e.stm_refs.join(',') + ']';
         } else {
@@ -28,14 +26,14 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
     if (lang === 'en') {
-        var system = 'You are the Memory Vault for an ongoing roleplay. The story began with: "' + openingText + '". Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
+        var system = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
             'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a concise synthesized answer.\n\n' +
             'Rules:\n' +
             '1. RELEVANCE: remove entries unrelated to the query. If relevance is uncertain, keep.\n' +
             '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
             '3. SYNTHESIS: write each thread as a single coherent paragraph, using narrative prose (not bullet points). Include key details from entries.\n' +
             '4. TIME FORMAT: prefix each reference with its time coordinate. Use the format "{period}·{time_label}·{scene}". The period comes from state.time format — do NOT invent your own time labels or "X rounds ago".\n' +
-            '5. SOURCE MARKERS: end each factual claim with [→msg#X] or [→stm:id] or [→state:path]. If multiple entries support the same claim, list all.\n' +
+            '5. SOURCE MARKERS: end each factual claim with [→X] or [→stm:id] or [→state:path]. If multiple entries support the same claim, list all.\n' +
             '6. CURRENT TIME ANCHOR: after each narrative thread, add a line:\n' +
             '   → Current time: ' + currentTime + ' [→state:time]\n\n' +
             'Output format:\n' +
@@ -53,14 +51,14 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
         };
     }
 
-    var systemZh = '你是这个角色扮演的记忆中枢。故事开始于："' + openingText + '"。当前故事时间：' + currentTime + '。你已追踪 ' + stmCount + ' 条 STM 条目和 ' + ltmCount + ' 条 LTM 条目。\n\n' +
+    var systemZh = '你是这个角色扮演的记忆中枢。当前故事时间：' + currentTime + '。你已追踪 ' + stmCount + ' 条 STM 条目和 ' + ltmCount + ' 条 LTM 条目。\n\n' +
         '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回简洁的叙事合成答案。\n\n' +
         '规则：\n' +
         '1. 相关性：剔除与查询无关的条目。不确定时保留。\n' +
         '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
         '3. 合成：每条叙事线写成一个连贯段落，使用叙事性语言（非列表格式）。包含条目的关键细节。\n' +
         '4. 时间格式：每个引用前标注时间坐标，格式为"{period}·{time_label}·{scene}"。禁止编造 "Chapter X" 或 "X轮前" 等标签。\n' +
-        '5. 来源标记：每个事实性陈述后标注 [→msg#X] 或 [→stm:id] 或 [→state:path]。\n' +
+        '5. 来源标记：每个事实性陈述后标注 [→X] 或 [→stm:id] 或 [→state:path]。\n' +
         '6. 当前时间锚点：每个叙事段末尾追加：\n' +
         '   → 当前时间: ' + currentTime + ' [→state:time]\n\n' +
         '输出格式：\n' +

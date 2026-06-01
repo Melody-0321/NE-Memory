@@ -123,7 +123,6 @@ export function emptyVault(chatId) {
         },
         content: {
             summary: '',
-            opening_summary: { text: '', source_msg_ids: [] },
             state: {},
             state_template: 'auto',
             state_css: '',
@@ -166,9 +165,6 @@ function collectAllMsgIds(vault) {
     allSTM.forEach(stm => {
         (stm.msg_ids || []).forEach(id => ids.add(id));
     });
-    if (content.opening_summary && content.opening_summary.source_msg_ids) {
-        content.opening_summary.source_msg_ids.forEach(id => ids.add(id));
-    }
     return ids;
 }
 
