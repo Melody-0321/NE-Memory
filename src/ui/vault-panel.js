@@ -7,6 +7,7 @@
 import { read, write, rollbackByMsgIds, isStorageBlocked } from '../vault/store.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeConsolidation } from '../engine/consolidate.js';
+import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { renderStateWithTemplate, STATE_TEMPLATES } from './state-templates.js';
@@ -1113,6 +1114,7 @@ export async function renderVaultPanel(getChatId) {
             '<button id="narrative_vault_panel_edit_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Edit') + '</button>' +
             '<button id="narrative_vault_panel_save_btn" class="menu_button" style="display:none;font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Save') + '</button>' +
             '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
+            '<button id="narrative_vault_process_history" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;margin-left:4px;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
             '</div>' +
             '<div id="narrative_vault_llm_log" style="margin-top:10px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
@@ -1149,6 +1151,65 @@ export async function renderVaultPanel(getChatId) {
             consolidateBtn.onclick = async function () {
                 await executeConsolidation(getChatId());
                 updateVaultViewerPopout(getChatId());
+            };
+        }
+
+        var processHistoryBtn = byId('narrative_vault_process_history');
+        if (processHistoryBtn) {
+            processHistoryBtn.onclick = async function () {
+                var chatMessages = [];
+                try {
+                    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                        chatMessages = SillyTavern.getContext().chat || [];
+                    }
+                } catch (e) {}
+
+                if (chatMessages.length === 0) {
+                    alert(t('No messages found in chat.'));
+                    return;
+                }
+
+                // Filter to messages with actual content
+                var toProcess = [];
+                chatMessages.forEach(function (msg) {
+                    var content = msg.mes || '';
+                    if (content.trim().length > 0) {
+                        toProcess.push({
+                            id: msg.id || msg.mes_id,
+                            is_user: !!msg.is_user,
+                            mes: content,
+                            name: msg.name || ''
+                        });
+                    }
+                });
+
+                if (toProcess.length === 0) {
+                    alert(t('No messages with content to process.'));
+                    return;
+                }
+
+                var prevText = processHistoryBtn.textContent;
+                processHistoryBtn.textContent = t('Processing...');
+                processHistoryBtn.disabled = true;
+                var BATCH = 10;
+                var totalBatches = Math.ceil(toProcess.length / BATCH);
+
+                try {
+                    for (var i = 0; i < toProcess.length; i += BATCH) {
+                        var batch = toProcess.slice(i, i + BATCH);
+                        var batchNum = Math.floor(i / BATCH) + 1;
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
+                        await executeIncrementalUpdate(getChatId(), batch, true);
+                    }
+                    await executeConsolidation(getChatId());
+                } catch (e) {
+                    console.error('[NE] Process history failed:', e);
+                    alert(t('Process History') + ' failed: ' + e.message);
+                } finally {
+                    processHistoryBtn.textContent = prevText;
+                    processHistoryBtn.disabled = false;
+                    updateVaultViewerPopout(getChatId());
+                }
             };
         }
 

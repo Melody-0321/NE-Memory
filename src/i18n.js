@@ -8,7 +8,7 @@
 export const NARRATIVE_I18N = {
     'en': {
         'Memory Vault': 'Memory Vault', 'Refresh': 'Refresh', 'Edit': 'Edit', 'Save': 'Save',
-        'Cancel': 'Cancel', 'History': 'History', 'Extract State': 'Extract State', 'Consolidate': 'Consolidate',
+        'Cancel': 'Cancel', 'History': 'History', 'Extract State': 'Extract State', 'Consolidate': 'Consolidate', 'Process History': 'Process History', 'Processing...': 'Processing...', 'Process all past messages into memories': 'Process all past messages into memories', 'No messages found in chat.': 'No messages found in chat.', 'No messages with content to process.': 'No messages with content to process.',
         'Clear': 'Clear', 'Version:': 'Version:', 'Long-term Memory (LTM)': 'Long-term Memory (LTM)',
         'Short-term Memory (STM)': 'Short-term Memory (STM)', 'LLM Operation Log': 'LLM Operation Log',
         'Opening Scene': 'Opening Scene', 'Current State': 'Current State', 'Current State (JSON)': 'Current State (JSON)',
@@ -36,7 +36,7 @@ export const NARRATIVE_I18N = {
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
-        'History': '历史', 'Extract State': '提取状态', 'Consolidate': '整合', 'Clear': '清除',
+        'History': '历史', 'Extract State': '提取状态', 'Consolidate': '整合', 'Process History': '处理历史', 'Processing...': '处理中...', 'Process all past messages into memories': '将全部历史消息处理为记忆', 'No messages found in chat.': '未在聊天记录中找到消息。', 'No messages with content to process.': '没有可处理的有效消息。', 'Clear': '清除',
         'Version:': '版本：', 'Long-term Memory (LTM)': '长期记忆 (LTM)', 'Short-term Memory (STM)': '短期记忆 (未整合 STM)',
         'LLM Operation Log': 'LLM 操作日志', 'Opening Scene': '开场设定', 'Current State': '当前状态',
         'Current State (JSON)': '当前状态 (JSON)', 'No operations logged': '暂无操作记录',
@@ -62,7 +62,7 @@ export const NARRATIVE_I18N = {
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
-        'History': '歷史', 'Extract State': '提取狀態', 'Consolidate': '整合', 'Clear': '清除',
+        'History': '歷史', 'Extract State': '提取狀態', 'Consolidate': '整合', 'Process History': '處理歷史', 'Processing...': '處理中...', 'Process all past messages into memories': '將全部歷史訊息處理為記憶', 'No messages found in chat.': '未在聊天記錄中找到訊息。', 'No messages with content to process.': '沒有可處理的有效訊息。', 'Clear': '清除',
         'Version:': '版本：', 'Long-term Memory (LTM)': '長期記憶 (LTM)', 'Short-term Memory (STM)': '短期記憶 (未整合 STM)',
         'LLM Operation Log': 'LLM 操作日誌', 'Opening Scene': '開場設定', 'Current State': '當前狀態',
         'Current State (JSON)': '當前狀態 (JSON)', 'No operations logged': '暫無操作記錄',

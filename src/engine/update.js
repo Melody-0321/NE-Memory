@@ -256,10 +256,13 @@ export function handleQuestCompletion(state, validatedChanges) {
     });
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages) {
-    var vault = await read(chatId);
-    var processedIds = collectProcessedMsgIds(vault);
-    var filteredMessages = filterNewMessages(newMessages, processedIds);
+export async function executeIncrementalUpdate(chatId, newMessages, force) {
+    const vault = await read(chatId);
+    var processedIds = new Set();
+    if (!force) {
+        processedIds = collectProcessedMsgIds(vault);
+    }
+    var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
     if (filteredMessages.length === 0) return { vault: vault, added: 0 };
 
     var prompt = buildSTMUpdatePrompt(filteredMessages, vault);
