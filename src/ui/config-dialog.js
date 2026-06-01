@@ -41,6 +41,12 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
+        '<div style="margin:6px 0 2px;"><span>' + t_config('STM Extraction Batch') + ': <span id="ne_stm_batch_val">10</span></span>' +
+        '<input type="range" id="ne_stm_batch" min="1" max="30" step="1" value="10" style="width:100%;margin-top:2px;"></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
+        '<div style="margin:6px 0 2px;"><span>' + t_config('LTM Consolidation Threshold') + ': <span id="ne_ltm_consolidate_val">5</span></span>' +
+        '<input type="range" id="ne_ltm_consolidate" min="3" max="50" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Merge STM into LTM when this many unconsolidated entries accumulate. Lower = more frequent consolidation.') + '</div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
@@ -109,6 +115,12 @@ function bindConfigEvents(getChatId) {
     });
     $pd('#ne_memory_budget').on('input', function () {
         $pd('#ne_memory_budget_val').text($pd('#ne_memory_budget').val());
+    });
+    $pd('#ne_stm_batch').on('input', function () {
+        $pd('#ne_stm_batch_val').text($pd('#ne_stm_batch').val());
+    });
+    $pd('#ne_ltm_consolidate').on('input', function () {
+        $pd('#ne_ltm_consolidate_val').text($pd('#ne_ltm_consolidate').val());
     });
     $pd('#ne_enable_engine').on('change', function () {
         var on = $pd('#ne_enable_engine').prop('checked');
@@ -291,6 +303,10 @@ function loadConfigUI() {
         setRetrievalEnabled(retrievalEnabled);
         $pd('#ne_memory_budget').val(s.memoryBudget || 800);
         $pd('#ne_memory_budget_val').text(s.memoryBudget || 800);
+        $pd('#ne_stm_batch').val(s.stmBatch || 10);
+        $pd('#ne_stm_batch_val').text(s.stmBatch || 10);
+        $pd('#ne_ltm_consolidate').val(s.ltmConsolidate || 5);
+        $pd('#ne_ltm_consolidate_val').text(s.ltmConsolidate || 5);
         var mc = s.memoryConfig || defaultMemoryConfig;
         $pd('#ne_memory_temperature').val(mc.temperature || defaultMemoryConfig.temperature);
         $pd('#ne_memory_temperature_val').text(Number(mc.temperature || defaultMemoryConfig.temperature).toFixed(1));
@@ -338,6 +354,8 @@ function saveConfigUI() {
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
         retrievalEnabled: $pd('#ne_enable_retrieval').prop('checked'),
         memoryBudget: Number($pd('#ne_memory_budget').val()),
+        stmBatch: Number($pd('#ne_stm_batch').val()),
+        ltmConsolidate: Number($pd('#ne_ltm_consolidate').val()),
         memoryConfig: {
             temperature: Number($pd('#ne_memory_temperature').val()),
             stm_max_tokens: Number($pd('#ne_stm_max_tokens').val()),

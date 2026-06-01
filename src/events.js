@@ -12,9 +12,29 @@ let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
 let chatReady = true;
 let pendingMessages = [];
-const MEMORY_BATCH_SIZE = 10;
-const MEMORY_FORCE_WORDS = 500;
 var pipelineRunning = false;
+
+function getStmBatchSize() {
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var s = JSON.parse(raw);
+            return Number(s.stmBatch) || 10;
+        }
+    } catch (e) {}
+    return 10;
+}
+
+function getStmWordsThreshold() {
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var s = JSON.parse(raw);
+            return Number(s.stmWordsThreshold) || 500;
+        }
+    } catch (e) {}
+    return 500;
+}
 
 export function setContextFns(getChatId, getChatMessages) {
     getChatIdFn = getChatId;
@@ -50,7 +70,7 @@ export async function onMessageReceived(messageId) {
 async function checkAndFlush() {
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-    const shouldFlush = pendingMessages.length >= MEMORY_BATCH_SIZE || totalWords >= MEMORY_FORCE_WORDS;
+    const shouldFlush = pendingMessages.length >= getStmBatchSize() || totalWords >= getStmWordsThreshold();
     if (shouldFlush) await flushPendingMessages();
 }
 

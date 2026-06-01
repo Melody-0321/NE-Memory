@@ -19,7 +19,14 @@ function findNextId(vault) {
 
 export function checkConsolidateThreshold(vault) {
     const content = vault.content || {};
-    const threshold = content.consolidate_threshold || 5;
+    var threshold = 5;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var s = JSON.parse(raw);
+            threshold = Number(s.ltmConsolidate) || 5;
+        }
+    } catch (e) {}
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     if (unconsolidated.length < threshold) return false;
     var totalText = 0;
