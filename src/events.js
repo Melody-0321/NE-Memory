@@ -81,8 +81,9 @@ export async function onBeforeGenerate() {
     await flushPendingMessages();
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     if (chatId !== lastKnownChatId) {
-        console.warn('[NE] Context changed, skipping injection. chatId=' + chatId + ', lastKnownChatId=' + lastKnownChatId);
-        return;
+        lastKnownChatId = chatId;
+        pendingMessages = [];
+        chatReady = true;
     }
     const vault = await read(chatId);
     if (!vault || !vault.content) return;

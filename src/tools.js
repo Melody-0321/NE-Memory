@@ -58,11 +58,15 @@ function registerLookupMemorySource(getChatId, getChatMessages) {
     });
 }
 
+var lastRecallMsgIds = null;
+var lastRecallHeaders = null;
+var lastRecallChatId = null;
+
 function registerRecallMemory(getChatId) {
     ToolManager.registerFunctionTool({
         name: 'recall_memory',
         displayName: 'Recall Memory',
-        description: 'Search all stored memories (LTM + STM) for information relevant to a query. Returns synthesized narrative answer with source references. For best results, structure your query to include: (1) what specific entity/event/person you want to know about, (2) what aspect — location, history, owner, properties, timeline, (3) any time constraints. Example: "Dragonfang sword: who mentioned it, where and when was it obtained, current location, any special properties or history." instead of "tell me about the sword".',
+        description: 'Search all stored memories (LTM + STM) for information relevant to a query. Returns synthesized narrative answer with source references. For best results, structure your query to include: (1) what specific entity/event/person you want to know about, (2) what aspect — location, history, owner, properties, timeline, (3) any time constraints. You can query multiple independent topics in one call by separating them with ";;". Example: "Dragonfang sword: current location, origin;; House Frost: current attitude toward me;; Ember: last known location and status". Each topic will be answered in a separate section. Use ;; only when asking about genuinely unrelated entities — if questions share the same entity, combine them into one.',
         parameters: Object.freeze({
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
@@ -91,9 +95,57 @@ function registerRecallMemory(getChatId) {
                     return 'No relevant memories found for: ' + args.query;
                 }
 
+                // Clear cache on new chat
+                if (chatId !== lastRecallChatId) {
+                    lastRecallMsgIds = null;
+                    lastRecallHeaders = null;
+                    lastRecallChatId = chatId;
+                }
+
+                // msg_id fingerprint dedup: annotate candidates already covered
+                if (lastRecallMsgIds && lastRecallMsgIds.length > 0) {
+                    var usedSet = {};
+                    lastRecallMsgIds.forEach(function(id) { usedSet[id] = true; });
+                    topCandidates.forEach(function(c) {
+                        var entryMsgIds = c.msg_ids || [];
+                        var alreadyUsed = entryMsgIds.filter(function(id) { return usedSet[id]; });
+                        if (alreadyUsed.length > 0) {
+                            c._already_covered = alreadyUsed;
+                        }
+                    });
+                }
+
                 var messages = buildRetrievalMessages(args.query, topCandidates, vault, 800);
+
+                if (lastRecallMsgIds && lastRecallMsgIds.length > 0) {
+                    var dedupNote = '\n\n[DEDUP: Some candidates draw from source messages already used in a previous recall this turn.]\n';
+                    var hasDedup = false;
+                    topCandidates.forEach(function(c, i) {
+                        if (c._already_covered) {
+                            dedupNote += '  Candidate #' + (i+1) + ' uses msg#' + c._already_covered.join(',msg#') + ' (already covered). Only include if the query asks for deeper detail.\n';
+                            hasDedup = true;
+                        }
+                    });
+                    if (!hasDedup && lastRecallHeaders && lastRecallHeaders.length > 0) {
+                        // Fallback: header-level dedup
+                        dedupNote += '  (No per-candidate msg_id overlaps detected. However, previous recall covered: ' + lastRecallHeaders.join(', ') + '. Do not repeat these topics unless the query explicitly asks for more.)\n';
+                    }
+                    messages[0].content += dedupNote;
+                }
+
                 var result = await callMemoryRetrieval(messages, { timeout: 3 });
                 var answer = result || 'No answer synthesized.';
+
+                // Cache msg_ids from answer for next dedup
+                var msgIdMatch = answer.match(/→msg#(\d+)/g);
+                if (msgIdMatch) {
+                    lastRecallMsgIds = msgIdMatch.map(function(m) { return m.replace('→msg#', ''); });
+                }
+                // Cache section headers for fallback dedup
+                var headerMatch = answer.match(/##\s+(.+?)(?:\n|$)/g);
+                if (headerMatch) {
+                    lastRecallHeaders = headerMatch.map(function(h) { return h.replace(/^##\s+/, '').trim(); });
+                }
 
                 recordTelemetry({
                     recall_query: args.query,

@@ -32,7 +32,9 @@ export async function callMemoryLLM(messages, options = {}) {
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
             console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
-            response = await callCustomAPI(secondaryConfig, messages, options);
+            var customResult = await callCustomAPI(secondaryConfig, messages, options);
+            response = customResult.content;
+            usage = customResult.usage;
             apiSource = 'secondary';
         } catch (e) {
             console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
@@ -57,7 +59,9 @@ export async function callMemoryLLM(messages, options = {}) {
             api_source: apiSource,
             duration_ms: durationMs,
             response_length: response ? response.length : 0,
-            tokens: usage ? usage.total_tokens : undefined
+            prompt_tokens: usage ? usage.prompt_tokens : undefined,
+            completion_tokens: usage ? usage.completion_tokens : undefined,
+            total_tokens: usage ? usage.total_tokens : undefined
         });
     }
     return response;
@@ -108,7 +112,9 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        return data.choices?.[0]?.message?.content || '';
+        var content = data.choices?.[0]?.message?.content || '';
+        var usage = data.usage || null;
+        return { content: content, usage: usage };
     } finally {
         clearTimeout(timeout);
     }

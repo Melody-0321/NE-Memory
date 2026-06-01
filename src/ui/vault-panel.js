@@ -954,6 +954,9 @@ export function formatSmartContext(vault, chatMessages, budget) {
         query = queryParts.length > 0 ? queryParts.join(' · ') : 'recent events';
     }
 
+    var smartPushStart = Date.now();
+    var bm25Start = Date.now();
+
     var topCandidates;
     try {
         topCandidates = filterCandidates(query, allSTM, allLTM, 40);
@@ -961,11 +964,13 @@ export function formatSmartContext(vault, chatMessages, budget) {
         console.warn('[NE] BM25 filter failed, falling back to full injection:', e);
         return formatVaultForPrompt(vault);
     }
+    var bm25Ms = Date.now() - bm25Start;
 
     if (!topCandidates || topCandidates.length === 0) {
         return formatMinimalState(vault);
     }
 
+    var retrievalApiStart = Date.now();
     var synthesized;
     var smPushMethod;
     try {
@@ -985,10 +990,15 @@ export function formatSmartContext(vault, chatMessages, budget) {
         synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
         smPushMethod = 'bm25_fallback';
     }
+    var retrievalApiMs = Date.now() - retrievalApiStart;
+    var smartPushTotalMs = Date.now() - smartPushStart;
 
     recordTelemetry({
         sm_push_method: smPushMethod,
         bm25_candidate_count: topCandidates ? topCandidates.length : 0,
+        bm25_ms: bm25Ms,
+        retrieval_api_ms: retrievalApiMs,
+        smart_push_total_ms: smartPushTotalMs,
         injection_token_count: synthesized ? (typeof synthesized === 'string' ? synthesized.length : 0) : 0,
         memory_budget: budget
     });

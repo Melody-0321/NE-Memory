@@ -44,6 +44,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
             '## Other relevant\n<any remaining relevant entries, brief>\n\n' +
             'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
+            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Group by topic segment, NOT by narrative thread. Output one "## <topic>" section per segment. If topics are related to the same entity, combine them.\n\n' +
             'Query: ' + query + '\n\nCandidates:\n' + candidatesText;
 
         return {
@@ -68,6 +69,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
         '## 其他相关\n<剩余相关条目，简要>\n\n' +
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
+        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。按话题分段输出，而非按叙事线。每个片段输出一个 "## <话题>" 节。如果话题涉及同一实体，合并它们。\n\n' +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText;
 
     return {
