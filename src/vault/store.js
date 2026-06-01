@@ -81,8 +81,8 @@ export async function write(chatId, vault) {
         const tx = db.transaction(STORE_NAME, 'readwrite');
         const store = tx.objectStore(STORE_NAME);
         store.put({ chat_id: chatId, vault: vault, updated_at: Date.now() });
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.oncomplete = () => { console.log('[NE] IndexedDB write OK for', chatId); resolve(); };
+        tx.onerror = () => { console.error('[NE] IndexedDB write ERROR:', tx.error); reject(tx.error); };
     });
 }
 
