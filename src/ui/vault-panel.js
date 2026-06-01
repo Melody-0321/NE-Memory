@@ -869,13 +869,13 @@ export function formatVaultForPrompt(vault, chatMessages) {
         }
     }
 
-    // BM25 pre-filter: LTM + unconsolidated STM only (never stm_entries with parent_ltm)
+    // BM25 pre-filter: pass all STM for threshold, filterCandidates handles LTM/STM split
     var ltm = content.ltm_entries || [];
-    var unconsolidated = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     var showLtm = ltm;
-    var showStm = unconsolidated;
+    var showStm = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
 
-    if ((ltm.length > 0 || unconsolidated.length > 0) && typeof filterCandidates === 'function') {
+    if ((ltm.length > 0 || showStm.length > 0) && typeof filterCandidates === 'function') {
         try {
             var query;
             if (chatMessages && chatMessages.length > 0) {
@@ -896,9 +896,9 @@ export function formatVaultForPrompt(vault, chatMessages) {
             }
 
             // Only pass LTM + unconsolidated STM candidates (stm_entries with parent_ltm are hidden)
-            var allCandidates = [].concat(ltm).concat(unconsolidated);
+            var allCandidates = [].concat(ltm).concat(showStm);
             if (allCandidates.length > 25) {
-                var topK = filterCandidates(query, unconsolidated, ltm, 25);
+                var topK = filterCandidates(query, allSTM, ltm, 25);
                 showLtm = topK.filter(function (e) { return e.__type === 'ltm'; });
                 showStm = topK.filter(function (e) { return e.__type === 'stm'; });
             }

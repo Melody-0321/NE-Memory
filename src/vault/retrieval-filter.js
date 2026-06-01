@@ -100,10 +100,14 @@ export function filterCandidates(query, allSTM, allLTM, topK) {
     allSTM = allSTM || [];
     allLTM = allLTM || [];
 
+    var STM_COUNT_FOR_LTM = 500;
+    var useLTM = allSTM.length >= STM_COUNT_FOR_LTM;
+
     var entries = [];
 
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
+        if (useLTM && stm.parent_ltm) continue;
         var text = buildSearchableText(stm);
         entries.push({
             _tokens: tokenize(text),
@@ -113,8 +117,7 @@ export function filterCandidates(query, allSTM, allLTM, topK) {
         });
     }
 
-    var STM_COUNT_FOR_LTM = 500;
-    if (allSTM.length >= STM_COUNT_FOR_LTM) {
+    if (useLTM) {
         for (var i = 0; i < allLTM.length; i++) {
             var ltm = allLTM[i];
             var text = buildSearchableText(ltm);
