@@ -13,6 +13,8 @@ let lastKnownChatId = null;
 let chatReady = true;
 let pendingMessages = [];
 var pipelineRunning = false;
+const MIN_GENERATION_INTERVAL_MS = 3000;
+let lastGenerationTime = 0;
 
 function getStmBatchSize() {
     try {
@@ -94,6 +96,9 @@ async function flushPendingMessages() {
 
 export async function onBeforeGenerate() {
     if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
+    var now = Date.now();
+    if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
+    lastGenerationTime = now;
     chatReady = false;
     await flushPendingMessages();
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
