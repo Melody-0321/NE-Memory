@@ -885,7 +885,8 @@ export function formatVaultForPrompt(vault, chatMessages) {
         });
         parts.push('## ' + t('Short-term Memory (Unconsolidated) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event') + ' |\n|' + '---|'.repeat(4) + '\n' + stmLines.join('\n'));
     }
-    parts.push('---', t('The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.'));
+    parts.push('---', t('The following content is not directly injected. If needed, use access or recall tool.'));
+    parts.push(t('[Tip] The chat history below is for recent context only. For older events, rely on the Memory section above.'));
     return parts.join('\n\n');
 }
 
@@ -1118,6 +1119,10 @@ export async function renderVaultPanel(getChatId) {
             '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
             '<button id="narrative_vault_process_history" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;margin-left:4px;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
             '</div>' +
+            '<div style="margin-top:4px;display:flex;gap:4px;white-space:nowrap;">' +
+            '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export JSON') + '</button>' +
+            '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Import JSON') + '</button>' +
+            '</div>' +
             '<div id="narrative_vault_llm_log" style="margin-top:10px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
             '<div id="narrative_vault_llm_entries" style="display:none;max-height:250px;overflow-y:auto;"></div></div>' +
@@ -1212,6 +1217,55 @@ export async function renderVaultPanel(getChatId) {
                     processHistoryBtn.disabled = false;
                     updateVaultViewerPopout(getChatId());
                 }
+            };
+        }
+
+        var exportBtn = byId('narrative_vault_export_json');
+        if (exportBtn) {
+            exportBtn.onclick = async function () {
+                try {
+                    var vault = await read(getChatId());
+                    var json = JSON.stringify(vault, null, 2);
+                    var blob = new Blob([json], { type: 'application/json' });
+                    var url = URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'ne_vault_' + getChatId() + '.json';
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    URL.revokeObjectURL(url);
+                } catch (e) {
+                    console.error('[NE] Export failed:', e);
+                    alert(t('Export JSON') + ' failed: ' + e.message);
+                }
+            };
+        }
+
+        var importBtn = byId('narrative_vault_import_json');
+        if (importBtn) {
+            importBtn.onclick = function () {
+                var input = document.createElement('input');
+                input.type = 'file';
+                input.accept = '.json';
+                input.onchange = async function () {
+                    var file = input.files[0];
+                    if (!file) return;
+                    try {
+                        var text = await file.text();
+                        var vault = JSON.parse(text);
+                        if (!vault || !vault.content) {
+                            alert(t('Import JSON') + ' failed: invalid vault file');
+                            return;
+                        }
+                        await write(getChatId(), vault);
+                        updateVaultViewerPopout(getChatId());
+                    } catch (e) {
+                        console.error('[NE] Import failed:', e);
+                        alert(t('Import JSON') + ' failed: ' + e.message);
+                    }
+                };
+                input.click();
             };
         }
 
