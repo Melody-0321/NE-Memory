@@ -528,10 +528,15 @@ async function updateVaultViewerPopout(getChatId) {
 
         // Clear state
         qsa('.narrative_clear_state_btn').forEach(function (btn) {
-            btn.onclick = function () {
-                if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
-                    c.state = {};
-                    write(getChatId(), vault).then(function () { updateVaultViewerPopout(getChatId()); });
+            btn.onclick = async function () {
+                try {
+                    if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
+                        c.state = {};
+                        await write(getChatId(), vault);
+                        await updateVaultViewerPopout(getChatId());
+                    }
+                } catch (e) {
+                    console.warn('[NE] Clear state failed:', e);
                 }
             };
         });
