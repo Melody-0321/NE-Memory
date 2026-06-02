@@ -437,7 +437,11 @@ function renderQuestPanelHTML(state) {
 
 /* ──────── 面板内容渲染 ──────── */
 
+var _updatingPopout = false;
+
 async function updateVaultViewerPopout(getChatId) {
+    if (_updatingPopout) return;
+    _updatingPopout = true;
     var loading = byId('narrative_vault_loading');
     var errDiv = byId('narrative_vault_panel_error');
     if (loading) loading.style.display = '';
@@ -561,6 +565,7 @@ async function updateVaultViewerPopout(getChatId) {
         if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
     } finally {
         if (loading) loading.style.display = 'none';
+        _updatingPopout = false;
     }
 }
 
@@ -894,7 +899,7 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
     return 1200;
 }
 
-export function formatSmartContext(vault, chatMessages, budget) {
+export async function formatSmartContext(vault, chatMessages, budget) {
     if (!budget) {
         budget = estimateComplexityBudget(chatMessages);
     }
@@ -953,16 +958,9 @@ export function formatSmartContext(vault, chatMessages, budget) {
     var smPushMethod;
     try {
         var messages = buildRetrievalMessages(query, topCandidates, vault, budget);
-        var result = callMemoryRetrieval(messages, { timeout: 3 });
-
-        if (result && typeof result.then === 'function') {
-            console.warn('[NE] Async retrieval not yet supported, using BM25 top results');
-            synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
-            smPushMethod = 'bm25_fallback';
-        } else {
-            synthesized = result;
-            smPushMethod = 'llm_synthesis';
-        }
+        var result = await callMemoryRetrieval(messages, { timeout: 3 });
+        synthesized = result;
+        smPushMethod = 'llm_synthesis';
     } catch (e) {
         console.warn('[NE] Retrieval LLM failed, using BM25 top results:', e);
         synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
@@ -1130,13 +1128,17 @@ export async function renderVaultPanel(getChatId) {
             return;
         }
 
-        byId('narrative_vault_toggle').onclick = function () { createVaultPopout(getChatId); };
-        byId('narrative_vault_panel_refresh').onclick = function () {
+        var tgl = byId('narrative_vault_toggle');
+        var ref = byId('narrative_vault_panel_refresh');
+        var edt = byId('narrative_vault_panel_edit_btn');
+        var sav = byId('narrative_vault_panel_save_btn');
+        if (tgl) tgl.onclick = function () { createVaultPopout(getChatId); };
+        if (ref) ref.onclick = function () {
             setVaultActivity(true);
             updateVaultViewerPopout(getChatId).finally(function () { setVaultActivity(false); });
         };
-        byId('narrative_vault_panel_edit_btn').onclick = function () { toggleVaultEditMode(getChatId); };
-        byId('narrative_vault_panel_save_btn').onclick = function () { saveVaultEdits(getChatId); };
+        if (edt) edt.onclick = function () { toggleVaultEditMode(getChatId); };
+        if (sav) sav.onclick = function () { saveVaultEdits(getChatId); };
 
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {

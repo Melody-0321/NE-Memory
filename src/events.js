@@ -9,7 +9,6 @@ let getChatIdFn = null;
 let getChatMessagesFn = null;
 let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
-let chatReady = true;
 let pendingMessages = [];
 var pipelineRunning = false;
 const MIN_GENERATION_INTERVAL_MS = 3000;
@@ -110,13 +109,11 @@ export async function onBeforeGenerate() {
     var now = Date.now();
     if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
     lastGenerationTime = now;
-    chatReady = false;
     await flushPendingMessages();
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     if (chatId !== lastKnownChatId) {
         lastKnownChatId = chatId;
         pendingMessages = [];
-        chatReady = true;
     }
     const vault = await read(chatId);
     if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
@@ -138,7 +135,6 @@ export async function onBeforeGenerate() {
     } catch (e) {
         console.warn('[NE] Prompt injection failed:', e);
     }
-    chatReady = true;
 }
 
 export async function onMessageDeleted(messageId) {

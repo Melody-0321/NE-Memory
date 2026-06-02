@@ -11,28 +11,7 @@ import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
-
-var _retrievalEnabled = false;
-
-export function isRetrievalEnabled() {
-    return _retrievalEnabled;
-}
-
-export function setRetrievalEnabled(val) {
-    if (val) {
-        try {
-            var raw = localStorage.getItem('ne_settings');
-            if (raw) {
-                var s = JSON.parse(raw);
-                if (!s.memoryEnabled) {
-                    console.warn('[NE] Cannot enable Smart Retrieval: Memory System is not enabled');
-                    return;
-                }
-            }
-        } catch (e) {}
-    }
-    _retrievalEnabled = !!val;
-}
+import { setRetrievalEnabled } from './settings.js';
 
 function getChatId() {
     try {

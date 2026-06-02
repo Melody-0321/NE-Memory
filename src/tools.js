@@ -4,7 +4,7 @@
 import { read, rollbackByMsgIds } from './vault/store.js';
 import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
 import { saveVaultWithSnapshot } from './engine/update.js';
-import { isRetrievalEnabled } from './index.js';
+import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates } from './vault/retrieval-filter.js';
 import { buildRetrievalMessages } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry } from './api/llm.js';

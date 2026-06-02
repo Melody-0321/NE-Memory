@@ -7,7 +7,7 @@ import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { escapeHtml } from './utils.js';
-import { setRetrievalEnabled } from '../index.js';
+import { setRetrievalEnabled } from '../settings.js';
 
 function $pd(selector) { return $(selector, window.parent.document); }
 var PD = window.parent.document;
@@ -332,7 +332,7 @@ function loadConfigUI() {
             $pd('#ne_character_schema').val(JSON.stringify(DEFAULT_CHARACTER_SCHEMA, null, 2));
         }
         $pd('#ne_enable_quests').prop('checked', s.enableQuests || false);
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] loadConfigUI settings failed:', e); }
     try {
         var raw = localStorage.getItem('ne_secondary_api');
         if (raw) {
@@ -341,7 +341,7 @@ function loadConfigUI() {
             $pd('#ne_secondary_key').val(api.key || '');
             $pd('#ne_secondary_model').val(api.model || '');
         }
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] loadConfigUI secondary API failed:', e); }
 }
 
 function saveConfigUI() {
