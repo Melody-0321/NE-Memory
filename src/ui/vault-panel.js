@@ -808,7 +808,10 @@ export function formatVaultForPrompt(vault, chatMessages) {
     var content = vault.content || {};
     var parts = [];
     if (vault.memory_system_prompt) { parts.push(vault.memory_system_prompt); parts.push('---'); }
-    if (content.current_scene) { parts.push('## ' + t('Current Scene') + '\n' + content.current_scene); }
+    if (content.story_time || content.story_scene) {
+        parts.push('## ' + t('Current Scene') + '\n' + (content.story_time ? content.story_time + ' · ' : '') + (content.story_scene || ''));
+        parts.push('---');
+    }
     if (content.state && Object.keys(content.state).length > 0) {
         if (isStateSchemaEnabled()) {
             var stateSchema = content.state_schema || null;
@@ -952,6 +955,8 @@ export function formatSmartContext(vault, chatMessages, budget) {
     }
     if (!query) {
         var queryParts = [];
+        if (content.story_time) queryParts.push(content.story_time);
+        if (content.story_scene) queryParts.push(content.story_scene);
         if (state.time) queryParts.push(state.time);
         if (state.scene) queryParts.push(state.scene);
         if (state.main_event) queryParts.push(state.main_event);
@@ -1027,8 +1032,8 @@ export function formatSmartContext(vault, chatMessages, budget) {
             stateLines.push('Present: ' + activeChars.join(', '));
         }
     }
-    if (state.scene) stateLines.push('Scene: ' + state.scene);
-    if (state.time) stateLines.push('Time: ' + state.time + ' [→state:time]');
+    if (state.scene || content.story_scene) stateLines.push('Scene: ' + (state.scene || content.story_scene));
+    if (state.time || content.story_time) stateLines.push('Time: ' + (state.time || content.story_time) + ' [→state:time]');
 
     if (stateLines.length > 0) {
         parts.push('---\n' + stateLines.join('\n'));
@@ -1040,10 +1045,13 @@ export function formatSmartContext(vault, chatMessages, budget) {
 }
 
 function formatMinimalState(vault) {
-    var state = (vault.content || {}).state || {};
+    var content = vault.content || {};
+    var state = content.state || {};
     var lines = [];
-    if (state.scene) lines.push('Scene: ' + state.scene);
-    if (state.time) lines.push('Time: ' + state.time);
+    if (content.story_time || state.time || content.story_scene || state.scene) {
+        lines.push('Scene: ' + (state.scene || content.story_scene || ''));
+        if (content.story_time || state.time) lines.push('Time: ' + (state.time || content.story_time));
+    }
     return lines.join('\n') || 'No state information available.';
 }
 

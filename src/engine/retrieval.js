@@ -6,7 +6,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
     var content = vault.content || {};
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
-    var currentTime = state.time || '';
+    var currentTime = state.time || content.story_time || '';
 
     var candidatesText = candidates.map(function(e, i) {
         var timePart = (e.time_range || e.period || '');

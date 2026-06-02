@@ -64,14 +64,17 @@ export function buildSTMUpdatePrompt(newMessages, vault) {
     const schemaEnabled = isStateSchemaEnabled();
 
     var currentStateSnapshot = '';
+    if (content.story_time || content.story_scene) {
+        currentStateSnapshot = 'story_time: ' + (content.story_time || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    }
     if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
         var s = formatStateSummary(content.state, content.state_schema || null);
-        if (s) currentStateSnapshot = 'Current state (for reference — only change what changes):\n' + s + '\n';
+        if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
     }
 
     const stateChangesEn = `
 Optionally, output a <state_changes> block with a JSON object of state field updates (dot-path keys to new values), e.g.:
-<state_changes>{"scene":"Forest","time":"Dusk","tone":"Tense"}</state_changes>
+<state_changes>{"scene":"Forest","time":"Dusk"}</state_changes>
 
 Character cards are stored under state.characters.<name>.*. Each character has fields:
 - name, gender_age, occupation, clothing_build, personality (always)
@@ -126,7 +129,7 @@ Example quest updates:
 
     const stateChangesZh = `
 可选：输出 <state_changes> 块，包含 JSON 格式的状态字段更新（dot-path 键→新值），如：
-<state_changes>{"scene":"森林","time":"黄昏","tone":"紧张"}</state_changes>
+<state_changes>{"scene":"森林","time":"黄昏"}</state_changes>
 
 角色卡存储在 state.characters.<角色名>.* 下。每个角色有以下字段：
 - name, gender_age, occupation, clothing_build, personality（始终存在）
@@ -188,12 +191,12 @@ Example quest updates:
 
 YOUR OUTPUT MUST START with a _checkpoints block:
 {
-  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)", "tone": "current atmosphere/tone" },
+  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)" },
   "stm_entries": [...]
 }
 
 Each stm_entries item must have:
-- "period": copy the current state.time value (max 15 chars). Do NOT invent your own period label.
+- "period": copy the current story_time value (max 15 chars). Do NOT invent your own period label.
 - "scene": location/scene name (max 20 chars)
 - "event": what happened — REQUIRED. Be specific enough a reader understands what occurred (20-80 chars).
 - "time_label": time within the period (max 8 chars). Only set if the event's time differs from the period's implied time. Otherwise leave empty.
@@ -207,12 +210,12 @@ If nothing of narrative significance happened, output {"_checkpoints": {"time": 
 
 输出必须以 _checkpoints 块开头：
 {
-  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）", "tone": "当前氛围" },
+  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）" },
   "stm_entries": [...]
 }
 
 每个 stm_entries 条目包含：
-- "period": 复制当前 state.time 值（最长15字）。禁止自行编造阶段标签。
+- "period": 复制当前 story_time 值（最长15字）。禁止自行编造阶段标签。
 - "scene": 场景名称（最长20字）
 - "event": 事件描述——必填。具体到让读者理解发生了什么（20-80字）。
 - "time_label": 阶段内的时间标签（最长8字）。仅当事件时间与 period 隐含时间不同时才填，否则留空。
@@ -280,7 +283,7 @@ export function parseSTMResponse(llmResponse) {
 
 export function handleQuestCompletion(state, validatedChanges) {
     if (!state || !validatedChanges) return;
-    var currentTime = state.global && state.global.time;
+    var currentTime = (state.global && state.global.time) || state.time || '';
     if (!currentTime) return;
 
     Object.keys(validatedChanges).forEach(function (path) {

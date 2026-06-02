@@ -122,6 +122,8 @@ export function emptyVault(chatId) {
             last_pipeline_time: null
         },
         content: {
+            story_time: '',
+            story_scene: '',
             summary: '',
             state: {},
             state_template: 'auto',

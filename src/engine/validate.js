@@ -30,8 +30,8 @@ export function postFillSTM(parsed, vault) {
     var state = content.state || {};
     var stmEntries = parsed.stmEntries || [];
 
-    var defaultPeriod = checkpoints.time || state.time || '';
-    var defaultScene = checkpoints.scene || state.scene || '';
+    var defaultPeriod = checkpoints.time || state.time || content.story_time || '';
+    var defaultScene = checkpoints.scene || state.scene || content.story_scene || '';
 
     var lastSTM = null;
     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
@@ -49,13 +49,13 @@ export function postFillSTM(parsed, vault) {
         }
     }
 
-    if (checkpoints.time && !state.time && checkpoints.time !== 'same') {
-        if (!content.state) content.state = {};
-        content.state.time = String(checkpoints.time);
+    if (checkpoints.time && checkpoints.time !== 'same') {
+        content.story_time = String(checkpoints.time);
+        if (!state.time) { if (!content.state) content.state = {}; content.state.time = String(checkpoints.time); }
     }
-    if (checkpoints.scene && !state.scene) {
-        if (!content.state) content.state = {};
-        content.state.scene = String(checkpoints.scene);
+    if (checkpoints.scene) {
+        content.story_scene = String(checkpoints.scene);
+        if (!state.scene) { if (!content.state) content.state = {}; content.state.scene = String(checkpoints.scene); }
     }
 
     return parsed;
@@ -128,7 +128,7 @@ export function postFillLTM(result, sourceSTMList) {
     return result;
 }
 
-var KNOWN_STATE_FIELDS = ['time', 'scene', 'tone'];
+var KNOWN_STATE_FIELDS = ['time', 'scene'];
 
 export function whitelistStateChanges(changes) {
     var filtered = {};
