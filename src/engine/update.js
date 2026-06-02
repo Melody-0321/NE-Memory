@@ -318,7 +318,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         console.warn('[NE] STM output validation failed, retrying:', validateErrors.join('; '));
         var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Missing required fields:\n' +
             validateErrors.map(function(e) { return '- ' + e; }).join('\n') +
-            '\n\nYou MUST include the _checkpoints block with "time" and "scene", and every stm_entries item MUST have "event".';
+            '\n\nYou MUST include the _checkpoints block with "time" and "scene", and every stm_entries item MUST have "event", "period", and "scene".';
         var retryResponse = await callMemoryLLM([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },

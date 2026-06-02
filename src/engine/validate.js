@@ -19,6 +19,12 @@ export function validateSTMOutput(parsed, vault) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('stm_entries[' + i + '].event is REQUIRED');
         }
+        if (!e.period || !String(e.period).trim()) {
+            errors.push('stm_entries[' + i + '].period is REQUIRED');
+        }
+        if (!e.scene || !String(e.scene).trim()) {
+            errors.push('stm_entries[' + i + '].scene is REQUIRED');
+        }
     }
 
     return errors;
@@ -73,6 +79,15 @@ export function validateLTMOutput(result) {
         var e = entries[i];
         if (!e.event || !String(e.event).trim()) {
             errors.push('ltm_entries[' + i + '].event is REQUIRED');
+        }
+        if (!e.period || !String(e.period).trim()) {
+            errors.push('ltm_entries[' + i + '].period is REQUIRED');
+        }
+        if (!e.scene || !String(e.scene).trim()) {
+            errors.push('ltm_entries[' + i + '].scene is REQUIRED');
+        }
+        if (!e.stm_refs || e.stm_refs.length === 0) {
+            errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
         }
     }
 

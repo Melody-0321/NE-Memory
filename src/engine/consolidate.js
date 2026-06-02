@@ -174,7 +174,7 @@ export async function executeConsolidation(chatId) {
     var validateErrors = validateLTMOutput(result);
     if (validateErrors.length > 0) {
         console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
-        var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Every ltm_entries item MUST have "event". Fix and re-output the JSON.';
+        var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Every ltm_entries item MUST have "event", "period", "scene", and "stm_refs". Fix and re-output the JSON.';
         var retryResponse = await callMemoryLLM([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },
