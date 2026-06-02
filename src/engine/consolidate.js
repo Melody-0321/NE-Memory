@@ -6,7 +6,7 @@
  * 这是 NE 最核心的差异化功能。
  */
 import { callMemoryLLM, recordTelemetry } from '../api/llm.js';
-import { validateLTMOutput, postFillLTM } from './validate.js';
+import { validateLTMOutput, postFillLTM, mergeStoryPeriod } from './validate.js';
 
 function findNextId(vault) {
     const content = vault.content || {};

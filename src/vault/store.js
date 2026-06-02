@@ -124,6 +124,7 @@ export function emptyVault(chatId) {
         content: {
             story_time: '',
             story_scene: '',
+            story_date: '',
             summary: '',
             state: {},
             state_template: 'auto',

@@ -36,7 +36,7 @@ export function postFillSTM(parsed, vault) {
     var state = content.state || {};
     var stmEntries = parsed.stmEntries || [];
 
-    var defaultPeriod = checkpoints.time || state.time || content.story_time || '';
+    var defaultPeriod = mergeStoryPeriod(checkpoints.time || state.time || content.story_time, content.story_date);
     var defaultScene = checkpoints.scene || state.scene || content.story_scene || '';
 
     var lastSTM = null;
@@ -65,6 +65,13 @@ export function postFillSTM(parsed, vault) {
     }
 
     return parsed;
+}
+
+export function mergeStoryPeriod(storyTime, storyDate) {
+    var parts = [];
+    if (storyTime) parts.push(storyTime);
+    if (storyDate) parts.push(storyDate);
+    return parts.join(' ─ ');
 }
 
 export function validateLTMOutput(result) {
@@ -143,7 +150,7 @@ export function postFillLTM(result, sourceSTMList) {
     return result;
 }
 
-var KNOWN_STATE_FIELDS = ['time', 'scene'];
+var KNOWN_STATE_FIELDS = ['time', 'scene', 'story_date'];
 
 export function whitelistStateChanges(changes) {
     var filtered = {};

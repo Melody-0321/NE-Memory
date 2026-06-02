@@ -809,7 +809,8 @@ export function formatVaultForPrompt(vault, chatMessages) {
     var parts = [];
     if (vault.memory_system_prompt) { parts.push(vault.memory_system_prompt); parts.push('---'); }
     if (content.story_time || content.story_scene) {
-        parts.push('## ' + t('Current Scene') + '\n' + (content.story_time ? content.story_time + ' · ' : '') + (content.story_scene || ''));
+        var merged = (content.story_time || '') + (content.story_date ? ' ─ ' + content.story_date : '');
+        parts.push('## ' + t('Current Scene') + '\n' + (merged ? merged + ' · ' : '') + (content.story_scene || ''));
         parts.push('---');
     }
     if (content.state && Object.keys(content.state).length > 0) {
@@ -956,6 +957,7 @@ export function formatSmartContext(vault, chatMessages, budget) {
     if (!query) {
         var queryParts = [];
         if (content.story_time) queryParts.push(content.story_time);
+        if (content.story_date) queryParts.push(content.story_date);
         if (content.story_scene) queryParts.push(content.story_scene);
         if (state.time) queryParts.push(state.time);
         if (state.scene) queryParts.push(state.scene);
@@ -1033,7 +1035,10 @@ export function formatSmartContext(vault, chatMessages, budget) {
         }
     }
     if (state.scene || content.story_scene) stateLines.push('Scene: ' + (state.scene || content.story_scene));
-    if (state.time || content.story_time) stateLines.push('Time: ' + (state.time || content.story_time) + ' [→state:time]');
+    var timeParts = [];
+    if (state.time || content.story_time) timeParts.push(state.time || content.story_time);
+    if (content.story_date) timeParts.push(content.story_date);
+    if (timeParts.length > 0) stateLines.push('Time: ' + timeParts.join(' ─ ') + ' [→state:time]');
 
     if (stateLines.length > 0) {
         parts.push('---\n' + stateLines.join('\n'));
@@ -1048,9 +1053,12 @@ function formatMinimalState(vault) {
     var content = vault.content || {};
     var state = content.state || {};
     var lines = [];
-    if (content.story_time || state.time || content.story_scene || state.scene) {
+    if (content.story_time || content.story_date || state.time || content.story_scene || state.scene) {
         lines.push('Scene: ' + (state.scene || content.story_scene || ''));
-        if (content.story_time || state.time) lines.push('Time: ' + (state.time || content.story_time));
+        var minTimeParts = [];
+        if (content.story_time || state.time) minTimeParts.push(state.time || content.story_time);
+        if (content.story_date) minTimeParts.push(content.story_date);
+        if (minTimeParts.length > 0) lines.push('Time: ' + minTimeParts.join(' ─ '));
     }
     return lines.join('\n') || 'No state information available.';
 }

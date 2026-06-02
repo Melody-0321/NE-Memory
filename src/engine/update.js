@@ -64,11 +64,11 @@ export function buildSTMUpdatePrompt(newMessages, vault) {
     const schemaEnabled = isStateSchemaEnabled();
 
     var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene) {
-        currentStateSnapshot = 'story_time: ' + (content.story_time || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    if (content.story_time || content.story_scene || content.story_date) {
+        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
     }
-    if (!content.story_time && !content.story_scene) {
-        currentStateSnapshot = 'story_time: Day 1\nstory_scene: 未知\n';
+    if (!content.story_time && !content.story_date && !content.story_scene) {
+        currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
     }
     if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
         var s = formatStateSummary(content.state, content.state_schema || null);
@@ -404,6 +404,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
                 }
             }
         }
+    }
+
+    if (stateChanges.story_date) {
+        vault.content.story_date = String(stateChanges.story_date);
     }
 
     vault._meta = vault._meta || {};

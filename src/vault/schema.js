@@ -74,6 +74,7 @@ export const DEFAULT_GLOBAL_SCHEMA = {
     fields: {
         scene: { type: 'string', max_length: 60, expose_level: 'summary', update_rule: 'replace' },
         time: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
+        story_date: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
         main_event: { type: 'string', max_length: 120, expose_level: 'summary', update_rule: 'replace' },
         present_characters: { type: 'string', max_length: 80, expose_level: 'summary', update_rule: 'replace' },
         factions: {
