@@ -52,10 +52,10 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_api" style="display:none;">' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="https://api.openai.com/v1/chat/completions"></div>' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API Key') + '</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>' +
-        '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('Model') + '</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="gpt-4o-mini"></div>' +
-        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.') + '</div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="http://127.0.0.1:8000/llm/chat (local proxy)"></div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API Key (leave empty for local proxy)') + '</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>' +
+        '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('Model') + '</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="deepseek-v4-flash"></div>' +
+        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_memory" style="display:none;">' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Temperature') + '</label><br>' +
