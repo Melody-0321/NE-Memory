@@ -3,14 +3,16 @@ export function validateSTMOutput(parsed, vault) {
     var checkpoints = parsed._checkpoints;
     var stmEntries = parsed.stmEntries || [];
 
-    if (!checkpoints || typeof checkpoints !== 'object') {
-        errors.push('_checkpoints block is REQUIRED');
-    } else {
-        if (!checkpoints.time || !String(checkpoints.time).trim()) {
-            errors.push('_checkpoints.time is REQUIRED (current story time, even if unchanged)');
-        }
-        if (!checkpoints.scene || !String(checkpoints.scene).trim()) {
-            errors.push('_checkpoints.scene is REQUIRED (current scene, even if unchanged)');
+    if (checkpoints !== undefined) {
+        if (!checkpoints || typeof checkpoints !== 'object') {
+            errors.push('_checkpoints block is REQUIRED when using new format');
+        } else {
+            if (!checkpoints.time || !String(checkpoints.time).trim()) {
+                errors.push('_checkpoints.time is REQUIRED (current story time, even if unchanged)');
+            }
+            if (!checkpoints.scene || !String(checkpoints.scene).trim()) {
+                errors.push('_checkpoints.scene is REQUIRED (current scene, even if unchanged)');
+            }
         }
     }
 
@@ -58,10 +60,15 @@ export function postFillSTM(parsed, vault) {
     if (checkpoints.time && checkpoints.time !== 'same') {
         content.story_time = String(checkpoints.time);
         if (!state.time) { if (!content.state) content.state = {}; content.state.time = String(checkpoints.time); }
+    } else if (!checkpoints.time && stmEntries.length > 0 && stmEntries[0].period) {
+        var inferredTime = String(stmEntries[0].period).split(' ─ ')[0];
+        content.story_time = inferredTime;
     }
     if (checkpoints.scene) {
         content.story_scene = String(checkpoints.scene);
         if (!state.scene) { if (!content.state) content.state = {}; content.state.scene = String(checkpoints.scene); }
+    } else if (!checkpoints.scene && stmEntries.length > 0 && stmEntries[0].scene) {
+        content.story_scene = String(stmEntries[0].scene);
     }
 
     return parsed;
