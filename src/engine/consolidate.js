@@ -6,6 +6,7 @@
  * 这是 NE 最核心的差异化功能。
  */
 import { callMemoryLLM, recordTelemetry } from '../api/llm.js';
+import { validateLTMOutput, postFillLTM } from './validate.js';
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -164,16 +165,32 @@ export async function executeConsolidation(chatId) {
     const { saveVaultWithSnapshot } = await import('./update.js');
     const vault = await read(chatId);
     if (!checkConsolidateThreshold(vault)) return { vault, merged: 0 };
+    const content = vault.content || {};
+    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const prompt = buildConsolidatePrompt(vault);
-    const response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
-    const result = parseConsolidateResponse(response);
+    var response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
+    var result = parseConsolidateResponse(response);
+
+    var validateErrors = validateLTMOutput(result);
+    if (validateErrors.length > 0) {
+        console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
+        var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Every ltm_entries item MUST have "event". Fix and re-output the JSON.';
+        var retryResponse = await callMemoryLLM([
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user },
+            { role: 'assistant', content: response },
+            { role: 'user', content: retryMsg }
+        ]);
+        result = parseConsolidateResponse(retryResponse);
+    }
+
+    postFillLTM(result, unconsolidated);
     const merged = applyConsolidation(vault, result);
     if (merged > 0) {
         vault._meta = vault._meta || {};
         vault._meta.last_pipeline_task = 'consolidation';
         vault._meta.last_pipeline_time = new Date().toISOString();
 
-        var content = vault.content || {};
         var stmInputCount = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; }).length;
         recordTelemetry({
             pipeline_task: 'consolidation',

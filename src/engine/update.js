@@ -8,6 +8,7 @@ import { saveSnapshot } from '../vault/versions.js';
 import { callMemoryLLM, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
+import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { write } = await import('../vault/store.js');
@@ -185,28 +186,38 @@ Example quest updates:
         return {
             system: `${currentStateSnapshot}You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.
 
-Output a JSON array of STM entries. Each entry must have:
+YOUR OUTPUT MUST START with a _checkpoints block:
+{
+  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)", "tone": "current atmosphere/tone" },
+  "stm_entries": [...]
+}
+
+Each stm_entries item must have:
 - "period": copy the current state.time value (max 15 chars). Do NOT invent your own period label.
 - "scene": location/scene name (max 20 chars)
-- "event": what happened (max 120 chars)
+- "event": what happened — REQUIRED. Be specific enough a reader understands what occurred (20-80 chars).
 - "time_label": time within the period (max 8 chars). Only set if the event's time differs from the period's implied time. Otherwise leave empty.
 
-Be extremely concise. Telegraph-style. Do not include filler words.
-If nothing of narrative significance happened, output [].${schemaEnabled ? stateChangesEn : ''}`,
+If nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.${schemaEnabled ? stateChangesEn : ''}`,
             user: userMsgEn
         };
     }
     return {
         system: `${currentStateSnapshot}你是故事记忆提取器。从对话中提取关键事件到短期记忆中。
 
-输出 JSON 数组。每个条目包含：
+输出必须以 _checkpoints 块开头：
+{
+  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）", "tone": "当前氛围" },
+  "stm_entries": [...]
+}
+
+每个 stm_entries 条目包含：
 - "period": 复制当前 state.time 值（最长15字）。禁止自行编造阶段标签。
 - "scene": 场景名称（最长20字）
-- "event": 事件描述（最长120字）
+- "event": 事件描述——必填。具体到让读者理解发生了什么（20-80字）。
 - "time_label": 阶段内的时间标签（最长8字）。仅当事件时间与 period 隐含时间不同时才填，否则留空。
 
-极度简洁，电报式。无填充词。
-如果没有叙事意义的事件，输出 []。${schemaEnabled ? stateChangesZh : ''}`,
+如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。${schemaEnabled ? stateChangesZh : ''}`,
         user: userMsgZh
     };
 }
@@ -215,27 +226,34 @@ export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
 
     var stateChangesText = null;
-    if (isStateSchemaEnabled()) {
-        var stateMatch = text.match(/<state_changes>([\s\S]*?)<\/state_changes>/);
-        if (stateMatch) {
-            stateChangesText = stateMatch[1].trim();
-            text = text.replace(/<state_changes>[\s\S]*?<\/state_changes>/, '').trim();
-        }
+    var stateMatch = text.match(/<state_changes>([\s\S]*?)<\/state_changes>/);
+    if (stateMatch) {
+        stateChangesText = stateMatch[1].trim();
+        text = text.replace(/<state_changes>[\s\S]*?<\/state_changes>/, '').trim();
     }
 
     var codeMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
     if (codeMatch) text = codeMatch[1].trim();
 
     var stmEntries = [];
+    var checkpoints = null;
     try {
-        var jsonMatch = text.match(/\[[\s\S]*\]/);
+        var jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) {
             var parsed = JSON.parse(jsonMatch[0]);
-            if (Array.isArray(parsed)) stmEntries = parsed;
+            if (parsed.stm_entries || parsed._checkpoints) {
+                checkpoints = parsed._checkpoints || null;
+                stmEntries = parsed.stm_entries || [];
+            } else if (Array.isArray(parsed)) {
+                stmEntries = parsed;
+            }
         } else {
             try {
-                var parsed2 = JSON.parse(text);
-                if (Array.isArray(parsed2)) stmEntries = parsed2;
+                var arrayMatch = text.match(/\[[\s\S]*\]/);
+                if (arrayMatch) {
+                    stmEntries = JSON.parse(arrayMatch[0]);
+                    if (!Array.isArray(stmEntries)) stmEntries = [];
+                }
             } catch (e2) {}
         }
         if (stmEntries.length === 0 && text.length > 5) {
@@ -248,12 +266,16 @@ export function parseSTMResponse(llmResponse) {
         try {
             var parsedState = JSON.parse(stateChangesText);
             if (typeof parsedState === 'object' && parsedState !== null && !Array.isArray(parsedState)) {
-                stateChanges = parsedState;
+                if (!isStateSchemaEnabled()) {
+                    stateChanges = whitelistStateChanges(parsedState);
+                } else {
+                    stateChanges = parsedState;
+                }
             }
         } catch (e) {}
     }
 
-    return { stmEntries: stmEntries, stateChanges: stateChanges };
+    return { stmEntries: stmEntries, stateChanges: stateChanges, _checkpoints: checkpoints };
 }
 
 export function handleQuestCompletion(state, validatedChanges) {
@@ -287,6 +309,27 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var prompt = buildSTMUpdatePrompt(filteredMessages, vault);
     var response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
     var parsed = parseSTMResponse(response);
+
+    var validateErrors = validateSTMOutput(parsed, vault);
+    if (validateErrors.length > 0) {
+        console.warn('[NE] STM output validation failed, retrying:', validateErrors.join('; '));
+        var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Missing required fields:\n' +
+            validateErrors.map(function(e) { return '- ' + e; }).join('\n') +
+            '\n\nYou MUST include the _checkpoints block with "time" and "scene", and every stm_entries item MUST have "event".';
+        var retryResponse = await callMemoryLLM([
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user },
+            { role: 'assistant', content: response },
+            { role: 'user', content: retryMsg }
+        ]);
+        parsed = parseSTMResponse(retryResponse);
+        var retryErrors = validateSTMOutput(parsed, vault);
+        if (retryErrors.length > 0) {
+            console.warn('[NE] STM retry also failed, using post-fill:', retryErrors.join('; '));
+        }
+    }
+
+    postFillSTM(parsed, vault);
     var stmEntries = parsed.stmEntries;
     var stateChanges = parsed.stateChanges;
 
