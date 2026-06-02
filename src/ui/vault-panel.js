@@ -10,7 +10,6 @@ import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
-import { renderStateWithTemplate, STATE_TEMPLATES } from './state-templates.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
 import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
@@ -60,7 +59,6 @@ function injectPinCSS() {
 
 var vaultLLMLog = [];
 var lastVaultStateJson = '{}';
-var lastVaultStateTemplate = 'auto';
 
 /* ──────── 面板切换 ──────── */
 
@@ -456,7 +454,6 @@ async function updateVaultViewerPopout(getChatId) {
         var vault = await read(getChatId());
         var c = vault.content || {};
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
-        lastVaultStateTemplate = c.state_template || 'auto';
 
         var verEl = byId('narrative_vault_panel_version');
         if (verEl) {
@@ -478,29 +475,16 @@ async function updateVaultViewerPopout(getChatId) {
 
         // State 区块
         if (isStateSchemaEnabled() && c.state && Object.keys(c.state).length > 0) {
-            var stateHtml = renderStateWithTemplate(c.state, lastVaultStateTemplate);
-            var templateOpts = '';
-            var tkeys = Object.keys(STATE_TEMPLATES);
-            if (tkeys.indexOf('auto') === -1) tkeys.unshift('auto');
-            for (var ti = 0; ti < tkeys.length; ti++) {
-                var sel = tkeys[ti] === lastVaultStateTemplate ? ' selected' : '';
-                templateOpts += '<option value="' + tkeys[ti] + '"' + sel + '>' + tkeys[ti] + '</option>';
-            }
+            var stateHtml = formatStateSummary(c.state, c.state_schema || null);
             var stmView = byId('narrative_vault_panel_stm_view');
             if (stmView) {
                 stmView.insertAdjacentHTML('beforebegin',
                     '<div class="narrative_state_block" style="margin-bottom:14px;">' +
                     '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State') + '</div>' +
-                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;">' + stateHtml + '</div>' +
-                    '<div style="margin-top:4px;">' +
-                    '<div style="margin-top:4px;display:flex;align-items:center;gap:6px;">' +
-                    '<span style="font-size:0.85em;">' + t('State Template') + ':</span>' +
-                    '<select id="narrative_state_template_sel" class="text_pole" style="font-size:0.85em;width:auto;">' + templateOpts + '</select>' +
-                    '</div>' +
+                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;white-space:pre-wrap;font-family:monospace;">' + escapeHtml(stateHtml) + '</div>' +
                     '<div style="margin-top:4px;display:flex;gap:4px;">' +
-                    '<button class="narrative_btn_extract_state menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Extract State') + '</button>' +
                     '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
-                    '</div></div></div>'
+                    '</div></div>'
                 );
             }
         }
@@ -542,21 +526,6 @@ async function updateVaultViewerPopout(getChatId) {
         renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
         renderMemoryTable('#narrative_vault_panel_stm_body', c.unconsolidated_stm || [], 'stm');
 
-        // State template change
-        var stateSel = byId('narrative_state_template_sel');
-        if (stateSel) {
-            stateSel.onchange = async function () {
-                lastVaultStateTemplate = stateSel.value;
-                var vault2 = await read(getChatId());
-                vault2.content.state_template = stateSel.value;
-                await write(getChatId(), vault2);
-                renderStateBlock();
-            };
-        }
-        // Extract state
-        qsa('.narrative_btn_extract_state').forEach(function (btn) {
-            btn.onclick = function () { extractState(getChatId); };
-        });
         // Clear state
         qsa('.narrative_clear_state_btn').forEach(function (btn) {
             btn.onclick = function () {
@@ -570,30 +539,6 @@ async function updateVaultViewerPopout(getChatId) {
         if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
     } finally {
         if (loading) loading.style.display = 'none';
-    }
-}
-
-function renderStateBlock() {
-    try {
-        var vault = JSON.parse(lastVaultStateJson || '{}');
-        var rendered = renderStateWithTemplate(vault, lastVaultStateTemplate);
-        var container = qs('.narrative_state_block div[style*="background:var(--black50a);padding:8px"]');
-        if (container) container.innerHTML = rendered;
-    } catch (e) {}
-}
-
-async function extractState(getChatId) {
-    setVaultActivity(true);
-    try {
-        var vault = await read(getChatId());
-        if (!vault.content.state) vault.content.state = {};
-        lastVaultStateJson = JSON.stringify(vault.content.state, null, 2);
-        await executeConsolidation(getChatId());
-        await updateVaultViewerPopout(getChatId);
-    } catch (e) {
-        console.error('[NE] Extract failed:', e);
-    } finally {
-        setVaultActivity(false);
     }
 }
 

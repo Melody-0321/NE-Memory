@@ -20,7 +20,7 @@ export const NARRATIVE_I18N = {
         'Failed to load history': 'Failed to load history', 'Tool Calling Log': 'Tool Calling Log', 'Export Logs': 'Export Logs',
         'No tool calls recorded': 'No tool calls recorded', 'No operations logged': 'No operations logged',
         'Loading...': 'Loading...', 'Loading history...': 'Loading history...', 'updating...': 'updating...',
-        'State extraction failed': 'State extraction failed', 'State Template': 'State Template',
+        'State extraction failed': 'State extraction failed',
         'Consolidation failed': 'Consolidation failed', 'State JSON invalid:': 'State JSON invalid:',
         'STM Update': 'STM Update', 'Init State': 'Init State', 'Edit Save': 'Edit Save',
         'Locked = Memory Vault panel will stay open': 'Locked = Memory Vault panel will stay open',
@@ -42,7 +42,7 @@ export const NARRATIVE_I18N = {
         'Current State (JSON)': '当前状态 (JSON)', 'No operations logged': '暂无操作记录',
         'Tool Calling Log': 'Tool 调用日志', 'Export Logs': '导出日志', 'No tool calls recorded': '暂无 Tool 调用记录',
         'Loading...': '加载中...', 'Loading history...': '加载历史中...', 'updating...': '更新中...',
-        'State extraction failed': '状态提取失败', 'State Template': '状态模板', 'Consolidation failed': '整合失败',
+        'State extraction failed': '状态提取失败', 'Consolidation failed': '整合失败',
         'State JSON invalid:': '状态 JSON 无效：', 'STM Update': 'STM 更新', 'Init State': '初始化状态', 'Edit Save': '编辑保存',
         'Locked = Memory Vault panel will stay open': '锁定 = 记忆区面板将保持打开状态',
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
@@ -68,7 +68,7 @@ export const NARRATIVE_I18N = {
         'Current State (JSON)': '當前狀態 (JSON)', 'No operations logged': '暫無操作記錄',
         'Tool Calling Log': 'Tool 調用日誌', 'Export Logs': '匯出日誌', 'No tool calls recorded': '暫無 Tool 調用記錄',
         'Loading...': '載入中...', 'Loading history...': '載入歷史中...', 'updating...': '更新中...',
-        'State extraction failed': '狀態提取失敗', 'State Template': '狀態模板', 'Consolidation failed': '整合失敗',
+        'State extraction failed': '狀態提取失敗', 'Consolidation failed': '整合失敗',
         'State JSON invalid:': '狀態 JSON 無效：', 'STM Update': 'STM 更新', 'Init State': '初始化狀態', 'Edit Save': '編輯儲存',
         'Locked = Memory Vault panel will stay open': '上鎖 = 記憶區面板將保持開啟',
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
