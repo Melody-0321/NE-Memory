@@ -52,28 +52,28 @@ export function neSyncChatId(chatId) {
     lastKnownChatId = chatId;
 }
 
-export function onMessageSent(messageId) {
+export function onMessageSent(messageIndex) {
     if (!getChatMessagesFn) return;
     const chat = getChatMessagesFn();
-    const message = chat.find(m => (m.id || m.mes_id) === messageId);
+    const message = chat[messageIndex];
     if (message) {
-        pendingMessages.push({ role: 'user', content: message.mes || '', id: messageId, timestamp: Date.now() });
+        pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
         console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
     } else {
-        console.log('[NE] onMessageSent: message not found, id=' + messageId);
+        console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
     }
 }
 
-export async function onMessageReceived(messageId) {
+export async function onMessageReceived(messageIndex) {
     if (!getChatMessagesFn) return;
     const chat = getChatMessagesFn();
-    const message = chat.find(m => (m.id || m.mes_id) === messageId);
+    const message = chat[messageIndex];
     if (message) {
-        pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageId, timestamp: Date.now() });
+        pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
         console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
         await checkAndFlush();
     } else {
-        console.log('[NE] onMessageReceived: message not found, id=' + messageId);
+        console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
     }
 }
 
