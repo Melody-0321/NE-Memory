@@ -13,6 +13,7 @@ let lastKnownChatId = null;
 let chatReady = true;
 let pendingMessages = [];
 var pipelineRunning = false;
+var _smartPushDone = false;
 const MIN_GENERATION_INTERVAL_MS = 3000;
 let lastGenerationTime = 0;
 
@@ -48,6 +49,7 @@ export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 export function neSyncChatId(chatId) {
     if (chatId !== lastKnownChatId) {
         pendingMessages = [];
+        _smartPushDone = false;
     }
     lastKnownChatId = chatId;
 }
@@ -58,6 +60,7 @@ export function onMessageSent(messageIndex) {
     const message = chat[messageIndex];
     if (message) {
         pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+        _smartPushDone = false;
         console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
     } else {
         console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
@@ -122,6 +125,10 @@ export async function onBeforeGenerate() {
     const vault = await read(chatId);
     if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
     console.log('[NE] onBeforeGenerate running, retrieval=' + isRetrievalEnabled() + ', stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+    if (pendingMessages.length === 0 && _smartPushDone) {
+        console.log('[NE] Smart Push already done, skipping memory retrieval');
+        return;
+    }
     var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
     try {
         var formatted;
@@ -155,6 +162,7 @@ export async function onBeforeGenerate() {
                 should_scan: false
             }], { once: false });
         }
+        _smartPushDone = true;
     } catch (e) {
         console.warn('[NE] Prompt injection failed:', e);
     }
