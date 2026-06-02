@@ -1141,8 +1141,16 @@ export async function renderVaultPanel(getChatId) {
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
-                await executeConsolidation(getChatId());
-                updateVaultViewerPopout(getChatId());
+                try {
+                    setVaultActivity(true);
+                    await executeConsolidation(getChatId());
+                    await updateVaultViewerPopout(getChatId());
+                } catch (e) {
+                    console.error('[NE] Consolidation failed:', e);
+                    alert(t('Consolidation failed') + ': ' + e.message);
+                } finally {
+                    setVaultActivity(false);
+                }
             };
         }
 
