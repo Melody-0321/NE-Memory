@@ -58,6 +58,9 @@ export function onMessageSent(messageId) {
     const message = chat.find(m => (m.id || m.mes_id) === messageId);
     if (message) {
         pendingMessages.push({ role: 'user', content: message.mes || '', id: messageId, timestamp: Date.now() });
+        console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
+    } else {
+        console.log('[NE] onMessageSent: message not found, id=' + messageId);
     }
 }
 
@@ -67,7 +70,10 @@ export async function onMessageReceived(messageId) {
     const message = chat.find(m => (m.id || m.mes_id) === messageId);
     if (message) {
         pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageId, timestamp: Date.now() });
+        console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
         await checkAndFlush();
+    } else {
+        console.log('[NE] onMessageReceived: message not found, id=' + messageId);
     }
 }
 
@@ -78,8 +84,12 @@ async function checkAndFlush() {
 async function flushPendingMessages() {
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-    if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) return;
+    if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) {
+        console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
+        return;
+    }
     const batch = pendingMessages.splice(0);
+    console.log('[NE] Pipeline starting: batch=' + batch.length + ' messages');
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
     try {
