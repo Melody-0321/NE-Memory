@@ -10,6 +10,7 @@ import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, o
 import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
+import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 
 var _retrievalEnabled = false;
 
@@ -150,6 +151,7 @@ function setupEventListeners(retryCount) {
                     vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
                     await write(chatId, vault);
                 }
+                checkAndRestoreEmbeddedVault(chatId);
             }); } catch (e) {}
             try { eventSource.on('MESSAGE_DELETED', onMessageDeleted); } catch (e) {}
             try { eventSource.on('MESSAGE_SWIPED', onMessageSwiped); } catch (e) {}
@@ -177,6 +179,7 @@ function setupEventListeners(retryCount) {
                         vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
                         await write(chatId, vault);
                     }
+                    checkAndRestoreEmbeddedVault(chatId);
                 });
             }
             if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);

@@ -1122,6 +1122,7 @@ export async function renderVaultPanel(getChatId) {
             '<div style="margin-top:4px;display:flex;gap:4px;white-space:nowrap;">' +
             '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export JSON') + '</button>' +
             '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Import JSON') + '</button>' +
+            '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Embed vault into chat_metadata so it travels with chat export/backup') + '">' + t('Embed into Chat') + '</button>' +
             '</div>' +
             '<div id="narrative_vault_llm_log" style="margin-top:10px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
@@ -1266,6 +1267,26 @@ export async function renderVaultPanel(getChatId) {
                     }
                 };
                 input.click();
+            };
+        }
+
+        var embedBtn = byId('narrative_vault_embed_chat');
+        if (embedBtn) {
+            embedBtn.onclick = async function () {
+                try {
+                    var ctx = window.parent.SillyTavern && window.parent.SillyTavern.getContext ? window.parent.SillyTavern.getContext() : null;
+                    if (!ctx || !ctx.chatMetadata || typeof ctx.saveChat !== 'function') {
+                        alert(t('Embed into Chat') + ': Cannot access SillyTavern chat API.');
+                        return;
+                    }
+                    var vault = await read(getChatId());
+                    ctx.chatMetadata.ne_vault = JSON.stringify(vault);
+                    await ctx.saveChat();
+                    alert(t('Embed into Chat') + ' ' + t('Done') + ' — ' + t('Vault is now embedded in chat_metadata. Export or backup will carry it.'));
+                } catch (e) {
+                    console.error('[NE] Embed failed:', e);
+                    alert(t('Embed into Chat') + ' failed: ' + e.message);
+                }
             };
         }
 
