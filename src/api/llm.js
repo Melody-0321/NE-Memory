@@ -112,8 +112,8 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        var content = data.choices?.[0]?.message?.content || '';
-        var usage = data.usage || null;
+        var content = data.choices?.[0]?.message?.content || data.content || '';
+        var usage = data.choices?.[0]?.usage || data.usage || null;
         return { content: content, usage: usage };
     } finally {
         clearTimeout(timeout);
