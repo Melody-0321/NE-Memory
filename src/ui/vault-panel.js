@@ -35,7 +35,7 @@ function setVaultActivity(active) {
     if (active) {
         el.innerHTML = '&#9696;';
         el.style.color = '#4caf50';
-        el.style.animation = 'fa-spin 1s linear infinite';
+        el.style.animation = 'ne_spin 1s linear infinite';
     } else {
         el.innerHTML = '&#9679;';
         el.style.color = '#888';
@@ -53,7 +53,8 @@ function injectPinCSS() {
         '#narrative_vault_pin:checked+label .checked{display:inline}' +
         '#narrative_vault_pin:checked+label .unchecked{display:none}' +
         '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +
-        '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}';
+        '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}' +
+        '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
     PD.head.appendChild(style);
 }
 
@@ -461,6 +462,21 @@ async function updateVaultViewerPopout(getChatId) {
             var ts = formatLocalTime(vault.updated_at);
             if (ts) verText += ' \u00b7 ' + ts;
             verEl.textContent = verText;
+        }
+        var apiStatus = byId('narrative_secondary_api_status');
+        if (apiStatus) {
+            try {
+                var raw = localStorage.getItem('ne_secondary_api');
+                var secondaryConfig = raw ? JSON.parse(raw) : null;
+                if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
+                    apiStatus.textContent = '\u26A1';
+                    apiStatus.title = t('Secondary API:') + ' ' + secondaryConfig.model;
+                    apiStatus.style.color = '#4caf50';
+                } else {
+                    apiStatus.textContent = '';
+                    apiStatus.title = t('No secondary API configured');
+                }
+            } catch (e) { apiStatus.textContent = ''; }
         }
 
         var panelBody = verEl ? verEl.parentElement : null;
@@ -1061,7 +1077,8 @@ export async function renderVaultPanel(getChatId) {
             '<div class="scrollableInner" style="padding:10px;overflow-y:auto;font-size:var(--mainFontSize);">' +
             '<div style="display:flex;align-items:center;margin-bottom:6px;">' +
             '<div id="narrative_vault_panel_version" style="font-weight:bold;"></div>' +
-            '<span id="narrative_vault_activity" style="margin-left:6px;font-size:0.8em;color:#888;">\u25CF</span></div>' +
+            '<span id="narrative_vault_activity" style="margin-left:6px;font-size:0.8em;color:#888;">\u25CF</span>' +
+            '<span id="narrative_secondary_api_status" style="margin-left:4px;font-size:0.75em;color:#666;cursor:help;" title=""></span></div>' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
