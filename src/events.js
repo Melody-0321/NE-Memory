@@ -4,7 +4,6 @@
 import { executeIncrementalUpdate } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, rollbackByMsgIds } from './vault/store.js';
-import { isRetrievalEnabled } from './index.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -13,7 +12,6 @@ let lastKnownChatId = null;
 let chatReady = true;
 let pendingMessages = [];
 var pipelineRunning = false;
-var _smartPushDone = false;
 const MIN_GENERATION_INTERVAL_MS = 3000;
 let lastGenerationTime = 0;
 
@@ -49,7 +47,6 @@ export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 export function neSyncChatId(chatId) {
     if (chatId !== lastKnownChatId) {
         pendingMessages = [];
-        _smartPushDone = false;
     }
     lastKnownChatId = chatId;
 }
@@ -60,7 +57,6 @@ export function onMessageSent(messageIndex) {
     const message = chat[messageIndex];
     if (message) {
         pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
-        _smartPushDone = false;
         console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
     } else {
         console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
@@ -124,34 +120,11 @@ export async function onBeforeGenerate() {
     }
     const vault = await read(chatId);
     if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
-    console.log('[NE] onBeforeGenerate running, retrieval=' + isRetrievalEnabled() + ', stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
-    if (pendingMessages.length === 0 && _smartPushDone) {
-        console.log('[NE] Smart Push already done, skipping memory retrieval');
-        return;
-    }
+    console.log('[NE] onBeforeGenerate running, stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
     var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
     try {
-        var formatted;
-        if (isRetrievalEnabled()) {
-            try {
-                const { formatSmartContext, estimateComplexityBudget } = await import('./ui/vault-panel.js');
-                var raw = localStorage.getItem('ne_settings');
-                var userBudget = 800;
-                if (raw) {
-                    var s = JSON.parse(raw);
-                    userBudget = Number(s.memoryBudget) || 800;
-                }
-                var budget = estimateComplexityBudget(chatMessages, userBudget);
-                formatted = formatSmartContext(vault, chatMessages, budget);
-            } catch (e) {
-                console.warn('[NE] Smart Push failed, falling back to full injection:', e);
-                const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-                formatted = formatVaultForPrompt(vault, chatMessages);
-            }
-        } else {
-            const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-            formatted = formatVaultForPrompt(vault, chatMessages);
-        }
+        const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
+        var formatted = formatVaultForPrompt(vault, chatMessages);
         if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
             TavernHelper.injectPrompts([{
                 id: 'ne_memory_vault',
@@ -162,7 +135,6 @@ export async function onBeforeGenerate() {
                 should_scan: false
             }], { once: false });
         }
-        _smartPushDone = true;
     } catch (e) {
         console.warn('[NE] Prompt injection failed:', e);
     }
