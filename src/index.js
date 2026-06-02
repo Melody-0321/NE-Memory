@@ -103,39 +103,9 @@ function setupEventListeners(retryCount) {
         }
     } catch (e) {}
 
-    if (eventSource && eventSource.eventTypes) {
+    if (eventSource && typeof eventSource.on === 'function') {
         if (!eventSource.__ne_bound) {
             eventSource.__ne_bound = true;
-            eventSource.on(eventSource.eventTypes.MESSAGE_SENT, onMessageSent);
-            eventSource.on(eventSource.eventTypes.MESSAGE_RECEIVED, onMessageReceived);
-            eventSource.on(eventSource.eventTypes.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
-            if (eventSource.eventTypes.CHAT_CHANGED) {
-                eventSource.on(eventSource.eventTypes.CHAT_CHANGED, async () => {
-                    const chatId = getChatId();
-                    neSyncChatId(chatId);
-                    var settings = loadSettings();
-                    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
-                    setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    const vault = await read(chatId);
-                    if (vault.version === 0) {
-                        vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
-                        await write(chatId, vault);
-                    }
-                });
-            }
-            if (eventSource.eventTypes.MESSAGE_DELETED) eventSource.on(eventSource.eventTypes.MESSAGE_DELETED, onMessageDeleted);
-            if (eventSource.eventTypes.MESSAGE_SWIPED) eventSource.on(eventSource.eventTypes.MESSAGE_SWIPED, onMessageSwiped);
-            if (eventSource.eventTypes.MESSAGE_UPDATED) eventSource.on(eventSource.eventTypes.MESSAGE_UPDATED, onMessageUpdated);
-            console.log('[NE] Event listeners registered via eventSource.eventTypes');
-        }
-        console.log('[NE] eventSource path succeeded with eventTypes');
-        return;
-    }
-
-    // Fallback: use string event names on eventSource (eventTypes may not exist in all ST versions)
-    if (eventSource && typeof eventSource.on === 'function') {
-        if (!eventSource.__ne_bound_str) {
-            eventSource.__ne_bound_str = true;
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
             try { eventSource.on('message_received', onMessageReceived); } catch (e) { console.warn('[NE] message_received registration failed:', e); }
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
@@ -156,7 +126,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
-            console.log('[NE] Event listeners registered via eventSource (string events)');
+            console.log('[NE] Event listeners registered via eventSource');
         }
         return;
     }
