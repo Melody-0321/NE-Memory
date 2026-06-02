@@ -533,6 +533,7 @@ async function updateVaultViewerPopout(getChatId) {
                     if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
                         c.state = {};
                         await write(getChatId(), vault);
+                        console.log('[NE] State cleared, re-rendering vault panel');
                         await updateVaultViewerPopout(getChatId());
                     }
                 } catch (e) {
