@@ -67,6 +67,9 @@ export function buildSTMUpdatePrompt(newMessages, vault) {
     if (content.story_time || content.story_scene) {
         currentStateSnapshot = 'story_time: ' + (content.story_time || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
     }
+    if (!content.story_time && !content.story_scene) {
+        currentStateSnapshot = 'story_time: Day 1\nstory_scene: 未知\n';
+    }
     if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
         var s = formatStateSummary(content.state, content.state_schema || null);
         if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
