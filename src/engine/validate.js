@@ -21,12 +21,6 @@ export function validateSTMOutput(parsed, vault) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('stm_entries[' + i + '].event is REQUIRED');
         }
-        if (!e.period || !String(e.period).trim()) {
-            errors.push('stm_entries[' + i + '].period is REQUIRED');
-        }
-        if (!e.scene || !String(e.scene).trim()) {
-            errors.push('stm_entries[' + i + '].scene is REQUIRED');
-        }
     }
 
     return errors;
@@ -41,33 +35,23 @@ export function postFillSTM(parsed, vault) {
     var defaultPeriod = mergeStoryPeriod(checkpoints.time || state.time || content.story_time, content.story_date);
     var defaultScene = checkpoints.scene || state.scene || content.story_scene || '';
 
-    var lastSTM = null;
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-    if (allSTM.length > 0) {
-        lastSTM = allSTM[allSTM.length - 1];
-    }
-
     for (var i = 0; i < stmEntries.length; i++) {
         var e = stmEntries[i];
-        if (!e.period || !String(e.period).trim()) {
-            e.period = defaultPeriod || (lastSTM ? lastSTM.period : '');
-        }
-        if (!e.scene || !String(e.scene).trim()) {
-            e.scene = defaultScene || (lastSTM ? lastSTM.scene : '');
-        }
+        e.period = defaultPeriod;
+        e.scene = defaultScene;
     }
 
     if (checkpoints.time && checkpoints.time !== 'same') {
         content.story_time = String(checkpoints.time);
         if (!state.time) { if (!content.state) content.state = {}; content.state.time = String(checkpoints.time); }
-    } else if (!checkpoints.time && stmEntries.length > 0 && stmEntries[0].period) {
+    } else if (stmEntries.length > 0 && stmEntries[0].period) {
         var inferredTime = String(stmEntries[0].period).split(' ─ ')[0];
         content.story_time = inferredTime;
     }
     if (checkpoints.scene) {
         content.story_scene = String(checkpoints.scene);
         if (!state.scene) { if (!content.state) content.state = {}; content.state.scene = String(checkpoints.scene); }
-    } else if (!checkpoints.scene && stmEntries.length > 0 && stmEntries[0].scene) {
+    } else if (stmEntries.length > 0 && stmEntries[0].scene) {
         content.story_scene = String(stmEntries[0].scene);
     }
 

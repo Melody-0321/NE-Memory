@@ -199,10 +199,10 @@ YOUR OUTPUT MUST START with a _checkpoints block:
 }
 
 Each stm_entries item must have:
-- "period": copy the current story_time value (max 15 chars). Do NOT invent your own period label.
-- "scene": location/scene name (max 20 chars)
 - "event": what happened — REQUIRED. Be specific enough a reader understands what occurred (20-80 chars).
-- "time_label": time within the period (max 8 chars). Only set if the event's time differs from the period's implied time. Otherwise leave empty.
+- "time_label": optional — only set if the event's time differs from the implied time. Otherwise omit.
+
+Note: "period" and "scene" are auto-filled from global state. Do NOT include them in entries.
 
 If nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.${schemaEnabled ? stateChangesEn : ''}`,
             user: userMsgEn
@@ -218,10 +218,10 @@ If nothing of narrative significance happened, output {"_checkpoints": {"time": 
 }
 
 每个 stm_entries 条目包含：
-- "period": 复制当前 story_time 值（最长15字）。禁止自行编造阶段标签。
-- "scene": 场景名称（最长20字）
 - "event": 事件描述——必填。具体到让读者理解发生了什么（20-80字）。
-- "time_label": 阶段内的时间标签（最长8字）。仅当事件时间与 period 隐含时间不同时才填，否则留空。
+- "time_label": （可选）仅当事件时间与当前时间不同时填写，否则省略。
+
+注意："period" 和 "scene" 会自动从全局数据填充，条目中无需包含。
 
 如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。${schemaEnabled ? stateChangesZh : ''}`,
         user: userMsgZh
@@ -321,7 +321,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         console.warn('[NE] STM output validation failed, retrying:', validateErrors.join('; '));
         var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Missing required fields:\n' +
             validateErrors.map(function(e) { return '- ' + e; }).join('\n') +
-            '\n\nYou MUST include the _checkpoints block with "time" and "scene", and every stm_entries item MUST have "event", "period", and "scene".';
+            '\n\nYou MUST include the _checkpoints block with "time" and "scene", and every stm_entries item MUST have "event".';
         var retryResponse = await callMemoryLLM([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },
