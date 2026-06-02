@@ -16,10 +16,24 @@ export async function saveVaultWithSnapshot(chatId, vault) {
     try {
         await write(chatId, vault);
         await saveSnapshot(chatId, vault);
+        autoEmbedVaultToChat(vault);
     } catch (e) {
         console.error('[NE] saveVaultWithSnapshot failed:', e);
         throw e;
     }
+}
+
+function autoEmbedVaultToChat(vault) {
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var metadata = SillyTavern.getContext().chatMetadata;
+            var saveChat = SillyTavern.getContext().saveChat;
+            if (metadata && typeof saveChat === 'function') {
+                metadata.ne_vault = JSON.stringify(vault);
+                saveChat().catch(() => {});
+            }
+        }
+    } catch (e) {}
 }
 
 export function collectProcessedMsgIds(vault) {
