@@ -72,6 +72,7 @@ export async function write(chatId, vault) {
     var db;
     try {
         db = await openDB();
+        _storageBlocked = false;
     } catch (e) {
         console.warn('[NE] IndexedDB write failed (tracking prevention?):', e.message);
         _storageBlocked = true;
@@ -83,6 +84,27 @@ export async function write(chatId, vault) {
         store.put({ chat_id: chatId, vault: vault, updated_at: Date.now() });
         tx.oncomplete = () => { console.log('[NE] IndexedDB write OK for', chatId); resolve(); };
         tx.onerror = () => { console.error('[NE] IndexedDB write ERROR:', tx.error); reject(tx.error); };
+    });
+}
+
+export async function writeWithSnapshot(chatId, vault, snapshotEntry) {
+    var db;
+    try {
+        db = await openDB();
+        _storageBlocked = false;
+    } catch (e) {
+        console.warn('[NE] IndexedDB atomic write failed (tracking prevention?):', e.message);
+        _storageBlocked = true;
+        return;
+    }
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction([STORE_NAME, 'snapshots'], 'readwrite');
+        const vaultStore = tx.objectStore(STORE_NAME);
+        const snapStore = tx.objectStore('snapshots');
+        vaultStore.put({ chat_id: chatId, vault: vault, updated_at: Date.now() });
+        if (snapshotEntry) snapStore.put(snapshotEntry);
+        tx.oncomplete = () => { console.log('[NE] Atomic vault+snapshot write OK for', chatId); resolve(); };
+        tx.onerror = () => { console.error('[NE] Atomic write ERROR:', tx.error); reject(tx.error); };
     });
 }
 

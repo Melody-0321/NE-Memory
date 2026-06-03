@@ -6,7 +6,7 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending } from './events.js';
 import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
@@ -58,10 +58,25 @@ async function init() {
         await write(chatId, vault);
     }
     setContextFns(getChatId, getChatMessages);
+    restorePending();
     await renderVaultPanel(getChatId);
     setupEventListeners();
-    registerAllTools(getChatId, getChatMessages);
+    registerToolsWithRetry(getChatId, getChatMessages, 0);
     console.log('[NE] Engine initialized — chatId=' + chatId + ', version=' + vault.version);
+}
+
+function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
+    var tm = typeof ToolManager !== 'undefined' ? ToolManager : null;
+    if (tm && typeof tm.registerFunctionTool === 'function') {
+        registerAllTools(getChatId, getChatMessages);
+        return;
+    }
+    if (retryCount >= 30) {
+        console.error('[NE] Cannot register tools: ToolManager unavailable after 30 retries');
+        return;
+    }
+    var delay = Math.min(500 * Math.pow(2, retryCount), 30000);
+    setTimeout(function () { registerToolsWithRetry(getChatId, getChatMessages, retryCount + 1); }, delay);
 }
 
 function loadSettings() {

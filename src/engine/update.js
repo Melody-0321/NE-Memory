@@ -4,19 +4,24 @@
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
 import { read, appendSTMEntries } from '../vault/store.js';
-import { saveSnapshot } from '../vault/versions.js';
 import { callMemoryLLM, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
-    const { write } = await import('../vault/store.js');
+    const { writeWithSnapshot } = await import('../vault/store.js');
     vault.version = (vault.version || 0) + 1;
     vault.updated_at = new Date().toISOString();
     try {
-        await write(chatId, vault);
-        await saveSnapshot(chatId, vault);
+        var snapshotEntry = {
+            id: chatId + '_v' + vault.version,
+            chat_id: chatId,
+            version: vault.version,
+            updated_at: vault.updated_at,
+            data: JSON.parse(JSON.stringify(vault))
+        };
+        await writeWithSnapshot(chatId, vault, snapshotEntry);
         autoEmbedVaultToChat(vault);
     } catch (e) {
         console.error('[NE] saveVaultWithSnapshot failed:', e);
@@ -24,7 +29,10 @@ export async function saveVaultWithSnapshot(chatId, vault) {
     }
 }
 
+var _embedCounter = 0;
 function autoEmbedVaultToChat(vault) {
+    _embedCounter++;
+    if (_embedCounter % 5 !== 0) return;
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             var metadata = SillyTavern.getContext().chatMetadata;
@@ -353,7 +361,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         stmEntries.forEach(function (entry, i) {
             var startIdx = i * perEntry;
             var endIdx = (i === stmEntries.length - 1) ? filteredMessages.length : (i + 1) * perEntry;
-            entry.msg_ids = filteredMessages.slice(startIdx, endIdx).map(function (m) { return m.id || m.mes_id; }).filter(Boolean);
+            entry.msg_ids = filteredMessages.slice(startIdx, endIdx).map(function (m, idx) { return m.id || m.mes_id || (startIdx + idx); });
             entry.timestamp = new Date().toISOString();
             entry.parent_ltm = null;
         });
@@ -387,22 +395,29 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
 
             for (var ni = 0; ni < addedCharNames.length; ni++) {
                 var charName = addedCharNames[ni];
-                try {
-                    var slots = await initPowerSlots(charName, existingSlotsForWorld);
+                // fire-and-forget: don't block Pipeline on power slot detection
+                initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
                     if (slots && slots.length > 0) {
-                        if (!newState.characters[charName]) newState.characters[charName] = {};
-                        newState.characters[charName].power_slot_defs = slots;
-                        var values = {};
-                        slots.forEach(function (s) { values[s.key] = ''; });
-                        newState.characters[charName].power_slots = values;
-                        existingSlotsForWorld = existingSlotsForWorld.concat(slots.filter(function (s) {
-                            return !existingSlotsForWorld.find(function (e) { return e.key === s.key; });
-                        }));
+                        read(chatId).then(function (freshVault) {
+                            var st = freshVault.content.state || {};
+                            if (!st.characters) st.characters = {};
+                            if (!st.characters[charName]) st.characters[charName] = {};
+                            st.characters[charName].power_slot_defs = slots;
+                            var values = {};
+                            slots.forEach(function (s) { values[s.key] = ''; });
+                            st.characters[charName].power_slots = values;
+                            freshVault._meta.last_pipeline_task = 'power_slot_init';
+                            freshVault._meta.last_pipeline_time = new Date().toISOString();
+                            saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
+                                console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
+                            });
+                        }).catch(function (e2) {
+                            console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
+                        });
                     }
-                } catch (e) {
+                }).catch(function (e) {
                     console.warn('[NE] initPowerSlots failed for', charName, ':', e);
-                }
-            }
+                });
         }
     }
 

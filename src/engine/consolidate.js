@@ -29,13 +29,7 @@ export function checkConsolidateThreshold(vault) {
         }
     } catch (e) {}
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    if (unconsolidated.length < maxUnconsolidated) return false;
-    var totalText = 0;
-    unconsolidated.forEach(function(s) {
-        totalText += (s.event || '').length + (s.scene || '').length;
-    });
-    if (totalText < maxUnconsolidated * 40) return false;
-    return true;
+    return unconsolidated.length >= maxUnconsolidated;
 }
 
 export function buildConsolidatePrompt(vault) {

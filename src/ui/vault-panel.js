@@ -875,8 +875,8 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
 
     var len = text.length;
     var questionCount = (text.match(/[？?！!]/g) || []).length;
-    var entityCount = (text.match(/(?:Dragonfang|Frost|爱丽丝|Ember|Elder Thorn|[A-Z][a-z]+)/g) || []).length;
-    var narrativeKeywords = (text.match(/(?:为什么|什么时候|怎么|之前|后来|原因|动机)/g) || []).length;
+    var entityCount = (text.match(/[A-Z][a-z]+/g) || []).length;
+    var narrativeKeywords = (text.match(/(?:为什么|什么时候|怎么|之前|后来|原因|动机|why|when|how|before|after|because|motive)/g) || []).length;
 
     var score = 0;
     if (len < 100) score += 0;
@@ -944,8 +944,8 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     try {
         topCandidates = filterCandidates(query, allSTM, allLTM, 40);
     } catch (e) {
-        console.warn('[NE] BM25 filter failed, falling back to full injection:', e);
-        return formatVaultForPrompt(vault);
+        console.warn('[NE] BM25 filter failed, falling back to minimal state injection:', e);
+        return formatMinimalState(vault);
     }
     var bm25Ms = Date.now() - bm25Start;
 
@@ -1196,14 +1196,31 @@ export async function renderVaultPanel(getChatId) {
                 var BATCH = 10;
                 var totalBatches = Math.ceil(toProcess.length / BATCH);
 
+                var cpKey = 'ne_ph_' + getChatId();
+                var startBatch = 0;
                 try {
-                    for (var i = 0; i < toProcess.length; i += BATCH) {
+                    var cp = localStorage.getItem(cpKey);
+                    if (cp) {
+                        var cpData = JSON.parse(cp);
+                        if (cpData.t && cpData.i < toProcess.length) {
+                            startBatch = Math.floor(cpData.i / BATCH);
+                            console.log('[NE] Resuming Process History from batch', startBatch + 1, '/', totalBatches);
+                        }
+                    }
+                } catch (e) {}
+
+                try {
+                    for (var i = startBatch * BATCH; i < toProcess.length; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
                         var batchNum = Math.floor(i / BATCH) + 1;
                         processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
                         await executeIncrementalUpdate(getChatId(), batch, true);
+                        try {
+                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, toProcess.length) }));
+                        } catch (e2) {}
                     }
                     await executeConsolidation(getChatId());
+                    try { localStorage.removeItem(cpKey); } catch (e3) {}
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
                     alert(t('Process History') + ' failed: ' + e.message);

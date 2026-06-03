@@ -11,8 +11,26 @@ let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
 let pendingMessages = [];
 var pipelineRunning = false;
-const MIN_GENERATION_INTERVAL_MS = 3000;
+var consecutiveFailures = 0;
+const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
+
+function persistPending() {
+    try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
+}
+export function restorePending() {
+    try {
+        var raw = localStorage.getItem('ne_pending');
+        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); }
+        var inflight = localStorage.getItem('ne_inflight');
+        if (inflight) {
+            var inflightBatch = JSON.parse(inflight);
+            pendingMessages = inflightBatch.concat(pendingMessages);
+            localStorage.removeItem('ne_inflight');
+            console.log('[NE] Restored ' + inflightBatch.length + ' inflight messages from crashed pipeline');
+        }
+    } catch (e) {}
+}
 
 function getStmBatchSize() {
     try {
@@ -46,6 +64,9 @@ export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 export function neSyncChatId(chatId) {
     if (chatId !== lastKnownChatId) {
         pendingMessages = [];
+        persistPending();
+        pipelineRunning = false;
+        consecutiveFailures = 0;
     }
     lastKnownChatId = chatId;
 }
@@ -53,10 +74,13 @@ export function neSyncChatId(chatId) {
 export function onMessageSent(messageIndex) {
     if (!getChatMessagesFn) return;
     const chat = getChatMessagesFn();
-    const message = chat[messageIndex];
+    var message = chat[messageIndex];
+    if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
     if (message) {
         pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+        persistPending();
         console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
+        checkAndFlush();
     } else {
         console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
     }
@@ -65,9 +89,11 @@ export function onMessageSent(messageIndex) {
 export async function onMessageReceived(messageIndex) {
     if (!getChatMessagesFn) return;
     const chat = getChatMessagesFn();
-    const message = chat[messageIndex];
+    var message = chat[messageIndex];
+    if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
     if (message) {
         pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+        persistPending();
         console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
         await checkAndFlush();
     } else {
@@ -80,27 +106,47 @@ async function checkAndFlush() {
 }
 
 async function flushPendingMessages() {
+    if (pipelineRunning) return;
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
     if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) {
-        console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
-        return;
+        if (pendingMessages.length < 3 || totalWords < 100) {
+            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
+            return;
+        }
     }
     const batch = pendingMessages.splice(0);
+    persistPending();
+    try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
     console.log('[NE] Pipeline starting: batch=' + batch.length + ' messages');
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
     try {
-        const consResult = await executeConsolidation(chatId);
-        var latestVault = consResult.vault;
+        try {
+            const consResult = await executeConsolidation(chatId);
+            var latestVault = consResult.vault;
+        } catch (consErr) {
+            console.warn('[NE] Consolidation failed, continuing with update:', consErr);
+        }
         const result = await executeIncrementalUpdate(chatId, batch);
         latestVault = result.vault;
         if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
+        consecutiveFailures = 0;
+        try { localStorage.removeItem('ne_inflight'); } catch (e) {}
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
-        pendingMessages.unshift.apply(pendingMessages, batch);
+        consecutiveFailures++;
+        if (consecutiveFailures >= 5) {
+            console.error('[NE] Pipeline failed ' + consecutiveFailures + ' consecutive times, dropping batch');
+            consecutiveFailures = 0;
+            try { localStorage.removeItem('ne_inflight'); } catch (e2) {}
+        } else {
+            pendingMessages.unshift.apply(pendingMessages, batch);
+            persistPending();
+        }
     } finally {
         pipelineRunning = false;
+        persistPending();
     }
 }
 
@@ -109,7 +155,7 @@ export async function onBeforeGenerate() {
     var now = Date.now();
     if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
     lastGenerationTime = now;
-    await flushPendingMessages();
+    flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     if (chatId !== lastKnownChatId) {
         lastKnownChatId = chatId;
