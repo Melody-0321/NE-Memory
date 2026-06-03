@@ -420,6 +420,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
                 });
         }
     }
+}
 
     if (stateChanges.story_date) {
         vault.content.story_date = String(stateChanges.story_date);
