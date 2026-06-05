@@ -1,8 +1,80 @@
 /**
  * engine/retrieval.js — Retrieval Service prompt builder
+ *
+ * v2: Entity chain lookup + injection.
+ * Automatically builds entity timelines from STM/LTM entries and injects
+ * them as "Known Entity Timelines" into the retrieval synthesis prompt.
  */
-export function buildRetrievalPrompt(query, candidates, vault, budget) {
+
+// ─── Entity chain lookup ───
+
+function lookupEntityChains(content, entityNames) {
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allLTM = content.ltm_entries || [];
+    var chains = {};
+
+    entityNames.forEach(function(name) {
+        var chainEntries = [];
+        allSTM.forEach(function(e) {
+            if (e.entities && e.entities.some(function(en) { return en.name === name; })) {
+                chainEntries.push(e);
+            }
+        });
+        allLTM.forEach(function(e) {
+            if (e.entities && e.entities.some(function(en) { return en.name === name; })) {
+                chainEntries.push(e);
+            }
+        });
+        if (chainEntries.length > 0) {
+            chainEntries.sort(function(a, b) {
+                return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
+            });
+            chains[name] = chainEntries;
+        }
+    });
+
+    return chains;
+}
+
+// ─── Entity name extraction from query ───
+
+function extractEntityNames(query, content) {
+    var state = content.state || {};
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var knownNames = [];
+
+    // Collect from RP-specific state: characters and factions
+    var characters = state.characters || {};
+    Object.keys(characters).forEach(function(name) { knownNames.push(name); });
+
+    var factions = state.factions || {};
+    Object.keys(factions).forEach(function(name) { knownNames.push(name); });
+
+    // Also collect from STM entity annotations
+    allSTM.forEach(function(e) {
+        if (e.entities) {
+            e.entities.forEach(function(en) {
+                if (en.name && knownNames.indexOf(en.name) === -1) knownNames.push(en.name);
+            });
+        }
+    });
+
+    // Filter: which known names appear in the query?
+    var queryLower = query.toLowerCase();
+    var matched = knownNames.filter(function(name) {
+        return name.length > 1 && queryLower.indexOf(name.toLowerCase()) !== -1;
+    });
+
+    // Limit to 5 most relevant (longest names first — more specific)
+    matched.sort(function(a, b) { return b.length - a.length; });
+    return matched.slice(0, 5);
+}
+
+// ─── Main prompt builder ───
+
+export function buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode) {
     budget = budget || 800;
+    isSummaryMode = isSummaryMode || false;
     var content = vault.content || {};
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
@@ -28,6 +100,43 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
     var stmCount = content.stm_entries ? content.stm_entries.length : 0;
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
+    // ── 实体链查找 ──
+    var entityNames = extractEntityNames(query, content);
+    var chains = lookupEntityChains(content, entityNames);
+    var chainKeys = Object.keys(chains);
+
+    var chainsBlock = '';
+    if (chainKeys.length > 0) {
+        chainsBlock = '\n## Known Entity Timelines\n';
+        chainKeys.forEach(function(name) {
+            var chainData = chains[name];
+            if (chainData && chainData.length > 0) {
+                chainsBlock += '### ' + name + ' (' + chainData.length + ' events)\n';
+                chainData.forEach(function(e, idx) {
+                    var label = (e.period || '');
+                    if (e.time_label) label = label + '·' + e.time_label;
+                    chainsBlock += (idx + 1) + '. [' + label + '] ' + (e.scene || '') + ': ' + (e.event || '') + '\n';
+                });
+                chainsBlock += '\n';
+            }
+        });
+    }
+
+    // ── Summary mode: skip synthesis, return raw timeline ──
+    if (isSummaryMode) {
+        var summaryBlock = '\n\nRelevant memories (time-ordered):\n' + candidatesText;
+        if (lang === 'en') {
+            return {
+                system: 'You are a memory archivist. Return all memory entries as a chronological timeline. Do NOT synthesize, group, or omit any entry. Format each entry as:\n[time] location: event description\n\nCurrent story time: ' + currentTime,
+                user: 'List all entries below in chronological order. Include every entry.' + summaryBlock
+            };
+        }
+        return {
+            system: '你是记忆档案员。按时间顺序列出所有记忆条目。不要合成、分组或省略。格式：[时间] 地点: 事件描述\n\n当前故事时间：' + currentTime,
+            user: '按时间顺序列出所有条目，不要省略。' + summaryBlock
+        };
+    }
+
     if (lang === 'en') {
         var system = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
             'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a concise synthesized answer.\n\n' +
@@ -46,6 +155,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
             'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Group by topic segment, NOT by narrative thread. Output one "## <topic>" section per segment. If topics are related to the same entity, combine them.\n\n' +
+            chainsBlock +
             'Query: ' + query + '\n\nCandidates:\n' + candidatesText;
 
         return {
@@ -71,6 +181,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。按话题分段输出，而非按叙事线。每个片段输出一个 "## <话题>" 节。如果话题涉及同一实体，合并它们。\n\n' +
+        chainsBlock +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText;
 
     return {
@@ -79,8 +190,8 @@ export function buildRetrievalPrompt(query, candidates, vault, budget) {
     };
 }
 
-export function buildRetrievalMessages(query, candidates, vault, budget) {
-    var prompt = buildRetrievalPrompt(query, candidates, vault, budget);
+export function buildRetrievalMessages(query, candidates, vault, budget, isSummaryMode) {
+    var prompt = buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode);
     return [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user }

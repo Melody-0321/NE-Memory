@@ -72,7 +72,7 @@ export async function callMemoryPipeline(messages, options = {}) {
 }
 
 export async function callMemoryRetrieval(messages, options = {}) {
-    return callMemoryLLM(messages, Object.assign({}, options, { temperature: 0.3 }));
+    return callMemoryLLM(messages, Object.assign({ temperature: 0.3 }, options));
 }
 
 function loadSecondaryApiConfig() {

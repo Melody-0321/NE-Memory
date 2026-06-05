@@ -1,4 +1,4 @@
-export function validateSTMOutput(parsed, vault) {
+export function validateSTMOutput(parsed, vault, messageCount) {
     var errors = [];
     var checkpoints = parsed._checkpoints;
     var stmEntries = parsed.stmEntries || [];
@@ -21,6 +21,12 @@ export function validateSTMOutput(parsed, vault) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('stm_entries[' + i + '].event is REQUIRED');
         }
+    }
+
+    // 新增：msgRange 验证
+    if (stmEntries.length > 0 && messageCount !== undefined && messageCount > 0) {
+        var rangeErrors = validateMsgRanges(stmEntries, messageCount);
+        errors = errors.concat(rangeErrors);
     }
 
     return errors;
@@ -148,6 +154,59 @@ export function postFillLTM(result, sourceSTMList) {
 }
 
 var KNOWN_STATE_FIELDS = ['time', 'scene', 'story_date'];
+
+// ─── msgRange 验证 ───
+
+export function validateMsgRanges(stmEntries, messageCount) {
+    var errors = [];
+    if (stmEntries.length === 0) return errors;
+
+    // 收集所有 range 并排序
+    var ranges = [];
+    for (var i = 0; i < stmEntries.length; i++) {
+        var e = stmEntries[i];
+        var range = e.msgRange;
+        if (!range || range.length !== 2) {
+            errors.push('stm_entries[' + i + '].msgRange 缺失或格式错误');
+            continue;
+        }
+        if (range[0] < 0 || range[1] >= messageCount) {
+            errors.push('stm_entries[' + i + '].msgRange 越界: ' + range[0] + '-' + range[1] + ' (共' + messageCount + '条)');
+        }
+        if (range[0] > range[1]) {
+            errors.push('stm_entries[' + i + '].msgRange 起始 > 结束');
+        }
+        ranges.push({ i: i, start: range[0], end: range[1] });
+    }
+
+    if (ranges.length === 0) return errors;
+
+    // Check coverage: every message index 0..messageCount-1 must be covered
+    ranges.sort(function(a, b) { return a.start - b.start; });
+    var covered = new Array(messageCount);
+    for (var k = 0; k < messageCount; k++) covered[k] = false;
+    for (var i = 0; i < ranges.length; i++) {
+        for (var j = ranges[i].start; j <= ranges[i].end && j < messageCount; j++) {
+            covered[j] = true;
+        }
+    }
+    var uncovered = [];
+    for (var i = 0; i < messageCount; i++) {
+        if (!covered[i]) uncovered.push(i);
+    }
+    if (uncovered.length > 0) {
+        errors.push('未覆盖的消息索引: ' + uncovered.join(','));
+    }
+
+    // Check no overlap
+    for (var i = 1; i < ranges.length; i++) {
+        if (ranges[i].start <= ranges[i - 1].end) {
+            errors.push('stm_entries[' + ranges[i].i + '] 的 msgRange 与上一条重叠');
+        }
+    }
+
+    return errors;
+}
 
 export function whitelistStateChanges(changes) {
     var filtered = {};

@@ -3,7 +3,6 @@
  */
 import { executeIncrementalUpdate } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
-import { read, rollbackByMsgIds } from './vault/store.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;

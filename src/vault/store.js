@@ -52,6 +52,7 @@ export async function read(chatId) {
             if (result) {
                 const vault = result.vault;
                 migrateTimeRange(vault);
+                migrateProcessedMsgIds(vault);
                 if (!vault._meta) {
                     vault._meta = {
                         created_at: vault.created_at || new Date().toISOString(),
@@ -121,6 +122,23 @@ function migrateTimeRange(vault) {
     return dirty;
 }
 
+function migrateProcessedMsgIds(vault) {
+    var content = vault.content || {};
+    if (!content.processed_msg_ids || Object.keys(content.processed_msg_ids).length === 0) {
+        var allIds = [];
+        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { allIds.push(id); }); });
+        if (allIds.length > 0) {
+            var set = {};
+            allIds.forEach(function(id) { set[id] = true; });
+            content.processed_msg_ids = set;
+        }
+    }
+    if (!content.cursor_state) {
+        content.cursor_state = { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } };
+    }
+}
+
 export async function remove(chatId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -160,7 +178,9 @@ export function emptyVault(chatId) {
             relationships: [],
             consolidate_threshold: 5,
             memory_config: {},
-            language: 'zh'
+            language: 'zh',
+            cursor_state: { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } },
+            processed_msg_ids: {}
         },
         link_index: {},
         stm_index: {},
@@ -263,4 +283,50 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     });
     content.ltm_entries = keptLTM;
     return updated;
+}
+
+// ─── Cursor State ───
+
+export function getCursorState(vault, mode) {
+    var cs = (vault.content || {}).cursor_state || {};
+    return cs[mode] || { position: 0, pending_partials: [] };
+}
+
+export function updateCursorState(vault, mode, state) {
+    if (!vault.content) vault.content = {};
+    if (!vault.content.cursor_state) vault.content.cursor_state = {};
+    vault.content.cursor_state[mode] = state;
+}
+
+// ─── Processed Message ID Tracking ───
+
+export function markMessagesProcessed(vault, msgIds) {
+    if (!vault.content) vault.content = {};
+    if (!vault.content.processed_msg_ids) vault.content.processed_msg_ids = {};
+    var set = vault.content.processed_msg_ids;
+    msgIds.forEach(function(id) { if (id !== undefined && id !== null) set[id] = true; });
+}
+
+export function isMessageProcessed(vault, msgId) {
+    var set = (vault.content || {}).processed_msg_ids;
+    return set ? !!set[msgId] : false;
+}
+
+export function getProcessedMessageIds(vault) {
+    return Object.keys((vault.content || {}).processed_msg_ids || {});
+}
+
+export function collectProcessedMsgIds(vault) {
+    // 优先使用 processed_msg_ids (O(1) 查询)
+    var processed = (vault.content || {}).processed_msg_ids || {};
+    var ids = Object.keys(processed);
+    // 降级：如果 processed_msg_ids 为空但 STM 有数据，从 STM 重建
+    if (ids.length === 0) {
+        var content = vault.content || {};
+        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { ids.push(id); }); });
+        // 重建 processed_msg_ids 集合
+        if (ids.length > 0) markMessagesProcessed(vault, ids);
+    }
+    return new Set(ids);
 }

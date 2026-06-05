@@ -5,9 +5,9 @@ import { read, rollbackByMsgIds } from './vault/store.js';
 import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
 import { saveVaultWithSnapshot } from './engine/update.js';
 import { isRetrievalEnabled } from './settings.js';
-import { filterCandidates } from './vault/retrieval-filter.js';
+import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessages } from './engine/retrieval.js';
-import { callMemoryRetrieval, recordTelemetry } from './api/llm.js';
+import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
@@ -129,6 +129,40 @@ var lastRecallMsgIds = null;
 var lastRecallHeaders = null;
 var lastRecallChatId = null;
 
+function formatBM25Fallback(candidates, content) {
+    var lang = (content && content.language === 'en') ? 'en' : 'zh';
+    var header = (lang === 'en')
+        ? '## BM25 Results (LLM unavailable)\n'
+        : '## BM25 结果（LLM 不可用）\n';
+    var lines = candidates.slice(0, 10).map(function(e, i) {
+        var time = e.period || e.time_range || '';
+        var label = time;
+        if (e.time_label) label = label + '·' + e.time_label;
+        return (i + 1) + '. [' + label + '] ' + (e.scene || '') + ': ' + (e.event || e.summary || '');
+    });
+    return header + lines.join('\n');
+}
+
+// ── Cross-language helpers ──
+
+function hasCJK(text) {
+    return /[\u4e00-\u9fff\u3400-\u4dbf]/.test(text);
+}
+
+function vaultHasMixedLanguage(content) {
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allLTM = content.ltm_entries || [];
+    var all = allSTM.concat(allLTM);
+    var hasCN = false, hasEN = false;
+    for (var i = 0; i < all.length; i++) {
+        var text = (all[i].event || '') + ' ' + (all[i].scene || '') + ' ' + (all[i].translation || '');
+        if (hasCJK(text)) hasCN = true;
+        if (/[a-zA-Z]{3,}/.test(text)) hasEN = true;
+        if (hasCN && hasEN) return true;
+    }
+    return false;
+}
+
 function registerRecallMemory(getChatId) {
     ToolManager.registerFunctionTool({
         name: 'recall_memory',
@@ -138,7 +172,8 @@ function registerRecallMemory(getChatId) {
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
             properties: {
-                query: { type: 'string', description: 'Structured natural language query. Include entity name + aspects of interest + time constraints if any.' }
+                query: { type: 'string', description: 'Structured natural language query. Include entity name + aspects of interest + time constraints if any.' },
+                timeOnly: { type: 'boolean', description: 'Optional. If true, skip BM25 search and return complete timeline filtered by time constraint.' }
             },
             required: ['query']
         }),
@@ -157,9 +192,63 @@ function registerRecallMemory(getChatId) {
                     return 'No memories stored yet.';
                 }
 
-                var topCandidates = filterCandidates(args.query, allSTM, allLTM, 40);
-                if (!topCandidates || topCandidates.length === 0) {
+                // ── Time-aware retrieval ──
+                var allEntries = allSTM.concat(allLTM);
+                var timeConstraint = parseTimeConstraint(args.query);
+                var isSummaryMode = false;
+                var topCandidates;
+
+                if (timeConstraint) {
+                    var preFiltered = applyTimeFilter(allEntries, timeConstraint);
+                    if (args.timeOnly || isTimeOnlyQuery(args.query, timeConstraint) || preFiltered.length <= 15) {
+                        // Time-only mode: skip BM25, return complete timeline
+                        isSummaryMode = true;
+                        topCandidates = preFiltered.sort(function(a, b) {
+                            return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
+                        }).slice(0, 30);
+                    } else {
+                        // Time-filtered BM25 on narrowed pool
+                        var stmPreFiltered = preFiltered.filter(function(e) { return e.id && e.id.indexOf('stm_') === 0; });
+                        var ltmPreFiltered = preFiltered.filter(function(e) { return e.id && e.id.indexOf('ltm_') === 0; });
+                        topCandidates = filterCandidates(args.query, stmPreFiltered, ltmPreFiltered, 40);
+                    }
+                } else {
+                    topCandidates = filterCandidates(args.query, allSTM, allLTM, 40);
+                }
+
+                if (!isSummaryMode && (!topCandidates || topCandidates.length === 0)) {
                     return 'No relevant memories found for: ' + args.query;
+                }
+
+                // ── 跨语言翻译增强 ──
+                if (!isSummaryMode && topCandidates && topCandidates.length < 5 && vaultHasMixedLanguage(content)) {
+                    try {
+                        var targetLang = hasCJK(args.query) ? 'English' : 'Chinese';
+                        var translateMsg = targetLang === 'Chinese'
+                            ? [{ role: 'system', content: 'Translate the following query to Chinese. Output only the translation, no explanation. Preserve proper nouns.' },
+                               { role: 'user', content: args.query }]
+                            : [{ role: 'system', content: '将以下查询翻译为英文。仅输出译文，不要解释。专有名词保留原名。' },
+                               { role: 'user', content: args.query }];
+                        var translated = await callMemoryLLM(translateMsg, { timeout: 5, temperature: 0.0 });
+                        if (translated) {
+                            var translatedTopCandidates = filterCandidates(translated, allSTM, allLTM, 40);
+                            if (translatedTopCandidates && translatedTopCandidates.length > 0) {
+                                // Interleave: alternate between original and translated results, dedup
+                                var seenIds = {};
+                                topCandidates.forEach(function(c) { seenIds[c.__id] = true; });
+                                var merged = topCandidates.slice();
+                                translatedTopCandidates.forEach(function(c) {
+                                    if (!seenIds[c.__id] && merged.length < 40) {
+                                        merged.push(c);
+                                        seenIds[c.__id] = true;
+                                    }
+                                });
+                                topCandidates = merged;
+                            }
+                        }
+                    } catch (tlErr) {
+                        // Translation failed — continue with original results
+                    }
                 }
 
                 // Clear cache on new chat
@@ -182,7 +271,7 @@ function registerRecallMemory(getChatId) {
                     });
                 }
 
-                var messages = buildRetrievalMessages(args.query, topCandidates, vault, 800);
+                var messages = buildRetrievalMessages(args.query, topCandidates, vault, 800, isSummaryMode);
 
                 if (lastRecallMsgIds && lastRecallMsgIds.length > 0) {
                     var dedupNote = '\n\n[DEDUP: Some candidates draw from source messages already used in a previous recall this turn.]\n';
@@ -200,7 +289,7 @@ function registerRecallMemory(getChatId) {
                     messages[0].content += dedupNote;
                 }
 
-                var result = await callMemoryRetrieval(messages, { timeout: 3 });
+                var result = await callMemoryRetrieval(messages, { timeout: 3, temperature: 0.3 });
                 var answer = result || 'No answer synthesized.';
 
                 // Cache msg_ids from answer for next dedup
@@ -227,7 +316,8 @@ function registerRecallMemory(getChatId) {
                     recall_result_length: 0,
                     recall_method: 'error'
                 });
-                return 'Error: ' + e.message;
+                // Fallback to BM25 raw list
+                return formatBM25Fallback(topCandidates || [], vault.content);
             }
         }
     });

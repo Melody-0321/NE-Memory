@@ -5,8 +5,9 @@
  * 生成 LTM 摘要，标记原始 STM，不删除。
  * 这是 NE 最核心的差异化功能。
  */
-import { callMemoryLLM, recordTelemetry } from '../api/llm.js';
+import { callMemoryLLM, callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { validateLTMOutput, postFillLTM, mergeStoryPeriod } from './validate.js';
+import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -46,6 +47,20 @@ export function buildConsolidatePrompt(vault) {
         return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} [→${refs}]`;
     }).join('\n');
 
+    // ── BM25 预分组 ──
+    var preGroupHint = '';
+    try {
+        var bm25groups = preGroupItems(unconsolidated, {
+            getText: function(s) { return s.event || ''; },
+            similarityThreshold: 0.3
+        });
+        preGroupHint = formatPreGroupHint(bm25groups);
+    } catch(e) {}
+
+    var stmRangeNote = '\n\nEach ltm_entries item may optionally include:\n' +
+        '- "stmRange": [start_idx, end_idx] — alternative to stm_refs. References the STM entries by their index number (1-based) in the list above.\n' +
+        (preGroupHint ? '\n' + preGroupHint + '\n' : '');
+
     if (lang === 'en') {
         return {
             system: `You merge short-term memories into long-term memory summaries.
@@ -60,7 +75,7 @@ Output ONLY a JSON object:
 {
   "ltm_entries": [{ "period": "time range from source STM entries (max 15). Use same format as state.time, e.g. 'Day 3-5' or 'Day 3·黄昏→Day 5·深夜'", "scene": "scene (max 20)", "event": "merged summary (max 100)", "stm_refs": ["stm_id1", "stm_id2"] }],
   "delete_stm_ids": []
-}
+}${stmRangeNote}
 
 IMPORTANT: NEVER put STM IDs in "delete_stm_ids". Always keep original STM entries. Only add new LTM entries and reference the STM IDs in stm_refs.`,
             user: 'Merge these short-term memories. Only output JSON.'
@@ -79,7 +94,7 @@ ${stmText}
 {
   "ltm_entries": [{ "period": "时间范围（最长15字）。使用与 state.time 相同的格式，如 'Day 3-5' 或 'Day 3·黄昏→Day 5·深夜'", "scene": "场景(最长20字)", "event": "合并摘要(最长100字)", "stm_refs": ["stm_id1", "stm_id2"] }],
   "delete_stm_ids": []
-}
+}${stmRangeNote}
 
 重要：绝不要往 "delete_stm_ids" 中放 STM ID。始终保留原始 STM 条目。只在 ltm_entries 中新增 LTM 条目并通过 stm_refs 引用 STM ID。`,
         user: '合并这些短期记忆。仅输出 JSON。'
@@ -106,10 +121,28 @@ export function applyConsolidation(vault, consolidationResult) {
     ltmEntries.forEach(ltm => {
         if (!ltm.id) ltm.id = findNextId(vault);
 
-        var sourceSTM = allSTM.filter(function(s) {
-            return (ltm.stm_refs || []).indexOf(s.id) !== -1;
-        });
+        var sourceSTM;
+        if (ltm.stmRange && ltm.stmRange.length === 2) {
+            // stmRange 按 1-based 索引引用（对应提示中的列表编号）
+            var uncons = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
+            sourceSTM = uncons.slice(ltm.stmRange[0] - 1, ltm.stmRange[1]);
+        } else {
+            sourceSTM = allSTM.filter(function(s) {
+                return (ltm.stm_refs || []).indexOf(s.id) !== -1;
+            });
+        }
         ltm.time_range = deriveTimeRange(sourceSTM);
+
+        // 从源 STM 继承 entities（去重）
+        var ltmEntities = sourceSTM.reduce(function(acc, s) {
+            (s.entities || []).forEach(function(e) {
+                if (!acc.find(function(a) { return a.name === e.name; })) {
+                    acc.push({ name: e.name, type: e.type || 'character' });
+                }
+            });
+            return acc;
+        }, []);
+        ltm.entities = ltmEntities;
 
         content.ltm_entries.push(ltm);
         (ltm.stm_refs || []).forEach(function(stmId) {
@@ -162,14 +195,14 @@ export async function executeConsolidation(chatId) {
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const prompt = buildConsolidatePrompt(vault);
-    var response = await callMemoryLLM([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
+    var response = await callMemoryPipeline([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
     var result = parseConsolidateResponse(response);
 
     var validateErrors = validateLTMOutput(result);
     if (validateErrors.length > 0) {
         console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
         var retryMsg = 'YOUR PREVIOUS OUTPUT WAS REJECTED. Every ltm_entries item MUST have "event", "period", "scene", and "stm_refs". Fix and re-output the JSON.';
-        var retryResponse = await callMemoryLLM([
+        var retryResponse = await callMemoryPipeline([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },
             { role: 'assistant', content: response },
