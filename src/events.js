@@ -118,7 +118,8 @@ export async function onMessageReceived(messageIndex) {
                 try {
                     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
                     var chatId = getChatIdFn ? getChatIdFn() : 'default';
-                    await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+                    var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+                    if (onVaultUpdateCallback && stateResult.vault) onVaultUpdateCallback(stateResult.vault);
                 } catch (e) {
                     console.warn('[NE] Per-round state pipeline failed:', e);
                 } finally {
