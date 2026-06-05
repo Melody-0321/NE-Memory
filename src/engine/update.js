@@ -507,6 +507,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
     if (filteredMessages.length === 0) return { vault: vault, added: 0 };
 
+    // ── 每批次重置 cursor position，避免跨批次索引错位 ──
+    var savedCursorState = getCursorState(vault, 'stm');
+    savedCursorState.position = 0;
+    updateCursorState(vault, 'stm', savedCursorState);
+
     // ── Phase 1: Cursor Loop 提取 STM 条目 ──
     var cursorResult = await runStmCursorLoop({
         vault: vault,

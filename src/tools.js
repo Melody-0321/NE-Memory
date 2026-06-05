@@ -1,7 +1,7 @@
 /**
  * tools.js — Tool-calling 注册（通过 TH API）
  */
-import { read, rollbackByMsgIds } from './vault/store.js';
+import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
 import { saveVaultWithSnapshot } from './engine/update.js';
 import { isRetrievalEnabled } from './settings.js';
@@ -539,8 +539,10 @@ function registerRollbackMemory(getChatId) {
         action: async function (args) {
             try {
                 const chatId = getChatId ? getChatId() : 'default';
-                const removed = await rollbackByMsgIds(chatId, args.msg_ids);
-                return 'Rolled back ' + (removed || 0) + ' memory entries referencing the given message IDs.';
+                const vault = await read(chatId);
+                const removed = rollbackByMsgIds(vault, args.msg_ids);
+                await write(chatId, vault);
+                return 'Rolled back ' + (removed ? (removed.removedSTM || 0) + ' STM, ' + (removed.removedLTM || 0) + ' LTM' : '0') + ' entries.';
             } catch (e) {
                 return 'Error: ' + e.message;
             }

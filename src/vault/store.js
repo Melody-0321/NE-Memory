@@ -282,6 +282,11 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
         }
     });
     content.ltm_entries = keptLTM;
+
+    // 清除 processed_msg_ids，允许这些消息在下一次提取时重新参与
+    var processed = content.processed_msg_ids || {};
+    removedMsgIds.forEach(function(id) { delete processed[id]; });
+
     return updated;
 }
 

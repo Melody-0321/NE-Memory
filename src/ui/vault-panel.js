@@ -723,7 +723,22 @@ async function saveVaultEdits(getChatId) {
 
         var stmList = c.unconsolidated_stm || [];
         stmEntries.forEach(function (e) { var f = stmList.find(function (x) { return x.id === e.id; }); if (f) { f.period = e.period; f.scene = e.scene; f.event = e.event; if (e.time_label) f.time_label = e.time_label; } });
+
+        // 收集被删 STM 的 msg_ids，回滚 processed_msg_ids 以允许重新提取
+        var deletedMsgIds = [];
+        deleteStmIds.forEach(function(delId) {
+            var found = stmList.find(function(x) { return x.id === delId; });
+            if (found && found.msg_ids) {
+                found.msg_ids.forEach(function(mid) { deletedMsgIds.push(mid); });
+            }
+        });
+
         c.unconsolidated_stm = stmList.filter(function (x) { return deleteStmIds.indexOf(x.id) === -1; });
+
+        // 清除 processed_msg_ids，让被删 STM 覆盖的消息可被 cursor engine 重新提取
+        if (deletedMsgIds.length > 0) {
+            rollbackByMsgIds(vault, deletedMsgIds);
+        }
 
         vault.content = c;
         await write(getChatId(), vault);

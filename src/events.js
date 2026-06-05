@@ -3,6 +3,7 @@
  */
 import { executeIncrementalUpdate } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
+import { read, write, rollbackByMsgIds } from './vault/store.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -186,7 +187,9 @@ export async function onMessageDeleted(messageId) {
     if (!getChatIdFn) return;
     const chatId = getChatIdFn();
     try {
-        await rollbackByMsgIds(chatId, [messageId]);
+        const vault = await read(chatId);
+        rollbackByMsgIds(vault, [messageId]);
+        await write(chatId, vault);
     } catch (e) {
         console.warn('[NE] Rollback on message delete failed:', e);
     }
@@ -196,7 +199,9 @@ export async function onMessageSwiped(messageId) {
     if (!getChatIdFn) return;
     const chatId = getChatIdFn();
     try {
-        await rollbackByMsgIds(chatId, [messageId]);
+        const vault = await read(chatId);
+        rollbackByMsgIds(vault, [messageId]);
+        await write(chatId, vault);
     } catch (e) {
         console.warn('[NE] Rollback on message swipe failed:', e);
     }
@@ -206,7 +211,9 @@ export async function onMessageUpdated(messageId) {
     if (!getChatIdFn) return;
     const chatId = getChatIdFn();
     try {
-        await rollbackByMsgIds(chatId, [messageId]);
+        const vault = await read(chatId);
+        rollbackByMsgIds(vault, [messageId]);
+        await write(chatId, vault);
     } catch (e) {
         console.warn('[NE] Rollback on message update failed:', e);
     }
