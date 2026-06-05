@@ -72,32 +72,40 @@ export function neSyncChatId(chatId) {
 }
 
 export function onMessageSent(messageIndex) {
-    if (!getChatMessagesFn) return;
-    const chat = getChatMessagesFn();
-    var message = chat[messageIndex];
-    if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
-    if (message) {
-        pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
-        persistPending();
-        console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
-        checkAndFlush();
-    } else {
-        console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
+    try {
+        if (!getChatMessagesFn) return;
+        const chat = getChatMessagesFn();
+        var message = chat[messageIndex];
+        if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
+        if (message) {
+            pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            persistPending();
+            console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
+            checkAndFlush();
+        } else {
+            console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
+        }
+    } catch (e) {
+        console.error('[NE] onMessageSent crashed:', e);
     }
 }
 
 export async function onMessageReceived(messageIndex) {
-    if (!getChatMessagesFn) return;
-    const chat = getChatMessagesFn();
-    var message = chat[messageIndex];
-    if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
-    if (message) {
-        pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
-        persistPending();
-        console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
-        await checkAndFlush();
-    } else {
-        console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
+    try {
+        if (!getChatMessagesFn) return;
+        const chat = getChatMessagesFn();
+        var message = chat[messageIndex];
+        if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
+        if (message) {
+            pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            persistPending();
+            console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
+            await checkAndFlush();
+        } else {
+            console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
+        }
+    } catch (e) {
+        console.error('[NE] onMessageReceived crashed:', e);
     }
 }
 
@@ -151,35 +159,39 @@ async function flushPendingMessages() {
 }
 
 export async function onBeforeGenerate() {
-    if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
-    var now = Date.now();
-    if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
-    lastGenerationTime = now;
-    flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
-    const chatId = getChatIdFn ? getChatIdFn() : 'default';
-    if (chatId !== lastKnownChatId) {
-        lastKnownChatId = chatId;
-        pendingMessages = [];
-    }
-    const vault = await read(chatId);
-    if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
-    console.log('[NE] onBeforeGenerate running, stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
-    var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
     try {
-        const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-        var formatted = formatVaultForPrompt(vault, chatMessages);
-        if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
-            TavernHelper.injectPrompts([{
-                id: 'ne_memory_vault',
-                position: 'in_chat',
-                depth: 2,
-                role: 'system',
-                content: formatted,
-                should_scan: false
-            }], { once: false });
+        if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
+        var now = Date.now();
+        if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
+        lastGenerationTime = now;
+        flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
+        const chatId = getChatIdFn ? getChatIdFn() : 'default';
+        if (chatId !== lastKnownChatId) {
+            lastKnownChatId = chatId;
+            pendingMessages = [];
+        }
+        const vault = await read(chatId);
+        if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
+        console.log('[NE] onBeforeGenerate running, stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+        var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+        try {
+            const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
+            var formatted = formatVaultForPrompt(vault, chatMessages);
+            if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+                TavernHelper.injectPrompts([{
+                    id: 'ne_memory_vault',
+                    position: 'in_chat',
+                    depth: 2,
+                    role: 'system',
+                    content: formatted,
+                    should_scan: false
+                }], { once: false });
+            }
+        } catch (e) {
+            console.warn('[NE] Prompt injection failed:', e);
         }
     } catch (e) {
-        console.warn('[NE] Prompt injection failed:', e);
+        console.error('[NE] onBeforeGenerate crashed:', e);
     }
 }
 

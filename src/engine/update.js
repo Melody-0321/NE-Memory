@@ -28,7 +28,6 @@ export async function saveVaultWithSnapshot(chatId, vault) {
         autoEmbedVaultToChat(vault);
     } catch (e) {
         console.error('[NE] saveVaultWithSnapshot failed:', e);
-        throw e;
     }
 }
 

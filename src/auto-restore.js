@@ -4,11 +4,15 @@ import { discoverDynamicFields } from './engine/state-discovery.js';
 var _restoredChatIds = {};
 
 async function _discoverIfNeeded(chatId, vault) {
-    if (!vault || !vault.content || vault.content.dynamic_state) return;
-    var result = discoverDynamicFields(vault);
-    if (result.discovered) {
-        await write(chatId, vault);
-        console.log('[NE] Dynamic state discovered for', chatId);
+    try {
+        if (!vault || !vault.content || vault.content.dynamic_state) return;
+        var result = discoverDynamicFields(vault);
+        if (result.discovered) {
+            await write(chatId, vault);
+            console.log('[NE] Dynamic state discovered for', chatId);
+        }
+    } catch (e) {
+        console.warn('[NE] Dynamic state discovery failed:', e);
     }
 }
 
