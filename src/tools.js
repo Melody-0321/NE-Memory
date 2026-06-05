@@ -3,6 +3,7 @@
  */
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
+import { mergeDynamicState } from './engine/state-discovery.js';
 import { saveVaultWithSnapshot } from './engine/update.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
@@ -505,17 +506,38 @@ function registerUpdateState(getChatId) {
             const vault = await read(chatId);
             const content = vault.content || {};
             const schema = content.state_schema || null;
-            let validated;
-            if (schema) {
-                const result = validateStateChanges(schema, args.changes);
-                if (result.warnings.length > 0) {
-                    return 'Some changes rejected: ' + result.warnings.map(r => r.path + '(' + r.warning + ')').join(', ');
+
+            // 分离 dynamic.* 路径和 state.* 路径
+            var dynamicChanges = {};
+            var stateChanges = {};
+            Object.keys(args.changes).forEach(function (key) {
+                if (key.startsWith('dynamic.')) {
+                    dynamicChanges[key.slice(8)] = args.changes[key];
+                } else {
+                    stateChanges[key] = args.changes[key];
                 }
-                validated = result.validated;
-            } else {
-                validated = args.changes;
+            });
+
+            // 处理 state 变更（走固定 schema 校验）
+            if (Object.keys(stateChanges).length > 0) {
+                let validated;
+                if (schema) {
+                    const result = validateStateChanges(schema, stateChanges);
+                    if (result.warnings.length > 0) {
+                        return 'Some changes rejected: ' + result.warnings.map(r => r.path + '(' + r.warning + ')').join(', ');
+                    }
+                    validated = result.validated;
+                } else {
+                    validated = stateChanges;
+                }
+                content.state = mergeStateChanges(content.state || {}, validated);
             }
-            content.state = mergeStateChanges(content.state || {}, validated);
+
+            // 处理 dynamic 变更（无校验，自由合并）
+            if (Object.keys(dynamicChanges).length > 0) {
+                content.dynamic_state = mergeDynamicState(content.dynamic_state || {}, dynamicChanges);
+            }
+
             vault.content = content;
             await saveVaultWithSnapshot(chatId, vault);
             return 'State updated successfully';
