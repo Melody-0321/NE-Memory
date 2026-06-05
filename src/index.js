@@ -2,7 +2,7 @@
  * index.js — NE Memory Engine 入口（TH 脚本模式）
  *
  * 安装：粘贴此文件 URL 到 TH 脚本管理器。
- * 发行：jsdelivr CDN → https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@ab91390/dist/index.js
+ * 发行：jsdelivr CDN → https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@96d75a0/dist/index.js
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
