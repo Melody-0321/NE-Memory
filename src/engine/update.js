@@ -3,13 +3,12 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, appendSTMEntries, getCursorState, updateCursorState, markMessagesProcessed, collectProcessedMsgIds } from '../vault/store.js';
+import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
-import { runStmCursorLoop } from './cursor.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
@@ -452,6 +451,21 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     return { system: instruction, user: userPrompt };
 }
 
+// ── Single-call STM extraction (replaces cursor loop) ──
+
+async function extractAllStm(messages, vault) {
+    var prompt = buildCursorPrompt(messages, 0, [], vault, false);
+    var response = await callMemoryPipeline([
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user }
+    ]);
+    var parsed = parseSTMResponse(response);
+    return {
+        stmEntries: parsed.stmEntries || [],
+        checkpoints: parsed._checkpoints || {}
+    };
+}
+
 // ── State changes prompt builder (post-cursor, single LLM call) ──
 
 function buildStateChangesPrompt(messages, vault) {
@@ -527,29 +541,40 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         }
     }
 
-    // ── 每批次重置 cursor position，避免跨批次索引错位 ──
-    var savedCursorState = getCursorState(vault, 'stm');
-    savedCursorState.position = 0;
-    updateCursorState(vault, 'stm', savedCursorState);
+    // ── Phase 1: 单次全量 STM 提取 ──
+    var stmResult = await extractAllStm(filteredMessages, vault);
+    var newEntries = stmResult.stmEntries;
 
-    // ── Phase 1: Cursor Loop 提取 STM 条目 ──
-    var cursorResult = await runStmCursorLoop({
-        vault: vault,
-        messages: filteredMessages,
-        callLLM: async function(messages) {
-            return await callMemoryPipeline(messages);
-        },
-        parseResponse: parseSTMResponse,
-        validateOutput: validateSTMOutput,
-        postFill: postFillSTM,
-        appendEntries: appendSTMEntries,
-        getCursorState: getCursorState,
-        updateCursorState: updateCursorState,
-        markProcessed: markMessagesProcessed,
-        buildPrompt: buildCursorPrompt
-    });
-    vault = cursorResult.vault;
-    var newEntries = (vault.content.stm_entries || []).slice(-cursorResult.totalAdded);
+    // 处理 _checkpoints
+    if (stmResult.checkpoints && Object.keys(stmResult.checkpoints).length > 0) {
+        postFillSTM({ stmEntries: newEntries, _checkpoints: stmResult.checkpoints, stateChanges: {} }, vault);
+    }
+
+    // STM 条目验证 + 后填充 + 追加 + 标记已处理
+    var validEntries = [];
+    for (var j = 0; j < newEntries.length; j++) {
+        var entry = newEntries[j];
+        if (!entry.event || !entry.msgRange) continue;
+        var errs = validateSTMOutput(entry);
+        if (errs.length > 0) console.warn('[NE] STM validation errors:', errs);
+        validEntries.push(entry);
+    }
+    if (validEntries.length > 0) {
+        postFillSTM({ stmEntries: validEntries, _checkpoints: stmResult.checkpoints, stateChanges: {} }, vault);
+        var previousCount = (vault.content.stm_entries || []).length;
+        appendSTMEntries(vault, validEntries, null, true);
+        var coveredMsgIds = new Set();
+        for (var k = 0; k < validEntries.length; k++) {
+            var range = validEntries[k].msgRange;
+            if (range && range.length === 2) {
+                for (var m = range[0]; m <= range[1]; m++) {
+                    if (filteredMessages[m]) coveredMsgIds.add(filteredMessages[m].id);
+                }
+            }
+        }
+        markMessagesProcessed(vault, Array.from(coveredMsgIds));
+        newEntries = (vault.content.stm_entries || []).slice(previousCount);
+    }
 
     // ── Phase 2: 提取 state_changes（一次 LLM 调用）──
     var stateChanges = {};
@@ -644,4 +669,66 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
 
     await saveVaultWithSnapshot(chatId, vault);
     return { vault: vault, added: stmCount };
+}
+
+// ── 逐轮轻量状态检测（非阈值轮，仅 1-2 条消息）──
+
+export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
+    var vault = await read(chatId);
+    if (!vault || !vault.content) return { vault, changed: false };
+
+    var messages = [];
+    if (latestUserMsg) messages.push(latestUserMsg);
+    if (latestAssistantMsg) messages.push(latestAssistantMsg);
+    if (messages.length === 0) return { vault, changed: false };
+
+    var statePrompt = buildStateChangesPrompt(messages, vault);
+
+    var stateResponse;
+    try {
+        stateResponse = await callMemoryPipeline([
+            { role: 'system', content: statePrompt.system },
+            { role: 'user', content: statePrompt.user }
+        ]);
+    } catch (e) {
+        console.warn('[NE] Per-round state extraction failed:', e);
+        return { vault, changed: false };
+    }
+
+    var parsed = parseSTMResponse(stateResponse);
+    var stateChanges = parsed.stateChanges || {};
+
+    if (parsed._checkpoints) {
+        postFillSTM({ stmEntries: vault.content.stm_entries || [], _checkpoints: parsed._checkpoints, stateChanges: {} }, vault);
+    }
+
+    if (Object.keys(stateChanges).length === 0 && !parsed._checkpoints) {
+        return { vault, changed: false };
+    }
+
+    if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
+        var schema = vault.content.state_schema || null;
+        var result = validateStateChanges(schema, stateChanges);
+        if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
+        vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
+        handleQuestCompletion(vault.content.state, result.validated);
+    }
+
+    if (stateChanges.story_date) {
+        vault.content.story_date = String(stateChanges.story_date);
+    }
+
+    vault._meta = vault._meta || {};
+    vault._meta.last_state_task = 'per_round';
+    vault._meta.last_state_time = new Date().toISOString();
+
+    await saveVaultWithSnapshot(chatId, vault);
+
+    recordTelemetry({
+        pipeline_task: 'state_per_round',
+        new_state_change_count: Object.keys(stateChanges).length,
+        parse_error: null
+    });
+
+    return { vault, changed: true };
 }

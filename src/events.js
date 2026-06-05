@@ -1,7 +1,7 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate } from './engine/update.js';
+import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 
@@ -11,6 +11,7 @@ let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
 let pendingMessages = [];
 var pipelineRunning = false;
+var statePipelineRunning = false;
 var consecutiveFailures = 0;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
@@ -97,10 +98,33 @@ export async function onMessageReceived(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            pendingMessages.push({ role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
+            pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
-            await checkAndFlush();
+
+            if (pipelineRunning) return;
+
+            const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
+            var shouldRunPipeline = pendingMessages.length >= getStmBatchSize()
+                || totalWords >= getStmWordsThreshold()
+                || (pendingMessages.length >= 3 && totalWords >= 100);
+
+            if (shouldRunPipeline) {
+                await flushPendingMessages();
+            } else {
+                if (statePipelineRunning) return;
+                statePipelineRunning = true;
+                try {
+                    var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
+                    var chatId = getChatIdFn ? getChatIdFn() : 'default';
+                    await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+                } catch (e) {
+                    console.warn('[NE] Per-round state pipeline failed:', e);
+                } finally {
+                    statePipelineRunning = false;
+                }
+            }
         } else {
             console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
         }
