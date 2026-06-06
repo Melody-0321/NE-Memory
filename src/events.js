@@ -111,7 +111,6 @@ export function onMessageSent(messageIndex) {
             pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
-            checkAndFlush();
         } else {
             console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
         }
@@ -161,10 +160,6 @@ export async function onMessageReceived(messageIndex) {
     } catch (e) {
         console.error('[NE] onMessageReceived crashed:', e);
     }
-}
-
-async function checkAndFlush() {
-    await flushPendingMessages();
 }
 
 async function flushPendingMessages() {
