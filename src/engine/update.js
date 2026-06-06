@@ -145,8 +145,8 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
         var s = formatStateSummary(content.state, content.state_schema || null);
         if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
     }
-    // ── 动态字段发现（从角色卡/世界书自动提取的状态栏字段） ──
-    var dynamicState = content.dynamic_state;
+    // ── 动态字段发现（从角色卡/世界书自动提取的状态栏字段，仅动态模式）──
+    var dynamicState = isDynamicStateMode() ? content.dynamic_state : null;
     if (dynamicState && (Object.keys(dynamicState.global || {}).length > 0 || Object.keys(dynamicState.characters || {}).length > 0)) {
         var ds = formatDynamicStateSummary(dynamicState);
         if (ds) currentStateSnapshot += ds;

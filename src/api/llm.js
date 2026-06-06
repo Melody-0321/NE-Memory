@@ -170,7 +170,7 @@ export async function initPowerSlots(characterName, existingSlotsForWorld) {
                 contextText += '\n=== World Book Entries ===\n';
                 Object.keys(worldInfo.entries).forEach(function (key) {
                     var entry = worldInfo.entries[key];
-                    if (entry && entry.content) {
+                    if (entry && entry.content && !entry.disable) {
                         contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
                     }
                 });
