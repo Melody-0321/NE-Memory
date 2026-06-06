@@ -365,7 +365,7 @@ export function resolveSchemaPath(stateSchema, dotPath) {
     return current;
 }
 
-// validateStateChanges — 校验变更，未知字段警告但不阻塞（向后兼容）
+// validateStateChanges — 校验变更，未知字段拒绝（仅 schema 中存在或无 schema 时才放行）
 export function validateStateChanges(stateSchema, changes) {
     var validated = {};
     var warnings = [];
@@ -374,8 +374,7 @@ export function validateStateChanges(stateSchema, changes) {
         var fieldSchema = resolveSchemaPath(stateSchema, path);
 
         if (!fieldSchema) {
-            warnings.push({ path: path, warning: 'Field not in schema, passing through: ' + path });
-            validated[path] = changes[path];
+            warnings.push({ path: path, warning: 'Field not in schema, rejected: ' + path });
             return;
         }
 
