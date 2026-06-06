@@ -1154,6 +1154,7 @@ export async function renderVaultPanel(getChatId) {
             '</div></div></div>';
 
         var holder = byId('top-settings-holder');
+        console.log('[NE] vault-panel: resolved doc=' + (resolvePD() === document ? 'self' : 'parent') + ', holder=' + !!holder);
         if (holder) {
             holder.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
@@ -1162,7 +1163,7 @@ export async function renderVaultPanel(getChatId) {
         }
 
         var tgl = byId('narrative_vault_toggle');
-        var ref = byId('narrative_vault_panel_refresh');
+        console.log('[NE] vault-panel: tgl=' + !!tgl + ', ref=' + !!byId('narrative_vault_panel_refresh'));
         var edt = byId('narrative_vault_panel_edit_btn');
         var sav = byId('narrative_vault_panel_save_btn');
         if (tgl) tgl.onclick = function () { createVaultPopout(getChatId); };
