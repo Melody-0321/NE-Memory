@@ -20,10 +20,28 @@ import { buildRetrievalMessages } from '../engine/retrieval.js';
 
 function t(key) { return t_narrative(key); }
 
-var PD = document;
-function qs(sel) { return PD.querySelector(sel); }
-function qsa(sel) { return PD.querySelectorAll(sel); }
-function byId(id) { return PD.getElementById(id); }
+/* 惰性判定正确的 document。
+ * ST 可能在主页面或 iframe 中加载扩展脚本。
+ * #top-settings-holder 始终在 ST 主页面 DOM 中 ——
+ * 以此元素为锚点，自动找到对应的 document。 */
+var _pd = null;
+function resolvePD() {
+    if (_pd) return _pd;
+    if (document.getElementById('top-settings-holder')) { _pd = document; return _pd; }
+    try {
+        if (window.parent && window.parent !== window && window.parent.document.getElementById('top-settings-holder')) {
+            _pd = window.parent.document; return _pd;
+        }
+    } catch (e) {}
+    _pd = document;
+    return _pd;
+}
+function qs(sel) { return resolvePD().querySelector(sel); }
+function qsa(sel) { return resolvePD().querySelectorAll(sel); }
+function byId(id) { return resolvePD().getElementById(id); }
+function pdCreate(tag) { return resolvePD().createElement(tag); }
+function pdHead() { return resolvePD().head; }
+function pdAddEventListener(type, fn, opts) { resolvePD().addEventListener(type, fn, opts); }
 
 function freezeIframeHeight() {
     try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
@@ -45,7 +63,7 @@ function setVaultActivity(active) {
 
 function injectPinCSS() {
     if (byId('ne_pin_style')) return;
-    var style = PD.createElement('style');
+    var style = pdCreate('style');
     style.id = 'ne_pin_style';
     style.textContent = '#narrative_vault_pin_div{font-size:24px;display:inline;padding:1px;opacity:0.5;transition:0.2s}' +
         '#narrative_vault_pin_div:hover,#narrative_vault_pin_div:has(:focus-visible){opacity:1}' +
@@ -55,7 +73,7 @@ function injectPinCSS() {
         '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +
         '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}' +
         '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
-    PD.head.appendChild(style);
+    pdHead().appendChild(style);
 }
 
 var vaultLLMLog = [];
@@ -621,7 +639,7 @@ function buildEditForms(vault, getChatId) {
 
     // State edit
     if (lastVaultStateJson) {
-        var se = PD.createElement('div');
+        var se = pdCreate('div');
         se.id = 'narrative_vault_panel_state_edit';
         se.style.marginBottom = '10px';
         se.innerHTML = '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State (JSON)') + '</div>' +
@@ -632,7 +650,7 @@ function buildEditForms(vault, getChatId) {
 
     // LTM entry edit cards
     (c.ltm_entries || []).forEach(function (entry, i) {
-        var card = PD.createElement('div');
+        var card = pdCreate('div');
         card.style.cssText = 'margin:4px 0;padding:6px;background:var(--black30a);border-radius:4px;';
         card.innerHTML = '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input class="narrative_edit_period" data-id="' + entry.id + '" value="' + escapeHtml(entry.period || '') + '" style="width:80px;font-size:0.85em;" placeholder="Period">' +
@@ -645,7 +663,7 @@ function buildEditForms(vault, getChatId) {
 
     // STM entry edit cards
     (c.unconsolidated_stm || []).forEach(function (entry, i) {
-        var card = PD.createElement('div');
+        var card = pdCreate('div');
         card.style.cssText = 'margin:4px 0;padding:6px;background:var(--black30a);border-radius:4px;';
         card.innerHTML = '<div style="display:flex;align-items:center;gap:6px;">' +
             '<input class="narrative_edit_period" data-id="' + entry.id + '" value="' + escapeHtml(entry.period || '') + '" style="width:80px;font-size:0.85em;" placeholder="Period">' +
@@ -1136,10 +1154,6 @@ export async function renderVaultPanel(getChatId) {
             '</div></div></div>';
 
         var holder = byId('top-settings-holder');
-        if (!holder) {
-            // ST 可能在 iframe 中加载扩展脚本，此时需尝试父页面 document
-            try { holder = window.parent.document.getElementById('top-settings-holder'); } catch (e) {}
-        }
         if (holder) {
             holder.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
@@ -1337,7 +1351,7 @@ export async function renderVaultPanel(getChatId) {
         };
 
         // LLM log entry expand/collapse
-        PD.addEventListener('click', function (e) {
+        pdAddEventListener('click', function (e) {
             var header = e.target.closest('.ne_log_header');
             if (header) {
                 var body = header.parentElement.querySelector('.ne_log_body');
@@ -1423,7 +1437,7 @@ export async function renderVaultPanel(getChatId) {
         byId('narrative_vault_export_btn').onclick = function () {
             var data = { llm_log: vaultLLMLog, tool_log: narrativeToolCalls, telemetry: telemetryBuffer };
             var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            var a = PD.createElement('a');
+            var a = pdCreate('a');
             a.href = URL.createObjectURL(blob);
             a.download = 'ne_telemetry_' + new Date().toISOString().split('T')[0] + '.json';
             a.click();
