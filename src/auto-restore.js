@@ -1,10 +1,12 @@
 import { read, write } from './vault/store.js';
 import { discoverDynamicFields } from './engine/state-discovery.js';
+import { isDynamicStateMode } from './vault/schema.js';
 
 var _restoredChatIds = {};
 
 async function _discoverIfNeeded(chatId, vault) {
     try {
+        if (!isDynamicStateMode()) return;
         if (!vault || !vault.content || vault.content.dynamic_state) return;
         var result = discoverDynamicFields(vault);
         if (result.discovered) {

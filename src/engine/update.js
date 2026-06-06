@@ -545,8 +545,8 @@ function buildStateChangesPrompt(messages, vault) {
         var s = formatStateSummary(content.state, content.state_schema || null);
         if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
     }
-    // ── 动态字段 ──
-    var dynamicState2 = content.dynamic_state;
+    // ── 动态字段（仅动态模式）──
+    var dynamicState2 = isDynamicStateMode() ? content.dynamic_state : null;
     if (dynamicState2 && (Object.keys(dynamicState2.global || {}).length > 0 || Object.keys(dynamicState2.characters || {}).length > 0)) {
         var ds2 = formatDynamicStateSummary(dynamicState2);
         if (ds2) currentStateSnapshot += ds2;
@@ -588,8 +588,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
     if (filteredMessages.length === 0) return { vault: vault, added: 0 };
 
-    // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段） ──
-    if (!vault.content.dynamic_state) {
+    // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
+    if (isDynamicStateMode() && !vault.content.dynamic_state) {
         var discoveryResult = discoverDynamicFields(vault);
         if (discoveryResult.discovered) {
             try { await saveVaultWithSnapshot(chatId, vault); } catch (e) {}
