@@ -1163,7 +1163,8 @@ export async function renderVaultPanel(getChatId) {
         }
 
         var tgl = byId('narrative_vault_toggle');
-        console.log('[NE] vault-panel: tgl=' + !!tgl + ', ref=' + !!byId('narrative_vault_panel_refresh'));
+        var ref = byId('narrative_vault_panel_refresh');
+        console.log('[NE] vault-panel: tgl=' + !!tgl + ', ref=' + !!ref + ', edt=' + !!byId('narrative_vault_panel_edit_btn'));
         var edt = byId('narrative_vault_panel_edit_btn');
         var sav = byId('narrative_vault_panel_save_btn');
         if (tgl) tgl.onclick = function () { createVaultPopout(getChatId); };
