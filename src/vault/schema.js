@@ -15,6 +15,7 @@
 // 全局开关：可通过 isStateSchemaEnabled() / setStateSchemaEnabled() 控制整个 Schema 系统开关
 
 let _stateSchemaEnabled = false;
+let _dynamicStateMode = false;
 
 export function isStateSchemaEnabled() {
     return _stateSchemaEnabled;
@@ -34,6 +35,14 @@ export function setStateSchemaEnabled(val) {
         } catch (e) {}
     }
     _stateSchemaEnabled = !!val;
+}
+
+export function isDynamicStateMode() {
+    return _stateSchemaEnabled && _dynamicStateMode;
+}
+
+export function setDynamicStateMode(val) {
+    _dynamicStateMode = !!val;
 }
 
 export const POWER_SLOTS_TEMPLATES = {

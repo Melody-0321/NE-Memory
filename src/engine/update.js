@@ -5,7 +5,7 @@
  */
 import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, isDynamicStateMode } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -44,6 +44,75 @@ function autoEmbedVaultToChat(vault) {
             }
         }
     } catch (e) {}
+}
+
+/**
+ * 初始化 c.state 结构（首次对话时，c.state 为空）
+ * 只执行一次：c.state 非空后变为 no-op
+ *
+ * @param {Object} vault - 完整 vault 对象，直接修改 vault.content.state
+ */
+export function ensureStateStructure(vault) {
+    var state = vault.content.state;
+    if (state && Object.keys(state).length > 0) return; // 已初始化
+    if (!isStateSchemaEnabled()) return; // Schema 未启用
+
+    if (isDynamicStateMode()) {
+        // 动态模式：从 dynamic_state 中发现字段结构为 c.state 初始值
+        var ds = vault.content.dynamic_state;
+        if (!ds || !(Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
+            // dynamic_state 也没有字段 → 标记为空，让 LLM 自由输出
+            vault.content.state = {};
+        } else {
+            var newState = {};
+            if (ds.global) {
+                Object.keys(ds.global).forEach(function (k) {
+                    newState[k] = '';
+                });
+            }
+            if (ds.characters) {
+                newState.characters = {};
+                Object.keys(ds.characters).forEach(function (name) {
+                    newState.characters[name] = {};
+                    var fields = ds.characters[name];
+                    Object.keys(fields).forEach(function (k) {
+                        newState.characters[name][k] = '';
+                    });
+                });
+            }
+            vault.content.state = newState;
+        }
+    } else {
+        // 预设模式：从 state_schema 中提取字段结构
+        var schema = vault.content.state_schema;
+        if (!schema) {
+            vault.content.state = {};
+            return;
+        }
+        vault.content.state = initStateFromSchema(schema);
+    }
+    vault.content.state_css = vault.content.state_css || '';
+}
+
+/**
+ * 从 schema 定义中递归提取字段路径，生成 { field: '' } 结构
+ */
+function initStateFromSchema(schema) {
+    if (!schema || !schema.fields) return {};
+    var state = {};
+    Object.keys(schema.fields).forEach(function (key) {
+        var field = schema.fields[key];
+        if (key === '*' || !field) return;
+        if (field.enabled === false) return;
+        if (field.type === 'object') {
+            if (field.schema) {
+                state[key] = initStateFromSchema(field.schema);
+            }
+            return;
+        }
+        state[key] = '';
+    });
+    return state;
 }
 
 export function filterNewMessages(messages, processedIds) {
@@ -541,6 +610,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         }
     }
 
+    // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
+    ensureStateStructure(vault);
+
     // ── Phase 1: 单次全量 STM 提取 ──
     var stmResult = await extractAllStm(filteredMessages, vault);
     var newEntries = stmResult.stmEntries;
@@ -676,6 +748,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
 export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
     var vault = await read(chatId);
     if (!vault || !vault.content) return { vault, changed: false };
+
+    // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
+    ensureStateStructure(vault);
 
     var messages = [];
     if (latestUserMsg) messages.push(latestUserMsg);

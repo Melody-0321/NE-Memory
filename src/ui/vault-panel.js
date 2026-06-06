@@ -500,10 +500,10 @@ async function updateVaultViewerPopout(getChatId) {
             if (stmView) {
                 stmView.insertAdjacentHTML('beforebegin',
                     '<div class="narrative_state_block" style="margin-bottom:14px;">' +
-                    '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State') + '</div>' +
+                    '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t_narrative('Current State') + '</div>' +
                     '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;white-space:pre-wrap;font-family:monospace;">' + escapeHtml(stateHtml) + '</div>' +
                     '<div style="margin-top:4px;display:flex;gap:4px;">' +
-                    '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t('Clear') + '</button>' +
+                    '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t_narrative('Clear') + '</button>' +
                     '</div></div>'
                 );
             }

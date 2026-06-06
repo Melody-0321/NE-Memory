@@ -9,7 +9,7 @@ import { registerAllTools } from './tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending } from './events.js';
 import { t } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled } from './vault/schema.js';
+import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 
@@ -48,6 +48,7 @@ async function init() {
     t(locale);
     var settings = loadSettings();
     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+    setDynamicStateMode(settings && settings.useDynamicState || false);
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
     const chatId = getChatId();
     const vault = await read(chatId);
@@ -109,6 +110,7 @@ function setupEventListeners(retryCount) {
                 neSyncChatId(chatId);
                 var settings = loadSettings();
                 setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                setDynamicStateMode(settings && settings.useDynamicState || false);
                 setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                 const vault = await read(chatId);
                 if (vault.version === 0) {
@@ -137,6 +139,7 @@ function setupEventListeners(retryCount) {
                     neSyncChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                    setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     const vault = await read(chatId);
                     if (vault.version === 0) {

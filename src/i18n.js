@@ -11,7 +11,7 @@ export const NARRATIVE_I18N = {
         'Cancel': 'Cancel', 'History': 'History', 'Extract State': 'Extract State', 'Consolidate': 'Consolidate', 'Process History': 'Process History', 'Processing...': 'Processing...', 'Process all past messages into memories': 'Process all past messages into memories', 'No messages found in chat.': 'No messages found in chat.', 'No messages with content to process.': 'No messages with content to process.', 'Export JSON': 'Export JSON', 'Import JSON': 'Import JSON', 'Embed into Chat': 'Embed into Chat', 'Embed vault into chat_metadata so it travels with chat export/backup': 'Embed vault into chat_metadata so it travels with chat export/backup', 'Done': 'Done', 'Vault is now embedded in chat_metadata. Export or backup will carry it.': 'Vault is now embedded in chat_metadata. Export or backup will carry it.',
         'Clear': 'Clear', 'Version:': 'Version:', 'Long-term Memory (LTM)': 'Long-term Memory (LTM)',
         'Short-term Memory (STM)': 'Short-term Memory (STM)', 'LLM Operation Log': 'LLM Operation Log',
-        'Opening Scene': 'Opening Scene', 'Current State': 'Current State', 'Current State (JSON)': 'Current State (JSON)',
+        'Opening Scene': 'Opening Scene', 'Current State': 'Current State', 'Discovered State Fields': 'Discovered State Fields', 'Current State (JSON)': 'Current State (JSON)',
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.',
         'Restore to version v{VER}?': 'Restore to version v{VER}?', 'Confirm delete v{VER}?': 'Confirm delete v{VER}?',
@@ -38,7 +38,7 @@ export const NARRATIVE_I18N = {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
         'History': '历史', 'Extract State': '提取状态', 'Consolidate': '整合', 'Process History': '处理历史', 'Processing...': '处理中...', 'Process all past messages into memories': '将全部历史消息处理为记忆', 'No messages found in chat.': '未在聊天记录中找到消息。', 'No messages with content to process.': '没有可处理的有效消息。', 'Export JSON': '导出 JSON', 'Import JSON': '导入 JSON', 'Embed into Chat': '嵌入到聊天', 'Embed vault into chat_metadata so it travels with chat export/backup': '将记忆嵌入 chat_metadata，随聊天导出/备份一起迁移', 'Done': '完成', 'Vault is now embedded in chat_metadata. Export or backup will carry it.': '记忆已嵌入 chat_metadata。导出或备份聊天文件时将包含记忆。', 'Clear': '清除',
         'Version:': '版本：', 'Long-term Memory (LTM)': '长期记忆 (LTM)', 'Short-term Memory (STM)': '短期记忆 (未整合 STM)',
-        'LLM Operation Log': 'LLM 操作日志', 'Opening Scene': '开场设定', 'Current State': '当前状态',
+        'LLM Operation Log': 'LLM 操作日志', 'Opening Scene': '开场设定', 'Current State': '当前状态', 'Discovered State Fields': '已发现的动态字段',
         'Current State (JSON)': '当前状态 (JSON)', 'No operations logged': '暂无操作记录',
         'Tool Calling Log': 'Tool 调用日志', 'Export Logs': '导出日志', 'No tool calls recorded': '暂无 Tool 调用记录',
         'Loading...': '加载中...', 'Loading history...': '加载历史中...', 'updating...': '更新中...',
@@ -64,7 +64,7 @@ export const NARRATIVE_I18N = {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
         'History': '歷史', 'Extract State': '提取狀態', 'Consolidate': '整合', 'Process History': '處理歷史', 'Processing...': '處理中...', 'Process all past messages into memories': '將全部歷史訊息處理為記憶', 'No messages found in chat.': '未在聊天記錄中找到訊息。', 'No messages with content to process.': '沒有可處理的有效訊息。', 'Export JSON': '匯出 JSON', 'Import JSON': '匯入 JSON', 'Embed into Chat': '嵌入到聊天', 'Embed vault into chat_metadata so it travels with chat export/backup': '將記憶嵌入 chat_metadata，隨聊天匯出/備份一起遷移', 'Done': '完成', 'Vault is now embedded in chat_metadata. Export or backup will carry it.': '記憶已嵌入 chat_metadata。匯出或備份聊天檔案時將包含記憶。', 'Clear': '清除',
         'Version:': '版本：', 'Long-term Memory (LTM)': '長期記憶 (LTM)', 'Short-term Memory (STM)': '短期記憶 (未整合 STM)',
-        'LLM Operation Log': 'LLM 操作日誌', 'Opening Scene': '開場設定', 'Current State': '當前狀態',
+        'LLM Operation Log': 'LLM 操作日誌', 'Opening Scene': '開場設定', 'Current State': '當前狀態', 'Discovered State Fields': '已發現的動態欄位',
         'Current State (JSON)': '當前狀態 (JSON)', 'No operations logged': '暫無操作記錄',
         'Tool Calling Log': 'Tool 調用日誌', 'Export Logs': '匯出日誌', 'No tool calls recorded': '暫無 Tool 調用記錄',
         'Loading...': '載入中...', 'Loading history...': '載入歷史中...', 'updating...': '更新中...',
@@ -118,6 +118,9 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             'When enabled, the memory engine will track tasks, goals, and world events in state.',
         'Enable State Schema': 'Enable State Schema',
+        'Use Dynamic Field Discovery': 'Use Dynamic Field Discovery',
+        'Automatically discover state fields from character cards and world books. Disable to use preset schema fields.':
+            'Automatically discover state fields from character cards and world books. Disable to use preset schema fields.',
         'Enable Smart Retrieval': 'Enable Smart Retrieval',
         'Memory Budget': 'Memory Budget',
         'STM Extraction Batch': 'STM Extraction Batch',
@@ -160,6 +163,9 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             '启用后，记忆引擎将在状态中追踪任务、目标与世界事件。',
         'Enable State Schema': '启用状态Schema系统',
+        'Use Dynamic Field Discovery': '使用动态字段发现',
+        'Automatically discover state fields from character cards and world books. Disable to use preset schema fields.':
+            '从角色卡和世界书自动发现状态字段。关闭则使用预设 Schema 字段。',
         'Enable Smart Retrieval': '启用智能检索',
         'Memory Budget': '记忆预算',
         'STM Extraction Batch': 'STM 提取批次',
@@ -202,6 +208,9 @@ export const CONFIG_I18N = {
         'When enabled, the memory engine will track tasks, goals, and world events in state.':
             '啟用後，記憶引擎將在狀態中追蹤任務、目標與世界事件。',
         'Enable State Schema': '啟用狀態Schema系統',
+        'Use Dynamic Field Discovery': '使用動態欄位發現',
+        'Automatically discover state fields from character cards and world books. Disable to use preset schema fields.':
+            '從角色卡和世界書自動發現狀態欄位。關閉則使用預設 Schema 欄位。',
         'Enable Smart Retrieval': '啟用智能檢索',
         'Memory Budget': '記憶預算',
         'STM Extraction Batch': 'STM 提取批次',

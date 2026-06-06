@@ -5,7 +5,7 @@
  */
 import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
+import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES, setDynamicStateMode } from '../vault/schema.js';
 import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
 
@@ -37,7 +37,9 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_engine"> <span>' + t_config('Enable Narrative Engine') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-toggle" id="ne_gm_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_gm"> <span>' + t_config('Enable GM Agent') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-toggle" id="ne_memory_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_memory"> <span>' + t_config('Enable Memory System') + '</span></label></div>' +
-        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label></div>' +
+        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label>' +
+        '<div class="narrative-toggle ne-sub-sub-sub-toggle" id="ne_dynamic_section" style="margin-left:3em;display:none;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_dynamic_state"> <span>' + t_config('Use Dynamic Field Discovery') + '</span></label>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-left:1em;">' + t_config('Automatically discover state fields from character cards and world books. Disable to use preset schema fields.') + '</div></div>' +
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
@@ -159,6 +161,7 @@ function bindConfigEvents(getChatId) {
     $pd('#ne_enable_state_schema').on('change', function () {
         var on = $pd('#ne_enable_state_schema').prop('checked');
         $pd('#ne_schema_sub_sections').toggle(on);
+        $pd('#ne_dynamic_section').toggle(on);
     });
 }
 
@@ -298,6 +301,8 @@ function loadConfigUI() {
         var ssEnabled = s.enableStateSchema || false;
         $pd('#ne_enable_state_schema').prop('checked', ssEnabled);
         $pd('#ne_schema_sub_sections').toggle(ssEnabled);
+        $pd('#ne_enable_dynamic_state').prop('checked', s.useDynamicState || false);
+        $pd('#ne_dynamic_section').toggle(ssEnabled);
         var retrievalEnabled = s.retrievalEnabled || false;
         $pd('#ne_enable_retrieval').prop('checked', retrievalEnabled);
         setRetrievalEnabled(retrievalEnabled);
@@ -352,6 +357,7 @@ function saveConfigUI() {
         enableTelemetry: $pd('#ne_enable_telemetry').prop('checked'),
         enableQuests: $pd('#ne_enable_quests').prop('checked'),
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
+        useDynamicState: $pd('#ne_enable_dynamic_state').prop('checked'),
         retrievalEnabled: $pd('#ne_enable_retrieval').prop('checked'),
         memoryBudget: Number($pd('#ne_memory_budget').val()),
         stmBatch: Number($pd('#ne_stm_batch').val()),
@@ -390,6 +396,7 @@ function saveConfigUI() {
         }
     }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
+    setDynamicStateMode(settings.useDynamicState || false);
     savePowerSlotsFromEditor();
     saveSecondaryApiConfig({
         url: $pd('#ne_secondary_url').val().trim(),
