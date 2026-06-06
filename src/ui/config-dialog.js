@@ -9,22 +9,16 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES,
 import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
 
-var $pd;
-(function () {
+function $pd(selector) {
     try {
-        if (typeof $ === 'function') {
-            var doc = (window.parent && window.parent.document) ? window.parent.document : document;
-            $pd = function (selector) { return $(selector, doc); };
-        } else {
-            $pd = function () { return { length: 0, on: function () { return this; }, prop: function () {}, val: function () { return ''; }, toggle: function () {}, show: function () {}, hide: function () {}, css: function () {}, data: function () {}, find: function () { return this; }, html: function () {}, is: function () { return false; }, each: function () {}, append: function () {} }; };
-        }
+        return $(selector, (window.parent && window.parent.document) || document);
     } catch (e) {
-        $pd = function (selector) { return $(selector); };
+        return $(selector);
     }
+}
+var PD = (function () {
+    try { return (window.parent && window.parent.document) || document; } catch (e) { return document; }
 })();
-var PD = function () {
-    try { return (window.parent && window.parent.document) ? window.parent.document : document; } catch (e) { return document; }
-}();
 
 var defaultMemoryConfig = {
     temperature: 0.2, stm_max_tokens: 800, stm_max_chars: 120,
