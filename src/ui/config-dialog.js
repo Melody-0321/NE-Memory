@@ -1,7 +1,7 @@
 /**
  * ui/config-dialog.js — 设置面板（ST 扩展设置 inline-drawer, 3 Tab）
  *
- * 通过 window.parent.document 操作主 ST 页面 DOM，#extensions_settings 挂载。
+ * UI 挂载到 ST 主页面 DOM 的 #extensions_settings 抽屉中。
  */
 import { t_config, t_narrative } from '../i18n.js';
 import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
@@ -9,8 +9,22 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES,
 import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
 
-function $pd(selector) { return $(selector, window.parent.document); }
-var PD = window.parent.document;
+var $pd;
+(function () {
+    try {
+        if (typeof $ === 'function') {
+            var doc = (window.parent && window.parent.document) ? window.parent.document : document;
+            $pd = function (selector) { return $(selector, doc); };
+        } else {
+            $pd = function () { return { length: 0, on: function () { return this; }, prop: function () {}, val: function () { return ''; }, toggle: function () {}, show: function () {}, hide: function () {}, css: function () {}, data: function () {}, find: function () { return this; }, html: function () {}, is: function () { return false; }, each: function () {}, append: function () {} }; };
+        }
+    } catch (e) {
+        $pd = function (selector) { return $(selector); };
+    }
+})();
+var PD = function () {
+    try { return (window.parent && window.parent.document) ? window.parent.document : document; } catch (e) { return document; }
+}();
 
 var defaultMemoryConfig = {
     temperature: 0.2, stm_max_tokens: 800, stm_max_chars: 120,
