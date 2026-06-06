@@ -474,11 +474,14 @@ async function updateVaultViewerPopout(getChatId) {
         }
     }
     try {
+        console.log('[NE] updateVaultViewerPopout: starting for chat=' + getChatId());
         var vault = await read(getChatId());
         var c = vault.content || {};
+        console.log('[NE] updateVaultViewerPopout: vault v' + (vault.version||0) + ', stm=' + (c.unconsolidated_stm||[]).length + ', ltm=' + (c.ltm_entries||[]).length + ', stateKeys=' + Object.keys(c.state||{}).length);
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
 
         var verEl = byId('narrative_vault_panel_version');
+        console.log('[NE] updateVaultViewerPopout: verEl=' + !!verEl);
         if (verEl) {
             var verText = t('Version:') + ' ' + (vault.version || 0);
             var ts = formatLocalTime(vault.updated_at);
@@ -502,7 +505,7 @@ async function updateVaultViewerPopout(getChatId) {
         }
 
         var panelBody = verEl ? verEl.parentElement : null;
-        if (!panelBody) return;
+        if (!panelBody) { console.log('[NE] updateVaultViewerPopout: panelBody is null, returning'); return; }
 
         // 移除旧区块
         qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
