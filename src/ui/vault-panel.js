@@ -20,7 +20,7 @@ import { buildRetrievalMessages } from '../engine/retrieval.js';
 
 function t(key) { return t_narrative(key); }
 
-var PD = window.parent.document;
+var PD = document;
 function qs(sel) { return PD.querySelector(sel); }
 function qsa(sel) { return PD.querySelectorAll(sel); }
 function byId(id) { return PD.getElementById(id); }
