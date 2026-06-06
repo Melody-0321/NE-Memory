@@ -20,28 +20,16 @@ import { buildRetrievalMessages } from '../engine/retrieval.js';
 
 function t(key) { return t_narrative(key); }
 
-/* 惰性判定正确的 document。
- * ST 可能在主页面或 iframe 中加载扩展脚本。
- * #top-settings-holder 始终在 ST 主页面 DOM 中 ——
- * 以此元素为锚点，自动找到对应的 document。 */
-var _pd = null;
-function resolvePD() {
-    if (_pd) return _pd;
-    if (document.getElementById('top-settings-holder')) { _pd = document; return _pd; }
-    try {
-        if (window.parent && window.parent !== window && window.parent.document.getElementById('top-settings-holder')) {
-            _pd = window.parent.document; return _pd;
-        }
-    } catch (e) {}
-    _pd = document;
-    return _pd;
-}
-function qs(sel) { return resolvePD().querySelector(sel); }
-function qsa(sel) { return resolvePD().querySelectorAll(sel); }
-function byId(id) { return resolvePD().getElementById(id); }
-function pdCreate(tag) { return resolvePD().createElement(tag); }
-function pdHead() { return resolvePD().head; }
-function pdAddEventListener(type, fn, opts) { resolvePD().addEventListener(type, fn, opts); }
+/* window.parent.document 始终指向 ST 主页面 DOM。
+ * 在主页中 window.parent === window，在 iframe 中可跨域访问父页面。 */
+var PD;
+try { PD = window.parent.document; } catch(e) { PD = document; }
+function qs(sel) { return PD.querySelector(sel); }
+function qsa(sel) { return PD.querySelectorAll(sel); }
+function byId(id) { return PD.getElementById(id); }
+function pdCreate(tag) { return PD.createElement(tag); }
+function pdHead() { return PD.head; }
+function pdAddEventListener(type, fn, opts) { PD.addEventListener(type, fn, opts); }
 
 function freezeIframeHeight() {
     try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
@@ -474,14 +462,11 @@ async function updateVaultViewerPopout(getChatId) {
         }
     }
     try {
-        console.log('[NE] updateVaultViewerPopout: starting for chat=' + getChatId());
         var vault = await read(getChatId());
         var c = vault.content || {};
-        console.log('[NE] updateVaultViewerPopout: vault v' + (vault.version||0) + ', stm=' + (c.unconsolidated_stm||[]).length + ', ltm=' + (c.ltm_entries||[]).length + ', stateKeys=' + Object.keys(c.state||{}).length);
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
 
         var verEl = byId('narrative_vault_panel_version');
-        console.log('[NE] updateVaultViewerPopout: verEl=' + !!verEl);
         if (verEl) {
             var verText = t('Version:') + ' ' + (vault.version || 0);
             var ts = formatLocalTime(vault.updated_at);
@@ -505,7 +490,7 @@ async function updateVaultViewerPopout(getChatId) {
         }
 
         var panelBody = verEl ? verEl.parentElement : null;
-        if (!panelBody) { console.log('[NE] updateVaultViewerPopout: panelBody is null, returning'); return; }
+        if (!panelBody) return;
 
         // 移除旧区块
         qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
@@ -1157,7 +1142,6 @@ export async function renderVaultPanel(getChatId) {
             '</div></div></div>';
 
         var holder = byId('top-settings-holder');
-        console.log('[NE] vault-panel: resolved doc=' + (resolvePD() === document ? 'self' : 'parent') + ', holder=' + !!holder);
         if (holder) {
             holder.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
@@ -1167,7 +1151,6 @@ export async function renderVaultPanel(getChatId) {
 
         var tgl = byId('narrative_vault_toggle');
         var ref = byId('narrative_vault_panel_refresh');
-        console.log('[NE] vault-panel: tgl=' + !!tgl + ', ref=' + !!ref + ', edt=' + !!byId('narrative_vault_panel_edit_btn'));
         var edt = byId('narrative_vault_panel_edit_btn');
         var sav = byId('narrative_vault_panel_save_btn');
         if (tgl) tgl.onclick = function () { createVaultPopout(getChatId); };

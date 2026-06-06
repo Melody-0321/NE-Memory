@@ -10,7 +10,6 @@ import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
 
 function $pd(selector) { return $(selector); }
-var PD = document;
 
 var defaultMemoryConfig = {
     temperature: 0.2, stm_max_tokens: 800, stm_max_chars: 120,
