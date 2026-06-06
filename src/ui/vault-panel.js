@@ -500,11 +500,11 @@ async function updateVaultViewerPopout(getChatId) {
         qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
         // State 区块
+        var stmContainer = byId('narrative_vault_panel_stm_container');
         if (isStateSchemaEnabled() && c.state && Object.keys(c.state).length > 0) {
             var stateHtml = formatStateSummary(c.state, c.state_schema || null);
-            var stmView = byId('narrative_vault_panel_stm_view');
-            if (stmView) {
-                stmView.insertAdjacentHTML('beforebegin',
+            if (stmContainer) {
+                stmContainer.insertAdjacentHTML('beforebegin',
                     '<div class="narrative_state_block" style="margin-bottom:14px;">' +
                     '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t_narrative('Current State') + '</div>' +
                     '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;white-space:pre-wrap;font-family:monospace;">' + escapeHtml(stateHtml) + '</div>' +
@@ -520,27 +520,24 @@ async function updateVaultViewerPopout(getChatId) {
             var charSchema = c.character_schema || null;
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             if (charHtml) {
-                var stmViewChar = byId('narrative_vault_panel_stm_view');
-                if (stmViewChar) {
-                    stmViewChar.insertAdjacentHTML('beforebegin', charHtml);
+                if (stmContainer) {
+                    stmContainer.insertAdjacentHTML('beforebegin', charHtml);
                 }
             }
 
             // Faction panel
             var factionHtml = renderFactionPanelHTML(c.state || {});
             if (factionHtml) {
-                var stmViewFaction = byId('narrative_vault_panel_stm_view');
-                if (stmViewFaction) {
-                    stmViewFaction.insertAdjacentHTML('beforebegin', factionHtml);
+                if (stmContainer) {
+                    stmContainer.insertAdjacentHTML('beforebegin', factionHtml);
                 }
             }
 
             // Quest panel
             var questHtml = renderQuestPanelHTML(c.state || {});
             if (questHtml) {
-                var stmViewQuest = byId('narrative_vault_panel_stm_view');
-                if (stmViewQuest) {
-                    stmViewQuest.insertAdjacentHTML('beforebegin', questHtml);
+                if (stmContainer) {
+                    stmContainer.insertAdjacentHTML('beforebegin', questHtml);
                 }
             }
         }
@@ -1101,7 +1098,7 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
-            '<div style="margin-bottom:10px;">' +
+            '<div id="narrative_vault_panel_stm_container" style="margin-bottom:10px;">' +
             '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Short-term Memory (STM)') + '</div>' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
@@ -1423,7 +1420,11 @@ export async function renderVaultPanel(getChatId) {
 
         // Export logs
         byId('narrative_vault_export_btn').onclick = function () {
-            var data = { llm_log: vaultLLMLog, tool_log: narrativeToolCalls, telemetry: telemetryBuffer };
+            var llmLog = [];
+            var toolLog = [];
+            try { llmLog = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
+            try { toolLog = JSON.parse(localStorage.getItem('ne_tool_calls') || '[]'); } catch (e) {}
+            var data = { llm_log: llmLog, tool_log: toolLog, telemetry: telemetryBuffer };
             var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             var a = pdCreate('a');
             a.href = URL.createObjectURL(blob);
@@ -1446,10 +1447,12 @@ function renderLLMLog() {
     var container = byId('narrative_vault_llm_entries');
     if (!container) return;
     var html = '';
-    if (vaultLLMLog.length === 0) {
+    var logs = [];
+    try { logs = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
+    if (logs.length === 0) {
         html = '<div style="color:#888;padding:8px 0;">' + t('No operations logged') + '</div>';
     } else {
-        vaultLLMLog.slice().reverse().forEach(function (entry) {
+        logs.slice().reverse().forEach(function (entry) {
             html += '<div class="ne_log_entry"><div class="ne_log_header" style="cursor:pointer;font-weight:bold;color:var(--grey70);font-size:0.85em;">\u25BC ' + (entry.type || '') + ' \u00b7 ' + formatLocalTime(entry.time) + (entry.api_source ? ' \u00b7 [' + escapeHtml(entry.api_source) + ']' : '') + '</div>' +
                 '<div class="ne_log_body"><div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Request:') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.request || '') + '</pre>' +
                 '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Response:') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.response || '') + '</pre></div></div>';
@@ -1462,10 +1465,12 @@ function renderToolCallLog() {
     var container = byId('narrative_vault_tool_calls');
     if (!container) return;
     var html = '';
-    if (narrativeToolCalls.length === 0) {
+    var calls = [];
+    try { calls = JSON.parse(localStorage.getItem('ne_tool_calls') || '[]'); } catch (e) {}
+    if (calls.length === 0) {
         html = '<div style="color:#888;padding:8px 0;">' + t('No tool calls recorded') + '</div>';
     } else {
-        narrativeToolCalls.slice().reverse().forEach(function (entry) {
+        calls.slice().reverse().forEach(function (entry) {
             var emoji = entry.success ? '\uD83D\uDFE2' : '\uD83D\uDD34';
             var dur = entry.duration_ms > 1000 ? (entry.duration_ms / 1000).toFixed(1) + 's' : entry.duration_ms + 'ms';
             html += '<div class="ne_tool_entry" style="margin:3px 0;padding:3px 4px;background:var(--black30a);border-radius:3px;font-size:0.85em;">' + emoji + ' ' + escapeHtml(entry.tool) + ' \u00b7 ' + formatLocalTime(entry.ts) + ' \u00b7 ' + dur + (entry.result_summary ? ' \u00b7 ' + escapeHtml(entry.result_summary) : '') + (entry.error_info ? ' \u00b7 <span style="color:#f44336;">' + escapeHtml(entry.error_info) + '</span>' : '') + '</div>';

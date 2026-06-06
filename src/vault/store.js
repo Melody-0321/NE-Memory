@@ -5,7 +5,7 @@
  * 每个 chat_id 对应 IndexedDB 中的一条记录。
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'vaults';
 
 function openDB() {
@@ -17,7 +17,15 @@ function openDB() {
                 db.createObjectStore(STORE_NAME, { keyPath: 'chat_id' });
             }
             if (!db.objectStoreNames.contains('snapshots')) {
-                db.createObjectStore('snapshots', { keyPath: 'id' });
+                const snapshotsStore = db.createObjectStore('snapshots', { keyPath: 'id' });
+                snapshotsStore.createIndex('chat_id', 'chat_id', { unique: false });
+            } else {
+                // v3 迁移：旧 DB 可能缺 chat_id 索引
+                var tx = e.target.transaction;
+                var snapshotsStore = tx.objectStore('snapshots');
+                if (!snapshotsStore.indexNames.contains('chat_id')) {
+                    snapshotsStore.createIndex('chat_id', 'chat_id', { unique: false });
+                }
             }
         };
         req.onsuccess = () => resolve(req.result);
