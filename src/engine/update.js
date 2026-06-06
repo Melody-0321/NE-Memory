@@ -3,13 +3,14 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds } from '../vault/store.js';
+import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, isDynamicStateMode } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
+import { runStmCursorLoop } from './cursor.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { writeWithSnapshot } = await import('../vault/store.js');
@@ -520,21 +521,6 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     return { system: instruction, user: userPrompt };
 }
 
-// ── Single-call STM extraction (replaces cursor loop) ──
-
-async function extractAllStm(messages, vault) {
-    var prompt = buildCursorPrompt(messages, 0, [], vault, false);
-    var response = await callMemoryPipeline([
-        { role: 'system', content: prompt.system },
-        { role: 'user', content: prompt.user }
-    ]);
-    var parsed = parseSTMResponse(response);
-    return {
-        stmEntries: parsed.stmEntries || [],
-        checkpoints: parsed._checkpoints || {}
-    };
-}
-
 // ── State changes prompt builder (post-cursor, single LLM call) ──
 
 function buildStateChangesPrompt(messages, vault) {
@@ -613,39 +599,27 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);
 
-    // ── Phase 1: 单次全量 STM 提取 ──
-    var stmResult = await extractAllStm(filteredMessages, vault);
-    var newEntries = stmResult.stmEntries;
+    // ── Phase 1: Cursor Engine STM 提取（批量 LLM 调用）──
+    var cursorResult = await runStmCursorLoop({
+        vault: vault,
+        messages: filteredMessages,
+        callLLM: callMemoryPipeline,
+        parseResponse: parseSTMResponse,
+        validateOutput: validateSTMOutput,
+        postFill: function(parsed, v) { postFillSTM(parsed, v); },
+        appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
+        getCursorState: getCursorState,
+        updateCursorState: updateCursorState,
+        markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
+        buildPrompt: buildCursorPrompt
+    });
+    var newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
+    if (cursorResult.totalAdded === 0) newEntries = [];
 
     // 处理 _checkpoints
-    if (stmResult.checkpoints && Object.keys(stmResult.checkpoints).length > 0) {
-        postFillSTM({ stmEntries: newEntries, _checkpoints: stmResult.checkpoints, stateChanges: {} }, vault);
-    }
-
-    // STM 条目验证 + 后填充 + 追加 + 标记已处理
-    var validEntries = [];
-    for (var j = 0; j < newEntries.length; j++) {
-        var entry = newEntries[j];
-        if (!entry.event || !entry.msgRange) continue;
-        var errs = validateSTMOutput(entry);
-        if (errs.length > 0) console.warn('[NE] STM validation errors:', errs);
-        validEntries.push(entry);
-    }
-    if (validEntries.length > 0) {
-        postFillSTM({ stmEntries: validEntries, _checkpoints: stmResult.checkpoints, stateChanges: {} }, vault);
-        var previousCount = (vault.content.stm_entries || []).length;
-        appendSTMEntries(vault, validEntries, null, true);
-        var coveredMsgIds = new Set();
-        for (var k = 0; k < validEntries.length; k++) {
-            var range = validEntries[k].msgRange;
-            if (range && range.length === 2) {
-                for (var m = range[0]; m <= range[1]; m++) {
-                    if (filteredMessages[m]) coveredMsgIds.add(filteredMessages[m].id);
-                }
-            }
-        }
-        markMessagesProcessed(vault, Array.from(coveredMsgIds));
-        newEntries = (vault.content.stm_entries || []).slice(previousCount);
+    if (cursorResult.cursorState) {
+        var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
+        if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
     }
 
     // ── Phase 2: 提取 state_changes（一次 LLM 调用）──

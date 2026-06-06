@@ -76,6 +76,28 @@ export function onMessageSent(messageIndex) {
     try {
         if (!getChatMessagesFn) return;
         const chat = getChatMessagesFn();
+
+        // 首个消息：追捕所有前序消息（开场白等）到 pending 中
+        if (pendingMessages.length === 0 && typeof messageIndex === 'number') {
+            for (var i = 0; i < chat.length; i++) {
+                var earlyMsg = chat[i];
+                var earlyId = earlyMsg.id || earlyMsg.mes_id;
+                if (earlyId === messageIndex) break;
+                if (earlyId !== undefined) {
+                    pendingMessages.push({
+                        role: earlyMsg.is_user ? 'user' : 'assistant',
+                        content: earlyMsg.mes || '',
+                        id: earlyId,
+                        timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
+                    });
+                }
+            }
+            if (pendingMessages.length > 0) {
+                persistPending();
+                console.log('[NE] onMessageSent: retroactively captured ' + pendingMessages.length + ' preceding messages (incl. opening)');
+            }
+        }
+
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
