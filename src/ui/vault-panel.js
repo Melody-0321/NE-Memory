@@ -1136,10 +1136,14 @@ export async function renderVaultPanel(getChatId) {
             '</div></div></div>';
 
         var holder = byId('top-settings-holder');
+        if (!holder) {
+            // ST 可能在 iframe 中加载扩展脚本，此时需尝试父页面 document
+            try { holder = window.parent.document.getElementById('top-settings-holder'); } catch (e) {}
+        }
         if (holder) {
             holder.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
-            console.error('[NE] #top-settings-holder not found');
+            console.error('[NE] #top-settings-holder not found in document or parent.document');
             return;
         }
 
