@@ -167,12 +167,40 @@ export async function initPowerSlots(characterName, existingSlotsForWorld) {
             }
             var worldInfo = ctx.worldInfo;
             if (worldInfo && worldInfo.entries && Object.keys(worldInfo.entries).length > 0) {
+                // 构建启用的世界书名集合（与 state-discovery.js 相同逻辑）
+                var enabledBooks = {};
+                try {
+                    var globalSelect = null;
+                    var extSettings2 = ctx.extensionSettings || null;
+                    if (extSettings2 && extSettings2.world_info && Array.isArray(extSettings2.world_info.globalSelect)) {
+                        globalSelect = extSettings2.world_info.globalSelect;
+                    }
+                    if (!globalSelect && ctx.powerUserSettings && ctx.powerUserSettings.world_info && Array.isArray(ctx.powerUserSettings.world_info.globalSelect)) {
+                        globalSelect = ctx.powerUserSettings.world_info.globalSelect;
+                    }
+                    if (!globalSelect && typeof window !== 'undefined') {
+                        try {
+                            var wi2 = window.world_info || (window.__ST && window.__ST.world_info);
+                            if (wi2 && wi2.globalSelect && Array.isArray(wi2.globalSelect)) {
+                                globalSelect = wi2.globalSelect;
+                            }
+                        } catch (ww) {}
+                    }
+                    if (globalSelect) {
+                        for (var si2 = 0; si2 < globalSelect.length; si2++) {
+                            enabledBooks[globalSelect[si2]] = true;
+                        }
+                    }
+                } catch (e2) {}
+                var hasEnabledFilter2 = Object.keys(enabledBooks).length > 0;
+
                 contextText += '\n=== World Book Entries ===\n';
                 Object.keys(worldInfo.entries).forEach(function (key) {
                     var entry = worldInfo.entries[key];
-                    if (entry && entry.content && !entry.disable) {
-                        contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
-                    }
+                    if (!entry || !entry.content) return;
+                    if (entry.disable) return;
+                    if (hasEnabledFilter2 && entry.world && !enabledBooks[entry.world]) return;
+                    contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
                 });
             }
         }
