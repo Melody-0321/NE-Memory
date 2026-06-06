@@ -216,14 +216,55 @@ export function discoverDynamicFields(vault) {
         if (char.scenario) texts.push(char.scenario);
     }
 
-    // 收集世界书文本
+    // 收集世界书文本（仅启用的世界书 + 未禁用的条目）
     if (worldInfo && worldInfo.entries) {
+        // 构建启用的世界书名集合（多重回退）
+        var enabledBooks = {};
+        try {
+            var globalSelect = null;
+            // 方法1: ctx.extensionSettings.world_info.globalSelect
+            var extSettings = ctx.extensionSettings || null;
+            if (extSettings && extSettings.world_info && Array.isArray(extSettings.world_info.globalSelect)) {
+                globalSelect = extSettings.world_info.globalSelect;
+                console.log('[NE] Enabled books from extensionSettings:', globalSelect.length);
+            }
+            // 方法2: ctx.powerUserSettings.world_info.globalSelect
+            if (!globalSelect && ctx.powerUserSettings && ctx.powerUserSettings.world_info && Array.isArray(ctx.powerUserSettings.world_info.globalSelect)) {
+                globalSelect = ctx.powerUserSettings.world_info.globalSelect;
+                console.log('[NE] Enabled books from powerUserSettings:', globalSelect.length);
+            }
+            // 方法3: 从 ST 全局变量读取
+            if (!globalSelect && typeof window !== 'undefined') {
+                try {
+                    var wi = window.world_info || (window.__ST && window.__ST.world_info);
+                    if (wi && wi.globalSelect && Array.isArray(wi.globalSelect)) {
+                        globalSelect = wi.globalSelect;
+                        console.log('[NE] Enabled books from window:', globalSelect.length);
+                    }
+                } catch (ww) {}
+            }
+            if (globalSelect) {
+                for (var si = 0; si < globalSelect.length; si++) {
+                    enabledBooks[globalSelect[si]] = true;
+                }
+            }
+            // 角色绑定的世界书
+            for (var ci = 0; ci < characters.length; ci++) {
+                var charWorld = characters[ci] && characters[ci].data && characters[ci].data.extensions && characters[ci].data.extensions.world;
+                if (charWorld) enabledBooks[charWorld] = true;
+            }
+        } catch (e) { console.warn('[NE] Failed to build enabled books set:', e); }
+
+        var hasEnabledFilter = Object.keys(enabledBooks).length > 0;
         var entryKeys = Object.keys(worldInfo.entries);
         for (var j = 0; j < entryKeys.length; j++) {
             var entry = worldInfo.entries[entryKeys[j]];
-            if (entry && entry.content) {
-                texts.push(entry.content);
-            }
+            if (!entry || !entry.content) continue;
+            // 条目级：跳过手动禁用的
+            if (entry.disable) continue;
+            // 世界书级：只保留已启用世界书中的条目（如果能获取到启用列表）
+            if (hasEnabledFilter && entry.world && !enabledBooks[entry.world]) continue;
+            texts.push(entry.content);
         }
     }
 
