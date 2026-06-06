@@ -614,24 +614,31 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         if (stateParsed._checkpoints) {
             postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
         }
+        // 立即持久化 state 变更，避免 cursor 阶段失败导致数据丢失
+        try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Phase 1 state save failed:', e); }
     } catch (e) {
         console.warn('[NE] State changes extraction failed:', e);
     }
 
     // ── Phase 2: Cursor Engine STM 提取（批量 LLM 调用）──
-    var cursorResult = await runStmCursorLoop({
-        vault: vault,
-        messages: filteredMessages,
-        callLLM: callMemoryPipeline,
-        parseResponse: parseSTMResponse,
-        validateOutput: validateSTMOutput,
-        postFill: function(parsed, v) { postFillSTM(parsed, v); },
-        appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
-        getCursorState: getCursorState,
-        updateCursorState: updateCursorState,
-        markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
-        buildPrompt: buildCursorPrompt
-    });
+    var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
+    try {
+        cursorResult = await runStmCursorLoop({
+            vault: vault,
+            messages: filteredMessages,
+            callLLM: callMemoryPipeline,
+            parseResponse: parseSTMResponse,
+            validateOutput: validateSTMOutput,
+            postFill: function(parsed, v) { postFillSTM(parsed, v); },
+            appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
+            getCursorState: getCursorState,
+            updateCursorState: updateCursorState,
+            markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
+            buildPrompt: buildCursorPrompt
+        });
+    } catch (e) {
+        console.warn('[NE] Cursor extraction failed:', e);
+    }
     var newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
     if (cursorResult.totalAdded === 0) newEntries = [];
 
