@@ -43,6 +43,9 @@ export async function runStmCursorLoop(params) {
 
     var cursorState = params.getCursorState(vault, 'stm');
     var position = cursorState.position || 0;
+    // position tracks global msg index, but we only receive unprocessed batch
+    // if position is past this batch, reset to 0 (stale from prev incomplete run)
+    if (position >= messages.length) position = 0;
     var pendingPartials = (cursorState.pending_partials || []).slice();
     var totalAdded = 0;
     console.log('[NE Cursor] Starting — messages.length=' + messages.length + ', position=' + position + ', partials=' + pendingPartials.length);
