@@ -9,16 +9,8 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES,
 import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
 
-function $pd(selector) {
-    try {
-        return $(selector, (window.parent && window.parent.document) || document);
-    } catch (e) {
-        return $(selector);
-    }
-}
-var PD = (function () {
-    try { return (window.parent && window.parent.document) || document; } catch (e) { return document; }
-})();
+function $pd(selector) { return $(selector); }
+var PD = document;
 
 var defaultMemoryConfig = {
     temperature: 0.2, stm_max_tokens: 800, stm_max_chars: 120,
@@ -47,7 +39,7 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle ne-sub-toggle" id="ne_memory_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_memory"> <span>' + t_config('Enable Memory System') + '</span></label></div>' +
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label>' +
         '<div class="narrative-toggle ne-sub-sub-sub-toggle" id="ne_dynamic_section" style="margin-left:3em;display:none;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_dynamic_state"> <span>' + t_config('Use Dynamic Field Discovery') + '</span></label>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin-left:1em;">' + t_config('Automatically discover state fields from character cards and world books. Disable to use preset schema fields.') + '</div></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-left:1em;">' + t_config('Automatically discover state fields from character cards and world books. Disable to use preset schema fields.') + '</div></div></div>' +
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
