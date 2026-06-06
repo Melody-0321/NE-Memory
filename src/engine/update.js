@@ -621,6 +621,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     }
 
     // ── Phase 2: Cursor Engine STM 提取（批量 LLM 调用）──
+    console.log('[NE] Phase 2 starting — messages=' + filteredMessages.length);
     var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
     try {
         cursorResult = await runStmCursorLoop({

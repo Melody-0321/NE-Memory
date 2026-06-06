@@ -45,6 +45,7 @@ export async function runStmCursorLoop(params) {
     var position = cursorState.position || 0;
     var pendingPartials = (cursorState.pending_partials || []).slice();
     var totalAdded = 0;
+    console.log('[NE Cursor] Starting — messages.length=' + messages.length + ', position=' + position + ', partials=' + pendingPartials.length);
 
     for (var i = 0; i < pendingPartials.length; i++) {
         pendingPartials[i]._partial_generation = pendingPartials[i]._partial_generation || 1;
@@ -72,9 +73,12 @@ export async function runStmCursorLoop(params) {
     }
 
     if (windowSpecs.length === 0) {
+        console.log('[NE Cursor] No windowSpecs — returning early (position=' + position + ' >= messages.length=' + messages.length + ')');
         params.updateCursorState(vault, 'stm', { position: position, pending_partials: pendingPartials });
         return { vault: vault, cursorState: { position: position, pending_partials: pendingPartials }, totalAdded: 0 };
     }
+
+    console.log('[NE Cursor] windowSpecs=' + windowSpecs.length + ', building prompt...');
 
     // ── Phase B: 构建合并 prompt ──
     var firstSpec = windowSpecs[0];
@@ -95,6 +99,7 @@ export async function runStmCursorLoop(params) {
     // ── Phase C: 单次 LLM 调用 ──
     var responseText;
     try {
+        console.log('[NE Cursor] Calling LLM...');
         responseText = await params.callLLM([
             { role: 'system', content: combinedSystem },
             { role: 'user', content: combinedUser }
