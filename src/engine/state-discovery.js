@@ -248,11 +248,6 @@ export function discoverDynamicFields(vault) {
                     enabledBooks[globalSelect[si]] = true;
                 }
             }
-            // 角色绑定的世界书
-            for (var ci = 0; ci < characters.length; ci++) {
-                var charWorld = characters[ci] && characters[ci].data && characters[ci].data.extensions && characters[ci].data.extensions.world;
-                if (charWorld) enabledBooks[charWorld] = true;
-            }
         } catch (e) { console.warn('[NE] Failed to build enabled books set:', e); }
 
         var hasEnabledFilter = Object.keys(enabledBooks).length > 0;
