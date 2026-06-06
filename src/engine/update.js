@@ -599,7 +599,26 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);
 
-    // ── Phase 1: Cursor Engine STM 提取（批量 LLM 调用）──
+    // ── Phase 1: State changes LLM（先跑 state，再跑 cursor，确保 cursor 看到最新场景/时间）──
+    var stateChanges = {};
+    var stateParsed = null;
+    var statePrompt = buildStateChangesPrompt(filteredMessages, vault);
+    try {
+        var stateResponse = await callMemoryPipeline([
+            { role: 'system', content: statePrompt.system },
+            { role: 'user', content: statePrompt.user }
+        ]);
+        stateParsed = parseSTMResponse(stateResponse);
+        stateChanges = stateParsed.stateChanges || {};
+        // 先把 story_time/story_scene 写入 vault，让 cursor prompt 能引用最新状态
+        if (stateParsed._checkpoints) {
+            postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
+        }
+    } catch (e) {
+        console.warn('[NE] State changes extraction failed:', e);
+    }
+
+    // ── Phase 2: Cursor Engine STM 提取（批量 LLM 调用）──
     var cursorResult = await runStmCursorLoop({
         vault: vault,
         messages: filteredMessages,
@@ -616,28 +635,14 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
     if (cursorResult.totalAdded === 0) newEntries = [];
 
-    // 处理 _checkpoints
-    if (cursorResult.cursorState) {
-        var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
-        if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
-    }
-
-    // ── Phase 2: 提取 state_changes（一次 LLM 调用）──
-    var stateChanges = {};
-    var statePrompt = buildStateChangesPrompt(filteredMessages, vault);
-    try {
-        var stateResponse = await callMemoryPipeline([
-            { role: 'system', content: statePrompt.system },
-            { role: 'user', content: statePrompt.user }
-        ]);
-        var stateParsed = parseSTMResponse(stateResponse);
-        stateChanges = stateParsed.stateChanges || {};
-        // 处理 _checkpoints
-        if (stateParsed._checkpoints) {
+    // Post-fill STM entries: state 的 _checkpoints 优先
+    if (newEntries.length > 0) {
+        if (stateParsed && stateParsed._checkpoints) {
             postFillSTM({ stmEntries: newEntries, _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
+        } else if (cursorResult.cursorState) {
+            var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
+            if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
         }
-    } catch (e) {
-        console.warn('[NE] State changes extraction failed:', e);
     }
 
     if (newEntries.length === 0 && Object.keys(stateChanges).length === 0) return { vault: vault, added: 0 };

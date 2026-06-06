@@ -175,7 +175,7 @@ function bootNE(retries) {
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
     if (typeof window.__NE_MEMORY_LOADED__ !== 'undefined') return;
     window.__NE_MEMORY_LOADED__ = true;
-    console.log('[NE] Engine starting... build=' + '2026-06-06-hardcode-pd');
+    console.log('[NE] Engine starting... build=' + '2026-06-06-phase-swap');
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
     });
