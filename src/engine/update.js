@@ -630,6 +630,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         ]);
         stateParsed = parseSTMResponse(stateResponse);
         stateChanges = stateParsed.stateChanges || {};
+        console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
         if (!stateResponse || stateResponse.length < 10) {
             console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
         }
@@ -641,6 +642,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         }
 
         // 1b. 处理 state_changes（merge、power slots、quests）—— 独立完成
+        console.log('[NE] State pipeline — schemaEnabled=' + isStateSchemaEnabled() + ', hasStateChanges=' + (Object.keys(stateChanges).length > 0) + ', willProcess=' + (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0));
         if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
             var schema = vault.content.state_schema || null;
             var result = validateStateChanges(schema, stateChanges);
@@ -700,6 +702,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             vault._meta.last_pipeline_task = 'state_extract';
             vault._meta.last_pipeline_time = new Date().toISOString();
             try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State changes save failed:', e); }
+
+            console.log('[NE] State pipeline — state_changes saved, state keys=' + Object.keys(vault.content.state || {}).length);
 
             recordTelemetry({
                 pipeline_task: 'state_extract',
