@@ -511,7 +511,7 @@ async function updateVaultViewerPopout(getChatId) {
         if (c.state && Object.keys(c.state).length > 0) {
             var stateHtml;
             if (isStateSchemaEnabled()) {
-                stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(c));
+                stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(vault));
             } else {
                 stateHtml = formatCoreStateSummary(c.state);
             }
