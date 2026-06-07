@@ -716,8 +716,12 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             stateParsed = parseSTMResponse(stateResponse);
             stateChanges = stateParsed.stateChanges || {};
             console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
+            // 始终打印 raw response 前 600 字符用于诊断
+            if (stateResponse && stateResponse.length > 0) {
+                console.log('[NE-DEBUG] State LLM raw response (first 600):', stateResponse.substring(0, 600));
+            }
             if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
-                console.log('[NE] State LLM raw response (no state_changes found):', stateResponse.substring(0, 300));
+                console.log('[NE] State LLM — NO state_changes extracted. Tag found in raw:', /<state_changes>/i.test(stateResponse));
             }
             if (!stateResponse || stateResponse.length < 10) {
                 console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
