@@ -435,6 +435,16 @@ export function parseSTMResponse(llmResponse) {
     if (stateChangesText) {
         try {
             var parsedState = JSON.parse(stateChangesText);
+            // LLM 输出格式为 [{path, value}] 数组，转换为内部使用的 {path: value} 扁平对象
+            if (Array.isArray(parsedState)) {
+                var flat = {};
+                parsedState.forEach(function (item) {
+                    if (item && item.path !== undefined) {
+                        flat[item.path] = item.value;
+                    }
+                });
+                parsedState = flat;
+            }
             if (typeof parsedState === 'object' && parsedState !== null && !Array.isArray(parsedState)) {
                 if (!isStateSchemaEnabled()) {
                     stateChanges = whitelistStateChanges(parsedState);
