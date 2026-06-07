@@ -607,9 +607,16 @@ export function formatCharacterSummary(state, characterSchema) {
             var fieldDef = fields[key];
             if (fieldDef.expose_level !== 'summary') return;
             if (key === 'status') return;
+            if (key === 'name') return; // 名字已在卡片标题显示
             var val = card[key];
             if (val !== undefined && val !== null && val !== '') {
-                summaryFields.push(key + '=' + String(val).substring(0, 40));
+                var strVal;
+                if (typeof val === 'object') {
+                    try { strVal = JSON.stringify(val); } catch (e) { strVal = String(val); }
+                } else {
+                    strVal = String(val);
+                }
+                summaryFields.push(key + '=' + strVal.substring(0, 40));
             }
         });
 

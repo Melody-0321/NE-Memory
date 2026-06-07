@@ -106,10 +106,18 @@ function renderCharacterCard(name, card, schema, cardType) {
         var val = card[key];
         if (val === undefined || val === null || val === '') return;
         if (key === 'status') return;
+        if (key === 'name') return; // 名字已在卡片标题显示，不重复
 
-        var displayVal = key === 'clothing_build' && card.clothing_mode === true
-            ? String(val).substring(0, 30) + '...'
-            : String(val).substring(0, 50);
+        var displayVal;
+        if (key === 'clothing_build' && card.clothing_mode === true) {
+            displayVal = String(val).substring(0, 30) + '...';
+        } else if (typeof val === 'object') {
+            // power_slots 等对象类型 → JSON 序列化
+            try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
+            if (displayVal.length > 50) displayVal = displayVal.substring(0, 50);
+        } else {
+            displayVal = String(val).substring(0, 50);
+        }
 
         if (fieldDef.expose_level === 'summary') {
             summaryLines.push(key + ': ' + displayVal);
