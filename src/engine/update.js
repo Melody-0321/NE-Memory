@@ -572,26 +572,30 @@ function buildStateChangesPrompt(messages, vault) {
     var stateChangesZh = (dynamicState2 ? buildDynamicStatePrompt(dynamicState2, 'zh') + '\n' : '') + '\n必须：输出 <state_changes> 块，提取对话中出现的所有角色。为每个具名角色创建角色卡。\n\n' + (dynamicState2 ? '除上述动态字段外，' : '') + '角色卡存储在 state.characters.<角色名>.* 下。每个角色有以下字段：\n- name, gender_age, occupation, clothing_build, personality（始终存在）\n- status: 活跃/非活跃/已死亡/已归隐/已离去 之一\n- NPC 额外拥有: inner_thoughts, affection(0-100), relationship, current_mood, past_experience\n- inventory_mode: 开启/静态/关闭\n- injuries, status_effects（可选）\n- power_slots（可选）：JSON 对象 {key: "value"}——角色战力/能量追踪器。每个角色可能有系统定义的槽位（如 vitality/energy/realm），使用自定义标签（如修仙者的"气血""灵力""境界"；现代背景的"身体状况""精力""社会地位"）。若角色定义了 power_slots，请更新其值以反映当前状态。\n\n示例 power_slots 更新：\n<state_changes>{"characters.张三.power_slots":{"vitality":"轻伤","energy":"充盈","realm":"筑基初期"}}</state_changes>\n\n重要：power_slots 字段存储的是扁平的 key→value JSON 对象。更新时请勿包含槽位定义（key/label/description），这些由系统管理。只更新当前值。\n\n为新角色创建 power_slots 时，请检查同世界其他角色是否已有 power_slots。若他们使用相同的修炼/力量体系，复用其槽位标签以保持命名一致性。\n\n要改变在场角色，更新其 status 字段：\n<state_changes>{"characters.爱丽丝.status":"已死亡","characters.鲍勃.status":"活跃"}</state_changes>\n\n重要：present_characters 是由代码自动从活跃角色名重建的虚拟字段。请勿在 <state_changes> 块中包含 present_characters。只更新 characters.*.status 来改变在场角色。\n\n--- 可选：势力 & 任务（以下字段为可选，仅当相关时输出）---\n\n势力存储在 state.factions.<名称>.* 下。每个势力有以下字段：\n- name, description, leader\n- attitude_toward_player: 友好/中立/冷淡/敌对 之一\n- relations: 以目标势力名为键的对象（只记录故事中实际发生过的关系）\n- notes（最长200字）\n\n只追踪故事中已出现的势力。示例：\n<state_changes>{"factions.魔教.attitude_toward_player":"敌对","factions.魔教.relations.正道联盟":"全面战争","factions.正道联盟.leader":"张真人","factions.魔教.notes":"近期在南方活动频繁"}</state_changes>\n\n任务/目标/世界事件存储在 state.quests.* 下，分三个子区域：\n\n=== 任务 (quests.tasks.<名称>.*) ===\n- name(始终), deadline(始终), status: 正在进行/已完成/已失败/已过期 之一\n- type: 主线/支线/事件（仅详情，通过 quest_lookup 工具获取）\n- issuer, desc(最长200字), progress, posted_time, reward, penalty（仅详情）\n\n=== 目标 (quests.goals.<名称>.*) ===\n- name(始终), status: 进行中/已达成/已放弃 之一\n- desc(最长200字), progress, posted_time, completed_time（仅详情）\n\n=== 世界事件 (quests.events.<名称>.*) ===\n- name(始终), status: 持续中/已平息/已结束 之一\n- desc(最长300字), started_time, ended_time（仅详情）\n\n双层暴露策略：name+deadline/status 始终注入到 prompt 摘要中。所有详情字段（type、issuer、desc、progress、reward、penalty、posted_time 等）仅通过 quest_lookup 工具获取。LLM 在需要任务完整详情时应使用 quest_lookup。\n\n世界事件衰减：如果某个事件持续多轮均为「持续中」而无任何更新，应考虑将其状态改为「已平息」。事件不应无限期停留在「持续中」状态，除非确实在积极进展。\n\n示例：\n<state_changes>{"quests.tasks.护送商队.status":"已完成","quests.goals.成为剑圣.progress":"已掌握三式剑法，尚需四式","quests.events.兽潮入侵.status":"持续中","quests.events.兽潮入侵.desc":"北方森林的野兽大规模南下，已波及三座村庄"}</state_changes>';
 
     var sysPromptEnd = schemaEnabled ? 'Then you MUST output a <state_changes> block with character cards for all characters in the conversation.\n\n' + stateChangesEn : '';
-    var userPromptEnd = schemaEnabled ? 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract the current story time, scene, and character state changes. Output the JSON object with _checkpoints (required) and <state_changes> block (required for characters).' : 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract the current story time, scene, and any state changes. Output the JSON object with _checkpoints (required) and optionally <state_changes> block.';
+    var userPromptEnd = schemaEnabled ? 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes. Output in TWO-PART format:\nPart 1: _checkpoints JSON\nPart 2: <state_changes> XML (MANDATORY!)' : 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract the current story time, scene, and any state changes. Output the JSON object with _checkpoints (required) and optionally <state_changes> block.';
     var zhSysPromptEnd = schemaEnabled ? '然后你必须输出 <state_changes> 块，为对话中所有角色创建角色卡。\n\n' + stateChangesZh : '';
-    var zhUserPromptEnd = schemaEnabled ? '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及角色状态变化。输出包含 _checkpoints（必填）和 <state_changes> 块（角色必须）的 JSON 对象。' : '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及任何状态变化。输出包含 _checkpoints（必填）和可选的 <state_changes> 块的 JSON 对象。';
+    var zhUserPromptEnd = schemaEnabled ? '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及角色状态变化。严格按**两段格式**输出：\n第一段: _checkpoints JSON\n第二段: <state_changes> XML 块（必须输出！）' : '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及任何状态变化。输出包含 _checkpoints（必填）和可选的 <state_changes> 块的 JSON 对象。';
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker. Review the entire conversation batch and update state fields as needed.\n\n' +
-                'YOUR OUTPUT MUST START with a _checkpoints block:\n' +
+                'YOUR OUTPUT MUST CONTAIN TWO PARTS IN ORDER:\n\n' +
+                '[Part 1: _checkpoints (REQUIRED)]\n' +
                 '{\n' +
                 '  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)" }\n' +
-                '}\n' +
+                '}\n\n' +
+                '[Part 2: <state_changes> (YOU MUST OUTPUT THIS!)]\n\n' +
                 sysPromptEnd,
             user: userPromptEnd
         };
     }
     return {
         system: currentStateSnapshot + '你是故事状态追踪器。回顾整个对话批次，更新状态字段。\n\n' +
-            '输出必须以 _checkpoints 块开头：\n' +
+            '你的输出必须严格包含以下两个部分，按顺序输出：\n\n' +
+            '【第一部分：_checkpoints（必填）】\n' +
             '{\n' +
             '  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）" }\n' +
-            '}\n' +
+            '}\n\n' +
+            '【第二部分：<state_changes>（必须输出！）】\n\n' +
             zhSysPromptEnd,
         user: zhUserPromptEnd
     };
@@ -632,6 +636,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         stateParsed = parseSTMResponse(stateResponse);
         stateChanges = stateParsed.stateChanges || {};
         console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
+        if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
+            console.log('[NE] State LLM raw response (no state_changes found):', stateResponse.substring(0, 300));
+        }
         if (!stateResponse || stateResponse.length < 10) {
             console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
         }
