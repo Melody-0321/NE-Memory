@@ -674,7 +674,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         }
     }
 
-    if (newEntries.length === 0 && Object.keys(stateChanges).length === 0) return { vault: vault, added: 0 };
+    if (newEntries.length === 0 && Object.keys(stateChanges).length === 0 && cursorResult.totalAdded === 0) return { vault: vault, added: 0 };
 
     recordTelemetry({
         pipeline_task: 'stm_extract',
