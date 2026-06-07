@@ -617,9 +617,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);
 
-    // ── Phase 1: State changes LLM（先跑 state，再跑 cursor，确保 cursor 看到最新场景/时间）──
-    var stateChanges = {};
+    // ═══════════════════════════════════════════
+    // Pipeline 1: State（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
+    // ═══════════════════════════════════════════
     var stateParsed = null;
+    var stateChanges = {};
     var statePrompt = buildStateChangesPrompt(filteredMessages, vault);
     try {
         var stateResponse = await callMemoryPipeline([
@@ -631,19 +633,90 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         if (!stateResponse || stateResponse.length < 10) {
             console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
         }
-        // 先把 story_time/story_scene 写入 vault，让 cursor prompt 能引用最新状态
+
+        // 1a. 写入 story_time/story_scene，让 cursor 能引用最新状态
         if (stateParsed._checkpoints) {
             postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
-            // 立即持久化 state 变更，避免 cursor 阶段失败导致数据丢失
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Phase 1 state save failed:', e); }
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State checkpoint save failed:', e); }
+        }
+
+        // 1b. 处理 state_changes（merge、power slots、quests）—— 独立完成
+        if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
+            var schema = vault.content.state_schema || null;
+            var result = validateStateChanges(schema, stateChanges);
+            if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
+            var oldState = vault.content.state || {};
+            var oldCharNames = Object.keys(oldState.characters || {});
+            vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
+            handleQuestCompletion(vault.content.state, result.validated);
+
+            // Power slot init（fire-and-forget，不阻塞 pipeline）
+            var newState = vault.content.state || {};
+            var newCharNames = Object.keys(newState.characters || {});
+            var addedCharNames = newCharNames.filter(function (n) { return oldCharNames.indexOf(n) === -1; });
+            if (addedCharNames.length > 0) {
+                var existingSlotsForWorld = [];
+                oldCharNames.forEach(function (name) {
+                    var card = oldState.characters[name];
+                    if (card && card.power_slot_defs && Array.isArray(card.power_slot_defs)) {
+                        card.power_slot_defs.forEach(function (s) {
+                            var found = existingSlotsForWorld.find(function (e) { return e.key === s.key; });
+                            if (!found) existingSlotsForWorld.push(s);
+                        });
+                    }
+                });
+                for (var ni = 0; ni < addedCharNames.length; ni++) {
+                    var charName = addedCharNames[ni];
+                    initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
+                        if (slots && slots.length > 0) {
+                            read(chatId).then(function (freshVault) {
+                                var st = freshVault.content.state || {};
+                                if (!st.characters) st.characters = {};
+                                if (!st.characters[charName]) st.characters[charName] = {};
+                                st.characters[charName].power_slot_defs = slots;
+                                var values = {};
+                                slots.forEach(function (s) { values[s.key] = ''; });
+                                st.characters[charName].power_slots = values;
+                                freshVault._meta.last_pipeline_task = 'power_slot_init';
+                                freshVault._meta.last_pipeline_time = new Date().toISOString();
+                                saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
+                                    console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
+                                });
+                            }).catch(function (e2) {
+                                console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
+                            });
+                        }
+                    }).catch(function (e) {
+                        console.warn('[NE] initPowerSlots failed for', charName, ':', e);
+                    });
+                }
+            }
+
+            if (stateChanges.story_date) {
+                vault.content.story_date = String(stateChanges.story_date);
+            }
+
+            vault._meta = vault._meta || {};
+            vault._meta.last_pipeline_task = 'state_extract';
+            vault._meta.last_pipeline_time = new Date().toISOString();
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State changes save failed:', e); }
+
+            recordTelemetry({
+                pipeline_task: 'state_extract',
+                new_state_change_count: Object.keys(stateChanges).length,
+                parse_error: null
+            });
         }
     } catch (e) {
-        console.warn('[NE] State changes extraction failed:', e);
+        console.warn('[NE] State pipeline failed:', e);
     }
 
-    // ── Phase 2: Cursor Engine STM 提取（批量 LLM 调用）──
-    console.log('[NE] Phase 2 starting — messages=' + filteredMessages.length);
+    // ═══════════════════════════════════════════
+    // Pipeline 2: Cursor（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
+    // ═══════════════════════════════════════════
+    console.log('[NE] Cursor pipeline starting — messages=' + filteredMessages.length);
     var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
+    var newEntries = [];
     try {
         cursorResult = await runStmCursorLoop({
             vault: vault,
@@ -658,97 +731,38 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
             buildPrompt: buildCursorPrompt
         });
-    } catch (e) {
-        console.warn('[NE] Cursor extraction failed:', e);
-    }
-    var newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
-    if (cursorResult.totalAdded === 0) newEntries = [];
 
-    // Post-fill STM entries: state 的 _checkpoints 优先
-    if (newEntries.length > 0) {
-        if (stateParsed && stateParsed._checkpoints) {
-            postFillSTM({ stmEntries: newEntries, _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
-        } else if (cursorResult.cursorState) {
-            var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
-            if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
-        }
-    }
+        newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
+        if (cursorResult.totalAdded === 0) newEntries = [];
 
-    if (newEntries.length === 0 && Object.keys(stateChanges).length === 0 && cursorResult.totalAdded === 0) return { vault: vault, added: 0 };
-
-    recordTelemetry({
-        pipeline_task: 'stm_extract',
-        new_stm_count: newEntries.length,
-        new_state_change_count: Object.keys(stateChanges).length,
-        parse_error: null
-    });
-
-    // ── Phase 3: 处理 state_changes ──
-    var stmCount = newEntries.length;
-
-    if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
-        var schema = vault.content.state_schema || null;
-        var result = validateStateChanges(schema, stateChanges);
-        if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-        var oldState = vault.content.state || {};
-        var oldCharNames = Object.keys(oldState.characters || {});
-        vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
-        handleQuestCompletion(vault.content.state, result.validated);
-
-        var newState = vault.content.state || {};
-        var newCharNames = Object.keys(newState.characters || {});
-        var addedCharNames = newCharNames.filter(function (n) { return oldCharNames.indexOf(n) === -1; });
-
-        if (addedCharNames.length > 0) {
-            var existingSlotsForWorld = [];
-            oldCharNames.forEach(function (name) {
-                var card = oldState.characters[name];
-                if (card && card.power_slot_defs && Array.isArray(card.power_slot_defs)) {
-                    card.power_slot_defs.forEach(function (s) {
-                        var found = existingSlotsForWorld.find(function (e) { return e.key === s.key; });
-                        if (!found) existingSlotsForWorld.push(s);
-                    });
-                }
-            });
-
-            for (var ni = 0; ni < addedCharNames.length; ni++) {
-                var charName = addedCharNames[ni];
-                initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
-                    if (slots && slots.length > 0) {
-                        read(chatId).then(function (freshVault) {
-                            var st = freshVault.content.state || {};
-                            if (!st.characters) st.characters = {};
-                            if (!st.characters[charName]) st.characters[charName] = {};
-                            st.characters[charName].power_slot_defs = slots;
-                            var values = {};
-                            slots.forEach(function (s) { values[s.key] = ''; });
-                            st.characters[charName].power_slots = values;
-                            freshVault._meta.last_pipeline_task = 'power_slot_init';
-                            freshVault._meta.last_pipeline_time = new Date().toISOString();
-                            saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
-                                console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
-                            });
-                        }).catch(function (e2) {
-                            console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
-                        });
-                    }
-                }).catch(function (e) {
-                    console.warn('[NE] initPowerSlots failed for', charName, ':', e);
-                });
+        // Post-fill STM entries with _checkpoints
+        if (newEntries.length > 0) {
+            if (stateParsed && stateParsed._checkpoints) {
+                postFillSTM({ stmEntries: newEntries, _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
+            } else {
+                var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
+                if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
             }
         }
+
+        // Cursor 自主持久化
+        if (cursorResult.totalAdded > 0) {
+            vault._meta = vault._meta || {};
+            vault._meta.last_pipeline_task = 'stm_extract';
+            vault._meta.last_pipeline_time = new Date().toISOString();
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Cursor save failed:', e); }
+
+            recordTelemetry({
+                pipeline_task: 'stm_extract',
+                new_stm_count: newEntries.length,
+                parse_error: null
+            });
+        }
+    } catch (e) {
+        console.warn('[NE] Cursor pipeline failed:', e);
     }
 
-    if (stateChanges.story_date) {
-        vault.content.story_date = String(stateChanges.story_date);
-    }
-
-    vault._meta = vault._meta || {};
-    vault._meta.last_pipeline_task = 'stm_extract';
-    vault._meta.last_pipeline_time = new Date().toISOString();
-
-    await saveVaultWithSnapshot(chatId, vault);
-    return { vault: vault, added: stmCount };
+    return { vault: vault, added: newEntries.length };
 }
 
 // ── 逐轮轻量状态检测（非阈值轮，仅 1-2 条消息）──
