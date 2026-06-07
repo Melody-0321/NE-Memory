@@ -404,7 +404,7 @@ export function validateStateChanges(stateSchema, changes) {
     return { validated: validated, warnings: warnings };
 }
 
-// rebuildPresentCharacters — 从 characters.*.status==='活跃' 重建 global.present_characters
+// rebuildPresentCharacters — 从 characters.*.status==='活跃' 重建 present_characters
 export function rebuildPresentCharacters(state) {
     if (!state) return state;
     var characters = state.characters;
@@ -416,17 +416,16 @@ export function rebuildPresentCharacters(state) {
             activeNames.push(name);
         }
     });
-    if (!state.global) state.global = {};
-    state.global.present_characters = activeNames.join(', ');
+    state.present_characters = activeNames.join(', ');
     return state;
 }
 
 // mergeStateChanges — 按 dot-path 深度合并到状态对象
-// 自动检测 characters.*.status 变化，触发 present_characters 重建
+// 每次合并后自动重建 present_characters
 export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
 
-    var hasCharacterStatusChange = false;
+    var hasChanges = false;
     Object.keys(validatedChanges).forEach(function (path) {
         var parts = path.split('.');
         var current = newState;
@@ -440,13 +439,10 @@ export function mergeStateChanges(state, validatedChanges) {
 
         var lastKey = parts[parts.length - 1];
         current[lastKey] = validatedChanges[path];
-
-        if (parts.length >= 3 && parts[0] === 'characters' && lastKey === 'status') {
-            hasCharacterStatusChange = true;
-        }
+        hasChanges = true;
     });
 
-    if (hasCharacterStatusChange) {
+    if (hasChanges) {
         newState = rebuildPresentCharacters(newState);
     }
 
