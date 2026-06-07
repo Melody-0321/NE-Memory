@@ -10,7 +10,7 @@ import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled } from '../vault/schema.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
 import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
@@ -210,6 +210,13 @@ function renderCharacterGroup(label, names, characters, schema, state) {
 
     html += '</div></div>';
     return html;
+}
+
+function getCharacterSchemaForPanel(content) {
+    if (isDynamicStateMode() && content.dynamic_state) {
+        return buildDynamicCharacterSchema(content.dynamic_state) || DEFAULT_CHARACTER_SCHEMA;
+    }
+    return content.character_schema || DEFAULT_CHARACTER_SCHEMA;
 }
 
 function renderCharacterPanelHTML(state, characterSchema) {
@@ -499,11 +506,16 @@ async function updateVaultViewerPopout(getChatId) {
         qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
         qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
-        // State 区块
+        // State 区块 — 始终显示（Schema OFF 时仅显示 Core 字段）
         var stmContainer = byId('narrative_vault_panel_stm_container');
-        if (isStateSchemaEnabled() && c.state && Object.keys(c.state).length > 0) {
-            var stateHtml = formatStateSummary(c.state, c.state_schema || null);
-            if (stmContainer) {
+        if (c.state && Object.keys(c.state).length > 0) {
+            var stateHtml;
+            if (isStateSchemaEnabled()) {
+                stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(c));
+            } else {
+                stateHtml = formatCoreStateSummary(c.state);
+            }
+            if (stmContainer && stateHtml) {
                 stmContainer.insertAdjacentHTML('beforebegin',
                     '<div class="narrative_state_block" style="margin-bottom:14px;">' +
                     '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t_narrative('Current State') + '</div>' +
@@ -515,9 +527,9 @@ async function updateVaultViewerPopout(getChatId) {
             }
         }
 
-        // Character panel
+        // Character panel — 仅 Schema ON 时显示
         if (isStateSchemaEnabled()) {
-            var charSchema = c.character_schema || null;
+            var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             if (charHtml) {
                 if (stmContainer) {
@@ -811,7 +823,10 @@ export function formatVaultForPrompt(vault, chatMessages) {
                 parts.push('## ' + t('Current State') + '\n' + stateSummary);
                 parts.push('---');
             }
-            var charSummary = formatActiveCharacterSummary(content.state, content.character_schema || null);
+            var charSchema = isDynamicStateMode() && content.dynamic_state
+                ? buildDynamicCharacterSchema(content.dynamic_state)
+                : (content.character_schema || null);
+            var charSummary = formatActiveCharacterSummary(content.state, charSchema);
             if (charSummary) {
                 parts.push('## ' + t('Characters') + ' (' + t('活跃') + ')\n' + charSummary);
                 parts.push('---');

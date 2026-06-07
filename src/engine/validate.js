@@ -1,3 +1,5 @@
+import { CORE_STATE_FIELDS } from '../vault/schema.js';
+
 export function validateSTMOutput(parsed, vault, messageCount) {
     var errors = [];
     var checkpoints = parsed._checkpoints;
@@ -153,7 +155,6 @@ export function postFillLTM(result, sourceSTMList) {
     return result;
 }
 
-var KNOWN_STATE_FIELDS = ['time', 'scene', 'story_date'];
 
 // ─── msgRange 验证 ───
 
@@ -211,7 +212,7 @@ export function validateMsgRanges(stmEntries, messageCount) {
 export function whitelistStateChanges(changes) {
     var filtered = {};
     Object.keys(changes || {}).forEach(function(key) {
-        if (KNOWN_STATE_FIELDS.indexOf(key) !== -1) {
+        if (CORE_STATE_FIELDS.indexOf(key) !== -1) {
             filtered[key] = changes[key];
         }
     });

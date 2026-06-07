@@ -5,7 +5,7 @@
  */
 import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, isDynamicStateMode } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -54,45 +54,52 @@ function autoEmbedVaultToChat(vault) {
  * @param {Object} vault - 完整 vault 对象，直接修改 vault.content.state
  */
 export function ensureStateStructure(vault) {
+    // Core 字段始终初始化（不受 Schema 开关影响）
+    if (!vault.content.state) vault.content.state = {};
     var state = vault.content.state;
-    if (state && Object.keys(state).length > 0) return; // 已初始化
-    if (!isStateSchemaEnabled()) return; // Schema 未启用
+    for (var ci = 0; ci < CORE_STATE_FIELDS.length; ci++) {
+        var ck = CORE_STATE_FIELDS[ci];
+        if (state[ck] === undefined) state[ck] = '';
+    }
+    vault.content.state_css = vault.content.state_css || '';
+
+    // 扩展字段仅在 Schema ON 时初始化
+    if (!isStateSchemaEnabled()) return;
 
     if (isDynamicStateMode()) {
-        // 动态模式：从 dynamic_state 中发现字段结构为 c.state 初始值
         var ds = vault.content.dynamic_state;
         if (!ds || !(Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
-            // dynamic_state 也没有字段 → 标记为空，让 LLM 自由输出
-            vault.content.state = {};
+            // dynamic_state 也没有扩展字段 → Core 已初始化
         } else {
-            var newState = {};
             if (ds.global) {
                 Object.keys(ds.global).forEach(function (k) {
-                    newState[k] = '';
+                    if (state[k] === undefined) state[k] = '';
                 });
             }
             if (ds.characters) {
-                newState.characters = {};
+                if (!state.characters) state.characters = {};
                 Object.keys(ds.characters).forEach(function (name) {
-                    newState.characters[name] = {};
+                    if (!state.characters[name]) state.characters[name] = {};
                     var fields = ds.characters[name];
                     Object.keys(fields).forEach(function (k) {
-                        newState.characters[name][k] = '';
+                        if (state.characters[name][k] === undefined) state.characters[name][k] = '';
                     });
                 });
             }
-            vault.content.state = newState;
         }
     } else {
         // 预设模式：从 state_schema 中提取字段结构
-        var schema = vault.content.state_schema;
-        if (!schema) {
-            vault.content.state = {};
-            return;
+        if (!state._initialized) {
+            var schema = vault.content.state_schema;
+            if (schema) {
+                var extState = initStateFromSchema(schema);
+                Object.keys(extState).forEach(function (ek) {
+                    if (state[ek] === undefined) state[ek] = extState[ek];
+                });
+            }
+            state._initialized = true;
         }
-        vault.content.state = initStateFromSchema(schema);
     }
-    vault.content.state_css = vault.content.state_css || '';
 }
 
 /**
@@ -348,6 +355,8 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
 
 export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
+    // 剥离 <thought> 推理缓冲区
+    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
 
     var stateChangesText = null;
     var stateMatch = text.match(/<state_changes>([\s\S]*?)<\/state_changes>/);
@@ -535,12 +544,11 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     return { system: instruction, user: userPrompt };
 }
 
-// ── State changes prompt builder (post-cursor, single LLM call) ──
+// ── State prompt builders（每种模式专用 prompt）──
 
-function buildStateChangesPrompt(messages, vault) {
+function buildStatePrompt_Preset(messages, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
-    var schemaEnabled = isStateSchemaEnabled();
 
     var msgTexts = messages.map(function(m, i) {
         var role = m.role === 'user' ? 'User' : 'Character';
@@ -555,49 +563,108 @@ function buildStateChangesPrompt(messages, vault) {
     if (!content.story_time && !content.story_date && !content.story_scene) {
         currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
     }
-    if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
+    if (content.state && Object.keys(content.state).length > 0) {
         var s = formatStateSummary(content.state, content.state_schema || null);
-        if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
-    }
-    // ── 动态字段（仅动态模式）──
-    var dynamicState2 = isDynamicStateMode() ? content.dynamic_state : null;
-    if (dynamicState2 && (Object.keys(dynamicState2.global || {}).length > 0 || Object.keys(dynamicState2.characters || {}).length > 0)) {
-        var ds2 = formatDynamicStateSummary(dynamicState2);
-        if (ds2) currentStateSnapshot += ds2;
+        if (s) currentStateSnapshot += 'Current state (for reference):\n' + s + '\n';
     }
 
-    // 复用 buildSTMUpdatePrompt 中的 stateChanges 指令
-    var stateChangesEn = (dynamicState2 ? buildDynamicStatePrompt(dynamicState2, 'en') + '\n' : '') + '\nREQUIRED: Output a <state_changes> block extracting ALL characters present in the conversation. Create a character card for each named character.\n\n' + (dynamicState2 ? 'In addition to the dynamic fields above, ' : '') + 'Character cards are stored under state.characters.<name>.*. Each character has fields:\n- name, gender_age, occupation, clothing_build, personality (always)\n- status: one of 活跃/非活跃/已死亡/已归隐/已离去\n- NPCs additionally have: inner_thoughts, affection(0-100), relationship, current_mood, past_experience\n- inventory_mode: 开启/静态/关闭\n- injuries, status_effects (optional)\n- power_slots (optional): JSON object of {key: "value"} — character power/energy tracker. Each character may have system-defined slots (e.g., vitality/energy/realm) with custom labels (e.g., "气血", "灵力", "境界" for cultivation; "Health", "Stamina", "Status" for modern). If a character has power_slots defined, update values to reflect current state.\n\nExample power_slots update:\n<state_changes>{"characters.张三.power_slots":{"vitality":"轻伤","energy":"充盈","realm":"筑基初期"}}</state_changes>\n\nIMPORTANT: power_slots field stores a flat JSON object of key→value pairs. Do NOT include slot definitions (key/label/description) in updates — those are managed by the system. Only update the current values.\n\nWhen creating power_slots for a new character, check if other characters in the same world already have power_slots. If they use the same cultivation/power system, reuse their slot labels to maintain naming consistency.\n\nTo change which characters are present, update their status field:\n<state_changes>{"characters.Alice.status":"已死亡","characters.Bob.status":"活跃"}</state_changes>\n\nIMPORTANT: present_characters is a VIRTUAL field auto-rebuilt by code from active character names. Do NOT include present_characters in your <state_changes> block. Only update characters.*.status to change who is present.\n\n--- OPTIONAL: factions & quests (below fields are optional, only output if relevant) ---\n\nFactions are stored under state.factions.<name>.*. Each faction has fields:\n- name, description, leader\n- attitude_toward_player: one of 友好/中立/冷淡/敌对\n- relations: object keyed by target faction name (only record relations that have actually occurred in the story)\n- notes (max 200 chars)\n\nOnly track factions that have appeared in the story. Examples:\n<state_changes>{"factions.魔教.attitude_toward_player":"敌对","factions.魔教.relations.正道联盟":"全面战争","factions.正道联盟.leader":"张真人","factions.魔教.notes":"近期在南方活动频繁"}</state_changes>\n\nQuests are stored under state.quests.* with three sub-sections:\n\n=== Tasks (quests.tasks.<name>.*) ===\n- name(always), deadline(always), status: one of 正在进行/已完成/已失败/已过期\n- type: 主线/支线/事件 (detail only, via quest_lookup Tool)\n- issuer, desc(max 200 chars), progress, posted_time, reward, penalty (detail only)\n\n=== Goals (quests.goals.<name>.*) ===\n- name(always), status: one of 进行中/已达成/已放弃\n- desc(max 200 chars), progress, posted_time, completed_time (detail only)\n\n=== World Events (quests.events.<name>.*) ===\n- name(always), status: one of 持续中/已平息/已结束\n- desc(max 300 chars), started_time, ended_time (detail only)\n\nBi-level exposure: name+deadline/status are always injected into the prompt summary. All detail fields (type, issuer, desc, progress, reward, penalty, posted_time, etc.) are available only via the quest_lookup Tool. The LLM should use quest_lookup when it needs full details about a specific quest.\n\nWorld event decay: if an event has been 持续中 for many rounds without any update, consider changing its status to 已平息. Events should not linger in 持续中 indefinitely unless actively progressing.\n\nExample quest updates:\n<state_changes>{"quests.tasks.护送商队.status":"已完成","quests.goals.成为剑圣.progress":"已掌握三式剑法，尚需四式","quests.events.兽潮入侵.status":"持续中","quests.events.兽潮入侵.desc":"北方森林的野兽大规模南下，已波及三座村庄"}</state_changes>';
+    var stateChangesEn = '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
+        'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
+        '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
+        'Quests: state.quests.* — tasks/goals/events with name+status in prompt, detail via quest_lookup\n';
 
-    var stateChangesZh = (dynamicState2 ? buildDynamicStatePrompt(dynamicState2, 'zh') + '\n' : '') + '\n必须：输出 <state_changes> 块，提取对话中出现的所有角色。为每个具名角色创建角色卡。\n\n' + (dynamicState2 ? '除上述动态字段外，' : '') + '角色卡存储在 state.characters.<角色名>.* 下。每个角色有以下字段：\n- name, gender_age, occupation, clothing_build, personality（始终存在）\n- status: 活跃/非活跃/已死亡/已归隐/已离去 之一\n- NPC 额外拥有: inner_thoughts, affection(0-100), relationship, current_mood, past_experience\n- inventory_mode: 开启/静态/关闭\n- injuries, status_effects（可选）\n- power_slots（可选）：JSON 对象 {key: "value"}——角色战力/能量追踪器。每个角色可能有系统定义的槽位（如 vitality/energy/realm），使用自定义标签（如修仙者的"气血""灵力""境界"；现代背景的"身体状况""精力""社会地位"）。若角色定义了 power_slots，请更新其值以反映当前状态。\n\n示例 power_slots 更新：\n<state_changes>{"characters.张三.power_slots":{"vitality":"轻伤","energy":"充盈","realm":"筑基初期"}}</state_changes>\n\n重要：power_slots 字段存储的是扁平的 key→value JSON 对象。更新时请勿包含槽位定义（key/label/description），这些由系统管理。只更新当前值。\n\n为新角色创建 power_slots 时，请检查同世界其他角色是否已有 power_slots。若他们使用相同的修炼/力量体系，复用其槽位标签以保持命名一致性。\n\n要改变在场角色，更新其 status 字段：\n<state_changes>{"characters.爱丽丝.status":"已死亡","characters.鲍勃.status":"活跃"}</state_changes>\n\n重要：present_characters 是由代码自动从活跃角色名重建的虚拟字段。请勿在 <state_changes> 块中包含 present_characters。只更新 characters.*.status 来改变在场角色。\n\n--- 可选：势力 & 任务（以下字段为可选，仅当相关时输出）---\n\n势力存储在 state.factions.<名称>.* 下。每个势力有以下字段：\n- name, description, leader\n- attitude_toward_player: 友好/中立/冷淡/敌对 之一\n- relations: 以目标势力名为键的对象（只记录故事中实际发生过的关系）\n- notes（最长200字）\n\n只追踪故事中已出现的势力。示例：\n<state_changes>{"factions.魔教.attitude_toward_player":"敌对","factions.魔教.relations.正道联盟":"全面战争","factions.正道联盟.leader":"张真人","factions.魔教.notes":"近期在南方活动频繁"}</state_changes>\n\n任务/目标/世界事件存储在 state.quests.* 下，分三个子区域：\n\n=== 任务 (quests.tasks.<名称>.*) ===\n- name(始终), deadline(始终), status: 正在进行/已完成/已失败/已过期 之一\n- type: 主线/支线/事件（仅详情，通过 quest_lookup 工具获取）\n- issuer, desc(最长200字), progress, posted_time, reward, penalty（仅详情）\n\n=== 目标 (quests.goals.<名称>.*) ===\n- name(始终), status: 进行中/已达成/已放弃 之一\n- desc(最长200字), progress, posted_time, completed_time（仅详情）\n\n=== 世界事件 (quests.events.<名称>.*) ===\n- name(始终), status: 持续中/已平息/已结束 之一\n- desc(最长300字), started_time, ended_time（仅详情）\n\n双层暴露策略：name+deadline/status 始终注入到 prompt 摘要中。所有详情字段（type、issuer、desc、progress、reward、penalty、posted_time 等）仅通过 quest_lookup 工具获取。LLM 在需要任务完整详情时应使用 quest_lookup。\n\n世界事件衰减：如果某个事件持续多轮均为「持续中」而无任何更新，应考虑将其状态改为「已平息」。事件不应无限期停留在「持续中」状态，除非确实在积极进展。\n\n示例：\n<state_changes>{"quests.tasks.护送商队.status":"已完成","quests.goals.成为剑圣.progress":"已掌握三式剑法，尚需四式","quests.events.兽潮入侵.status":"持续中","quests.events.兽潮入侵.desc":"北方森林的野兽大规模南下，已波及三座村庄"}</state_changes>';
+    var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — summary级: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail级(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
+        'present_characters 自动计算 — 请勿在 <state_changes> 中包含\n' +
+        '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
+        '任务: state.quests.* — tasks/goals/events，name+status注入prompt，详情通过quest_lookup获取\n';
 
-    var sysPromptEnd = schemaEnabled ? 'Then you MUST output a <state_changes> block with character cards for all characters in the conversation.\n\n' + stateChangesEn : '';
-    var userPromptEnd = schemaEnabled ? 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes. Output in TWO-PART format:\nPart 1: _checkpoints JSON\nPart 2: <state_changes> XML (MANDATORY!)' : 'Recent conversation messages:\n\n' + msgTexts + '\n\nExtract the current story time, scene, and any state changes. Output the JSON object with _checkpoints (required) and optionally <state_changes> block.';
-    var zhSysPromptEnd = schemaEnabled ? '然后你必须输出 <state_changes> 块，为对话中所有角色创建角色卡。\n\n' + stateChangesZh : '';
-    var zhUserPromptEnd = schemaEnabled ? '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及角色状态变化。严格按**两段格式**输出：\n第一段: _checkpoints JSON\n第二段: <state_changes> XML 块（必须输出！）' : '最近的对话消息：\n\n' + msgTexts + '\n\n提取当前故事时间、场景以及任何状态变化。输出包含 _checkpoints（必填）和可选的 <state_changes> 块的 JSON 对象。';
+    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes></state_changes>\n- Miss characters in conversation\n- Include present_characters in any path\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分（不输出 <state_changes>）\n- 输出空的 <state_changes></state_changes>\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n============================================================\n';
+
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + 'You are a story state tracker. Review the entire conversation batch and update state fields as needed.\n\n' +
-                'YOUR OUTPUT MUST CONTAIN TWO PARTS IN ORDER:\n\n' +
-                '[Part 1: _checkpoints (REQUIRED)]\n' +
-                '{\n' +
-                '  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)" }\n' +
-                '}\n\n' +
-                '[Part 2: <state_changes> (YOU MUST OUTPUT THIS!)]\n\n' +
-                sysPromptEnd,
-            user: userPromptEnd
+            system: currentStateSnapshot + 'You are a story state tracker. Track character state changes, quest progress, faction relations.\n\n' +
+                '<thought>\nAnalyze step by step:\n1. Identify characters present and their state changes\n2. Check quest/event/goal progress\n3. Check faction relation changes\n4. List each change for state_changes\n</thought>\n\n' +
+                '[Part 1: _checkpoints (REQUIRED)]\n{"_checkpoints":{"time":"...","scene":"...","story_date":"..."}}\n\n' +
+                '[Part 2: <state_changes> (MUST OUTPUT!)]\n<state_changes>\n[{"path":"global.time","value":"..."},{"path":"characters.Alice.status","value":"活跃"},...]\n</state_changes>\n\n' +
+                stateChangesEn + hardGateEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Format: <thought> → _checkpoints → <state_changes> (MANDATORY).'
         };
     }
     return {
-        system: currentStateSnapshot + '你是故事状态追踪器。回顾整个对话批次，更新状态字段。\n\n' +
-            '你的输出必须严格包含以下两个部分，按顺序输出：\n\n' +
-            '【第一部分：_checkpoints（必填）】\n' +
-            '{\n' +
-            '  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）" }\n' +
-            '}\n\n' +
-            '【第二部分：<state_changes>（必须输出！）】\n\n' +
-            zhSysPromptEnd,
-        user: zhUserPromptEnd
+        system: currentStateSnapshot + '你是故事状态追踪器。追踪角色状态变化、任务进展、势力关系变化。\n\n' +
+            '<thought>\n逐步分析：\n1. 找出所有角色及其状态变化\n2. 检查任务/事件/目标进展\n3. 检查势力关系变化\n4. 逐条列出需写入state_changes的变更\n</thought>\n\n' +
+            '【第一部分：_checkpoints（必填）】\n{"_checkpoints":{"time":"...","scene":"...","story_date":"..."}}\n\n' +
+            '【第二部分：<state_changes>（必须输出！）】\n<state_changes>\n[{"path":"global.time","value":"..."},{"path":"characters.爱丽丝.status","value":"活跃"},...]\n</state_changes>\n\n' +
+            stateChangesZh + hardGateZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。格式：<thought> → _checkpoints → <state_changes>（必填）。'
+    };
+}
+
+function buildStatePrompt_Dynamic(messages, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+    var ds = content.dynamic_state;
+
+    var msgTexts = messages.map(function(m, i) {
+        var role = m.role === 'user' ? 'User' : 'Character';
+        var name = m.name ? m.name + ': ' : '';
+        return '[' + i + '] [' + role + '] ' + name + (m.content || '');
+    }).join('\n\n');
+
+    var currentStateSnapshot = '';
+    if (content.story_time || content.story_scene || content.story_date) {
+        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    }
+    if (!content.story_time && !content.story_date && !content.story_scene) {
+        currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
+    }
+
+    var dynamicFieldSummary = '';
+    if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
+        var dsText = formatDynamicStateSummary(ds);
+        if (dsText) {
+            currentStateSnapshot += dsText;
+            dynamicFieldSummary = dsText;
+        }
+    }
+
+    var stateChangesEn = '\nCharacter cards: state.characters.<name>.* — use ONLY discovered fields, NOT preset (name/gender_age/occupation etc).\n' +
+        'Discovered fields:\n' + (dynamicFieldSummary || 'use fields from character cards/world books') + '\n' +
+        'Active grouping: status="活跃" → auto-add to present_characters. No status field → all active.\n' +
+        'present_characters is auto-computed — do NOT include.\n' +
+        '\nFactions (preset schema): state.factions.<name>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
+        'Quests (preset schema): state.quests.* — tasks/goals/events, name+status in prompt, detail via quest_lookup\n';
+
+    var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — 仅使用动态发现字段，不用预设(name/gender_age/occupation等)。\n' +
+        '发现字段:\n' + (dynamicFieldSummary || '使用角色卡/世界书发现的字段') + '\n' +
+        '活跃分组: status="活跃"→自动加入present_characters。无status字段→全部活跃。\n' +
+        'present_characters 自动计算 — 请勿包含。\n' +
+        '\n势力(预设schema): state.factions.<名称>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
+        '任务(预设schema): state.quests.* — tasks/goals/events，name+status注入prompt，详情quest_lookup\n';
+
+    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes>\n- Use preset fields instead of discovered fields\n- Include present_characters in any path\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分\n- 输出空的 <state_changes>\n- 使用预设字段而非动态发现字段\n- 在任何路径中包含 present_characters\n============================================================\n';
+
+    if (lang === 'en') {
+        return {
+            system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Track character state changes using discovered fields from character cards/world books.\n\n' +
+                '<thought>\nAnalyze step by step:\n1. Identify characters present\n2. Check each character for changes in discovered fields: ' + (dynamicFieldSummary || 'discovered fields') + '\n3. List each change for state_changes\n</thought>\n\n' +
+                '[Part 1: _checkpoints (REQUIRED)]\n{"_checkpoints":{"time":"...","scene":"...","story_date":"..."}}\n\n' +
+                '[Part 2: <state_changes> (MUST OUTPUT!)]\n<state_changes>\n[{"path":"global.time","value":"..."},{"path":"characters.Alice.{field}","value":"..."},...]\n</state_changes>\n\n' +
+                stateChangesEn + hardGateEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Format: <thought> → _checkpoints → <state_changes> (MANDATORY).'
+        };
+    }
+    return {
+        system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用从角色卡/世界书动态发现的字段追踪角色状态变化。\n\n' +
+            '<thought>\n逐步分析：\n1. 找出所有角色\n2. 检查每个角色的动态发现字段变化: ' + (dynamicFieldSummary || '发现的字段') + '\n3. 逐条列出需写入state_changes的变更\n</thought>\n\n' +
+            '【第一部分：_checkpoints（必填）】\n{"_checkpoints":{"time":"...","scene":"...","story_date":"..."}}\n\n' +
+            '【第二部分：<state_changes>（必须输出！）】\n<state_changes>\n[{"path":"global.time","value":"..."},{"path":"characters.爱丽丝.{字段}","value":"..."},...]\n</state_changes>\n\n' +
+            stateChangesZh + hardGateZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。格式：<thought> → _checkpoints → <state_changes>（必填）。'
     };
 }
 
@@ -621,106 +688,110 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);
 
-    // ═══════════════════════════════════════════
-    // Pipeline 1: State（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
-    // ═══════════════════════════════════════════
     var stateParsed = null;
-    var stateChanges = {};
-    var statePrompt = buildStateChangesPrompt(filteredMessages, vault);
-    try {
-        console.log('[NE] State LLM prompt sizes — system=' + statePrompt.system.length + ', user=' + statePrompt.user.length);
-        var stateResponse = await callMemoryPipeline([
-            { role: 'system', content: statePrompt.system },
-            { role: 'user', content: statePrompt.user }
-        ]);
-        stateParsed = parseSTMResponse(stateResponse);
-        stateChanges = stateParsed.stateChanges || {};
-        console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
-        if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
-            console.log('[NE] State LLM raw response (no state_changes found):', stateResponse.substring(0, 300));
-        }
-        if (!stateResponse || stateResponse.length < 10) {
-            console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
-        }
+    if (isStateSchemaEnabled()) {
+        // ═══════════════════════════════════════════
+        // Pipeline 1: State（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
+        // ═══════════════════════════════════════════
+        var stateChanges = {};
+        var statePrompt = isDynamicStateMode()
+            ? buildStatePrompt_Dynamic(filteredMessages, vault)
+            : buildStatePrompt_Preset(filteredMessages, vault);
+        try {
+            console.log('[NE] State LLM prompt sizes — system=' + statePrompt.system.length + ', user=' + statePrompt.user.length);
+            var stateResponse = await callMemoryPipeline([
+                { role: 'system', content: statePrompt.system },
+                { role: 'user', content: statePrompt.user }
+            ]);
+            stateParsed = parseSTMResponse(stateResponse);
+            stateChanges = stateParsed.stateChanges || {};
+            console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
+            if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
+                console.log('[NE] State LLM raw response (no state_changes found):', stateResponse.substring(0, 300));
+            }
+            if (!stateResponse || stateResponse.length < 10) {
+                console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
+            }
 
-        // 1a. 写入 story_time/story_scene，让 cursor 能引用最新状态
-        if (stateParsed._checkpoints) {
-            postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State checkpoint save failed:', e); }
-        }
+            // 1a. 写入 story_time/story_scene，让 cursor 能引用最新状态
+            if (stateParsed._checkpoints) {
+                postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
+                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State checkpoint save failed:', e); }
+            }
 
-        // 1b. 处理 state_changes（merge、power slots、quests）—— 独立完成
-        console.log('[NE] State pipeline — schemaEnabled=' + isStateSchemaEnabled() + ', hasStateChanges=' + (Object.keys(stateChanges).length > 0) + ', willProcess=' + (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0));
-        if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
-            var schema = vault.content.state_schema || null;
-            var result = validateStateChanges(schema, stateChanges);
-            if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-            var oldState = vault.content.state || {};
-            var oldCharNames = Object.keys(oldState.characters || {});
-            vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
-            handleQuestCompletion(vault.content.state, result.validated);
+            // 1b. 处理 state_changes（merge、power slots、quests）—— 独立完成
+            console.log('[NE] State pipeline — schemaEnabled=' + isStateSchemaEnabled() + ', hasStateChanges=' + (Object.keys(stateChanges).length > 0) + ', willProcess=' + (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0));
+            if (Object.keys(stateChanges).length > 0) {
+                var schema = vault.content.state_schema || null;
+                var result = validateStateChanges(schema, stateChanges);
+                if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
+                var oldState = vault.content.state || {};
+                var oldCharNames = Object.keys(oldState.characters || {});
+                vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
+                handleQuestCompletion(vault.content.state, result.validated);
 
-            // Power slot init（fire-and-forget，不阻塞 pipeline）
-            var newState = vault.content.state || {};
-            var newCharNames = Object.keys(newState.characters || {});
-            var addedCharNames = newCharNames.filter(function (n) { return oldCharNames.indexOf(n) === -1; });
-            if (addedCharNames.length > 0) {
-                var existingSlotsForWorld = [];
-                oldCharNames.forEach(function (name) {
-                    var card = oldState.characters[name];
-                    if (card && card.power_slot_defs && Array.isArray(card.power_slot_defs)) {
-                        card.power_slot_defs.forEach(function (s) {
-                            var found = existingSlotsForWorld.find(function (e) { return e.key === s.key; });
-                            if (!found) existingSlotsForWorld.push(s);
-                        });
-                    }
-                });
-                for (var ni = 0; ni < addedCharNames.length; ni++) {
-                    var charName = addedCharNames[ni];
-                    initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
-                        if (slots && slots.length > 0) {
-                            read(chatId).then(function (freshVault) {
-                                var st = freshVault.content.state || {};
-                                if (!st.characters) st.characters = {};
-                                if (!st.characters[charName]) st.characters[charName] = {};
-                                st.characters[charName].power_slot_defs = slots;
-                                var values = {};
-                                slots.forEach(function (s) { values[s.key] = ''; });
-                                st.characters[charName].power_slots = values;
-                                freshVault._meta.last_pipeline_task = 'power_slot_init';
-                                freshVault._meta.last_pipeline_time = new Date().toISOString();
-                                saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
-                                    console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
-                                });
-                            }).catch(function (e2) {
-                                console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
+                // Power slot init（fire-and-forget，不阻塞 pipeline）
+                var newState = vault.content.state || {};
+                var newCharNames = Object.keys(newState.characters || {});
+                var addedCharNames = newCharNames.filter(function (n) { return oldCharNames.indexOf(n) === -1; });
+                if (addedCharNames.length > 0) {
+                    var existingSlotsForWorld = [];
+                    oldCharNames.forEach(function (name) {
+                        var card = oldState.characters[name];
+                        if (card && card.power_slot_defs && Array.isArray(card.power_slot_defs)) {
+                            card.power_slot_defs.forEach(function (s) {
+                                var found = existingSlotsForWorld.find(function (e) { return e.key === s.key; });
+                                if (!found) existingSlotsForWorld.push(s);
                             });
                         }
-                    }).catch(function (e) {
-                        console.warn('[NE] initPowerSlots failed for', charName, ':', e);
                     });
+                    for (var ni = 0; ni < addedCharNames.length; ni++) {
+                        var charName = addedCharNames[ni];
+                        initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
+                            if (slots && slots.length > 0) {
+                                read(chatId).then(function (freshVault) {
+                                    var st = freshVault.content.state || {};
+                                    if (!st.characters) st.characters = {};
+                                    if (!st.characters[charName]) st.characters[charName] = {};
+                                    st.characters[charName].power_slot_defs = slots;
+                                    var values = {};
+                                    slots.forEach(function (s) { values[s.key] = ''; });
+                                    st.characters[charName].power_slots = values;
+                                    freshVault._meta.last_pipeline_task = 'power_slot_init';
+                                    freshVault._meta.last_pipeline_time = new Date().toISOString();
+                                    saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
+                                        console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
+                                    });
+                                }).catch(function (e2) {
+                                    console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
+                                });
+                            }
+                        }).catch(function (e) {
+                            console.warn('[NE] initPowerSlots failed for', charName, ':', e);
+                        });
+                    }
                 }
+
+                if (stateChanges.story_date) {
+                    vault.content.story_date = String(stateChanges.story_date);
+                }
+
+                vault._meta = vault._meta || {};
+                vault._meta.last_pipeline_task = 'state_extract';
+                vault._meta.last_pipeline_time = new Date().toISOString();
+                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State changes save failed:', e); }
+
+                console.log('[NE] State pipeline — state_changes saved, state keys=' + Object.keys(vault.content.state || {}).length);
+
+                recordTelemetry({
+                    pipeline_task: 'state_extract',
+                    new_state_change_count: Object.keys(stateChanges).length,
+                    parse_error: null
+                });
             }
-
-            if (stateChanges.story_date) {
-                vault.content.story_date = String(stateChanges.story_date);
-            }
-
-            vault._meta = vault._meta || {};
-            vault._meta.last_pipeline_task = 'state_extract';
-            vault._meta.last_pipeline_time = new Date().toISOString();
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State changes save failed:', e); }
-
-            console.log('[NE] State pipeline — state_changes saved, state keys=' + Object.keys(vault.content.state || {}).length);
-
-            recordTelemetry({
-                pipeline_task: 'state_extract',
-                new_state_change_count: Object.keys(stateChanges).length,
-                parse_error: null
-            });
+        } catch (e) {
+            console.warn('[NE] State pipeline failed:', e);
         }
-    } catch (e) {
-        console.warn('[NE] State pipeline failed:', e);
     }
 
     // ═══════════════════════════════════════════
@@ -791,7 +862,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (latestAssistantMsg) messages.push(latestAssistantMsg);
     if (messages.length === 0) return { vault, changed: false };
 
-    var statePrompt = buildStateChangesPrompt(messages, vault);
+    var statePrompt = isDynamicStateMode()
+        ? buildStatePrompt_Dynamic(messages, vault)
+        : buildStatePrompt_Preset(messages, vault);
 
     var stateResponse;
     try {

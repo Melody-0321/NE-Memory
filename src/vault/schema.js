@@ -45,6 +45,20 @@ export function setDynamicStateMode(val) {
     _dynamicStateMode = !!val;
 }
 
+// ─── Core Layer（永远存在，不受 Schema 开关影响）───
+
+export const CORE_SCHEMA = {
+    type: 'object',
+    fields: {
+        time: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
+        scene: { type: 'string', max_length: 60, expose_level: 'summary', update_rule: 'replace' },
+        story_date: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' }
+    }
+};
+
+export const CORE_STATE_FIELDS = Object.keys(CORE_SCHEMA.fields);
+// ['time', 'scene', 'story_date']
+
 export const POWER_SLOTS_TEMPLATES = {
     cultivation: {
         name: 'cultivation',
@@ -437,6 +451,114 @@ export function mergeStateChanges(state, validatedChanges) {
     }
 
     return newState;
+}
+
+// ─── getEffectiveSchema — 根据当前模式返回实际生效的完整 schema ───
+
+function mergeSchemas(core, extension) {
+    var merged = JSON.parse(JSON.stringify(core));
+    if (extension && extension.fields) {
+        Object.keys(extension.fields).forEach(function (key) {
+            if (!merged.fields[key]) {
+                merged.fields[key] = extension.fields[key];
+            }
+        });
+    }
+    return merged;
+}
+
+function buildDynamicEffectiveSchema(vault) {
+    var ds = vault.content.dynamic_state;
+    var schema = JSON.parse(JSON.stringify(CORE_SCHEMA));
+
+    // 从 dynamic_state 构建字符字段
+    if (ds && ds.characters) {
+        schema.fields.characters = { type: 'object', fields: {} };
+        Object.keys(ds.characters).forEach(function (charName) {
+            var fields = {};
+            var charFields = ds.characters[charName];
+            if (charFields && typeof charFields === 'object') {
+                Object.keys(charFields).forEach(function (fieldName) {
+                    fields[fieldName] = { type: 'string', expose_level: 'summary' };
+                });
+            }
+            schema.fields.characters.fields[charName] = { type: 'object', fields: fields };
+        });
+    }
+
+    // 可选：从 state_schema 合并 factions/quests（预设 schema）
+    var stateSchema = vault.content.state_schema;
+    if (stateSchema && stateSchema.fields) {
+        if (stateSchema.fields.factions && stateSchema.fields.factions.enabled) {
+            schema.fields.factions = stateSchema.fields.factions;
+        }
+        if (stateSchema.fields.quests && stateSchema.fields.quests.enabled) {
+            schema.fields.quests = stateSchema.fields.quests;
+        }
+    }
+
+    return schema;
+}
+
+/**
+ * 返回当前实际生效的完整 schema：
+ * - Schema OFF: 仅 CORE_SCHEMA
+ * - Schema ON 预设: CORE_SCHEMA + state_schema 中的扩展字段
+ * - Schema ON 动态: CORE_SCHEMA + 从 dynamic_state 构建的扩展字段
+ */
+export function getEffectiveSchema(vault) {
+    if (!_stateSchemaEnabled) {
+        return CORE_SCHEMA;
+    }
+    if (_dynamicStateMode && vault.content.dynamic_state) {
+        return buildDynamicEffectiveSchema(vault);
+    }
+    return mergeSchemas(CORE_SCHEMA, vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA);
+}
+
+/**
+ * 仅渲染 Core 字段的状态摘要（用于 Schema OFF 时的面板显示）
+ */
+export function formatCoreStateSummary(state) {
+    var lines = [];
+    for (var i = 0; i < CORE_STATE_FIELDS.length; i++) {
+        var key = CORE_STATE_FIELDS[i];
+        if (state[key]) {
+            lines.push(key + ': ' + state[key]);
+        }
+    }
+    return lines.join('\n');
+}
+
+/**
+ * 从 dynamic_state 构建与 renderCharacterCard / formatCharacterSummary 兼容的字符 schema。
+ * 返回 { protagonist: { fields: {...} }, npc: { fields: {...} } } 格式，或 null。
+ */
+export function buildDynamicCharacterSchema(dynamicState) {
+    if (!dynamicState || !dynamicState.characters) return null;
+
+    var allFields = {};
+    var charKeys = Object.keys(dynamicState.characters);
+    for (var i = 0; i < charKeys.length; i++) {
+        var charFields = dynamicState.characters[charKeys[i]];
+        if (charFields && typeof charFields === 'object') {
+            var fieldKeys = Object.keys(charFields);
+            for (var j = 0; j < fieldKeys.length; j++) {
+                var fn = fieldKeys[j];
+                if (!allFields[fn]) {
+                    allFields[fn] = { type: 'string', expose_level: 'summary' };
+                }
+            }
+        }
+    }
+
+    if (Object.keys(allFields).length === 0) return null;
+
+    // 两个角色类型共用同一套动态字段
+    return {
+        protagonist: { fields: JSON.parse(JSON.stringify(allFields)) },
+        npc: { fields: JSON.parse(JSON.stringify(allFields)) }
+    };
 }
 
 // validateCharacterCard — 校验单个角色卡是否符合 protagonist/npc Schema 的 required 字段
