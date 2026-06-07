@@ -362,16 +362,9 @@ export function parseSTMResponse(llmResponse) {
     var stmEntries = [];
     var checkpoints = null;
     try {
-        var jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            var parsed = JSON.parse(jsonMatch[0]);
-            if (parsed.stm_entries || parsed._checkpoints) {
-                checkpoints = parsed._checkpoints || null;
-                stmEntries = parsed.stm_entries || [];
-            } else if (Array.isArray(parsed)) {
-                stmEntries = parsed;
-            }
-        } else {
+        var trimmed = text.trim();
+        // Array-first: cursor responses start with [...] — parse them before greedy {.*} match
+        if (trimmed.startsWith('[')) {
             try {
                 var arrayMatch = text.match(/\[[\s\S]*\]/);
                 if (arrayMatch) {
@@ -379,6 +372,27 @@ export function parseSTMResponse(llmResponse) {
                     if (!Array.isArray(stmEntries)) stmEntries = [];
                 }
             } catch (e2) {}
+        } else {
+            var jsonMatch = text.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+                var parsed = JSON.parse(jsonMatch[0]);
+                if (parsed.stm_entries || parsed._checkpoints) {
+                    checkpoints = parsed._checkpoints || null;
+                    stmEntries = parsed.stm_entries || [];
+                } else if (Array.isArray(parsed)) {
+                    stmEntries = parsed;
+                }
+            }
+        }
+        // Fallback: if still empty and text starts with {, try again
+        if (stmEntries.length === 0 && checkpoints === null && trimmed.startsWith('{')) {
+            try {
+                var arrayMatch2 = text.match(/\[[\s\S]*\]/);
+                if (arrayMatch2) {
+                    stmEntries = JSON.parse(arrayMatch2[0]);
+                    if (!Array.isArray(stmEntries)) stmEntries = [];
+                }
+            } catch (e3) {}
         }
         if (stmEntries.length === 0 && text.length > 5) {
             stmEntries = [{ event: text.substring(0, 120), scene: '', period: '', time_label: '' }];
@@ -614,12 +628,15 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         ]);
         stateParsed = parseSTMResponse(stateResponse);
         stateChanges = stateParsed.stateChanges || {};
+        if (!stateResponse || stateResponse.length < 10) {
+            console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
+        }
         // 先把 story_time/story_scene 写入 vault，让 cursor prompt 能引用最新状态
         if (stateParsed._checkpoints) {
             postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
+            // 立即持久化 state 变更，避免 cursor 阶段失败导致数据丢失
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Phase 1 state save failed:', e); }
         }
-        // 立即持久化 state 变更，避免 cursor 阶段失败导致数据丢失
-        try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Phase 1 state save failed:', e); }
     } catch (e) {
         console.warn('[NE] State changes extraction failed:', e);
     }

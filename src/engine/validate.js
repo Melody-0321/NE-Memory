@@ -3,7 +3,7 @@ export function validateSTMOutput(parsed, vault, messageCount) {
     var checkpoints = parsed._checkpoints;
     var stmEntries = parsed.stmEntries || [];
 
-    if (checkpoints !== undefined) {
+    if (checkpoints !== undefined && checkpoints !== null) {
         if (!checkpoints || typeof checkpoints !== 'object') {
             errors.push('_checkpoints block is REQUIRED when using new format');
         } else {
