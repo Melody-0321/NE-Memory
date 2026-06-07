@@ -578,7 +578,8 @@ function buildStatePrompt_Preset(messages, vault) {
         if (s) currentStateSnapshot += 'Current state (for reference):\n' + s + '\n';
     }
 
-    var stateChangesEn = '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
+    var stateChangesEn = 'Global fields: time, scene, story_date, main_event — always track!\n' +
+        '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
         'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
         '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
@@ -599,7 +600,7 @@ function buildStatePrompt_Preset(messages, vault) {
                 'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
                 '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Each character\'s state changes\n3. Quest/event/goal progress\n4. Faction relation changes\n5. List each change for state_changes\n</thought>\n' +
                 '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"characters.Alice.status","value":"活跃"},{"path":"characters.Alice.personality","value":"..."}]\n' +
+                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"characters.Alice.status","value":"活跃"},{"path":"characters.Alice.personality","value":"..."}]\n' +
                 '</state_changes>\n\n' +
                 stateChangesEn + hardGateEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
@@ -610,7 +611,7 @@ function buildStatePrompt_Preset(messages, vault) {
             '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
             '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 每个角色的状态变化\n3. 任务/事件/目标进展\n4. 势力关系变化\n5. 逐条列出需写入state_changes的变更\n</thought>\n' +
             '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"characters.江岚.status","value":"活跃"},{"path":"characters.江岚.personality","value":"..."}]\n' +
+            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"characters.江岚.status","value":"活跃"},{"path":"characters.江岚.personality","value":"..."}]\n' +
             '</state_changes>\n\n' +
             stateChangesZh + hardGateZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
@@ -668,7 +669,7 @@ function buildStatePrompt_Dynamic(messages, vault) {
                 'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
                 '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify characters present\n3. Check each character for changes in discovered fields: ' + (dynamicFieldSummary || 'discovered fields') + '\n4. List each change for state_changes\n</thought>\n' +
                 '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"characters.Alice.{field}","value":"..."}]\n' +
+                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"characters.Alice.{field}","value":"..."}]\n' +
                 '</state_changes>\n\n' +
                 stateChangesEn + hardGateEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
@@ -679,7 +680,7 @@ function buildStatePrompt_Dynamic(messages, vault) {
             '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
             '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 找出所有角色\n3. 检查每个角色的动态发现字段变化: ' + (dynamicFieldSummary || '发现的字段') + '\n4. 逐条列出需写入state_changes的变更\n</thought>\n' +
             '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"characters.江岚.{字段}","value":"..."}]\n' +
+            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"characters.江岚.{字段}","value":"..."}]\n' +
             '</state_changes>\n\n' +
             stateChangesZh + hardGateZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
