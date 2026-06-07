@@ -114,6 +114,10 @@ async function callCustomAPI(config, messages, options) {
         const data = await response.json();
         var content = data.choices?.[0]?.message?.content || data.content || '';
         var usage = data.choices?.[0]?.usage || data.usage || null;
+        // Diagnostic: log response structure when content is unexpectedly empty
+        if (!content) {
+            console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', finishReason=' + (data.choices?.[0]?.finish_reason || 'none') + ', usage=' + JSON.stringify(usage || {}));
+        }
         return { content: content, usage: usage };
     } finally {
         clearTimeout(timeout);

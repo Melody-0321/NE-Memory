@@ -624,6 +624,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var stateChanges = {};
     var statePrompt = buildStateChangesPrompt(filteredMessages, vault);
     try {
+        console.log('[NE] State LLM prompt sizes — system=' + statePrompt.system.length + ', user=' + statePrompt.user.length);
         var stateResponse = await callMemoryPipeline([
             { role: 'system', content: statePrompt.system },
             { role: 'user', content: statePrompt.user }
