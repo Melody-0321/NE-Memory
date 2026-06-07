@@ -672,8 +672,12 @@ export function formatStateSummary(state, stateSchema) {
             if (fieldSch.type === 'object' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
                 walk(val, fullPath, fieldSch);
             } else {
-                var display = val === null || val === undefined ? '-' : String(val).substring(0, 50);
-                lines.push(fullPath + '=' + display);
+                if (val === null || val === undefined || val === '') {
+                    // 跳过空值，不显示 '-'
+                } else {
+                    var display = String(val).substring(0, 50);
+                    lines.push(fullPath + '=' + display);
+                }
             }
         });
 
