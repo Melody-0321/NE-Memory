@@ -951,8 +951,14 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     var allLTM = content.ltm_entries || [];
 
+    var SMART_PUSH_MIN_STM = 20;
+
     if (allSTM.length === 0 && allLTM.length === 0) {
-        return formatMinimalState(vault);
+        return buildStateOnlyInjection(vault);
+    }
+
+    if (allSTM.length < SMART_PUSH_MIN_STM && allLTM.length === 0) {
+        return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 
     var query;
@@ -986,13 +992,13 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     try {
         topCandidates = filterCandidates(query, allSTM, allLTM, 40);
     } catch (e) {
-        console.warn('[NE] BM25 filter failed, falling back to minimal state injection:', e);
-        return formatMinimalState(vault);
+        console.warn('[NE] BM25 filter failed, falling back to full dump injection:', e);
+        return buildFullDumpInjection(vault, allSTM, allLTM);
     }
     var bm25Ms = Date.now() - bm25Start;
 
     if (!topCandidates || topCandidates.length === 0) {
-        return formatMinimalState(vault);
+        return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 
     var retrievalApiStart = Date.now();
@@ -1060,6 +1066,128 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     // ── Layer 3: Tool hints ──
     if (parts.length > 0) parts.push('---');
+    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
+
+    return parts.join('\n\n');
+}
+
+/* ──────── Injection builders (no LLM path) ──────── */
+
+function formatFullDump(allSTM, allLTM) {
+    var lines = [];
+    lines.push('## Event Log');
+    lines.push('');
+
+    allSTM.forEach(function(c) {
+        var timePart = (c.time_range || c.period || '');
+        if (c.time_label) timePart = timePart + '·' + c.time_label;
+        var refs = '';
+        if (c.msg_ids && c.msg_ids.length > 0) {
+            refs = ' [→' + c.msg_ids.join(',') + ']';
+        } else if (c.stm_refs && c.stm_refs.length > 0) {
+            refs = ' [→' + c.stm_refs.join(',') + ']';
+        }
+        lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || '') + refs);
+    });
+
+    if (allLTM && allLTM.length > 0) {
+        lines.push('');
+        lines.push('### Consolidated Memories');
+        allLTM.forEach(function(c) {
+            var timePart = (c.time_range || c.period || '');
+            if (c.time_label) timePart = timePart + '·' + c.time_label;
+            lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || ''));
+        });
+    }
+
+    return lines.join('\n');
+}
+
+function buildStateOnlyInjection(vault) {
+    var content = vault.content || {};
+    var state = content.state || {};
+    var parts = [];
+
+    if (vault.memory_system_prompt) {
+        parts.push(vault.memory_system_prompt);
+    }
+
+    if (state && Object.keys(state).length > 0 && isStateSchemaEnabled()) {
+        var stateSchema = content.state_schema || null;
+        var stateSummary = formatStateSummary(state, stateSchema);
+        if (stateSummary) {
+            parts.push('## Current State\n' + stateSummary);
+        }
+        var charSchema = isDynamicStateMode() && content.dynamic_state
+            ? buildDynamicCharacterSchema(content.dynamic_state)
+            : (content.character_schema || null);
+        var charSummary = formatActiveCharacterSummary(state, charSchema);
+        if (charSummary) {
+            parts.push('## Characters\n' + charSummary);
+        }
+        var factionSummary = formatActiveFactionSummary(state);
+        if (factionSummary) {
+            parts.push('## Factions\n' + factionSummary);
+        }
+        var questSummary = formatQuestSummary(state);
+        if (questSummary) {
+            parts.push('## Quests\n' + questSummary);
+        }
+    }
+
+    if (parts.length === 0) {
+        return formatMinimalState(vault);
+    }
+
+    parts.push('---');
+    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
+
+    return parts.join('\n\n');
+}
+
+function buildFullDumpInjection(vault, allSTM, allLTM) {
+    var content = vault.content || {};
+    var state = content.state || {};
+    var parts = [];
+
+    if (vault.memory_system_prompt) {
+        parts.push(vault.memory_system_prompt);
+    }
+
+    if (state && Object.keys(state).length > 0 && isStateSchemaEnabled()) {
+        var stateSchema = content.state_schema || null;
+        var stateSummary = formatStateSummary(state, stateSchema);
+        if (stateSummary) {
+            parts.push('## Current State\n' + stateSummary);
+        }
+        var charSchema = isDynamicStateMode() && content.dynamic_state
+            ? buildDynamicCharacterSchema(content.dynamic_state)
+            : (content.character_schema || null);
+        var charSummary = formatActiveCharacterSummary(state, charSchema);
+        if (charSummary) {
+            parts.push('## Characters\n' + charSummary);
+        }
+        var factionSummary = formatActiveFactionSummary(state);
+        if (factionSummary) {
+            parts.push('## Factions\n' + factionSummary);
+        }
+        var questSummary = formatQuestSummary(state);
+        if (questSummary) {
+            parts.push('## Quests\n' + questSummary);
+        }
+    }
+
+    var dumpText = formatFullDump(allSTM, allLTM);
+    if (dumpText) {
+        if (parts.length > 0) parts.push('---');
+        parts.push(dumpText);
+    }
+
+    if (parts.length === 0) {
+        return formatMinimalState(vault);
+    }
+
+    parts.push('---');
     parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
 
     return parts.join('\n\n');
