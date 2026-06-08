@@ -24,7 +24,7 @@ function persistPending() {
 export function restorePending() {
     try {
         var raw = localStorage.getItem('ne_pending');
-        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); }
+        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); console.log('[NE-DIAG] restorePending: loaded ' + pendingMessages.length + ' pending messages from localStorage'); }
         var inflight = localStorage.getItem('ne_inflight');
         if (inflight) {
             var inflightBatch = JSON.parse(inflight);
@@ -32,6 +32,7 @@ export function restorePending() {
             localStorage.removeItem('ne_inflight');
             console.log('[NE] Restored ' + inflightBatch.length + ' inflight messages from crashed pipeline');
         }
+        console.log('[NE-DIAG] restorePending: total pending=' + pendingMessages.length);
     } catch (e) {}
 }
 
@@ -177,18 +178,23 @@ async function flushPendingMessages() {
     const batch = pendingMessages.splice(0);
     persistPending();
     try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
-    console.log('[NE] Pipeline starting: batch=' + batch.length + ' messages');
+    console.log('[NE-DIAG] Pipeline starting: batch=' + batch.length + ' messages, setting pipelineRunning=true');
+    console.log('[NE-DIAG] Pipeline start stack:\n' + new Error().stack);
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
     try {
         try {
+            console.log('[NE-DIAG] Pipeline: executeConsolidation start');
             const consResult = await executeConsolidation(chatId);
             var latestVault = consResult.vault;
+            console.log('[NE-DIAG] Pipeline: executeConsolidation done, merged=' + consResult.merged);
         } catch (consErr) {
             console.warn('[NE] Consolidation failed, continuing with update:', consErr);
         }
+        console.log('[NE-DIAG] Pipeline: executeIncrementalUpdate start');
         const result = await executeIncrementalUpdate(chatId, batch);
         latestVault = result.vault;
+        console.log('[NE-DIAG] Pipeline: executeIncrementalUpdate done, added=' + result.added);
         if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
         consecutiveFailures = 0;
         try { localStorage.removeItem('ne_inflight'); } catch (e) {}
@@ -204,6 +210,7 @@ async function flushPendingMessages() {
             persistPending();
         }
     } finally {
+        console.log('[NE-DIAG] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
     }
@@ -211,6 +218,7 @@ async function flushPendingMessages() {
 
 export async function onBeforeGenerate(type) {
     try {
+        console.log('[NE-DIAG] onBeforeGenerate entered type=' + type + ' pending=' + pendingMessages.length + ' lastSentAgo=' + (lastMessageSentTime ? (Date.now() - lastMessageSentTime) + 'ms' : 'never'));
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
             console.log('[NE] onBeforeGenerate skipped: generation type=' + type);

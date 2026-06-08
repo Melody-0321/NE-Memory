@@ -63,6 +63,23 @@ async function init() {
     await renderVaultPanel(getChatId);
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
+
+    // Diagnostic: track who calls deactivateSendButtons by watching body[data-generating]
+    try {
+        var PD = window.parent.document;
+        var obs = new parent.MutationObserver(function (mutations) {
+            for (var i = 0; i < mutations.length; i++) {
+                var m = mutations[i];
+                if (m.type === 'attributes' && m.attributeName === 'data-generating') {
+                    var val = PD.body.getAttribute('data-generating');
+                    var stack = new Error().stack;
+                    console.log('[NE-DIAG] body[data-generating] changed to=' + val + ' (is_send_press check) \nStack:\n' + stack);
+                }
+            }
+        });
+        obs.observe(PD.body, { attributes: true, attributeFilter: ['data-generating'] });
+    } catch (e) { console.warn('[NE-DIAG] Failed to install generating watcher:', e); }
+
     console.log('[NE] Engine initialized — chatId=' + chatId + ', version=' + vault.version);
 }
 
