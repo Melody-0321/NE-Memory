@@ -92,7 +92,8 @@ var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
 function getCharacterCardType(name, state) {
     var npcNames = state && state.npc_names;
     if (npcNames && Array.isArray(npcNames) && npcNames.indexOf(name) !== -1) return 'npc';
-    return 'protagonist';
+    // 默认 NPC：如果不存在明确的主控角色标记，不应滥发 PC 标签
+    return 'npc';
 }
 
 function renderCharacterCard(name, card, schema, cardType) {

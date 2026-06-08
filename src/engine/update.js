@@ -582,25 +582,27 @@ function buildStatePrompt_Preset(messages, vault) {
         '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
         'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
+        '\nnpc_names: array of character names that are NPCs — list ALL named characters EXCEPT the protagonist. If the story has NO clear single protagonist, list ALL characters here and label NO ONE as protagonist.\n' +
         '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
         'Quests: state.quests.* — tasks/goals/events with name+status in prompt, detail via quest_lookup\n';
 
     var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — summary级: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail级(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
         'present_characters 自动计算 — 请勿在 <state_changes> 中包含\n' +
+        '\nnpc_names: NPC角色名数组 — 列出除主控角色外的所有具名角色。如果故事中没有明确的单一主控角色，此处列出所有角色名，不要将任何人标记为主控。\n' +
         '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
         '任务: state.quests.* — tasks/goals/events，name+status注入prompt，详情通过quest_lookup获取\n';
 
-    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes></state_changes>\n- Miss characters in conversation\n- Include present_characters in any path\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分（不输出 <state_changes>）\n- 输出空的 <state_changes></state_changes>\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n============================================================\n';
+    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes></state_changes>\n- Miss characters in conversation\n- Include present_characters in any path\n- Omit npc_names or label all characters as protagonist\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分（不输出 <state_changes>）\n- 输出空的 <state_changes></state_changes>\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n- 遗漏 npc_names 或将所有角色都标为主控\n============================================================\n';
 
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker. Track character state changes, quest progress, faction relations.\n\n' +
                 'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
-                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Each character\'s state changes\n3. Quest/event/goal progress\n4. Faction relation changes\n5. List each change for state_changes\n</thought>\n' +
+                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify NPCs (all characters EXCEPT the single protagonist; if no clear protagonist, ALL are NPCs)\n3. Each character\'s state changes\n4. Quest/event/goal progress\n5. Faction relation changes\n6. List each change for state_changes (including npc_names)\n</thought>\n' +
                 '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"characters.Alice.status","value":"活跃"},{"path":"characters.Alice.personality","value":"..."}]\n' +
+                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"npc_names","value":["Bob"]},{"path":"characters.Alice.status","value":"活跃"},{"path":"characters.Alice.personality","value":"..."}]\n' +
                 '</state_changes>\n\n' +
                 stateChangesEn + hardGateEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
@@ -609,9 +611,9 @@ function buildStatePrompt_Preset(messages, vault) {
     return {
         system: currentStateSnapshot + '你是故事状态追踪器。追踪角色状态变化、任务进展、势力关系变化。\n\n' +
             '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
-            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 每个角色的状态变化\n3. 任务/事件/目标进展\n4. 势力关系变化\n5. 逐条列出需写入state_changes的变更\n</thought>\n' +
+            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 识别NPC（除单一主控角色外的所有角色；无明确主控则全部为NPC）\n3. 每个角色的状态变化\n4. 任务/事件/目标进展\n5. 势力关系变化\n6. 逐条列出需写入state_changes的变更（包括npc_names）\n</thought>\n' +
             '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"characters.江岚.status","value":"活跃"},{"path":"characters.江岚.personality","value":"..."}]\n' +
+            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"npc_names","value":["紫瞳女孩"]},{"path":"characters.江岚.status","value":"活跃"},{"path":"characters.江岚.personality","value":"..."}]\n' +
             '</state_changes>\n\n' +
             stateChangesZh + hardGateZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
@@ -650,6 +652,7 @@ function buildStatePrompt_Dynamic(messages, vault) {
         'Discovered fields:\n' + (dynamicFieldSummary || 'use fields from character cards/world books') + '\n' +
         'Active grouping: status="活跃" → auto-add to present_characters. No status field → all active.\n' +
         'present_characters is auto-computed — do NOT include.\n' +
+        '\nnpc_names: array of NPC character names — ALL named characters EXCEPT the protagonist. If NO clear single protagonist → list ALL here, no one is protagonist.\n' +
         '\nFactions (preset schema): state.factions.<name>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
         'Quests (preset schema): state.quests.* — tasks/goals/events, name+status in prompt, detail via quest_lookup\n';
 
@@ -657,6 +660,7 @@ function buildStatePrompt_Dynamic(messages, vault) {
         '发现字段:\n' + (dynamicFieldSummary || '使用角色卡/世界书发现的字段') + '\n' +
         '活跃分组: status="活跃"→自动加入present_characters。无status字段→全部活跃。\n' +
         'present_characters 自动计算 — 请勿包含。\n' +
+        '\nnpc_names: NPC角色名数组 — 除主控角色外的所有具名角色。如果没有明确的单一主控角色，列出所有角色，不将任何人标为主控。\n' +
         '\n势力(预设schema): state.factions.<名称>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
         '任务(预设schema): state.quests.* — tasks/goals/events，name+status注入prompt，详情quest_lookup\n';
 
@@ -667,9 +671,9 @@ function buildStatePrompt_Dynamic(messages, vault) {
         return {
             system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Track character state changes using discovered fields from character cards/world books.\n\n' +
                 'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
-                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify characters present\n3. Check each character for changes in discovered fields: ' + (dynamicFieldSummary || 'discovered fields') + '\n4. List each change for state_changes\n</thought>\n' +
+                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify NPCs (all characters EXCEPT the single protagonist; if no clear protagonist, ALL are NPCs)\n3. Identify characters present\n4. Check each character for changes in discovered fields: ' + (dynamicFieldSummary || 'discovered fields') + '\n5. List each change for state_changes (including npc_names)\n</thought>\n' +
                 '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"characters.Alice.{field}","value":"..."}]\n' +
+                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"npc_names","value":["Bob"]},{"path":"characters.Alice.{field}","value":"..."}]\n' +
                 '</state_changes>\n\n' +
                 stateChangesEn + hardGateEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
@@ -678,9 +682,9 @@ function buildStatePrompt_Dynamic(messages, vault) {
     return {
         system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用从角色卡/世界书动态发现的字段追踪角色状态变化。\n\n' +
             '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
-            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 找出所有角色\n3. 检查每个角色的动态发现字段变化: ' + (dynamicFieldSummary || '发现的字段') + '\n4. 逐条列出需写入state_changes的变更\n</thought>\n' +
+            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 识别NPC（除单一主控角色外的所有角色；无明确主控则全部为NPC）\n3. 找出所有角色\n4. 检查每个角色的动态发现字段变化: ' + (dynamicFieldSummary || '发现的字段') + '\n5. 逐条列出需写入state_changes的变更（包括npc_names）\n</thought>\n' +
             '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"characters.江岚.{字段}","value":"..."}]\n' +
+            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"npc_names","value":["紫瞳女孩"]},{"path":"characters.江岚.{字段}","value":"..."}]\n' +
             '</state_changes>\n\n' +
             stateChangesZh + hardGateZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
