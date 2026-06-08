@@ -125,13 +125,24 @@ async function callCustomAPI(config, messages, options) {
 }
 
 async function callTavernHelper(messages, options) {
+    var timeoutMs = (options.timeout || 120) * 1000;
+
+    var raceWithTimeout = function(promise) {
+        return Promise.race([
+            promise,
+            new Promise(function(_, reject) {
+                setTimeout(function() { reject(new Error('Timeout after ' + (options.timeout || 120) + 's')); }, timeoutMs);
+            })
+        ]);
+    };
+
     try {
         if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
-            console.log('[NE] callTavernHelper via generateRaw');
-            const response = await TavernHelper.generateRaw({
+            console.log('[NE] callTavernHelper via generateRaw, timeout=' + (options.timeout || 120) + 's');
+            const response = await raceWithTimeout(TavernHelper.generateRaw({
                 ordered_prompts: messages,
                 should_stream: false
-            });
+            }));
             return response || '';
         }
     } catch (e) {
@@ -141,11 +152,11 @@ async function callTavernHelper(messages, options) {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             const ctx = SillyTavern.getContext();
             if (ctx.generateQuietPrompt) {
-                console.log('[NE] callTavernHelper via generateQuietPrompt');
-                const response = await ctx.generateQuietPrompt(
+                console.log('[NE] callTavernHelper via generateQuietPrompt, timeout=' + (options.timeout || 120) + 's');
+                const response = await raceWithTimeout(ctx.generateQuietPrompt(
                     messages[messages.length - 1].content,
                     messages[0].content
-                );
+                ));
                 return response || '';
             }
         }
