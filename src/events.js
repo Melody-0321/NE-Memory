@@ -211,7 +211,14 @@ async function flushPendingMessages() {
     }
 }
 
-export async function onBeforeGenerate(type) {
+export async function onBeforeGenerate(type, _options, dryRun) {
+    // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)
+    // 做 dry run 以获取 token 计数。dry run 走完整 prompt 组装但不调 API，
+    // 但会触发 GENERATION_AFTER_COMMANDS 事件。各扩展应检测并跳过，避免副作用。
+    if (dryRun) {
+        console.log('[NE] onBeforeGenerate: dry run, skipping entirely');
+        return;
+    }
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
@@ -231,10 +238,6 @@ export async function onBeforeGenerate(type) {
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
 
-        // 检测非用户触发的 Generate(): 用户发消息时 onMessageSent 一定先于 Generate() 触发，
-        // 此时 pendingMessages 非空。若队列为空 (QR2 dry run / 其他初始化触发)，
-        // 跳过 SmartPush LLM (避免内部 generateRaw 拨动发送按钮)，仅注入 state。
-        var isUserTriggered = pendingMessages.length > 0;
         flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
@@ -243,29 +246,10 @@ export async function onBeforeGenerate(type) {
         }
         const vault = await read(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
-        console.log('[NE] onBeforeGenerate running ts=' + now + ' userTriggered=' + isUserTriggered + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+        console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
         try {
             const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
-
-            // 非用户触发的 Generate() 跳过 SmartPush, 直接注入 state-only。
-            // 避免 SmartPush 内部 generateRaw → ST Generate() → deactivateSendButtons() 拨动按钮。
-            if (!isUserTriggered) {
-                console.log('[NE] onBeforeGenerate: non-user-triggered, injecting state-only');
-                var stateOnlyFormatted = buildStateOnlyInjection(vault);
-                if (stateOnlyFormatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
-                    TavernHelper.injectPrompts([{
-                        id: 'ne_memory_vault',
-                        position: 'in_chat',
-                        depth: 2,
-                        role: 'system',
-                        content: stateOnlyFormatted,
-                        should_scan: false
-                    }], { once: false });
-                }
-                return;
-            }
-
             // Wrap formatSmartContext with a hard timeout to prevent blocking ST's generation pipeline.
             // SmartPush LLM (retrieval synthesis) has its own 3s timeout, but BM25 filtering or
             // other sync operations could also be slow. This outer timeout is the safety net.
