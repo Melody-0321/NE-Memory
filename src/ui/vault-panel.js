@@ -567,8 +567,9 @@ async function updateVaultViewerPopout(getChatId) {
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
 
+        var unconsolidatedSTM = (c.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
         renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
-        renderMemoryTable('#narrative_vault_panel_stm_body', c.unconsolidated_stm || [], 'stm');
+        renderMemoryTable('#narrative_vault_panel_stm_body', unconsolidatedSTM, 'stm');
 
         // Clear state
         qsa('.narrative_clear_state_btn').forEach(function (btn) {
