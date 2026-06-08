@@ -229,21 +229,7 @@ export async function onBeforeGenerate(type) {
         var sinceLastSend = lastMessageSentTime ? (now - lastMessageSentTime) : Infinity;
         var isSpurious = pendingMessages.length === 0 && sinceLastSend > SPURIOUS_THRESHOLD_MS;
         if (isSpurious) {
-            console.log('[NE] onBeforeGenerate: detected spurious trigger (no recent user message), injecting state-only');
-            try {
-                const { buildStateOnlyInjection } = await import('./ui/vault-panel.js');
-                var minimalFormatted = buildStateOnlyInjection(await read(getChatIdFn ? getChatIdFn() : 'default'));
-                if (minimalFormatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
-                    TavernHelper.injectPrompts([{
-                        id: 'ne_memory_vault',
-                        position: 'in_chat',
-                        depth: 2,
-                        role: 'system',
-                        content: minimalFormatted,
-                        should_scan: false
-                    }], { once: false });
-                }
-            } catch (e2) { /* silently ignore */ }
+            console.log('[NE] onBeforeGenerate: detected spurious trigger, skipping entirely (no LLM, no injection)');
             return;
         }
         flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
