@@ -207,8 +207,13 @@ async function flushPendingMessages() {
     }
 }
 
-export async function onBeforeGenerate() {
+export async function onBeforeGenerate(type) {
     try {
+        // Skip non-content generations: impersonate (AI帮答), quiet, continue
+        if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
+            console.log('[NE] onBeforeGenerate skipped: generation type=' + type);
+            return;
+        }
         if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
         var now = Date.now();
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
