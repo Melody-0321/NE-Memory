@@ -229,9 +229,29 @@ export async function onBeforeGenerate(type) {
         console.log('[NE] onBeforeGenerate running, stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
         try {
-            const { formatSmartContext } = await import('./ui/vault-panel.js');
-            var formatted = await formatSmartContext(vault, chatMessages);
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+            const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
+            // Wrap formatSmartContext with a hard timeout to prevent blocking ST's generation pipeline.
+            // SmartPush LLM (retrieval synthesis) has its own 3s timeout, but BM25 filtering or
+            // other sync operations could also be slow. This outer timeout is the safety net.
+            var SMART_CONTEXT_TIMEOUT_MS = 5000;
+            var formatted;
+            var timedOut = false;
+            try {
+                formatted = await Promise.race([
+                    formatSmartContext(vault, chatMessages),
+                    new Promise(function(resolve) {
+                        setTimeout(function() {
+                            timedOut = true;
+                            console.warn('[NE] formatSmartContext timed out after ' + SMART_CONTEXT_TIMEOUT_MS + 'ms, falling back to state-only injection');
+                            resolve(buildStateOnlyInjection(vault));
+                        }, SMART_CONTEXT_TIMEOUT_MS);
+                    })
+                ]);
+            } catch (e) {
+                console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
+                formatted = buildStateOnlyInjection(vault);
+            }
+            if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
                 TavernHelper.injectPrompts([{
                     id: 'ne_memory_vault',
                     position: 'in_chat',
@@ -240,6 +260,9 @@ export async function onBeforeGenerate(type) {
                     content: formatted,
                     should_scan: false
                 }], { once: false });
+            }
+            if (timedOut) {
+                console.log('[NE] onBeforeGenerate completed with timeout fallback');
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);

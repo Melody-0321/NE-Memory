@@ -1122,7 +1122,7 @@ function formatFullDump(allSTM, allLTM) {
     return lines.join('\n');
 }
 
-function buildStateOnlyInjection(vault) {
+export function buildStateOnlyInjection(vault) {
     var content = vault.content || {};
     var state = content.state || {};
     var parts = [];
