@@ -16,6 +16,7 @@ var consecutiveFailures = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
+let lastMessageSentTime = 0; // 追踪最后一次用户发送消息的时间，用于防止非用户触发的 GENERATION_AFTER_COMMANDS
 
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
@@ -110,6 +111,7 @@ export function onMessageSent(messageIndex) {
         if (message) {
             pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
             persistPending();
+            lastMessageSentTime = Date.now();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
             console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
@@ -218,6 +220,32 @@ export async function onBeforeGenerate(type) {
         var now = Date.now();
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
+
+        // Guard: detect spurious GENERATION_AFTER_COMMANDS not triggered by user input.
+        // These can fire on vault panel open, DOM mutations, or other ST internal events.
+        // If no message was sent recently and no pending messages exist, this is not a real
+        // generation — skip heavy processing and just inject a lightweight state-only context.
+        var SPURIOUS_THRESHOLD_MS = 30000;
+        var sinceLastSend = lastMessageSentTime ? (now - lastMessageSentTime) : Infinity;
+        var isSpurious = pendingMessages.length === 0 && sinceLastSend > SPURIOUS_THRESHOLD_MS;
+        if (isSpurious) {
+            console.log('[NE] onBeforeGenerate: detected spurious trigger (no recent user message), injecting state-only');
+            try {
+                const { buildStateOnlyInjection } = await import('./ui/vault-panel.js');
+                var minimalFormatted = buildStateOnlyInjection(await read(getChatIdFn ? getChatIdFn() : 'default'));
+                if (minimalFormatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+                    TavernHelper.injectPrompts([{
+                        id: 'ne_memory_vault',
+                        position: 'in_chat',
+                        depth: 2,
+                        role: 'system',
+                        content: minimalFormatted,
+                        should_scan: false
+                    }], { once: false });
+                }
+            } catch (e2) { /* silently ignore */ }
+            return;
+        }
         flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
