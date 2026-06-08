@@ -74,12 +74,22 @@ function createVaultPopout(getChatId) {
     var icon = qs('#narrative_vault_toggle .drawer-icon');
     if (!drawer) return;
     var opening = !drawer.classList.contains('openDrawer');
+    var ts = Date.now();
+    console.log('[NE-VAULT] ' + (opening ? 'OPENING' : 'CLOSING') + ' ts=' + ts + ' stack:\n' + new Error().stack);
     qsa('.openDrawer').forEach(function (el) { if (!el.classList.contains('pinnedOpen')) { el.classList.remove('openDrawer'); el.classList.add('closedDrawer'); } });
     qsa('.openIcon').forEach(function (el) { if (!el.classList.contains('drawerPinnedOpen')) { el.classList.remove('openIcon'); el.classList.add('closedIcon'); } });
     drawer.classList.toggle('openDrawer');
     drawer.classList.toggle('closedDrawer');
     if (icon) { icon.classList.toggle('openIcon'); icon.classList.toggle('closedIcon'); }
     if (opening) updateVaultViewerPopout(getChatId);
+    // Check if opening/closing triggered any generation state change
+    setTimeout(function() {
+        try {
+            var pd = window.parent.document;
+            var genVal = pd.body.getAttribute('data-generating');
+            console.log('[NE-VAULT] ' + (opening ? 'OPEN' : 'CLOSE') + ' done ts=' + ts + ' body[data-generating]=' + genVal);
+        } catch(e) {}
+    }, 50);
 }
 
 export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
@@ -463,6 +473,7 @@ var _updatingPopout = false;
 
 async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
+    console.log('[NE-VAULT] updateVaultViewerPopout start ts=' + Date.now());
     _updatingPopout = true;
     var loading = byId('narrative_vault_loading');
     var errDiv = byId('narrative_vault_panel_error');
