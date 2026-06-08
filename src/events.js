@@ -224,8 +224,8 @@ export async function onBeforeGenerate() {
         console.log('[NE] onBeforeGenerate running, stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
         try {
-            const { formatVaultForPrompt } = await import('./ui/vault-panel.js');
-            var formatted = formatVaultForPrompt(vault, chatMessages);
+            const { formatSmartContext } = await import('./ui/vault-panel.js');
+            var formatted = await formatSmartContext(vault, chatMessages);
             if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
                 TavernHelper.injectPrompts([{
                     id: 'ne_memory_vault',

@@ -1022,36 +1022,45 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     });
 
     var parts = [];
+
+    // ── Layer 0: memory_system_prompt ──
+    if (vault.memory_system_prompt) {
+        parts.push(vault.memory_system_prompt);
+    }
+
+    // ── Layer 1: Current situation (state snapshot) ──
+    if (content.state && Object.keys(content.state).length > 0 && isStateSchemaEnabled()) {
+        var stateSchema = content.state_schema || null;
+        var stateSummary = formatStateSummary(content.state, stateSchema);
+        if (stateSummary) {
+            parts.push('## Current State\n' + stateSummary);
+        }
+        var charSchema = isDynamicStateMode() && content.dynamic_state
+            ? buildDynamicCharacterSchema(content.dynamic_state)
+            : (content.character_schema || null);
+        var charSummary = formatActiveCharacterSummary(content.state, charSchema);
+        if (charSummary) {
+            parts.push('## Characters\n' + charSummary);
+        }
+        var factionSummary = formatActiveFactionSummary(content.state);
+        if (factionSummary) {
+            parts.push('## Factions\n' + factionSummary);
+        }
+        var questSummary = formatQuestSummary(content.state);
+        if (questSummary) {
+            parts.push('## Quests\n' + questSummary);
+        }
+    }
+
+    // ── Layer 2: Event memory (memory LLM synthesis) ──
     if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
+        if (parts.length > 0) parts.push('---');
         parts.push(synthesized.trim());
     }
 
-    var stateLines = [];
-    if (state.present_characters) {
-        stateLines.push('Present: ' + state.present_characters);
-    } else {
-        var activeChars = [];
-        var chars = state.characters || {};
-        Object.keys(chars).forEach(function(name) {
-            if (chars[name] && chars[name].status === '活跃') {
-                activeChars.push(name);
-            }
-        });
-        if (activeChars.length > 0) {
-            stateLines.push('Present: ' + activeChars.join(', '));
-        }
-    }
-    if (state.scene || content.story_scene) stateLines.push('Scene: ' + (state.scene || content.story_scene));
-    var timeParts = [];
-    if (state.time || content.story_time) timeParts.push(state.time || content.story_time);
-    if (content.story_date) timeParts.push(content.story_date);
-    if (timeParts.length > 0) stateLines.push('Time: ' + timeParts.join(' ─ ') + ' [→state:time]');
-
-    if (stateLines.length > 0) {
-        parts.push('---\n' + stateLines.join('\n'));
-    }
-
-    parts.push('---\nIf you need more historical details, use the recall_memory tool.');
+    // ── Layer 3: Tool hints ──
+    if (parts.length > 0) parts.push('---');
+    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
 
     return parts.join('\n\n');
 }
