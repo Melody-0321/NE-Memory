@@ -44,7 +44,7 @@ export function buildConsolidatePrompt(vault) {
     }).join('\n');
     const stmText = unconsolidated.map((e, i) => {
         const refs = (e.msg_ids || []).join(', ');
-        return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} [→${refs}]`;
+        return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} (id: ${e.id}) [→${refs}]`;
     }).join('\n');
 
     // ── BM25 预分组 ──
@@ -155,6 +155,19 @@ export function applyConsolidation(vault, consolidationResult) {
     });
     var unconsolidated = content.unconsolidated_stm || [];
     var consolidated = unconsolidated.filter(function (s) { return s.parent_ltm; });
+    // Fallback: LLM stm_refs didn't match — auto-assign all unconsolidated entries
+    if (consolidated.length === 0 && ltmEntries.length > 0) {
+        var fallbackSTM = unconsolidated.filter(function (s) { return !s.parent_ltm; });
+        if (fallbackSTM.length > 0) {
+            console.log('[NE] applyConsolidation: stm_refs mismatch, fallback — assigning ' + fallbackSTM.length + ' STM entries to ' + ltmEntries.length + ' LTM entries');
+            fallbackSTM.forEach(function (s, i) {
+                var ltm = ltmEntries[Math.min(i, ltmEntries.length - 1)];
+                s.parent_ltm = ltm.id;
+                if (ltm.stm_refs) ltm.stm_refs.push(s.id); else ltm.stm_refs = [s.id];
+            });
+            consolidated = fallbackSTM;
+        }
+    }
     if (consolidated.length > 0) {
         content.stm_entries = (content.stm_entries || []).concat(consolidated);
         content.unconsolidated_stm = unconsolidated.filter(function (s) { return !s.parent_ltm; });
