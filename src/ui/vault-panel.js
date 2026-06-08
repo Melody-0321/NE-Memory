@@ -567,7 +567,21 @@ async function updateVaultViewerPopout(getChatId) {
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
 
-        var unconsolidatedSTM = (c.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+        // Self-heal: move entries with parent_ltm from unconsolidated_stm to stm_entries
+        var misplacedEntries = (c.unconsolidated_stm || []).filter(function (e) { return e.parent_ltm; });
+        if (misplacedEntries.length > 0) {
+            console.log('[NE] Vault panel: moving ' + misplacedEntries.length + ' consolidated STM entries from unconsolidated_stm to stm_entries');
+            c.stm_entries = (c.stm_entries || []).concat(misplacedEntries);
+            c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+            // Persist the fix
+            await write(getChatId(), vault);
+            // Rebuild index after move
+            stmIndexMap = {};
+            (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
+            (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
+        }
+
+        var unconsolidatedSTM = c.unconsolidated_stm || [];
         renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
         renderMemoryTable('#narrative_vault_panel_stm_body', unconsolidatedSTM, 'stm');
 
