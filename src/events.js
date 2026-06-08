@@ -16,7 +16,7 @@ var consecutiveFailures = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
-let lastMessageSentTime = 0; // 追踪最后一次用户发送消息的时间，用于防止非用户触发的 GENERATION_AFTER_COMMANDS
+var onBeforeGenerateRunning = false; // 重入守卫：斩断 generateRaw → Generate() → onBeforeGenerate 级联
 
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
@@ -24,7 +24,7 @@ function persistPending() {
 export function restorePending() {
     try {
         var raw = localStorage.getItem('ne_pending');
-        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); console.log('[NE-DIAG] restorePending: loaded ' + pendingMessages.length + ' pending messages from localStorage'); }
+        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); }
         var inflight = localStorage.getItem('ne_inflight');
         if (inflight) {
             var inflightBatch = JSON.parse(inflight);
@@ -32,8 +32,7 @@ export function restorePending() {
             localStorage.removeItem('ne_inflight');
             console.log('[NE] Restored ' + inflightBatch.length + ' inflight messages from crashed pipeline');
         }
-        console.log('[NE-DIAG] restorePending: total pending=' + pendingMessages.length);
-    } catch (e) {}
+        } catch (e) {}
 }
 
 function getStmBatchSize() {
@@ -112,7 +111,6 @@ export function onMessageSent(messageIndex) {
         if (message) {
             pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
             persistPending();
-            lastMessageSentTime = Date.now();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
             console.log('[NE] onMessageSent: message not found at index=' + messageIndex);
@@ -178,23 +176,20 @@ async function flushPendingMessages() {
     const batch = pendingMessages.splice(0);
     persistPending();
     try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
-    console.log('[NE-DIAG] Pipeline starting: batch=' + batch.length + ' messages, setting pipelineRunning=true');
-    console.log('[NE-DIAG] Pipeline start stack:\n' + new Error().stack);
+    console.log('[NE] Pipeline starting: batch=' + batch.length);
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     pipelineRunning = true;
     try {
         try {
-            console.log('[NE-DIAG] Pipeline: executeConsolidation start');
             const consResult = await executeConsolidation(chatId);
             var latestVault = consResult.vault;
-            console.log('[NE-DIAG] Pipeline: executeConsolidation done, merged=' + consResult.merged);
+            console.log('[NE] Consolidation done, merged=' + consResult.merged);
         } catch (consErr) {
             console.warn('[NE] Consolidation failed, continuing with update:', consErr);
         }
-        console.log('[NE-DIAG] Pipeline: executeIncrementalUpdate start');
         const result = await executeIncrementalUpdate(chatId, batch);
         latestVault = result.vault;
-        console.log('[NE-DIAG] Pipeline: executeIncrementalUpdate done, added=' + result.added);
+        console.log('[NE] Incremental update done, added=' + result.added);
         if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
         consecutiveFailures = 0;
         try { localStorage.removeItem('ne_inflight'); } catch (e) {}
@@ -217,8 +212,15 @@ async function flushPendingMessages() {
 }
 
 export async function onBeforeGenerate(type) {
+    // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
+    // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
+    // 此守卫拦截所有重入调用，斩断级联链。
+    if (onBeforeGenerateRunning) {
+        console.log('[NE] onBeforeGenerate: re-entrant call blocked (already running)');
+        return;
+    }
+    onBeforeGenerateRunning = true;
     try {
-        console.log('[NE-DIAG] onBeforeGenerate entered type=' + type + ' pending=' + pendingMessages.length + ' lastSentAgo=' + (lastMessageSentTime ? (Date.now() - lastMessageSentTime) + 'ms' : 'never'));
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
             console.log('[NE] onBeforeGenerate skipped: generation type=' + type);
@@ -229,17 +231,6 @@ export async function onBeforeGenerate(type) {
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
 
-        // Guard: detect spurious GENERATION_AFTER_COMMANDS not triggered by user input.
-        // These can fire on vault panel open, DOM mutations, or other ST internal events.
-        // If no message was sent recently and no pending messages exist, this is not a real
-        // generation — skip heavy processing and just inject a lightweight state-only context.
-        var SPURIOUS_THRESHOLD_MS = 30000;
-        var sinceLastSend = lastMessageSentTime ? (now - lastMessageSentTime) : Infinity;
-        var isSpurious = pendingMessages.length === 0 && sinceLastSend > SPURIOUS_THRESHOLD_MS;
-        if (isSpurious) {
-            console.log('[NE] onBeforeGenerate: detected spurious trigger, skipping entirely (no LLM, no injection)');
-            return;
-        }
         flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
@@ -291,6 +282,8 @@ export async function onBeforeGenerate(type) {
         }
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
+    } finally {
+        onBeforeGenerateRunning = false;
     }
 }
 
