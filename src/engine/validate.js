@@ -114,6 +114,21 @@ export function postFillLTM(result, sourceSTMList) {
 
         if (!e.stm_refs || e.stm_refs.length === 0) {
             e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
+        } else {
+            // Validate LLM-provided stm_refs — if any ID is not in sourceSTMList,
+            // the LLM returned wrong IDs (e.g. index numbers instead of stm_X).
+            // Replace with all source STM IDs to ensure parent_ltm is set correctly.
+            var allValid = true;
+            for (var j = 0; j < e.stm_refs.length; j++) {
+                if (!sourceSTMList.find(function(s) { return s.id === e.stm_refs[j]; })) {
+                    allValid = false;
+                    break;
+                }
+            }
+            if (!allValid) {
+                console.log('[NE] postFillLTM: replacing invalid stm_refs for LTM', e.id || '(new)', '—', JSON.stringify(e.stm_refs).substring(0, 80));
+                e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
+            }
         }
 
         if (!e.period || !String(e.period).trim()) {
