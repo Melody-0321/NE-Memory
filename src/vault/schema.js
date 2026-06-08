@@ -725,7 +725,7 @@ export function formatQuestSummary(state) {
         } catch (e) { return ''; }
     }
 
-    var globalTime = state.global && state.global.time ? state.global.time : null;
+    var currentTime = state.time || '';
 
     // Tasks
     if (quests.tasks && typeof quests.tasks === 'object') {
@@ -735,7 +735,7 @@ export function formatQuestSummary(state) {
             taskNames.forEach(function (name) {
                 var t = quests.tasks[name];
                 if (!t || typeof t !== 'object') return;
-                var remaining = calcRemaining(t.deadline, globalTime);
+                var remaining = calcRemaining(t.deadline, currentTime);
                 var suffix = remaining ? ' — 剩余' + remaining : ' — ' + (t.status || '未知');
                 taskLines.push('  ' + (t.name || name) + suffix);
             });

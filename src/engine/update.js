@@ -460,7 +460,7 @@ export function parseSTMResponse(llmResponse) {
 
 export function handleQuestCompletion(state, validatedChanges) {
     if (!state || !validatedChanges) return;
-    var currentTime = (state.global && state.global.time) || state.time || '';
+    var currentTime = state.time || '';
     if (!currentTime) return;
 
     Object.keys(validatedChanges).forEach(function (path) {
@@ -580,14 +580,14 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var stateChangesEn = 'Global fields: time, scene, story_date, main_event — always track!\n' +
         '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: number, items: [{name, qty, equipped: true/false, desc}]} — detail level, updated in vault panel\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
         'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
         '\nnpc_names: array of character names that are NPCs — list ALL named characters EXCEPT the protagonist. If the story has NO clear single protagonist, list ALL characters here and label NO ONE as protagonist.\n' +
         '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
         'Quests: state.quests.* — tasks/goals/events with name+status in prompt, detail via quest_lookup\n';
 
     var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — summary级: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail级(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: 数值, items: [{name, qty, equipped: true/false, desc}]} — detail级，vault面板更新\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
         'present_characters 自动计算 — 请勿在 <state_changes> 中包含\n' +
         '\nnpc_names: NPC角色名数组 — 列出除主控角色外的所有具名角色。如果故事中没有明确的单一主控角色，此处列出所有角色名，不要将任何人标记为主控。\n' +
         '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
