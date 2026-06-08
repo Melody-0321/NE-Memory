@@ -182,7 +182,10 @@ function deriveTimeRange(sourceSTMEntries) {
     if (timed.length === 1) return fmt(first);
 
     if (first.period === last.period) {
-        return first.period + ': ' + (first.time_label || '?') + ' → ' + (last.time_label || '?');
+        if (first.time_label || last.time_label) {
+            return first.period + ': ' + (first.time_label || '?') + ' → ' + (last.time_label || '?');
+        }
+        return first.period;
     }
     return fmt(first) + ' → ' + fmt(last);
 }

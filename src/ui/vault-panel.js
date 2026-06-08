@@ -808,13 +808,15 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
-            stmRefs.forEach(function (stmId) {
+            stmRefs.forEach(function (stmId, si) {
                 var stm = stmIndexMap && stmIndexMap[stmId];
                 if (stm) {
-                    detailRows += '<div class="narrative_ltm_stm_entry"><span class="narrative_ltm_stm_label">' + (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '') + '</span><span class="narrative_ltm_stm_scene">' + (stm.scene || '') + '</span><span class="narrative_ltm_stm_event">' + (stm.event || stm.summary || '') + '</span>' + (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ') + '</div>';
+                    var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
+                    var subRefs = (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
+                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + ' ' + subRefs + '</td></tr>';
                 }
             });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="4"><div class="narrative_ltm_detail_container">' + detailRows + '</div></td></tr>'; }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="4"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
         }
     });
     if (type === 'ltm') {

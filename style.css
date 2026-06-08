@@ -176,36 +176,30 @@
 
 .narrative_ltm_detail_container {
     background: var(--black30a, rgba(0,0,0,0.1));
-    padding: 6px 8px 6px 24px;
+    padding: 0;
     border-left: 3px solid var(--grey-50, #666);
     margin: 0;
 }
 
-.narrative_ltm_stm_entry {
-    padding: 4px 0;
-    border-bottom: 1px solid var(--black20a, rgba(0,0,0,0.05));
-    font-size: 0.9em;
-    line-height: 1.5;
+.narrative_ltm_sub_table {
+    width: 100%;
+    border-collapse: collapse;
 }
-.narrative_ltm_stm_entry:last-child {
+
+.narrative_ltm_sub_table th,
+.narrative_ltm_sub_table td {
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--black20a, rgba(0,0,0,0.1));
+    text-align: left;
+    color: var(--text, #ddd);
+}
+
+.narrative_ltm_sub_table tr:last-child td {
     border-bottom: none;
 }
 
-.narrative_ltm_stm_label {
-    color: var(--grey-40, #999);
-    font-size: 0.85em;
-    margin-right: 6px;
-    white-space: nowrap;
-}
-
-.narrative_ltm_stm_scene {
-    color: var(--grey-50, #888);
-    font-size: 0.85em;
-    margin-right: 6px;
-}
-
-.narrative_ltm_stm_event {
-    color: var(--text, #ddd);
+.narrative_ltm_sub_table tr:hover {
+    background: var(--black30a, rgba(0,0,0,0.15));
 }
 
 .narrative_ltm_stm_missing {
