@@ -948,7 +948,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var content = vault.content || {};
     var state = content.state || {};
 
-    var allSTM = (content.unconsolidated_stm || []).concat(
+    var allSTM = (content.unconsolidated_stm || []).filter(function(e) { return !e.parent_ltm; }).concat(
         (content.stm_entries || []).filter(function(e) { return !e.parent_ltm; })
     );
     var allLTM = content.ltm_entries || [];
