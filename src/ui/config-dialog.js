@@ -402,6 +402,8 @@ function saveConfigUI() {
         key: $pd('#ne_secondary_key').val().trim(),
         model: $pd('#ne_secondary_model').val().trim()
     });
+    try { if (typeof toastr !== 'undefined') toastr.success(t_narrative('Settings saved.')); } catch (e) {}
+    console.log('[NE] Settings saved');
 }
 
 function collectTelemetryData(chatId) {
@@ -430,7 +432,7 @@ function collectTelemetryData(chatId) {
     }
 
     return {
-        version: '0.2.0',
+        version: '0.4.0',
         platform: 'SillyTavern',
         environment: typeof TavernHelper !== 'undefined' ? 'TH' : 'standalone',
         chat_id: chatId,

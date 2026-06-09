@@ -33,6 +33,9 @@ export const NARRATIVE_I18N = {
         'Characters': 'Characters', '活跃': 'Active', '非活跃': 'Inactive', '已退场': 'Departed',
         'Factions': 'Factions', 'Relations': 'Relations',
         'Tasks': 'Tasks', 'Goals': 'Goals', 'World Events': 'World Events', 'Quests': 'Quests',
+        'Settings saved.': 'Settings saved.',
+        'Restore embedded vault?': 'Restore embedded vault?',
+        'Click Confirm to restore, Cancel to skip.': 'Click Confirm to restore, Cancel to skip.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -59,6 +62,9 @@ export const NARRATIVE_I18N = {
         'Characters': '角色卡', '活跃': '活跃', '非活跃': '非活跃', '已退场': '已退场',
         'Factions': '势力', 'Relations': '势力关系',
         'Tasks': '任务', 'Goals': '目标', 'World Events': '世界事件', 'Quests': '任务/目标/事件',
+        'Settings saved.': '设置已保存。',
+        'Restore embedded vault?': '检测到嵌入的记忆数据，要恢复吗？',
+        'Click Confirm to restore, Cancel to skip.': '点击确定恢复，取消则跳过。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -82,9 +88,12 @@ export const NARRATIVE_I18N = {
         'No.': 'No.', 'Period': '時段', 'Scene': '場景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             '以下內容不直接注入。如需查看，使用 lookup_stm 或 lookup_memory_source 工具。',
-        'Characters': '角色卡', '活跃': '活躍', '非活跃': '非活躍', '已退场': '已退場',
+        'Characters': '角色卡', 'Active': '活躍', 'Inactive': '非活躍', 'Departed': '已退場',
         'Factions': '勢力', 'Relations': '勢力關係',
         'Tasks': '任務', 'Goals': '目標', 'World Events': '世界事件', 'Quests': '任務/目標/事件',
+        'Settings saved.': '設定已儲存。',
+        'Restore embedded vault?': '檢測到嵌入的記憶資料，要恢復嗎？',
+        'Click Confirm to restore, Cancel to skip.': '點擊確定恢復，取消則跳過。',
     }
 };
 
@@ -137,6 +146,10 @@ export const CONFIG_I18N = {
         'Add Slot': 'Add Slot',
         'Reset to Defaults': 'Reset to Defaults',
         'Delete': 'Delete',
+        'API Key (leave empty for local proxy)': 'API Key (leave empty for local proxy)',
+        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
+            'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.',
+        '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用, 数值越大消耗越多 token。',
     },
     'zh-cn': {
         'Enable Narrative Engine': '启用 Narrative Engine', 'Enable GM Agent': '启用 GM 代理',
@@ -182,6 +195,10 @@ export const CONFIG_I18N = {
         'Add Slot': '添加模板',
         'Reset to Defaults': '恢复默认',
         'Delete': '删除',
+        'API Key (leave empty for local proxy)': 'API Key（留空则使用本地代理）',
+        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
+            '本地代理使用 ST 服务器凭据。只填 URL（不填 Key）用于本地代理，或填完整 URL+Key 用于直连 API。',
+        '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。',
     },
     'zh-tw': {
         'Enable Narrative Engine': '啟用 Narrative Engine', 'Enable GM Agent': '啟用 GM 代理',
@@ -227,6 +244,10 @@ export const CONFIG_I18N = {
         'Add Slot': '新增模板',
         'Reset to Defaults': '恢復預設',
         'Delete': '刪除',
+        'API Key (leave empty for local proxy)': 'API Key（留空則使用本地代理）',
+        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
+            '本地代理使用 ST 伺服器憑據。只填 URL（不填 Key）用於本地代理，或填完整 URL+Key 用於直連 API。',
+        '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上參數將應用於記憶區 LLM 調用，數值越大消耗越多 token。',
     }
 };
 

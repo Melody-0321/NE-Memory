@@ -22,6 +22,17 @@ export function isTelemetryEnabled() {
     return false;
 }
 
+async function loadMemoryConfig() {
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var s = JSON.parse(raw);
+            return s.memoryConfig || {};
+        }
+    } catch (e) {}
+    return {};
+}
+
 export async function callMemoryLLM(messages, options = {}) {
     const secondaryConfig = loadSecondaryApiConfig();
     const startTime = Date.now();
@@ -50,7 +61,7 @@ export async function callMemoryLLM(messages, options = {}) {
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
 
     var promptStr = JSON.stringify(messages, null, 2);
-    addLLMLog(options.operation || 'memory', promptStr.substring(0, 8000), (response || '').substring(0, 8000), Date.now() - startTime, apiSource);
+    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), (response || '').substring(0, 4000), Date.now() - startTime, apiSource);
 
     const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {
@@ -68,11 +79,13 @@ export async function callMemoryLLM(messages, options = {}) {
 }
 
 export async function callMemoryPipeline(messages, options = {}) {
-    return callMemoryLLM(messages, Object.assign({}, options, { temperature: 0.1 }));
+    var mc = loadMemoryConfig();
+    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.temperature || 0.1, max_tokens: mc.stm_max_tokens }));
 }
 
 export async function callMemoryRetrieval(messages, options = {}) {
-    return callMemoryLLM(messages, Object.assign({ temperature: 0.3 }, options));
+    var mc = loadMemoryConfig();
+    return callMemoryLLM(messages, Object.assign({ temperature: mc.temperature || 0.3, max_tokens: mc.stm_max_tokens }, options));
 }
 
 function loadSecondaryApiConfig() {
@@ -169,7 +182,13 @@ async function callTavernHelper(messages, options) {
     throw new Error('No LLM backend available. Configure secondary API in NE settings or ensure TavernHelper is loaded.');
 }
 
+var _powerSlotsInited = {};
+
 export async function initPowerSlots(characterName, existingSlotsForWorld) {
+    // Dedup: skip if already attempted for this character (success or failure)
+    if (_powerSlotsInited[characterName]) return null;
+    _powerSlotsInited[characterName] = true;
+
     var contextText = '';
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {

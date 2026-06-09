@@ -866,7 +866,7 @@ export function formatVaultForPrompt(vault, chatMessages) {
                 : (content.character_schema || null);
             var charSummary = formatActiveCharacterSummary(content.state, charSchema);
             if (charSummary) {
-                parts.push('## ' + t('Characters') + ' (' + t('活跃') + ')\n' + charSummary);
+                parts.push('## ' + t_narrative('Characters') + ' (' + t_narrative('Active') + ')\n' + charSummary);
                 parts.push('---');
             }
             var factionSummary = formatActiveFactionSummary(content.state);

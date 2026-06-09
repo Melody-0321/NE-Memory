@@ -129,6 +129,7 @@ function registerAccess(getChatId, getChatMessages) {
 var lastRecallMsgIds = null;
 var lastRecallHeaders = null;
 var lastRecallChatId = null;
+var lastRecallVaultVersion = null;
 
 function formatBM25Fallback(candidates, content) {
     var lang = (content && content.language === 'en') ? 'en' : 'zh';
@@ -252,11 +253,13 @@ function registerRecallMemory(getChatId) {
                     }
                 }
 
-                // Clear cache on new chat
-                if (chatId !== lastRecallChatId) {
+                // Clear dedup cache on new chat or new vault version
+                var vaultChanged = (lastRecallVaultVersion !== vault.version);
+                if (chatId !== lastRecallChatId || vaultChanged) {
                     lastRecallMsgIds = null;
                     lastRecallHeaders = null;
                     lastRecallChatId = chatId;
+                    lastRecallVaultVersion = vault.version;
                 }
 
                 // msg_id fingerprint dedup: annotate candidates already covered
