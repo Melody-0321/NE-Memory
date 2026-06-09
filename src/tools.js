@@ -30,8 +30,11 @@ function registerAccess(getChatId, getChatMessages) {
             required: ['ref']
         }),
         action: async function (args) {
+            var ref = args.ref || '';
+            var refType = 'unknown';
+            var result = '';
+            var t0 = Date.now();
             try {
-                var ref = args.ref || '';
                 var chatId = getChatId ? getChatId() : 'default';
                 var vault = await read(chatId);
                 var content = vault.content || {};
@@ -39,80 +42,104 @@ function registerAccess(getChatId, getChatMessages) {
 
                 // msg#95 or bare digit 95 → original message
                 if (ref.indexOf('msg#') === 0 || /^\d+$/.test(ref)) {
+                    refType = 'msg';
                     var msgId = parseInt(ref.replace('msg#', ''));
                     var chat = getChatMessages();
                     var msg = chat.find(function(m) { return (m.id || m.mes_id) === msgId; });
-                    if (!msg) return 'Message #' + msgId + ' not found.';
-                    var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
-                    if (args.entities && args.entities.length > 0) {
-                        var entitySet = {};
-                        args.entities.forEach(function(e) { entitySet[e.toLowerCase()] = true; });
-                        var sentences = text.split(/(?<=[。！？.!?\n])/);
-                        text = sentences.filter(function(s) {
-                            return args.entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
-                        }).join('').trim() || text.substring(0, 300) + '... [filtered]';
+                    if (!msg) result = 'Message #' + msgId + ' not found.';
+                    else {
+                        var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
+                        if (args.entities && args.entities.length > 0) {
+                            var entitySet = {};
+                            args.entities.forEach(function(e) { entitySet[e.toLowerCase()] = true; });
+                            var sentences = text.split(/(?<=[。！？.!?\n])/);
+                            text = sentences.filter(function(s) {
+                                return args.entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
+                            }).join('').trim() || text.substring(0, 300) + '... [filtered]';
+                        }
+                        result = '[→' + msgId + ']\n' + text;
                     }
-                    return '[→' + msgId + ']\n' + text;
                 }
 
                 // stm_12 or ltm_3 → memory entry
-                if (ref.indexOf('stm_') === 0 || ref.indexOf('ltm_') === 0) {
+                else if (ref.indexOf('stm_') === 0 || ref.indexOf('ltm_') === 0) {
+                    refType = ref.indexOf('ltm_') === 0 ? 'ltm' : 'stm';
                     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
                     var allLTM = content.ltm_entries || [];
-                    var allEntries = (ref.indexOf('ltm_') === 0 ? allLTM : allSTM);
+                    var allEntries = (refType === 'ltm' ? allLTM : allSTM);
                     var entry = allEntries.find(function(e) { return e.id === ref; });
-                    if (!entry) return 'Entry ' + ref + ' not found.';
-
-                    var lines = [];
-                    lines.push('=== ' + ref + ' ===');
-                    if (entry.time_range || entry.period) lines.push('Period: ' + (entry.time_range || entry.period));
-                    if (entry.scene) lines.push('Scene: ' + entry.scene);
-                    if (entry.event) lines.push('Event: ' + entry.event);
-                    if (entry.entities && entry.entities.length > 0) {
-                        var prefixMap = {character:'@', item:'$', faction:'&', concept:'#', location:'~', event:'!'};
-                        lines.push('Entities: ' + entry.entities.map(function(e) { return (prefixMap[e.type] || '?') + e.name; }).join(', '));
+                    if (!entry) result = 'Entry ' + ref + ' not found.';
+                    else {
+                        var lines = [];
+                        lines.push('=== ' + ref + ' ===');
+                        if (entry.time_range || entry.period) lines.push('Period: ' + (entry.time_range || entry.period));
+                        if (entry.scene) lines.push('Scene: ' + entry.scene);
+                        if (entry.event) lines.push('Event: ' + entry.event);
+                        if (entry.entities && entry.entities.length > 0) {
+                            var prefixMap = {character:'@', item:'$', faction:'&', concept:'#', location:'~', event:'!'};
+                            lines.push('Entities: ' + entry.entities.map(function(e) { return (prefixMap[e.type] || '?') + e.name; }).join(', '));
+                        }
+                        if (refType === 'ltm' && entry.stm_refs && entry.stm_refs.length > 0) {
+                            lines.push('Children: ' + entry.stm_refs.map(function(id) { return '→stm_' + id; }).join(', '));
+                        }
+                        if (entry.msg_ids && entry.msg_ids.length > 0) {
+                            lines.push('Children: ' + entry.msg_ids.map(function(id) { return '→' + id; }).join(', '));
+                        }
+                        result = lines.join('\n');
                     }
-
-                    if (ref.indexOf('ltm_') === 0 && entry.stm_refs && entry.stm_refs.length > 0) {
-                        lines.push('Children: ' + entry.stm_refs.map(function(id) { return '→stm_' + id; }).join(', '));
-                    }
-                    if (entry.msg_ids && entry.msg_ids.length > 0) {
-                        lines.push('Children: ' + entry.msg_ids.map(function(id) { return '→' + id; }).join(', '));
-                    }
-                    return lines.join('\n');
                 }
 
-                // chain.X → narrative chain (future: query-time entity chain)
-                if (ref.indexOf('chain.') === 0) {
+                // chain.X → narrative chain
+                else if (ref.indexOf('chain.') === 0) {
+                    refType = 'chain';
                     var entityName = ref.replace('chain.', '');
-                    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-                    var chainEntries = allSTM.filter(function(e) {
+                    var allSTM2 = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+                    var chainEntries = allSTM2.filter(function(e) {
                         return e.entities && e.entities.some(function(en) { return en.name === entityName; });
                     });
-                    if (chainEntries.length === 0) return 'No narrative chain found for: ' + entityName;
-
-                    chainEntries.sort(function(a, b) { return new Date(a.timestamp || 0) - new Date(b.timestamp || 0); });
-                    var chainLines = ['=== Chain: ' + entityName + ' (' + chainEntries.length + ' events) ==='];
-                    chainEntries.forEach(function(e, i) {
-                        var label = (e.period || '') + (e.time_label ? '·' + e.time_label : '');
-                        var refs = (e.msg_ids || []).map(function(id) { return '→' + id; }).join(', ');
-                        chainLines.push((i + 1) + '. ' + (label ? '[' + label + '] ' : '') + (e.event || '') + (refs ? ' [' + refs + ']' : ''));
-                    });
-                    return chainLines.join('\n');
+                    if (chainEntries.length === 0) result = 'No narrative chain found for: ' + entityName;
+                    else {
+                        chainEntries.sort(function(a, b) { return new Date(a.timestamp || 0) - new Date(b.timestamp || 0); });
+                        var chainLines = ['=== Chain: ' + entityName + ' (' + chainEntries.length + ' events) ==='];
+                        chainEntries.forEach(function(e, i) {
+                            var label = (e.period || '') + (e.time_label ? '·' + e.time_label : '');
+                            var refs = (e.msg_ids || []).map(function(id) { return '→' + id; }).join(', ');
+                            chainLines.push((i + 1) + '. ' + (label ? '[' + label + '] ' : '') + (e.event || '') + (refs ? ' [' + refs + ']' : ''));
+                        });
+                        result = chainLines.join('\n');
+                    }
                 }
 
                 // characters.X / factions.X / quests.X → State detail
-                var dotIdx = ref.indexOf('.');
-                if (dotIdx > 0) {
-                    var domain = ref.substring(0, dotIdx);
-                    var name = ref.substring(dotIdx + 1);
-                    if (domain === 'characters') return lookupCharacter(state, name);
-                    if (domain === 'factions') return lookupFaction(state, name);
-                    if (domain === 'quests') return lookupQuest(state, name);
+                else {
+                    var dotIdx = ref.indexOf('.');
+                    if (dotIdx > 0) {
+                        var domain = ref.substring(0, dotIdx);
+                        var name = ref.substring(dotIdx + 1);
+                        if (domain === 'characters') { refType = 'character'; result = lookupCharacter(state, name); }
+                        else if (domain === 'factions') { refType = 'faction'; result = lookupFaction(state, name); }
+                        else if (domain === 'quests') { refType = 'quest'; result = lookupQuest(state, name); }
+                    }
+                    if (!result) result = 'Unknown ref format: ' + ref + '. Use stm_XX, ltm_XX, XX, characters.Name, factions.Name, quests.Name, or chain.Name.';
                 }
 
-                return 'Unknown ref format: ' + ref + '. Use stm_XX, ltm_XX, XX, characters.Name, factions.Name, quests.Name, or chain.Name.';
+                recordTelemetry({
+                    access_ref: ref,
+                    access_ref_type: refType,
+                    access_result_length: result.length,
+                    access_success: result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1,
+                    access_latency_ms: Date.now() - t0
+                });
+                return result;
             } catch (e) {
+                recordTelemetry({
+                    access_ref: ref,
+                    access_ref_type: refType,
+                    access_result_length: 0,
+                    access_success: false,
+                    access_latency_ms: Date.now() - t0,
+                    access_error: e.message
+                });
                 return 'Error: ' + e.message;
             }
         }
@@ -303,7 +330,11 @@ function registerRecallMemory(getChatId) {
                 recordTelemetry({
                     recall_query: args.query,
                     recall_result_length: answer.length,
-                    recall_method: result ? 'llm' : 'error'
+                    recall_method: result ? 'llm' : 'error',
+                    recall_candidate_count: isSummaryMode ? topCandidates.length : (topCandidates ? topCandidates.length : 0),
+                    recall_time_filter: !!timeConstraint,
+                    recall_cross_lang: (topCandidates && allSTM && allLTM) ? (topCandidates.length < 5 && vaultHasMixedLanguage(content)) : false,
+                    recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 });
 
                 return answer;
@@ -311,7 +342,10 @@ function registerRecallMemory(getChatId) {
                 recordTelemetry({
                     recall_query: args.query,
                     recall_result_length: 0,
-                    recall_method: 'error'
+                    recall_method: 'error',
+                    recall_candidate_count: topCandidates ? topCandidates.length : 0,
+                    recall_time_filter: !!timeConstraint,
+                    recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 });
                 // Fallback to BM25 raw list
                 return formatBM25Fallback(topCandidates || [], vault.content);
