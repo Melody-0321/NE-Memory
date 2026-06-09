@@ -271,6 +271,7 @@ export const STATE_FIELD_I18N = {
         // Core state
         'time': 'Time', 'scene': 'Scene', 'story_date': 'Story Date',
         'opening_summary': 'Opening Summary', 'dynamic_state': 'Dynamic Fields',
+        'main_event': 'Main Event', 'present_characters': 'Present Characters',
         // Equipment (virtual)
         'equipment': 'Equipment',
     },
@@ -290,6 +291,7 @@ export const STATE_FIELD_I18N = {
         'completed_time': '完成时间',
         'time': '时间', 'scene': '场景', 'story_date': '故事日期',
         'opening_summary': '开场设定', 'dynamic_state': '动态字段',
+        'main_event': '主要事件', 'present_characters': '出场角色',
         'equipment': '装备',
     },
     'zh-tw': {
@@ -308,6 +310,7 @@ export const STATE_FIELD_I18N = {
         'completed_time': '完成時間',
         'time': '時間', 'scene': '場景', 'story_date': '故事日期',
         'opening_summary': '開場設定', 'dynamic_state': '動態欄位',
+        'main_event': '主要事件', 'present_characters': '出場角色',
         'equipment': '裝備',
     }
 };
