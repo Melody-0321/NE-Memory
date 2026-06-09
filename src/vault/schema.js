@@ -3,6 +3,7 @@
 // Schema 是可选的结构化状态定义。当 state_schema 为 null/undefined 时，
 // 所有路径回退到旧自由 JSON 行为。
 //
+import { t_field } from '../i18n.js';
 // 功能：
 //   - 字段级别类型校验 + max_length 截断 + enum 校验
 //   - dot-path 递归解析
@@ -520,7 +521,7 @@ export function formatCoreStateSummary(state) {
     for (var i = 0; i < CORE_STATE_FIELDS.length; i++) {
         var key = CORE_STATE_FIELDS[i];
         if (state[key]) {
-            lines.push(key + ': ' + state[key]);
+            lines.push(t_field(key) + ': ' + state[key]);
         }
     }
     return lines.join('\n');
@@ -652,6 +653,14 @@ export function formatStateSummary(state, stateSchema) {
 
     var lines = [];
 
+    // translate a dotted path, only translating the leaf field name
+    function displayPath(fullPath) {
+        var parts = fullPath.split('.');
+        if (parts.length === 1) return t_field(parts[0]);
+        parts[parts.length - 1] = t_field(parts[parts.length - 1]);
+        return parts.join('.');
+    }
+
     function walk(obj, prefix, sch) {
         if (!sch) return;
         if (sch.type !== 'object') return;
@@ -679,7 +688,7 @@ export function formatStateSummary(state, stateSchema) {
                     // 跳过空值，不显示 '-'
                 } else {
                     var display = String(val).substring(0, 50);
-                    lines.push(fullPath + '=' + display);
+                    lines.push(displayPath(fullPath) + '=' + display);
                 }
             }
         });
@@ -693,7 +702,7 @@ export function formatStateSummary(state, stateSchema) {
                     walk(val, fullPath, wildcardSch);
                 } else {
                     var display = val === null || val === undefined ? '-' : String(val).substring(0, 50);
-                    lines.push(fullPath + '=' + display);
+                    lines.push(displayPath(fullPath) + '=' + display);
                 }
             });
         }
