@@ -5,7 +5,7 @@
  */
 import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -225,8 +225,15 @@ IMPORTANT: power_slots field stores a flat JSON object of key→value pairs. Do 
 
 When creating power_slots for a new character, check if other characters in the same world already have power_slots. If they use the same cultivation/power system, reuse their slot labels to maintain naming consistency.
 
-To change which characters are present, update their status field:
+Status transition rules:
+- Characters who SPEAK or are PHYSICALLY PRESENT in the latest messages → status="活跃"
+- Characters who were previously active but have LEFT the scene or aren't in the latest messages → status="非活跃"
+- Characters who have died, retired, or permanently departed → status="已死亡" / "已归隐" / "已离去"
+- Do NOT mark characters as 活跃 just because they were mentioned in passing — only if they are actually present in the scene
+
+Examples:
 <state_changes>{"characters.Alice.status":"已死亡","characters.Bob.status":"活跃"}</state_changes>
+<state_changes>{"characters.Charlie.status":"非活跃"}</state_changes>
 
 IMPORTANT: present_characters is a VIRTUAL field auto-rebuilt by code from active character names. Do NOT include present_characters in your <state_changes> block. Only update characters.*.status to change who is present.
 
@@ -280,8 +287,15 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
 
 为新角色创建 power_slots 时，请检查同世界其他角色是否已有 power_slots。若他们使用相同的修炼/力量体系，复用其槽位标签以保持命名一致性。
 
-要改变在场角色，更新其 status 字段：
+出场状态转换规则：
+- 在最新消息中说话或实际在场的角色 → status="活跃"
+- 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"
+- 已死亡、隐退或永久离去的角色 → status="已死亡" / "已归隐" / "已离去"
+- 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标为活跃
+
+要改变在场角色，更新其 status 字段。示例：
 <state_changes>{"characters.爱丽丝.status":"已死亡","characters.鲍勃.status":"活跃"}</state_changes>
+<state_changes>{"characters.小明.status":"非活跃"}</state_changes>
 
 重要：present_characters 是由代码自动从活跃角色名重建的虚拟字段。请勿在 <state_changes> 块中包含 present_characters。只更新 characters.*.status 来改变在场角色。
 
@@ -586,6 +600,7 @@ function buildStatePrompt_Preset(messages, vault) {
         '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: number, items: [{name, qty, equipped: true/false, desc}]} — detail level, updated in vault panel\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
         'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
+        '\nStatus transition rules:\n- 活跃 → 非活跃: when a character leaves the scene or stops appearing in messages\n- 活跃 → 已死亡/已归隐/已离去: permanent departure only\n- 非活跃 → 活跃: when a character re-enters the scene and actively participates\n- Do NOT mark as 活跃 just because a character was mentioned — only if they are actually present\n' +
         '\nnpc_names: array of character names that are NPCs — list ALL named characters EXCEPT the protagonist. If the story has NO clear single protagonist, list ALL characters here and label NO ONE as protagonist.\n' +
         '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
         'Quests: state.quests.* — tasks/goals/events with name+status in prompt, detail via quest_lookup\n';
@@ -593,6 +608,7 @@ function buildStatePrompt_Preset(messages, vault) {
     var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — summary级: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail级(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: 数值, items: [{name, qty, equipped: true/false, desc}]} — detail级，vault面板更新\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
         'present_characters 自动计算 — 请勿在 <state_changes> 中包含\n' +
+        '\n出场状态转换规则：\n- 活跃 → 非活跃: 角色离开场景或不再出现在消息中\n- 活跃 → 已死亡/已归隐/已离去: 仅限永久退场\n- 非活跃 → 活跃: 角色重新进入场景并活跃参与\n- 不要仅因角色被提及就标为活跃 — 只有实际在场时才标活跃\n' +
         '\nnpc_names: NPC角色名数组 — 列出除主控角色外的所有具名角色。如果故事中没有明确的单一主控角色，此处列出所有角色名，不要将任何人标记为主控。\n' +
         '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
         '任务: state.quests.* — tasks/goals/events，name+status注入prompt，详情通过quest_lookup获取\n';
@@ -656,6 +672,11 @@ function buildStatePrompt_Dynamic(messages, vault) {
         'Discovered fields:\n' + (dynamicFieldSummary || 'use fields from character cards/world books') + '\n' +
         'Active grouping: status="活跃" → auto-add to present_characters. No status field → all active.\n' +
         'present_characters is auto-computed — do NOT include.\n' +
+        '\nStatus transition rules:\n' +
+        '- Characters who SPEAK or are PHYSICALLY PRESENT in the latest messages → status="活跃"\n' +
+        '- Characters who were previously active but have LEFT the scene or aren\'t in the latest messages → status="非活跃"\n' +
+        '- Characters who have died, retired, or permanently departed → status="已死亡"/"已归隐"/"已离去"\n' +
+        '- Do NOT mark characters as 活跃 just because they were mentioned in passing\n' +
         '\nnpc_names: array of NPC character names — ALL named characters EXCEPT the protagonist. If NO clear single protagonist → list ALL here, no one is protagonist.\n' +
         '\nFactions (preset schema): state.factions.<name>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
         'Quests (preset schema): state.quests.* — tasks/goals/events, name+status in prompt, detail via quest_lookup\n';
@@ -664,6 +685,11 @@ function buildStatePrompt_Dynamic(messages, vault) {
         '发现字段:\n' + (dynamicFieldSummary || '使用角色卡/世界书发现的字段') + '\n' +
         '活跃分组: status="活跃"→自动加入present_characters。无status字段→全部活跃。\n' +
         'present_characters 自动计算 — 请勿包含。\n' +
+        '\n出场状态转换规则：\n' +
+        '- 在最新消息中说话或实际在场的角色 → status="活跃"\n' +
+        '- 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"\n' +
+        '- 已死亡、隐退或永久离去的角色 → status="已死亡"/"已归隐"/"已离去"\n' +
+        '- 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标活跃\n' +
         '\nnpc_names: NPC角色名数组 — 除主控角色外的所有具名角色。如果没有明确的单一主控角色，列出所有角色，不将任何人标为主控。\n' +
         '\n势力(预设schema): state.factions.<名称>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
         '任务(预设schema): state.quests.* — tasks/goals/events，name+status注入prompt，详情quest_lookup\n';
@@ -693,6 +719,30 @@ function buildStatePrompt_Dynamic(messages, vault) {
             stateChangesZh + hardGateZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
     };
+}
+
+/**
+ * autoDecayStaleCharacters — 安全网：LLM 未标记非活跃时，代码层兜底
+ * 对每个 status='活跃' 的角色检查是否出现在最新消息中，不在场的削为 非活跃
+ */
+function autoDecayStaleCharacters(state, messages) {
+    if (!state || !state.characters || !messages || !messages.length) return state;
+    var msgText = messages.map(function (m) { return (m.content || '') + ' ' + (m.name || ''); }).join(' ');
+    var changed = false;
+    Object.keys(state.characters).forEach(function (name) {
+        var card = state.characters[name];
+        if (card && card.status === '活跃') {
+            if (msgText.indexOf(name) === -1) {
+                card.status = '非活跃';
+                changed = true;
+                console.log('[NE] Auto-decayed inactive character:', name);
+            }
+        }
+    });
+    if (changed) {
+        state = rebuildPresentCharacters(state);
+    }
+    return state;
 }
 
 export async function executeIncrementalUpdate(chatId, newMessages, force) {
@@ -760,6 +810,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
                 var oldCharNames = Object.keys(oldState.characters || {});
                 vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
                 handleQuestCompletion(vault.content.state, result.validated);
+                vault.content.state = autoDecayStaleCharacters(vault.content.state, filteredMessages);
 
                 // Power slot init（fire-and-forget，不阻塞 pipeline）
                 var newState = vault.content.state || {};
@@ -925,6 +976,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
         vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
         handleQuestCompletion(vault.content.state, result.validated);
+        vault.content.state = autoDecayStaleCharacters(vault.content.state, messages);
     }
 
     if (stateChanges.story_date) {
