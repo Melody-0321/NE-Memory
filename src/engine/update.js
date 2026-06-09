@@ -11,6 +11,7 @@ import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validat
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { runStmCursorLoop } from './cursor.js';
+import { pruneSnapshotsForChat } from '../vault/versions.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { writeWithSnapshot } = await import('../vault/store.js');
@@ -25,6 +26,8 @@ export async function saveVaultWithSnapshot(chatId, vault) {
             data: JSON.parse(JSON.stringify(vault))
         };
         await writeWithSnapshot(chatId, vault, snapshotEntry);
+        // Prune snapshots beyond limit 30 (oldest first)
+        try { await pruneSnapshotsForChat(chatId); } catch (e) { console.warn('[NE] pruneSnapshots error:', e); }
         autoEmbedVaultToChat(vault);
     } catch (e) {
         console.error('[NE] saveVaultWithSnapshot failed:', e);

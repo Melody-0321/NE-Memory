@@ -39,6 +39,11 @@ async function pruneOldSnapshots(db, chatId) {
     return new Promise((resolve) => { tx.oncomplete = () => resolve(); });
 }
 
+export async function pruneSnapshotsForChat(chatId) {
+    const db = await openDB();
+    await pruneOldSnapshots(db, chatId);
+}
+
 export async function listSnapshots(chatId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
