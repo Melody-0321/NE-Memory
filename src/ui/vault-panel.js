@@ -8,7 +8,7 @@ import { read, write, rollbackByMsgIds, isStorageBlocked } from '../vault/store.
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
-import { t_narrative } from '../i18n.js';
+import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
@@ -131,9 +131,9 @@ function renderCharacterCard(name, card, schema, cardType) {
         }
 
         if (fieldDef.expose_level === 'summary') {
-            summaryLines.push(key + ': ' + displayVal);
+            summaryLines.push(t_field(key) + ': ' + displayVal);
         } else if (fieldDef.expose_level === 'detail') {
-            detailLines.push(key + ': ' + escapeHtml(String(val)));
+            detailLines.push(t_field(key) + ': ' + escapeHtml(String(val)));
         }
     });
 
@@ -143,7 +143,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     if (inventory && typeof inventory === 'object' && Array.isArray(inventory.items)) {
         var equipped = inventory.items.filter(function (item) { return item && item.equipped === true; });
         if (equipped.length > 0) {
-            equipmentHtml = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;">Equipment: ';
+            equipmentHtml = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;">' + t_field('equipment') + ': ';
             equipped.forEach(function (item) {
                 equipmentHtml += escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : '') + ' ';
             });
@@ -153,10 +153,10 @@ function renderCharacterCard(name, card, schema, cardType) {
 
     // Injuries / status_effects
     if (card.injuries) {
-        detailLines.push('injuries: ' + escapeHtml(String(card.injuries)));
+        detailLines.push(t_field('injuries') + ': ' + escapeHtml(String(card.injuries)));
     }
     if (card.status_effects) {
-        detailLines.push('status_effects: ' + escapeHtml(String(card.status_effects)));
+        detailLines.push(t_field('status_effects') + ': ' + escapeHtml(String(card.status_effects)));
     }
 
     // Inventory detail
@@ -277,14 +277,14 @@ function renderFactionCard(name, faction) {
     var attitudeColor = attitude === '友好' ? '#4caf50' : (attitude === '敌对' ? '#f44336' : (attitude === '冷淡' ? '#ff9800' : '#ff9800'));
 
     var summaryFields = [];
-    if (faction.name) summaryFields.push('name: ' + escapeHtml(String(faction.name).substring(0, 20)));
+    if (faction.name) summaryFields.push(t_field('name') + ': ' + escapeHtml(String(faction.name).substring(0, 20)));
     var displayAttitude = faction.attitude_toward_player || '未知';
-    summaryFields.push('attitude: <span style="color:' + attitudeColor + '">' + escapeHtml(displayAttitude) + '</span>');
+    summaryFields.push(t_field('attitude_toward_player') + ': <span style="color:' + attitudeColor + '">' + escapeHtml(displayAttitude) + '</span>');
 
     var detailLines = [];
-    if (faction.description) detailLines.push('<div style="margin:2px 0;">description: ' + escapeHtml(String(faction.description)) + '</div>');
-    if (faction.leader) detailLines.push('<div style="margin:2px 0;">leader: ' + escapeHtml(String(faction.leader)) + '</div>');
-    if (faction.notes) detailLines.push('<div style="margin:2px 0;">notes: ' + escapeHtml(String(faction.notes)) + '</div>');
+    if (faction.description) detailLines.push('<div style="margin:2px 0;">' + t_field('description') + ': ' + escapeHtml(String(faction.description)) + '</div>');
+    if (faction.leader) detailLines.push('<div style="margin:2px 0;">' + t_field('leader') + ': ' + escapeHtml(String(faction.leader)) + '</div>');
+    if (faction.notes) detailLines.push('<div style="margin:2px 0;">' + t_field('notes') + ': ' + escapeHtml(String(faction.notes)) + '</div>');
 
     var relations = faction.relations;
     if (relations && typeof relations === 'object') {
@@ -387,22 +387,22 @@ function renderQuestCard(key, entry, sectionType) {
 
     var detailLines = [];
     if (sectionType === 'task') {
-        if (entry.type) detailLines.push('<div style="margin:2px 0;">type: ' + escapeHtml(String(entry.type)) + '</div>');
-        if (entry.issuer) detailLines.push('<div style="margin:2px 0;">issuer: ' + escapeHtml(String(entry.issuer)) + '</div>');
-        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
-        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">progress: ' + escapeHtml(String(entry.progress)) + '</div>');
-        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">posted: ' + escapeHtml(String(entry.posted_time)) + '</div>');
-        if (entry.reward) detailLines.push('<div style="margin:2px 0;color:#4caf50;">reward: ' + escapeHtml(String(entry.reward)) + '</div>');
-        if (entry.penalty) detailLines.push('<div style="margin:2px 0;color:#f44336;">penalty: ' + escapeHtml(String(entry.penalty)) + '</div>');
+        if (entry.type) detailLines.push('<div style="margin:2px 0;">' + t_field('type') + ': ' + escapeHtml(String(entry.type)) + '</div>');
+        if (entry.issuer) detailLines.push('<div style="margin:2px 0;">' + t_field('issuer') + ': ' + escapeHtml(String(entry.issuer)) + '</div>');
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.reward) detailLines.push('<div style="margin:2px 0;color:#4caf50;">' + t_field('reward') + ': ' + escapeHtml(String(entry.reward)) + '</div>');
+        if (entry.penalty) detailLines.push('<div style="margin:2px 0;color:#f44336;">' + t_field('penalty') + ': ' + escapeHtml(String(entry.penalty)) + '</div>');
     } else if (sectionType === 'goal') {
-        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
-        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">progress: ' + escapeHtml(String(entry.progress)) + '</div>');
-        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">posted: ' + escapeHtml(String(entry.posted_time)) + '</div>');
-        if (entry.completed_time) detailLines.push('<div style="margin:2px 0;color:#4caf50;">completed: ' + escapeHtml(String(entry.completed_time)) + '</div>');
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.completed_time) detailLines.push('<div style="margin:2px 0;color:#4caf50;">' + t_field('completed_time') + ': ' + escapeHtml(String(entry.completed_time)) + '</div>');
     } else if (sectionType === 'event') {
-        if (entry.desc) detailLines.push('<div style="margin:2px 0;">desc: ' + escapeHtml(String(entry.desc)) + '</div>');
-        if (entry.started_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">started: ' + escapeHtml(String(entry.started_time)) + '</div>');
-        if (entry.ended_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">ended: ' + escapeHtml(String(entry.ended_time)) + '</div>');
+        if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
+        if (entry.started_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('started_time') + ': ' + escapeHtml(String(entry.started_time)) + '</div>');
+        if (entry.ended_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('ended_time') + ': ' + escapeHtml(String(entry.ended_time)) + '</div>');
     }
 
     var html = '<div class="ne_quest_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +

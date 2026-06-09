@@ -7,7 +7,7 @@
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending } from './events.js';
-import { t } from './i18n.js';
+import { t, setFieldLocale } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
@@ -48,6 +48,7 @@ function getLocale() {
 async function init() {
     const locale = getLocale();
     t(locale);
+    setFieldLocale(locale);
     var settings = loadSettings();
     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
     setDynamicStateMode(settings && settings.useDynamicState || false);

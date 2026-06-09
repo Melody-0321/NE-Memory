@@ -244,3 +244,81 @@ export function t_config(key) {
     const map = CONFIG_I18N[_locale] || CONFIG_I18N['en'] || {};
     return map[key] || key;
 }
+
+/**
+ * STATE_FIELD_I18N — State 字段名三语翻译
+ * 用于 vault 面板中角色卡、势力卡、任务卡中字段名的自然语言显示。
+ * 未收录的字段名（如 LLM 动态发现的字段）将 fallback 到原始 key。
+ */
+export const STATE_FIELD_I18N = {
+    'en': {
+        // Character
+        'name': 'Name', 'gender_age': 'Gender & Age', 'occupation': 'Occupation',
+        'clothing_build': 'Appearance', 'personality': 'Personality', 'status': 'Status',
+        'clothing_mode': 'Clothing Mode', 'inventory_mode': 'Inventory Mode',
+        'inventory': 'Inventory', 'injuries': 'Injuries', 'status_effects': 'Status Effects',
+        'power_slot_defs': 'Power Slots', 'power_slots': 'Power Values',
+        'inner_thoughts': 'Inner Thoughts', 'affection': 'Affection',
+        'relationship': 'Relationship', 'current_mood': 'Mood', 'past_experience': 'Background',
+        // Faction
+        'attitude_toward_player': 'Attitude', 'description': 'Description',
+        'leader': 'Leader', 'notes': 'Notes',
+        // Quest / Task / Goal / Event
+        'type': 'Type', 'issuer': 'Issuer', 'desc': 'Description',
+        'progress': 'Progress', 'posted_time': 'Posted', 'reward': 'Reward',
+        'penalty': 'Penalty', 'started_time': 'Started', 'ended_time': 'Ended',
+        'completed_time': 'Completed',
+        // Core state
+        'time': 'Time', 'scene': 'Scene', 'story_date': 'Story Date',
+        'opening_summary': 'Opening Summary', 'dynamic_state': 'Dynamic Fields',
+        // Equipment (virtual)
+        'equipment': 'Equipment',
+    },
+    'zh-cn': {
+        'name': '名称', 'gender_age': '性别与年龄', 'occupation': '职业',
+        'clothing_build': '外貌着装', 'personality': '性格', 'status': '状态',
+        'clothing_mode': '服装模式', 'inventory_mode': '物品栏模式',
+        'inventory': '物品栏', 'injuries': '伤势', 'status_effects': '状态效果',
+        'power_slot_defs': '战力槽', 'power_slots': '战力值',
+        'inner_thoughts': '内心想法', 'affection': '好感度',
+        'relationship': '关系', 'current_mood': '当前情绪', 'past_experience': '过往经历',
+        'attitude_toward_player': '态度', 'description': '描述',
+        'leader': '首领', 'notes': '备注',
+        'type': '类型', 'issuer': '发布者', 'desc': '描述',
+        'progress': '进度', 'posted_time': '发布时间', 'reward': '奖励',
+        'penalty': '惩罚', 'started_time': '开始时间', 'ended_time': '结束时间',
+        'completed_time': '完成时间',
+        'time': '时间', 'scene': '场景', 'story_date': '故事日期',
+        'opening_summary': '开场设定', 'dynamic_state': '动态字段',
+        'equipment': '装备',
+    },
+    'zh-tw': {
+        'name': '名稱', 'gender_age': '性別與年齡', 'occupation': '職業',
+        'clothing_build': '外貌著裝', 'personality': '性格', 'status': '狀態',
+        'clothing_mode': '服裝模式', 'inventory_mode': '物品欄模式',
+        'inventory': '物品欄', 'injuries': '傷勢', 'status_effects': '狀態效果',
+        'power_slot_defs': '戰力槽', 'power_slots': '戰力值',
+        'inner_thoughts': '內心想法', 'affection': '好感度',
+        'relationship': '關係', 'current_mood': '當前情緒', 'past_experience': '過往經歷',
+        'attitude_toward_player': '態度', 'description': '描述',
+        'leader': '首領', 'notes': '備註',
+        'type': '類型', 'issuer': '發佈者', 'desc': '描述',
+        'progress': '進度', 'posted_time': '發佈時間', 'reward': '獎勵',
+        'penalty': '懲罰', 'started_time': '開始時間', 'ended_time': '結束時間',
+        'completed_time': '完成時間',
+        'time': '時間', 'scene': '場景', 'story_date': '故事日期',
+        'opening_summary': '開場設定', 'dynamic_state': '動態欄位',
+        'equipment': '裝備',
+    }
+};
+
+/**
+ * t_field(key) — 翻译 state 字段名为当前语言的自然语言显示名。
+ * 未收录的字段名 fallback 到原始 key（处理 LLM 动态发现的字段）。
+ */
+let _fieldLocale = 'en';
+export function setFieldLocale(locale) { if (locale) _fieldLocale = locale; }
+export function t_field(key) {
+    const map = STATE_FIELD_I18N[_fieldLocale] || STATE_FIELD_I18N['en'] || {};
+    return map[key] || key;
+}
