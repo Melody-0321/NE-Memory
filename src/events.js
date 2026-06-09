@@ -293,11 +293,13 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 }], { once: false });
             }
             // Log SmartPush injection to LLM log
+            var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
             addLLMLog(injectType,
-                (formatted || '').substring(0, 300),
-                (formatted || '').substring(0, 500),
+                'Injected ~' + charEstimate + 't to chat ' + chatId + (timedOut ? ' (timeout fallback)' : ''),
+                '',
                 Date.now() - injectStart,
-                'narrative'
+                'narrative',
+                formatted || ''
             );
             if (timedOut) {
                 console.log('[NE] onBeforeGenerate completed with timeout fallback');
