@@ -6,6 +6,7 @@ import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessages } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
+import { addToolCall } from './engine/telemetry.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
@@ -130,6 +131,7 @@ function registerAccess(getChatId, getChatMessages) {
                     access_success: result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1,
                     access_latency_ms: Date.now() - t0
                 });
+                addToolCall('access', { ref: ref }, result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1, Date.now() - t0, result);
                 return result;
             } catch (e) {
                 recordTelemetry({
@@ -140,6 +142,7 @@ function registerAccess(getChatId, getChatMessages) {
                     access_latency_ms: Date.now() - t0,
                     access_error: e.message
                 });
+                addToolCall('access', { ref: ref }, false, Date.now() - t0, '', e.message);
                 return 'Error: ' + e.message;
             }
         }
@@ -337,6 +340,8 @@ function registerRecallMemory(getChatId) {
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 });
 
+                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, !!result, Date.now() - startTime, (answer || '').substring(0, 200));
+
                 return answer;
             } catch (e) {
                 recordTelemetry({
@@ -347,6 +352,7 @@ function registerRecallMemory(getChatId) {
                     recall_time_filter: !!timeConstraint,
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 });
+                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, false, Date.now() - startTime, '', e.message);
                 // Fallback to BM25 raw list
                 return formatBM25Fallback(topCandidates || [], vault.content);
             }
