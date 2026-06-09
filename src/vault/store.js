@@ -317,12 +317,14 @@ export function markMessagesProcessed(vault, msgIds) {
     if (!vault.content) vault.content = {};
     if (!vault.content.processed_msg_ids) vault.content.processed_msg_ids = {};
     var set = vault.content.processed_msg_ids;
-    msgIds.forEach(function(id) { if (id !== undefined && id !== null) set[id] = true; });
+    msgIds.forEach(function(id) { if (id !== undefined && id !== null) set[String(id)] = true; });
 }
 
 export function isMessageProcessed(vault, msgId) {
+    // normalize to string: object keys are always string-typed
+    var key = msgId !== undefined && msgId !== null ? String(msgId) : '';
     var set = (vault.content || {}).processed_msg_ids;
-    return set ? !!set[msgId] : false;
+    return key ? !!set[key] : false;
 }
 
 export function getProcessedMessageIds(vault) {

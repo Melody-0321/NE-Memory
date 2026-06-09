@@ -13,6 +13,8 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled,
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 
+var _retryTimer = null;
+
 function getChatId() {
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
@@ -100,6 +102,7 @@ function setupEventListeners(retryCount) {
     } catch (e) {}
 
     if (eventSource && typeof eventSource.on === 'function') {
+        if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
         if (!eventSource.__ne_bound) {
             eventSource.__ne_bound = true;
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
@@ -107,18 +110,20 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
             console.log('[NE] All string event listeners registered, onBeforeGenerate=' + typeof onBeforeGenerate);
             try { eventSource.on('chat_id_changed', async () => {
-                const chatId = getChatId();
-                neSyncChatId(chatId);
-                var settings = loadSettings();
-                setStateSchemaEnabled(settings && settings.enableStateSchema || false);
-                setDynamicStateMode(settings && settings.useDynamicState || false);
-                setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                const vault = await read(chatId);
-                if (vault.version === 0) {
-                    vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
-                    await write(chatId, vault);
-                }
-                checkAndRestoreEmbeddedVault(chatId);
+                try {
+                    const chatId = getChatId();
+                    neSyncChatId(chatId);
+                    var settings = loadSettings();
+                    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
+                    setDynamicStateMode(settings && settings.useDynamicState || false);
+                    setRetrievalEnabled(settings && settings.retrievalEnabled || false);
+                    const vault = await read(chatId);
+                    if (vault.version === 0) {
+                        vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
+                        await write(chatId, vault);
+                    }
+                    checkAndRestoreEmbeddedVault(chatId);
+                } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
             }); } catch (e) {}
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
@@ -129,6 +134,7 @@ function setupEventListeners(retryCount) {
     }
 
     if (typeof TavernHelper !== 'undefined' && TavernHelper._eventOn && TavernHelper.tavern_events) {
+        if (_retryTimer) { clearTimeout(_retryTimer); _retryTimer = null; }
         const { tavern_events } = TavernHelper;
         try {
             if (tavern_events.MESSAGE_SENT) TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
@@ -168,7 +174,7 @@ function setupEventListeners(retryCount) {
         console.log('[NE] No event API available yet, will retry... eventSource=' + (typeof eventSource) + ', TH._eventOn=' + (typeof TavernHelper !== 'undefined' ? typeof TavernHelper._eventOn : 'N/A'));
     }
     var delay = Math.min(500 * Math.pow(2, retryCount), 30000);
-    setTimeout(function () { setupEventListeners(retryCount + 1); }, delay);
+    _retryTimer = setTimeout(function () { _retryTimer = null; setupEventListeners(retryCount + 1); }, delay);
 }
 
 function bootNE(retries) {

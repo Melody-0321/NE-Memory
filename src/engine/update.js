@@ -126,7 +126,8 @@ function initStateFromSchema(schema) {
 export function filterNewMessages(messages, processedIds) {
     return messages.filter(m => {
         const id = m.id || m.mes_id;
-        return id !== undefined && !processedIds.has(id);
+        if (id === undefined) return false;
+        return !processedIds.has(String(id));
     });
 }
 

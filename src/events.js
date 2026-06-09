@@ -24,15 +24,21 @@ function persistPending() {
 export function restorePending() {
     try {
         var raw = localStorage.getItem('ne_pending');
-        if (raw) { pendingMessages = JSON.parse(raw); localStorage.removeItem('ne_pending'); }
+        if (raw) {
+            try { pendingMessages = JSON.parse(raw); } catch (parseErr) { console.warn('[NE] Failed to parse ne_pending, discarding:', parseErr.message); }
+            localStorage.removeItem('ne_pending');
+        }
         var inflight = localStorage.getItem('ne_inflight');
         if (inflight) {
-            var inflightBatch = JSON.parse(inflight);
-            pendingMessages = inflightBatch.concat(pendingMessages);
+            var inflightBatch;
+            try { inflightBatch = JSON.parse(inflight); } catch (parseErr) { console.warn('[NE] Failed to parse ne_inflight, discarding:', parseErr.message); }
+            if (inflightBatch) {
+                pendingMessages = inflightBatch.concat(pendingMessages);
+                console.log('[NE] Restored ' + inflightBatch.length + ' inflight messages from crashed pipeline');
+            }
             localStorage.removeItem('ne_inflight');
-            console.log('[NE] Restored ' + inflightBatch.length + ' inflight messages from crashed pipeline');
         }
-        } catch (e) {}
+    } catch (e) { console.warn('[NE] restorePending error:', e); }
 }
 
 function getStmBatchSize() {
@@ -205,7 +211,7 @@ async function flushPendingMessages() {
             persistPending();
         }
     } finally {
-        console.log('[NE-DIAG] Pipeline: setting pipelineRunning=false');
+        console.log('[NE] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
     }
@@ -238,7 +244,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
 
-        flushPendingMessages();  // fire-and-forget: Pipeline async, results in next round's vault
+        await flushPendingMessages();  // await ensures vault is fresh for injection + guard stays up during pipeline
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
             lastKnownChatId = chatId;

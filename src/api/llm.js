@@ -125,6 +125,9 @@ async function callCustomAPI(config, messages, options) {
 }
 
 async function callTavernHelper(messages, options) {
+    // Note: TH API does not support AbortController. Promise.race timeout
+    // rejects the caller's promise but the underlying HTTP request continues.
+    // callCustomAPI correctly uses AbortController for the secondary API path.
     var timeoutMs = (options.timeout || 120) * 1000;
 
     var raceWithTimeout = function(promise) {

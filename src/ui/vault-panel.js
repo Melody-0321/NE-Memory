@@ -624,14 +624,16 @@ async function updateVaultViewerPopout(getChatId) {
 var vaultEditData = null;
 
 async function toggleVaultEditMode(getChatId) {
-    var isEditing = byId('narrative_vault_panel_save_btn').style.display !== 'none';
+    var saveBtn = byId('narrative_vault_panel_save_btn');
+    if (!saveBtn) return;
+    var isEditing = saveBtn.style.display !== 'none';
     if (isEditing) {
         byId('narrative_vault_panel_ltm_view').style.display = '';
         byId('narrative_vault_panel_ltm_edit').style.display = 'none';
         byId('narrative_vault_panel_stm_view').style.display = '';
         byId('narrative_vault_panel_stm_edit').style.display = 'none';
         byId('narrative_vault_panel_edit_btn').textContent = t('Edit');
-        byId('narrative_vault_panel_save_btn').style.display = 'none';
+        saveBtn.style.display = 'none';
         vaultEditData = null;
         qsa('.narrative_opening_block').forEach(function (el) { el.style.display = ''; });
         qsa('.narrative_state_block').forEach(function (el) { el.style.display = ''; });
@@ -654,6 +656,9 @@ async function toggleVaultEditMode(getChatId) {
 
 function buildEditForms(vault, getChatId) {
     var c = vault.content || {};
+    var ltmEdit = byId('narrative_vault_panel_ltm_edit');
+    var stmEdit = byId('narrative_vault_panel_stm_edit');
+    if (!ltmEdit || !stmEdit) return;
     byId('narrative_vault_panel_ltm_view').style.display = 'none';
     byId('narrative_vault_panel_stm_view').style.display = 'none';
     qsa('.narrative_opening_block').forEach(function (el) { el.style.display = 'none'; });
@@ -661,11 +666,8 @@ function buildEditForms(vault, getChatId) {
     qsa('.narrative_character_block').forEach(function (el) { el.style.display = 'none'; });
     qsa('.narrative_faction_block').forEach(function (el) { el.style.display = 'none'; });
     qsa('.narrative_quest_block').forEach(function (el) { el.style.display = 'none'; });
-
-    var ltmEdit = byId('narrative_vault_panel_ltm_edit');
     ltmEdit.style.display = '';
     ltmEdit.innerHTML = '';
-    var stmEdit = byId('narrative_vault_panel_stm_edit');
     stmEdit.style.display = '';
     stmEdit.innerHTML = '';
 
@@ -677,7 +679,7 @@ function buildEditForms(vault, getChatId) {
         se.innerHTML = '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Current State (JSON)') + '</div>' +
             '<textarea id="narrative_vault_state_textarea" style="width:100%;box-sizing:border-box;font-size:0.85em;resize:vertical;min-height:120px;font-family:monospace;" placeholder="{}">' + escapeHtml(lastVaultStateJson) + '</textarea>';
         var ltmView = byId('narrative_vault_panel_ltm_view');
-        ltmView.parentNode.insertBefore(se, ltmView);
+        if (ltmView && ltmView.parentNode) ltmView.parentNode.insertBefore(se, ltmView);
     }
 
     // LTM entry edit cards
@@ -768,7 +770,6 @@ async function saveVaultEdits(getChatId) {
 
         var ltmList = c.ltm_entries || [];
         ltmEntries.forEach(function (e) { var f = ltmList.find(function (x) { return x.id === e.id; }); if (f) { f.period = e.period; f.scene = e.scene; f.event = e.event; } });
-        deleteLtmIds.forEach(function (id) { c.ltm_entries = ltmList.filter(function (x) { return x.id !== id; }); });
         c.ltm_entries = ltmList.filter(function (x) { return deleteLtmIds.indexOf(x.id) === -1; });
 
         var stmList = c.unconsolidated_stm || [];
@@ -1512,14 +1513,19 @@ export async function renderVaultPanel(getChatId) {
 
         // Pin
         byId('narrative_vault_pin').onchange = function () {
-            var checked = byId('narrative_vault_pin').checked;
-            byId('narrative_vault_drawer').classList.toggle('pinnedOpen', checked);
-            qs('#narrative_vault_toggle .drawer-icon').classList.toggle('drawerPinnedOpen', checked);
+            var pin = byId('narrative_vault_pin');
+            var drawer = byId('narrative_vault_drawer');
+            if (!pin || !drawer) return;
+            var checked = pin.checked;
+            drawer.classList.toggle('pinnedOpen', checked);
+            var icon = qs('#narrative_vault_toggle .drawer-icon');
+            if (icon) icon.classList.toggle('drawerPinnedOpen', checked);
         };
 
         // LLM log toggle
         byId('narrative_vault_llm_toggle').onclick = function () {
             var entries = byId('narrative_vault_llm_entries');
+            if (!entries) return;
             var h = entries.style.display !== 'none';
             entries.style.display = h ? 'none' : '';
             byId('narrative_vault_llm_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('LLM Operation Log');
@@ -1594,6 +1600,7 @@ export async function renderVaultPanel(getChatId) {
         // Tool call toggle
         byId('narrative_vault_tool_call_toggle').onclick = function () {
             var entries = byId('narrative_vault_tool_calls');
+            if (!entries) return;
             var h = entries.style.display !== 'none';
             entries.style.display = h ? 'none' : '';
             byId('narrative_vault_tool_call_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('Tool Calling Log');
@@ -1603,6 +1610,7 @@ export async function renderVaultPanel(getChatId) {
         // History toggle
         byId('narrative_vault_history_toggle').onclick = function () {
             var list = byId('narrative_vault_history_list');
+            if (!list) return;
             var h = list.style.display !== 'none';
             list.style.display = h ? 'none' : '';
             byId('narrative_vault_history_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('History');

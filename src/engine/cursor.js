@@ -210,7 +210,8 @@ export async function runStmCursorLoop(params) {
             // Don't advance past partial start
         }
 
-        pendingPartials = newPartials.length > 0 ? newPartials : [];
+        // Merge: keep unmatched old partials + add new ones (preserves cross-batch partials)
+        pendingPartials = pendingPartials.concat(newPartials);
 
         allEntries = allEntries.concat(stmEntries);
     }
