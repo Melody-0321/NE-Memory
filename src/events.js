@@ -296,10 +296,9 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
             addLLMLog(injectType,
                 'Injected ~' + charEstimate + 't to chat ' + chatId + (timedOut ? ' (timeout fallback)' : ''),
-                '',
+                formatted || '',
                 Date.now() - injectStart,
-                'narrative',
-                formatted || ''
+                'narrative'
             );
             if (timedOut) {
                 console.log('[NE] onBeforeGenerate completed with timeout fallback');

@@ -1652,11 +1652,9 @@ function renderLLMLog() {
         html = '<div style="color:#888;padding:8px 0;">' + t('No operations logged') + '</div>';
     } else {
         logs.slice().reverse().forEach(function (entry) {
-            var isSmartPush = entry.type && entry.type.indexOf('smartpush') === 0;
-            var hasInjection = entry.injection_content && entry.injection_content.length > 0;
             html += '<div class="ne_log_entry"><div class="ne_log_header" style="cursor:pointer;font-weight:bold;color:var(--grey70);font-size:0.85em;">\u25BC ' + (entry.type || '') + ' \u00b7 ' + formatLocalTime(entry.time) + (entry.duration_ms ? ' \u00b7 ' + (entry.duration_ms > 1000 ? (entry.duration_ms / 1000).toFixed(1) + 's' : entry.duration_ms + 'ms') : '') + (entry.api_source ? ' \u00b7 [' + escapeHtml(entry.api_source) + ']' : '') + '</div>' +
-                '<div class="ne_log_body"><div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + (isSmartPush ? t('Summary') : t('Request:')) + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.request || '') + '</pre>' +
-                (hasInjection ? '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Injected Content') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:300px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.injection_content) + '</pre>' : '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">' + t('Response:') + '</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.response || '') + '</pre>') + '</div></div>';
+                '<div class="ne_log_body"><div class="ne_log_label" style="color:#aaa;font-size:0.83em;">Request:</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.request || '') + '</pre>' +
+                '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">Response:</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:500px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.response || '') + '</pre></div></div>';
         });
     }
     container.innerHTML = html;

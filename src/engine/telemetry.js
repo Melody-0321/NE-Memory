@@ -13,12 +13,10 @@ var MAX_LLM_LOG = 10;
 var MAX_TOOL_CALLS = 50;
 var MAX_ANOMALIES = 50;
 
-export function addLLMLog(type, requestSummary, responseSummary, durationMs, apiSource, injectionContent) {
+export function addLLMLog(type, requestSummary, responseSummary, durationMs, apiSource) {
     var logs = [];
     try { logs = JSON.parse(localStorage.getItem(STORAGE_LLM_LOG) || '[]'); } catch (e) {}
-    var entry = { type: type, time: new Date().toISOString(), request: requestSummary || '', response: responseSummary || '', duration_ms: durationMs || 0, api_source: apiSource || 'narrative' };
-    if (injectionContent) entry.injection_content = injectionContent;
-    logs.unshift(entry);
+    logs.unshift({ type: type, time: new Date().toISOString(), request: requestSummary || '', response: responseSummary || '', duration_ms: durationMs || 0, api_source: apiSource || 'narrative' });
     if (logs.length > MAX_LLM_LOG) logs.pop();
     localStorage.setItem(STORAGE_LLM_LOG, JSON.stringify(logs));
 }

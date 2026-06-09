@@ -61,7 +61,7 @@ export async function callMemoryLLM(messages, options = {}) {
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
 
     var promptStr = JSON.stringify(messages, null, 2);
-    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), (response || '').substring(0, 4000), Date.now() - startTime, apiSource);
+    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), response || '', Date.now() - startTime, apiSource);
 
     const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {
