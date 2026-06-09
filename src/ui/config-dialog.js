@@ -432,7 +432,7 @@ function collectTelemetryData(chatId) {
     }
 
     return {
-        version: '0.5.0',
+        version: '1.0.0',
         platform: 'SillyTavern',
         environment: typeof TavernHelper !== 'undefined' ? 'TH' : 'standalone',
         chat_id: chatId,
