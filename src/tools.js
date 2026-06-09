@@ -1,10 +1,7 @@
 /**
  * tools.js — Tool-calling 注册（通过 TH API）
  */
-import { read, write, rollbackByMsgIds } from './vault/store.js';
-import { mergeStateChanges, validateStateChanges, isStateSchemaEnabled } from './vault/schema.js';
-import { mergeDynamicState } from './engine/state-discovery.js';
-import { saveVaultWithSnapshot } from './engine/update.js';
+import { read } from './vault/store.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessages } from './engine/retrieval.js';
@@ -13,10 +10,6 @@ import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.j
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
     registerAccess(getChatId, getChatMessages);
-    registerRollbackMemory(getChatId);
-    if (isStateSchemaEnabled()) {
-        registerUpdateState(getChatId);
-    }
     if (isRetrievalEnabled()) {
         registerRecallMemory(getChatId);
     }
@@ -489,88 +482,4 @@ function lookupQuest(state, name) {
     }
 
     return lines.join('\n');
-}
-
-function registerUpdateState(getChatId) {
-    ToolManager.registerFunctionTool({
-        name: 'update_state',
-        displayName: 'Update Current State',
-        description: 'Update character/scene/time state. Each key is a JSON path like "time", "scene", "characters.Alice.status", "characters.Bob.mood". To change which characters are present, update characters.<name>.status to one of: 活跃/非活跃/已死亡/已归隐/已离去.',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: {
-                changes: { type: 'object', description: 'Key-value pairs of state changes.' }
-            },
-            required: ['changes']
-        }),
-        action: async function (args) {
-            const chatId = getChatId ? getChatId() : 'default';
-            const vault = await read(chatId);
-            const content = vault.content || {};
-            const schema = content.state_schema || null;
-
-            // 分离 dynamic.* 路径和 state.* 路径
-            var dynamicChanges = {};
-            var stateChanges = {};
-            Object.keys(args.changes).forEach(function (key) {
-                if (key.startsWith('dynamic.')) {
-                    dynamicChanges[key.slice(8)] = args.changes[key];
-                } else {
-                    stateChanges[key] = args.changes[key];
-                }
-            });
-
-            // 处理 state 变更（走固定 schema 校验）
-            if (Object.keys(stateChanges).length > 0) {
-                let validated;
-                if (schema) {
-                    const result = validateStateChanges(schema, stateChanges);
-                    if (result.warnings.length > 0) {
-                        return 'Some changes rejected: ' + result.warnings.map(r => r.path + '(' + r.warning + ')').join(', ');
-                    }
-                    validated = result.validated;
-                } else {
-                    validated = stateChanges;
-                }
-                content.state = mergeStateChanges(content.state || {}, validated);
-            }
-
-            // 处理 dynamic 变更（无校验，自由合并）
-            if (Object.keys(dynamicChanges).length > 0) {
-                content.dynamic_state = mergeDynamicState(content.dynamic_state || {}, dynamicChanges);
-            }
-
-            vault.content = content;
-            await saveVaultWithSnapshot(chatId, vault);
-            return 'State updated successfully';
-        }
-    });
-}
-
-function registerRollbackMemory(getChatId) {
-    ToolManager.registerFunctionTool({
-        name: 'rollback_memory',
-        displayName: 'Rollback Memory',
-        description: 'Roll back vault memory entries that reference the given message IDs. Use when AI recalled wrong or fabricated information.',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: {
-                msg_ids: { type: 'array', items: { type: 'integer' }, description: 'Message IDs to remove from memory (1-10 recommended).' }
-            },
-            required: ['msg_ids']
-        }),
-        action: async function (args) {
-            try {
-                const chatId = getChatId ? getChatId() : 'default';
-                const vault = await read(chatId);
-                const removed = rollbackByMsgIds(vault, args.msg_ids);
-                await write(chatId, vault);
-                return 'Rolled back ' + (removed ? (removed.removedSTM || 0) + ' STM, ' + (removed.removedLTM || 0) + ' LTM' : '0') + ' entries.';
-            } catch (e) {
-                return 'Error: ' + e.message;
-            }
-        }
-    });
 }
