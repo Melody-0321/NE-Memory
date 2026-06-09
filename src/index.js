@@ -186,7 +186,7 @@ function bootNE(retries) {
         return;
     }
     window.__NE_MEMORY_LOADED__ = true;
-    console.log('[NE] Engine starting... build=' + 'NE v0.4.0');
+    console.log('[NE] Engine starting... build=' + 'NE v0.5.0');
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
     });
