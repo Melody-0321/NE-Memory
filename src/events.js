@@ -4,6 +4,7 @@
 import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
+import { addLLMLog } from './engine/telemetry.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -254,6 +255,8 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+        var injectStart = Date.now();
+        var injectType = 'smartpush_injection';
         try {
             const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
             // Wrap formatSmartContext with a hard timeout to prevent blocking ST's generation pipeline.
@@ -276,7 +279,9 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             } catch (e) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);
+                injectType = 'smartpush_error';
             }
+            if (timedOut) injectType = 'smartpush_timeout';
             if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
                 TavernHelper.injectPrompts([{
                     id: 'ne_memory_vault',
@@ -287,11 +292,19 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     should_scan: false
                 }], { once: false });
             }
+            // Log SmartPush injection to LLM log
+            addLLMLog(injectType,
+                (formatted || '').substring(0, 300),
+                (formatted || '').substring(0, 500),
+                Date.now() - injectStart,
+                'narrative'
+            );
             if (timedOut) {
                 console.log('[NE] onBeforeGenerate completed with timeout fallback');
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);
+            addLLMLog('smartpush_error', '', e.message, Date.now() - injectStart, 'narrative');
         }
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
