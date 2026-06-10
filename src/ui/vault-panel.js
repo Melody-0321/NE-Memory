@@ -2129,9 +2129,7 @@ function renderSettingsTab() {
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
         '</div>' +
-        '</div></div>' +
-        '<div style="margin:8px 0;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Extraction Batch') + '</span><span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></div>' +
         '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
@@ -2141,7 +2139,7 @@ function renderSettingsTab() {
         '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
-        '</div></div></div>' +
+        '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
         '<div class="ne-accordion-body">' +
