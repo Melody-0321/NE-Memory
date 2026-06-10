@@ -71,11 +71,10 @@ function injectBottomDrawerCSS() {
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = '.ne-vault-bottom-overlay{' +
-        'position:absolute;left:0;right:0;z-index:1;display:flex;flex-direction:column;' +
-        'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);overflow:hidden;' +
+        'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
-        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;pointer-events:none;}' +
-        '.ne-vault-bottom-overlay.open{transform:translateY(0);pointer-events:auto;overflow:visible;}' +
+        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;}' +
+        '.ne-vault-bottom-overlay.open{display:flex;flex-grow:1;min-height:0;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
         '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
@@ -126,8 +125,7 @@ function injectBottomDrawerCSS() {
         '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
         '.ne-inline-state-edit-area.active{display:block;}' +
         '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;}' +
-        '.ne-inline-state-view.hidden{display:none;}' +
-        '#form_sheld{position:relative;z-index:2;}';
+        '.ne-inline-state-view.hidden{display:none;}';
     pdHead().appendChild(style);
 }
 
@@ -254,20 +252,11 @@ function saveSingleEntry(chatId, entryType, entryId, updates) {
     });
 }
 
-function updateVaultOverlayGeometry() {
-    var overlay = byId('ne_vault_bottom_overlay');
-    var formSheld = byId('form_sheld');
-    if (!overlay || !formSheld) return;
-    var formHeight = formSheld.offsetHeight;
-    overlay.style.top = '0px';
-    overlay.style.height = 'calc(100% - ' + formHeight + 'px)';
-}
-
 function closeVaultOverlay() {
     var overlay = byId('ne_vault_bottom_overlay');
     if (overlay) overlay.classList.remove('open');
     var chat = byId('chat');
-    if (chat) chat.style.overflow = '';
+    if (chat) chat.style.display = '';
 }
 
 function renderMemoryButton(getChatId) {
@@ -290,33 +279,20 @@ function renderMemoryButton(getChatId) {
     }
 }
 
-var _vaultFormObserver = null;
-function startFormHeightObserver() {
-    if (_vaultFormObserver) return;
-    var formSheld = byId('form_sheld');
-    if (!formSheld) return;
-    _vaultFormObserver = new ResizeObserver(function () {
-        updateVaultOverlayGeometry();
-    });
-    _vaultFormObserver.observe(formSheld);
-}
-
 /* ──────── 面板切换 ──────── */
 
 function createVaultPopout(getChatId) {
     var overlay = byId('ne_vault_bottom_overlay');
     if (!overlay) return;
     var opening = !overlay.classList.contains('open');
+    var chat = byId('chat');
     if (opening) {
-        updateVaultOverlayGeometry();
+        if (chat) chat.style.display = 'none';
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
-        var chat = byId('chat');
-        if (chat) chat.style.overflow = 'hidden';
     } else {
         overlay.classList.remove('open');
-        var chat = byId('chat');
-        if (chat) chat.style.overflow = '';
+        if (chat) chat.style.display = '';
     }
 }
 
@@ -1849,7 +1825,6 @@ export async function renderVaultPanel(getChatId) {
         }
 
         renderMemoryButton(getChatId);
-        startFormHeightObserver();
         setupTabSwitching();
 
         var collapseBar = qs('#ne_vault_bottom_overlay .ne-vault-collapse-bar');
