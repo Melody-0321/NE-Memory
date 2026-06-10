@@ -136,6 +136,8 @@ function injectBottomDrawerCSS() {
         '.ne-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}' +
         '.ne-settings-grid>.ne-settings-full{grid-column:1/-1;}' +
         '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
+        '.ne-settings-toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;margin:4px 0 6px;}' +
+        '.ne-settings-toggle-grid label{padding:3px 0 !important;font-size:0.85em !important;}' +
         '.ne-settings-section-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
         '.ne-settings-section-card .ne-settings-section-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;display:flex;align-items:center;gap:4px;}' +
         '.ne-settings-section-card .ne-accordion-body{padding:4px 0 0 0;}' +
@@ -2123,10 +2125,12 @@ function renderSettingsTab() {
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
         '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label></div>' +
+        '<div class="ne-settings-toggle-grid">' +
+        '<label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
+        '</div>' +
         '</div></div>' +
         '<div style="margin:8px 0;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
