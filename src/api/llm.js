@@ -112,8 +112,15 @@ export function saveSecondaryApiConfig(config) {
 
 export async function testSecondaryApiConnection(config) {
     if (!config || !config.url) return { success: false, error: 'No URL configured' };
+    if (!config.model) return { success: false, error: 'No model configured' };
     try {
-        var result = await callCustomAPI(config, [{ role: 'system', content: 'ping' }], { timeout: 8, temperature: 0, max_tokens: 1 });
+        var result = await callCustomAPI(config, [
+            { role: 'system', content: 'Respond with OK only. No other text.' },
+            { role: 'user', content: 'ping' }
+        ], { timeout: 10, temperature: 0, max_tokens: 16 });
+        if (!result.content || result.content.trim().length === 0) {
+            return { success: false, error: 'API returned empty response (model may not exist or may reject requests)' };
+        }
         return { success: true, model: config.model || 'connected' };
     } catch (e) {
         return { success: false, error: e.message || 'Connection failed' };
@@ -127,6 +134,8 @@ export async function sendSecondaryTestMessage(config) {
 }
 
 async function callCustomAPI(config, messages, options) {
+    if (!config.url) throw new Error('No API URL configured');
+    if (!config.model) throw new Error('No API model configured');
     const headers = { 'Content-Type': 'application/json' };
     if (config.key) headers['Authorization'] = 'Bearer ' + config.key;
 
