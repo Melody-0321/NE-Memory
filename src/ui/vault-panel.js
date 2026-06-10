@@ -71,7 +71,7 @@ function injectBottomDrawerCSS() {
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = '.ne-vault-bottom-overlay{' +
-        'position:absolute;left:0;right:0;display:flex;flex-direction:column;' +
+        'position:absolute;left:0;right:0;z-index:1;display:flex;flex-direction:column;' +
         'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);overflow:hidden;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;pointer-events:none;}' +
@@ -126,7 +126,8 @@ function injectBottomDrawerCSS() {
         '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
         '.ne-inline-state-edit-area.active{display:block;}' +
         '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;}' +
-        '.ne-inline-state-view.hidden{display:none;}';
+        '.ne-inline-state-view.hidden{display:none;}' +
+        '#form_sheld{position:relative;z-index:2;}';
     pdHead().appendChild(style);
 }
 
@@ -1839,11 +1840,11 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div></div>';
 
-        var chat = byId('chat');
-        if (chat) {
-            chat.insertAdjacentHTML('afterend', drawerHtml);
+        var sheld = byId('sheld');
+        if (sheld) {
+            sheld.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
-            console.error('[NE] #chat not found');
+            console.error('[NE] #sheld not found');
             return;
         }
 
