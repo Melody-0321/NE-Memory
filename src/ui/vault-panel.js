@@ -106,15 +106,15 @@ function injectBottomDrawerCSS() {
         '.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}' +
         '.ne-inline-edit-btn:hover{opacity:1;}' +
         '.ne-inline-row td{padding:2px 4px!important;}' +
-        '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;}' +
+        '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;text-shadow:none;}' +
         '.ne-inline-save,.ne-inline-cancel{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
         '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
         '.ne-inline-cancel{background:transparent;color:var(--grey-50);border:1px solid var(--grey-50);}' +
         '.ne-settings-section{margin-bottom:8px;}' +
         '.ne-settings-section .ne-accordion-body{padding:8px 12px;}' +
         '.ne-settings-section label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
-        '.ne-settings-section input[type=text],.ne-settings-section input[type=password],.ne-settings-section input[type=number]{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;}' +
-        '.ne-settings-section textarea{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;}' +
+        '.ne-settings-section input[type=text],.ne-settings-section input[type=password],.ne-settings-section input[type=number]{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none;}' +
+        '.ne-settings-section textarea{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none;}' +
         '.ne-settings-section input[type=range]{width:100%;margin:4px 0;}' +
         '.ne-settings-section .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
@@ -124,7 +124,7 @@ function injectBottomDrawerCSS() {
         '.ne-inline-state-edit-btn:hover{opacity:1;}' +
         '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
         '.ne-inline-state-edit-area.active{display:block;}' +
-        '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;}' +
+        '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;text-shadow:none;}' +
         '.ne-inline-state-view.hidden{display:none;}' +
         '.ne-tool-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
         '.ne-tool-card-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;}' +
@@ -186,13 +186,13 @@ function navigateToAccordion(accId, chatId) {
 }
 
 function setupAccordionHandlers(chatId) {
-    qsa('#tab-memory .ne-accordion-header').forEach(function(header) {
+    qsa('.ne-vault-tab-content .ne-accordion-header').forEach(function(header) {
         if (header._neAccBound) return;
         header._neAccBound = true;
         header.onclick = function() {
             var acc = header.parentElement;
             acc.classList.toggle('open');
-            saveCollapseState(chatId);
+            if (acc.closest('#tab-memory')) saveCollapseState(chatId);
         };
     });
 }
