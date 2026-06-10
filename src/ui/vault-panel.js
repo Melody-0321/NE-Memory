@@ -1673,7 +1673,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-settings-section-card">' +
             '<div class="ne-settings-section-title">\U0001F52C ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
-            '<button id="nes_save_btn" class="ne-settings-save-btn">' + t('Save Settings') + '</button>' +
             '</div></div>' +
             '</div></div>';
 
@@ -2163,6 +2162,19 @@ function renderSettingsTab() {
         '</div></div>';
     container.innerHTML = commonHtml;
 
+    // Auto-initialize API status if config exists (from auto-connect on page load)
+    if (secApi.url && secApi.model) {
+        setTimeout(function () {
+            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+            testSecondaryApiConnection(secApi).then(function (r) {
+                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                var hdr = byId('narrative_secondary_api_status');
+                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
+            });
+        }, 100);
+    }
+
     // === Advanced Settings ===
     if (advContainer) {
         var advHtml = '<div class="ne-accordion" id="ne-set-memory">' +
@@ -2184,21 +2196,42 @@ function renderSettingsTab() {
         advContainer.innerHTML = advHtml;
     }
 
-    // --- Event bindings ---
-    // Save button
-    var saveBtn = byId('nes_save_btn');
-    if (saveBtn) saveBtn.onclick = function () { saveSettingsTab(); };
-    // Range sliders
+    // --- Event bindings (save on every change) ---
+    // Range sliders — update value display + save
     var tEl = byId('nes_extraction_temperature');
-    if (tEl) tEl.oninput = function () { var v = byId('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); };
+    if (tEl) { tEl.oninput = function () { var v = byId('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); saveSettingsTab(); }; }
     var rEl = byId('nes_retrieval_temperature');
-    if (rEl) rEl.oninput = function () { var v = byId('nes_retrieval_temp_val'); if (v) v.textContent = Number(rEl.value).toFixed(1); };
+    if (rEl) { rEl.oninput = function () { var v = byId('nes_retrieval_temp_val'); if (v) v.textContent = Number(rEl.value).toFixed(1); saveSettingsTab(); }; }
     var bEl = byId('nes_memory_budget');
-    if (bEl) bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; };
+    if (bEl) { bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; saveSettingsTab(); }; }
     var sbEl = byId('nes_stm_batch');
-    if (sbEl) sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; };
+    if (sbEl) { sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
     var suEl = byId('nes_stm_max_unconsolidated');
-    if (suEl) suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; };
+    if (suEl) { suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
+    // Checkboxes — save on change
+    var chkState = byId('nes_enable_state_schema');
+    if (chkState) chkState.onchange = function () { saveSettingsTab(); };
+    var chkRetrieval = byId('nes_enable_retrieval');
+    if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
+    var chkTelemetry = byId('nes_enable_telemetry');
+    if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
+    var chkQuests = byId('nes_enable_quests');
+    if (chkQuests) chkQuests.onchange = function () { saveSettingsTab(); };
+    // Number inputs — save on change
+    var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars'];
+    for (var i = 0; i < vals.length; i++) { var el = byId(vals[i]); if (el) el.onchange = function () { saveSettingsTab(); }; }
+    // Textareas — save on blur (not every keystroke to avoid perf issues)
+    var ta1 = byId('nes_state_schema');
+    if (ta1) ta1.onblur = function () { saveSettingsTab(); };
+    var ta2 = byId('nes_character_schema');
+    if (ta2) ta2.onblur = function () { saveSettingsTab(); };
+    // Secondary API inputs — save on blur
+    var urlEl = byId('nes_secondary_url');
+    if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
+    var keyEl = byId('nes_secondary_key');
+    if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
+    var modelEl = byId('nes_secondary_model');
+    if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
     // Secondary API connect / test
     var connBtn = byId('nes_api_connect');
     if (connBtn) connBtn.onclick = function () {
@@ -2272,4 +2305,13 @@ function saveSettingsTab() {
     };
     localStorage.setItem('ne_secondary_api', JSON.stringify(secApi));
     console.log('[NE] Settings saved from Settings tab');
+}
+
+function saveSecApiOnly() {
+    var secApi = {
+        url: byId('nes_secondary_url').value.trim(),
+        key: byId('nes_secondary_key').value.trim(),
+        model: byId('nes_secondary_model').value.trim()
+    };
+    localStorage.setItem('ne_secondary_api', JSON.stringify(secApi));
 }

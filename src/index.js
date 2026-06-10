@@ -12,6 +12,7 @@ import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
+import { testSecondaryApiConnection } from './api/llm.js';
 
 var _retryTimer = null;
 
@@ -64,6 +65,7 @@ async function init() {
     setContextFns(getChatId, getChatMessages);
     restorePending();
     await renderVaultPanel(getChatId);
+    autoConnectSecondaryApi();
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
 
@@ -89,6 +91,18 @@ function loadSettings() {
         var raw = localStorage.getItem('ne_settings');
         return raw ? JSON.parse(raw) : null;
     } catch (e) { return null; }
+}
+
+function autoConnectSecondaryApi() {
+    try {
+        var raw = localStorage.getItem('ne_secondary_api');
+        if (!raw) return;
+        var cfg = JSON.parse(raw);
+        if (!cfg.url || !cfg.model) return;
+        testSecondaryApiConnection(cfg).then(function (r) {
+            if (r.success) console.log('[NE] Auto-connected to secondary API:', cfg.model);
+        });
+    } catch (e) { console.warn('[NE] Auto-connect skipped:', e.message); }
 }
 
 function setupEventListeners(retryCount) {
