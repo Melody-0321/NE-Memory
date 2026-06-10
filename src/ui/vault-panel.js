@@ -72,10 +72,10 @@ function injectBottomDrawerCSS() {
     style.id = 'ne_vault_bottom_style';
     style.textContent = '.ne-vault-bottom-overlay{' +
         'position:absolute;left:0;right:0;z-index:35;display:flex;flex-direction:column;' +
-        'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);' +
+        'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);overflow:hidden;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;pointer-events:none;}' +
-        '.ne-vault-bottom-overlay.open{transform:translateY(0);pointer-events:auto;}' +
+        '.ne-vault-bottom-overlay.open{transform:translateY(0);pointer-events:auto;overflow:visible;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
         '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
@@ -83,9 +83,6 @@ function injectBottomDrawerCSS() {
         '.ne-vault-collapse-bar:hover .ne-vault-collapse-indicator{opacity:1;}' +
         '.ne-vault-collapse-chevron{margin-left:4px;color:var(--SmartThemeBorderColor);font-size:10px;opacity:.6;}' +
         '.ne-vault-scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 12px 12px;}' +
-        '.ne-memory-btn{cursor:pointer;border:none;background:transparent;color:var(--grey-50,#888);' +
-        'font-size:1.1em;padding:4px 6px;border-radius:4px;transition:color .15s,background .15s;line-height:1;}' +
-        '.ne-memory-btn:hover{color:var(--text,#ddd);background:var(--black30a);}' +
         '.ne-vault-pin-row{display:flex;align-items:center;padding:0 0 8px;min-height:24px;}' +
         '.ne-vault-tab-bar{display:flex;gap:2px;padding:0 12px 6px;border-bottom:1px solid var(--SmartThemeBorderColor);margin-bottom:4px;}' +
         '.ne-vault-tab{flex:1;text-align:center;padding:8px 0;cursor:pointer;font-size:0.9em;color:var(--grey-70);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;user-select:none;}' +
@@ -260,26 +257,27 @@ function updateVaultOverlayGeometry() {
     var overlay = byId('ne_vault_bottom_overlay');
     var formSheld = byId('form_sheld');
     if (!overlay || !formSheld) return;
-    var topBarHeight = parseFloat(getComputedStyle(PD.documentElement).getPropertyValue('--topBarBlockSize')) || 0;
     var formHeight = formSheld.offsetHeight;
-    overlay.style.top = topBarHeight + 'px';
-    overlay.style.height = 'calc(100vh - ' + (topBarHeight + formHeight) + 'px)';
+    overlay.style.top = '0px';
+    overlay.style.height = 'calc(100% - ' + formHeight + 'px)';
 }
 
 function closeVaultOverlay() {
     var overlay = byId('ne_vault_bottom_overlay');
     if (overlay) overlay.classList.remove('open');
+    var chat = byId('chat');
+    if (chat) chat.style.overflow = '';
 }
 
 function renderMemoryButton(getChatId) {
     if (byId('ne_memory_button')) return;
     var leftSend = byId('leftSendForm');
     if (!leftSend) return;
-    var btn = pdCreate('button');
+    var btn = pdCreate('div');
     btn.id = 'ne_memory_button';
-    btn.className = 'ne-memory-btn';
+    btn.className = 'fa-solid fa-book-bookmark interactable';
     btn.title = t('Memory Vault');
-    btn.innerHTML = '<i class="fa-solid fa-book-bookmark"></i>';
+    btn.style.fontSize = 'var(--bottomFormIconSize)';
     btn.onclick = function () { createVaultPopout(getChatId); };
     var extBtn = byId('extensionsMenuButton');
     if (extBtn) {
@@ -312,8 +310,12 @@ function createVaultPopout(getChatId) {
         updateVaultOverlayGeometry();
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
+        var chat = byId('chat');
+        if (chat) chat.style.overflow = 'hidden';
     } else {
         overlay.classList.remove('open');
+        var chat = byId('chat');
+        if (chat) chat.style.overflow = '';
     }
 }
 
