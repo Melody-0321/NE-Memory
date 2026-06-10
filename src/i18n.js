@@ -294,8 +294,8 @@ export const CONFIG_I18N = {
         'Reset to Defaults': 'Reset to Defaults',
         'Delete': 'Delete',
         'API Key (leave empty for local proxy)': 'API Key (leave empty for local proxy)',
-        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
-            'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.',
+        'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
+            'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用, 数值越大消耗越多 token。',
     },
     'zh-cn': {
@@ -350,8 +350,8 @@ export const CONFIG_I18N = {
         'Reset to Defaults': '恢复默认',
         'Delete': '删除',
         'API Key (leave empty for local proxy)': 'API Key（留空则使用本地代理）',
-        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
-            '本地代理使用 ST 服务器凭据。只填 URL（不填 Key）用于本地代理，或填完整 URL+Key 用于直连 API。',
+        'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
+            'URL 必须指向 /v1/chat/completions 端点。ST 本地代理用户：http://127.0.0.1:8000/llm/chat。本地代理可留空 Key。',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。',
     },
     'zh-tw': {
@@ -406,8 +406,8 @@ export const CONFIG_I18N = {
         'Reset to Defaults': '恢復預設',
         'Delete': '刪除',
         'API Key (leave empty for local proxy)': 'API Key（留空則使用本地代理）',
-        'Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.':
-            '本地代理使用 ST 伺服器憑據。只填 URL（不填 Key）用於本地代理，或填完整 URL+Key 用於直連 API。',
+        'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
+            'URL 必須指向 /v1/chat/completions 端點。ST 本地代理用戶：http://127.0.0.1:8000/llm/chat。本地代理可留空 Key。',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上參數將應用於記憶區 LLM 調用，數值越大消耗越多 token。',
     }
 };

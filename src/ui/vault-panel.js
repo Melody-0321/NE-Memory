@@ -11,7 +11,7 @@ import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, formatEntityChainHeaders } from '../vault/schema.js';
-import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, testSecondaryApiConnection, sendSecondaryTestMessage } from '../api/llm.js';
+import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
 import { extractEntityNames, lookupEntityChains } from '../engine/retrieval.js';
@@ -2153,7 +2153,7 @@ function renderSettingsTab() {
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-grid">' +
-        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="http://127.0.0.1:8000/llm/chat" value="' + escapeHtml(secApi.url || '') + '"></div>' +
+        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
         '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
         '</div>' +
@@ -2233,7 +2233,7 @@ function renderSettingsTab() {
     var connBtn = byId('nes_api_connect');
     if (connBtn) connBtn.onclick = function () {
         var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
-        localStorage.setItem('ne_secondary_api', JSON.stringify(cfg));
+        saveSecondaryApiConfig(cfg);
         var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
         if (dot) dot.className = 'ne-api-dot';
         if (text) text.textContent = t('Connecting...');
@@ -2299,7 +2299,7 @@ function saveSettingsTab() {
         key: byId('nes_secondary_key').value.trim(),
         model: byId('nes_secondary_model').value.trim()
     };
-    localStorage.setItem('ne_secondary_api', JSON.stringify(secApi));
+    saveSecondaryApiConfig(secApi);
     console.log('[NE] Settings saved from Settings tab');
 }
 
@@ -2309,5 +2309,5 @@ function saveSecApiOnly() {
         key: byId('nes_secondary_key').value.trim(),
         model: byId('nes_secondary_model').value.trim()
     };
-    localStorage.setItem('ne_secondary_api', JSON.stringify(secApi));
+    saveSecondaryApiConfig(secApi);
 }

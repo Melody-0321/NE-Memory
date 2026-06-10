@@ -51,12 +51,12 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_api" style="display:none;">' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="http://127.0.0.1:8000/llm/chat (local proxy)"></div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="https://api.deepseek.com/v1/chat/completions"></div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API Key (leave empty for local proxy)') + '</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>' +
         '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('Model') + '</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="deepseek-v4-flash"></div>' +
         '<div style="margin:4px 0;"><button class="ne-api-btn" id="ne_api_connect" style="margin-right:6px;">' + t_config('Connect') + '</button><button class="ne-api-btn" id="ne_api_test">' + t_config('Test Message') + '</button></div>' +
         '<div class="ne-api-status" style="display:flex;align-items:center;gap:6px;margin:4px 0;font-size:0.85em;"><span class="ne-api-dot" id="ne_api_dot" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#cc3333;"></span><span id="ne_api_status_text">' + t_config('Not connected') + '</span></div>' +
-        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.') + '</div>' +
+        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_memory" style="display:none;">' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Extraction Temperature') + ' <span style="color:var(--grey50);font-size:0.85em;">(推荐0.2)</span></label><br>' +
@@ -150,7 +150,7 @@ function bindConfigEvents(getChatId) {
     });
     $pd('#ne_api_connect').on('click', function () {
         var cfg = { url: $pd('#ne_secondary_url').val().trim(), key: $pd('#ne_secondary_key').val().trim(), model: $pd('#ne_secondary_model').val().trim() };
-        localStorage.setItem('ne_secondary_api', JSON.stringify(cfg));
+        saveSecondaryApiConfig(cfg);
         $pd('#ne_api_dot').css('background', '#cc3333');
         $pd('#ne_api_status_text').text('Connecting...');
         $pd('#ne_api_connect').prop('disabled', true);

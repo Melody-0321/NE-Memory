@@ -51,6 +51,8 @@ export async function callMemoryLLM(messages, options = {}) {
             apiSource = 'secondary';
         } catch (e) {
             console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
+            console.warn('[NE]   URL:', secondaryConfig.url, ' Model:', secondaryConfig.model);
+            notifySecondaryApiFailure(e.message);
             response = await callTavernHelper(messages, options);
             apiSource = 'tavern';
         }
@@ -107,7 +109,38 @@ function loadSecondaryApiConfig() {
 }
 
 export function saveSecondaryApiConfig(config) {
+    if (config && config.url) config.url = normalizeApiUrl(config.url);
     localStorage.setItem('ne_secondary_api', JSON.stringify(config));
+}
+
+function normalizeApiUrl(url) {
+    if (!url || typeof url !== 'string') return url;
+    var trimmed = url.trim().replace(/\/+$/, '');
+    // ST local proxy — leave as-is (it has its own path format)
+    if (/\/llm\/chat$/.test(trimmed)) return trimmed;
+    // Common OpenAI-compatible endpoint — already correct
+    if (/\/v1\/chat\/completions$/.test(trimmed)) return trimmed;
+    // Base URL without path: append /v1/chat/completions
+    if (/^(https?:\/\/[^\/]+)\/?$/.test(trimmed)) {
+        return trimmed.replace(/\/+$/, '') + '/v1/chat/completions';
+    }
+    // Partial path like /v1 or /v1/chat — append completions
+    if (/\/v1\/?$/.test(trimmed)) { return trimmed.replace(/\/+$/, '') + '/chat/completions'; }
+    if (/\/v1\/chat\/?$/.test(trimmed)) { return trimmed.replace(/\/+$/, '') + '/completions'; }
+    // Unknown path — warn but don't modify
+    console.warn('[NE] API URL may be incorrect — expected /v1/chat/completions or /llm/chat, got:', trimmed);
+    return trimmed;
+}
+
+function notifySecondaryApiFailure(reason) {
+    var now = Date.now();
+    if (now - _lastSecondaryApiWarn < 60000) return; // at most once per minute
+    _lastSecondaryApiWarn = now;
+    try {
+        if (typeof toastr !== 'undefined' && toastr.warning) {
+            toastr.warning('Falling back to main API. ' + (reason || 'Connection failed'), 'Secondary API unreachable', { timeOut: 6000 });
+        }
+    } catch (e) {}
 }
 
 export async function testSecondaryApiConnection(config) {
@@ -225,6 +258,7 @@ async function callTavernHelper(messages, options) {
 }
 
 var _powerSlotsInited = {};
+var _lastSecondaryApiWarn = 0;
 
 export async function initPowerSlots(characterName, existingSlotsForWorld) {
     // Dedup: skip if already attempted for this character (success or failure)
