@@ -6,7 +6,7 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending, onMessageGenerated, setGenerateFn } from './events.js';
 import { t, setFieldLocale } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
@@ -129,6 +129,16 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
+            try { eventSource.on('MESSAGE_RECEIVED', async function(chatId) {
+                try { await onMessageGenerated(chatId); } catch (e) {}
+            }); } catch (e) {}
+            // 捕获 ST 的 Generate 函数引用用于矛盾检测重新生成
+            try {
+                if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                    var ctx = SillyTavern.getContext();
+                    if (ctx.generate) setGenerateFn(ctx.generate);
+                }
+            } catch (e) {}
             console.log('[NE] Event listeners registered via eventSource');
         }
         return;

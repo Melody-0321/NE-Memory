@@ -5,6 +5,9 @@ import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/upda
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { addLLMLog } from './engine/telemetry.js';
+import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
+import { detectContradictions } from './engine/contradiction.js';
+import { closeVaultOverlay } from './ui/vault-panel.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -85,6 +88,7 @@ export function neSyncChatId(chatId) {
 
 export function onMessageSent(messageIndex) {
     try {
+        closeVaultOverlay();
         if (!getChatMessagesFn) return;
         const chat = getChatMessagesFn();
 
@@ -185,6 +189,8 @@ async function flushPendingMessages() {
     try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
     console.log('[NE] Pipeline starting: batch=' + batch.length);
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
+    var pipelineStart = Date.now();
+    incrementChatTurn(chatId);
     pipelineRunning = true;
     try {
         try {
@@ -197,8 +203,17 @@ async function flushPendingMessages() {
         const result = await executeIncrementalUpdate(chatId, batch);
         latestVault = result.vault;
         console.log('[NE] Incremental update done, added=' + result.added);
+
+        // Record vault size snapshot
+        var content = latestVault && latestVault.content ? latestVault.content : {};
+        var stmCount = ((content.unconsolidated_stm || []).concat(content.stm_entries || [])).length;
+        var ltmCount = (content.ltm_entries || []).length;
+        recordChatStat(chatId, 'stm', stmCount);
+        recordChatStat(chatId, 'ltm', ltmCount);
+
         if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
         consecutiveFailures = 0;
+        recordChatStat(chatId, 'dur', Date.now() - pipelineStart);
         try { localStorage.removeItem('ne_inflight'); } catch (e) {}
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
@@ -298,14 +313,19 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 'Injected ~' + charEstimate + 't to chat ' + chatId + (timedOut ? ' (timeout fallback)' : ''),
                 formatted || '',
                 Date.now() - injectStart,
-                'narrative'
+                'narrative',
+                chatId
             );
+            // Record per-chat token injection
+            if (chatId && charEstimate > 0) {
+                recordChatStat(chatId, 'tok', charEstimate);
+            }
             if (timedOut) {
                 console.log('[NE] onBeforeGenerate completed with timeout fallback');
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);
-            addLLMLog('smartpush_error', '', e.message, Date.now() - injectStart, 'narrative');
+            addLLMLog('smartpush_error', '', e.message, Date.now() - injectStart, 'narrative', chatId);
         }
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
@@ -348,4 +368,81 @@ export async function onMessageUpdated(messageId) {
     } catch (e) {
         console.warn('[NE] Rollback on message update failed:', e);
     }
+}
+
+/* ──────── 矛盾检测（容器C）──────── */
+
+var contradictionContinuation = null;
+var contradictionRetryCount = 0;
+var MAX_CONTRADICTION_RETRIES = 1;
+
+/**
+ * 设置主 LLM 生成函数引用（用于触发重新生成）
+ */
+export function setGenerateFn(fn) {
+    contradictionContinuation = fn;
+}
+
+/**
+ * 生成后矛盾检测钩子
+ * 在 MESSAGE_RECEIVED 事件中触发，仅当用户开启矛盾检测设置时运行。
+ * 非流式：chat[chatId].mes 已设置，addOneMessage 未调用 → 可拦截
+ * 流式：CHARACTER_MESSAGE_RENDERED 已触发 → 需更新 DOM
+ */
+export async function onMessageGenerated(chatId) {
+    if (!getChatIdFn || !contradictionContinuation) return
+    if (contradictionRetryCount > MAX_CONTRADICTION_RETRIES) {
+        contradictionRetryCount = 0
+        return
+    }
+
+    // 检查设置是否启用
+    var neSettings = {}
+    try {
+        var raw = localStorage.getItem('ne_settings')
+        if (raw) neSettings = JSON.parse(raw)
+    } catch (e) {}
+    if (!neSettings.contradictionDetectionEnabled) return
+
+    // 获取 AI 回复文本
+    var chat
+    try {
+        var chatMessages = getChatMessagesFn()
+        chat = chatMessages
+    } catch (e) { return }
+
+    if (!chat || !Array.isArray(chat)) return
+    var lastMsg = chat[chat.length - 1]
+    if (!lastMsg || lastMsg.is_user || lastMsg.role === 'user') return
+    var aiMessage = (typeof lastMsg.mes === 'string') ? lastMsg.mes : (lastMsg.content || '')
+
+    if (!aiMessage || aiMessage.trim().length < 20) return
+
+    try {
+        var result = await detectContradictions(getChatIdFn(), aiMessage)
+        if (result && result.hasContradiction) {
+            console.log('[NE] Contradiction detected, triggering regeneration...')
+            // 注入证据系统消息
+            if (result.systemMessage && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+                TavernHelper.injectPrompts([{
+                    id: 'ne_contradiction_fix',
+                    position: 'in_chat',
+                    depth: 0,
+                    role: 'system',
+                    content: result.systemMessage
+                }], { once: true })
+            }
+            contradictionRetryCount++
+            // 触发重新生成
+            try {
+                await contradictionContinuation()
+            } catch (e) {
+                console.warn('[NE] Contradiction regeneration failed:', e)
+            }
+            return
+        }
+    } catch (e) {
+        // 矛盾检测失败时不阻止消息发送
+    }
+    contradictionRetryCount = 0
 }

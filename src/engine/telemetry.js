@@ -4,6 +4,8 @@
  * 存储到 localStorage，受 ne_telemetry_enabled 开关控制。
  * addLLMLog 不受开关控制（始终记录，用于调试）。
  */
+import { recordChatStat } from './chat-telemetry.js';
+
 var STORAGE_LLM_LOG = 'ne_llm_log';
 var STORAGE_TOOL_CALLS = 'ne_tool_calls';
 var STORAGE_ANOMALIES = 'ne_anomalies';
@@ -13,26 +15,30 @@ var MAX_LLM_LOG = 10;
 var MAX_TOOL_CALLS = 50;
 var MAX_ANOMALIES = 50;
 
-export function addLLMLog(type, requestSummary, responseSummary, durationMs, apiSource) {
+export function addLLMLog(type, requestSummary, responseSummary, durationMs, apiSource, chatId) {
     var logs = [];
     try { logs = JSON.parse(localStorage.getItem(STORAGE_LLM_LOG) || '[]'); } catch (e) {}
-    logs.unshift({ type: type, time: new Date().toISOString(), request: requestSummary || '', response: responseSummary || '', duration_ms: durationMs || 0, api_source: apiSource || 'narrative' });
+    var entry = { type: type, time: new Date().toISOString(), request: requestSummary || '', response: responseSummary || '', duration_ms: durationMs || 0, api_source: apiSource || 'narrative' };
+    if (chatId) entry.chat_id = chatId;
+    logs.unshift(entry);
     if (logs.length > MAX_LLM_LOG) logs.pop();
     localStorage.setItem(STORAGE_LLM_LOG, JSON.stringify(logs));
 }
 
-export function addToolCall(toolName, params, success, durationMs, resultSummary, errorInfo) {
+export function addToolCall(toolName, params, success, durationMs, resultSummary, errorInfo, chatId) {
     if (!isTelemetryEnabled()) return;
     var calls = [];
     try { calls = JSON.parse(localStorage.getItem(STORAGE_TOOL_CALLS) || '[]'); } catch (e) {}
-    calls.push({ ts: new Date().toISOString(), tool: toolName, params: params || {}, success: !!success, duration_ms: durationMs || 0, result_summary: (resultSummary || '').substring(0, 200), error_info: errorInfo || '' });
+    var callEntry = { ts: new Date().toISOString(), tool: toolName, params: params || {}, success: !!success, duration_ms: durationMs || 0, result_summary: (resultSummary || '').substring(0, 200), error_info: errorInfo || '' };
+    if (chatId) callEntry.chat_id = chatId;
+    calls.push(callEntry);
     if (calls.length > MAX_TOOL_CALLS) calls.shift();
     localStorage.setItem(STORAGE_TOOL_CALLS, JSON.stringify(calls));
-    if (durationMs > 5000) addAnomaly('tool_timeout', { tool: toolName, duration_ms: durationMs });
+    if (durationMs > 5000) addAnomaly('tool_timeout', { tool: toolName, duration_ms: durationMs }, chatId);
     if (!success) {
         var signals = getUserSignals();
         signals.consecutive_fails = (signals.consecutive_fails || 0) + 1;
-        if (signals.consecutive_fails >= 3) addAnomaly('rapid_fail_chain', { tool: toolName, fail_count: signals.consecutive_fails });
+        if (signals.consecutive_fails >= 3) addAnomaly('rapid_fail_chain', { tool: toolName, fail_count: signals.consecutive_fails }, chatId);
         saveUserSignals(signals);
     } else {
         var s2 = getUserSignals();
@@ -41,13 +47,16 @@ export function addToolCall(toolName, params, success, durationMs, resultSummary
     }
 }
 
-export function addAnomaly(type, context) {
+export function addAnomaly(type, context, chatId) {
     if (!isTelemetryEnabled()) return;
     var anomalies = [];
     try { anomalies = JSON.parse(localStorage.getItem(STORAGE_ANOMALIES) || '[]'); } catch (e) {}
-    anomalies.push({ ts: new Date().toISOString(), type: type, context: context || {} });
+    var anomEntry = { ts: new Date().toISOString(), type: type, context: context || {} };
+    if (chatId) anomEntry.chat_id = chatId;
+    anomalies.push(anomEntry);
     if (anomalies.length > MAX_ANOMALIES) anomalies.shift();
     localStorage.setItem(STORAGE_ANOMALIES, JSON.stringify(anomalies));
+    if (chatId) recordChatStat(chatId, 'err', 1);
 }
 
 export function incSignal(key) {

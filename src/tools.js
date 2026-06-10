@@ -7,6 +7,7 @@ import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery
 import { buildRetrievalMessages } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
 import { addToolCall } from './engine/telemetry.js';
+import { recordChatStat } from './engine/chat-telemetry.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
@@ -20,7 +21,7 @@ function registerAccess(getChatId, getChatMessages) {
     ToolManager.registerFunctionTool({
         name: 'access',
         displayName: 'Access Memory & State',
-        description: 'A unified tool to read any memory or state data by reference. Use when you know exactly what to look up.\n\nSupported ref formats:\n  Memory: "stm_12" or "ltm_3" — returns full entry text + children for further drill-down.\n  Message: "95" or "msg#95" — returns original message text. Optionally filter to passages mentioning specific entities: access("95", ["Frost"]).\n  State: "characters.爱丽丝", "factions.House Frost", "quests.Main" — returns full entity detail.\n\nPrefer recall() when you need to discover which entries are relevant to a topic.',
+        description: 'A unified tool to read any memory or state data by reference. Use when you know exactly what to look up (e.g., a specific message, character, item, or entity chain). Prefer recall_memory when you need to discover which entries are relevant.\n\nSupported ref formats:\n  Memory: "stm_12" or "ltm_3" — returns full entry text + children for further drill-down.\n  Message: "95" or "msg#95" — returns original message text. Optionally filter to passages mentioning specific entities: access("95", ["Frost"]).\n  Entity chain: "chain.龙牙剑" — returns complete timeline of all events related to an entity, sorted by time. The system may pre-mark available chains with [ℹ] tags — if you see such a tag, you know the chain exists and can be accessed.\n  State: "characters.爱丽丝", "factions.House Frost", "quests.Main" — returns full entity detail.\n\nNOT for open-ended searches — use recall_memory for those.',
         parameters: Object.freeze({
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
@@ -130,8 +131,9 @@ function registerAccess(getChatId, getChatMessages) {
                     access_result_length: result.length,
                     access_success: result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1,
                     access_latency_ms: Date.now() - t0
-                });
-                addToolCall('access', { ref: ref }, result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1, Date.now() - t0, result);
+                }, chatId);
+                addToolCall('access', { ref: ref }, result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1, Date.now() - t0, result, undefined, chatId);
+                recordChatStat(chatId, 'tool', 1);
                 return result;
             } catch (e) {
                 recordTelemetry({
@@ -141,8 +143,9 @@ function registerAccess(getChatId, getChatMessages) {
                     access_success: false,
                     access_latency_ms: Date.now() - t0,
                     access_error: e.message
-                });
-                addToolCall('access', { ref: ref }, false, Date.now() - t0, '', e.message);
+                }, chatId);
+                addToolCall('access', { ref: ref }, false, Date.now() - t0, '', e.message, chatId);
+                recordChatStat(chatId, 'tool', 1);
                 return 'Error: ' + e.message;
             }
         }
@@ -192,7 +195,7 @@ function registerRecallMemory(getChatId) {
     ToolManager.registerFunctionTool({
         name: 'recall_memory',
         displayName: 'Recall Memory',
-        description: 'Search all stored memories (LTM + STM) for information relevant to a query. Returns synthesized narrative answer with source references. For best results, structure your query to include: (1) what specific entity/event/person you want to know about, (2) what aspect — location, history, owner, properties, timeline, (3) any time constraints. You can query multiple independent topics in one call by separating them with ";;". Example: "Dragonfang sword: current location, origin;; House Frost: current attitude toward me;; Ember: last known location and status". Each topic will be answered in a separate section. Use ;; only when asking about genuinely unrelated entities — if questions share the same entity, combine them into one.',
+        description: 'Use for open-ended memory discovery when you do not know exactly what to look up. NOT for retrieving known references — use access for those (e.g., a specific stm_id, msg#id, or chain.X that you already know about). Avoid calling recall_memory multiple times per response unless following up on new discoveries.\n\nSearch all stored memories (LTM + STM) for information relevant to a query. Returns synthesized narrative answer with source references. For best results, structure your query to include: (1) what specific entity/event/person you want to know about, (2) what aspect — location, history, owner, properties, timeline, (3) any time constraints. You can query multiple independent topics in one call by separating them with ";;". Example: "Dragonfang sword: current location, origin;; House Frost: current attitude toward me;; Ember: last known location and status". Each topic will be answered in a separate section. Use ;; only when asking about genuinely unrelated entities — if questions share the same entity, combine them into one.',
         parameters: Object.freeze({
             $schema: 'http://json-schema.org/draft-04/schema#',
             type: 'object',
@@ -204,14 +207,18 @@ function registerRecallMemory(getChatId) {
         }),
         action: async function (args) {
             var startTime = Date.now();
+            var chatId = getChatId ? getChatId() : 'default';
+            var topCandidates;
+            var allSTM, allLTM;
+            var timeConstraint;
+            var isSummaryMode = false;
             try {
                 if (!args || !args.query) return 'Error: Missing query';
 
-                var chatId = getChatId ? getChatId() : 'default';
                 var vault = await read(chatId);
                 var content = vault.content || {};
-                var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-                var allLTM = content.ltm_entries || [];
+                allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+                allLTM = content.ltm_entries || [];
 
                 if (allSTM.length === 0 && allLTM.length === 0) {
                     return 'No memories stored yet.';
@@ -219,9 +226,8 @@ function registerRecallMemory(getChatId) {
 
                 // ── Time-aware retrieval ──
                 var allEntries = allSTM.concat(allLTM);
-                var timeConstraint = parseTimeConstraint(args.query);
-                var isSummaryMode = false;
-                var topCandidates;
+                timeConstraint = parseTimeConstraint(args.query);
+                isSummaryMode = false;
 
                 if (timeConstraint) {
                     var preFiltered = applyTimeFilter(allEntries, timeConstraint);
@@ -338,9 +344,10 @@ function registerRecallMemory(getChatId) {
                     recall_time_filter: !!timeConstraint,
                     recall_cross_lang: (topCandidates && allSTM && allLTM) ? (topCandidates.length < 5 && vaultHasMixedLanguage(content)) : false,
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
-                });
+                }, chatId);
 
-                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, !!result, Date.now() - startTime, (answer || '').substring(0, 200));
+                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, !!result, Date.now() - startTime, (answer || '').substring(0, 200), undefined, chatId);
+                recordChatStat(chatId, 'tool', 1);
 
                 return answer;
             } catch (e) {
@@ -351,8 +358,9 @@ function registerRecallMemory(getChatId) {
                     recall_candidate_count: topCandidates ? topCandidates.length : 0,
                     recall_time_filter: !!timeConstraint,
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
-                });
-                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, false, Date.now() - startTime, '', e.message);
+                }, chatId);
+                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, false, Date.now() - startTime, '', e.message, chatId);
+                recordChatStat(chatId, 'tool', 1);
                 // Fallback to BM25 raw list
                 return formatBM25Fallback(topCandidates || [], vault.content);
             }

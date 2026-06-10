@@ -8,7 +8,7 @@
 
 // ─── Entity chain lookup ───
 
-function lookupEntityChains(content, entityNames) {
+export function lookupEntityChains(content, entityNames) {
     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     var allLTM = content.ltm_entries || [];
     var chains = {};
@@ -38,7 +38,7 @@ function lookupEntityChains(content, entityNames) {
 
 // ─── Entity name extraction from query ───
 
-function extractEntityNames(query, content) {
+export function extractEntityNames(query, content) {
     var state = content.state || {};
     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     var knownNames = [];
@@ -142,19 +142,20 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
             'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a concise synthesized answer.\n\n' +
             'Rules:\n' +
             '1. RELEVANCE: remove entries unrelated to the query. If relevance is uncertain, keep.\n' +
-            '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
-            '3. SYNTHESIS: write each thread as a single coherent paragraph, using narrative prose (not bullet points). Include key details from entries.\n' +
+            '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline. Use entity timelines (above) to confirm which entries belong together.\n' +
+            '3. SYNTHESIS: write each thread as a single coherent paragraph, using narrative prose (not bullet points). Build causal and temporal links between events: show what led to what, not just what happened. Include key details from entries.\n' +
             '4. TIME FORMAT: prefix each reference with its time coordinate. Use the format "{period}·{time_label}·{scene}". The period comes from state.time format — do NOT invent your own time labels or "X rounds ago".\n' +
             '5. SOURCE MARKERS: end each factual claim with [→X] or [→stm:id] or [→state:path]. If multiple entries support the same claim, list all.\n' +
             '6. CURRENT TIME ANCHOR: after each narrative thread, add a line:\n' +
-            '   → Current time: ' + currentTime + ' [→state:time]\n\n' +
+            '   → Current time: ' + currentTime + ' [→state:time]\n' +
+            '7. GAP AWARENESS: if a narrative thread is clearly incomplete or a topic has sparse coverage, note it briefly (e.g. "[ℹ details sparse]"). This helps the main LLM decide whether to request deeper retrieval.\n\n' +
             'Output format:\n' +
             '## <narrative thread 1>\n<coherent paragraph with source markers>\n→ Current time: ' + currentTime + ' [→state:time]\n\n' +
             '## <narrative thread 2>\n...\n\n' +
             '## Other relevant\n<any remaining relevant entries, brief>\n\n' +
             'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
-            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Group by topic segment, NOT by narrative thread. Output one "## <topic>" section per segment. If topics are related to the same entity, combine them.\n\n' +
+            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Group by topic segment, NOT by narrative thread. Output one "## <topic>" section per segment. If topics are related to the same entity, combine them. For each segment, use the entity timelines above to check if additional relevant chains exist.\n\n' +
             chainsBlock +
             'Query: ' + query + '\n\nCandidates:\n' + candidatesText;
 
@@ -168,19 +169,20 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
         '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回简洁的叙事合成答案。\n\n' +
         '规则：\n' +
         '1. 相关性：剔除与查询无关的条目。不确定时保留。\n' +
-        '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
-        '3. 合成：每条叙事线写成一个连贯段落，使用叙事性语言（非列表格式）。包含条目的关键细节。\n' +
+        '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。利用上方的实体时间线确认哪些条目属于同一组。\n' +
+        '3. 合成：每条叙事线写成一个连贯段落，使用叙事性语言（非列表格式）。建立事件之间的因果和时序关系：展示什么导致了什么，而不只是列出发生了什么。包含条目的关键细节。\n' +
         '4. 时间格式：每个引用前标注时间坐标，格式为"{period}·{time_label}·{scene}"。禁止编造 "Chapter X" 或 "X轮前" 等标签。\n' +
         '5. 来源标记：每个事实性陈述后标注 [→X] 或 [→stm:id] 或 [→state:path]。\n' +
         '6. 当前时间锚点：每个叙事段末尾追加：\n' +
-        '   → 当前时间: ' + currentTime + ' [→state:time]\n\n' +
+        '   → 当前时间: ' + currentTime + ' [→state:time]\n' +
+        '7. 缺口感知：如果某条叙事线明显不完整或某话题覆盖稀疏，简要标注（如"[ℹ 信息稀疏]"）。这有助于主 LLM 决定是否需要更深层检索。\n\n' +
         '输出格式：\n' +
         '## <叙事线1>\n<连贯段落 + 来源标记>\n→ 当前时间: ' + currentTime + ' [→state:time]\n\n' +
         '## <叙事线2>\n...\n\n' +
         '## 其他相关\n<剩余相关条目，简要>\n\n' +
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
-        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。按话题分段输出，而非按叙事线。每个片段输出一个 "## <话题>" 节。如果话题涉及同一实体，合并它们。\n\n' +
+        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。按话题分段输出，而非按叙事线。每个片段输出一个 "## <话题>" 节。如果话题涉及同一实体，合并它们。对每个话题段，利用上方的实体时间线检查是否有额外的相关链可用。\n\n' +
         chainsBlock +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText;
 

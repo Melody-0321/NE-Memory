@@ -230,6 +230,13 @@ Status transition rules:
 - Characters who were previously active but have LEFT the scene or aren't in the latest messages → status="非活跃"
 - Characters who have died, retired, or permanently departed → status="已死亡" / "已归隐" / "已离去"
 - Do NOT mark characters as 活跃 just because they were mentioned in passing — only if they are actually present in the scene
+- The system will auto-decay stale characters after multiple rounds of absence, but you should proactively mark departures.
+
+Status examples (right vs wrong):
+✓ RIGHT: "张三走进酒馆坐下" → 张三.status="活跃" (actual scene presence)
+✓ RIGHT: 连续多轮张三未出场 → will be auto-decayed to "非活跃" by system
+✗ WRONG: "听说张三去了京城" → do NOT mark 张三 as 活跃 (mere mention, not present)
+✗ WRONG: setting status="活跃" for a character who only appeared in past-tense narrative or flashback
 
 Examples:
 <state_changes>{"characters.Alice.status":"已死亡","characters.Bob.status":"活跃"}</state_changes>
@@ -292,6 +299,13 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
 - 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"
 - 已死亡、隐退或永久离去的角色 → status="已死亡" / "已归隐" / "已离去"
 - 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标为活跃
+- 系统会在角色连续多轮缺席后自动衰减其状态，但你应该主动标记离场。
+
+状态判例（正确 vs 错误）：
+✓ 正确: "张三走进酒馆坐下" → 张三.status="活跃"（实际出场）
+✓ 正确: 连续多轮张三未出场 → 系统将自动衰减为"非活跃"
+✗ 错误: "听说张三去了京城" → 不应将张三标为活跃（仅提及，未出场）
+✗ 错误: 将仅出现在过去时叙事或回忆场景中的角色设为"活跃"
 
 要改变在场角色，更新其 status 字段。示例：
 <state_changes>{"characters.爱丽丝.status":"已死亡","characters.鲍勃.status":"活跃"}</state_changes>
@@ -345,7 +359,7 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
                 '- "event": what happened — REQUIRED. Be specific enough a reader understands what occurred (20-80 chars).\n' +
                 '- "time_label": optional — only set if the event\'s time differs from the implied time. Otherwise omit.\n' +
                 '- "translation": Chinese translation of the event (max 200 chars) for cross-lingual search. Provides key terms in Chinese for BM25 token matching.\n' +
-                '- "entities": optional string array — character/faction names involved in this event. E.g. ["Alice", "Bob", "魔教"].\n' +
+                '- "entities": optional — involved entity names with types. Each entry: {"name":"Alice","type":"character"}. Types: character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件). Plain string arrays ["Alice"] are still accepted and default to character. E.g. [{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}].\n' +
                 '\nNote: "period" and "scene" are auto-filled from global state. Do NOT include them in entries.\n' +
                 msgRangeInstructionEn +
                 '\nIf nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.' + (schemaEnabled ? stateChangesEn : ''),
@@ -363,7 +377,7 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
             '- "event": 事件描述——必填。具体到让读者理解发生了什么（20-80字）。\n' +
             '- "time_label": （可选）仅当事件时间与当前时间不同时填写，否则省略。\n' +
             '- "translation": 事件的英文翻译（最长200字符），用于跨语言检索。提供英文关键词以供 BM25 词项匹配。\n' +
-            '- "entities": （可选）事件涉及的角色/势力名称，字符串数组。如 ["Alice", "Bob", "魔教"]。\n' +
+            '- "entities": （可选）事件涉及的实体名称和类型。每条：{"name":"Alice","type":"character"}。类型：character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件)。旧式字符串数组 ["Alice"] 仍被接受，默认视为角色。示例：[{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}]。\n' +
             '\n注意："period" 和 "scene" 会自动从全局数据填充，条目中无需包含。\n' +
             msgRangeInstructionZh +
             '\n如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。' + (schemaEnabled ? stateChangesZh : ''),
@@ -869,7 +883,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
                     pipeline_task: 'state_extract',
                     new_state_change_count: Object.keys(stateChanges).length,
                     parse_error: null
-                });
+                }, chatId);
             }
         } catch (e) {
             console.warn('[NE] State pipeline failed:', e);
@@ -921,7 +935,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
                 pipeline_task: 'stm_extract',
                 new_stm_count: newEntries.length,
                 parse_error: null
-            });
+            }, chatId);
         }
     } catch (e) {
         console.warn('[NE] Cursor pipeline failed:', e);
@@ -993,7 +1007,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         pipeline_task: 'state_per_round',
         new_state_change_count: Object.keys(stateChanges).length,
         parse_error: null
-    });
+    }, chatId);
 
     return { vault, changed: true };
 }

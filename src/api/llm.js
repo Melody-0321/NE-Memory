@@ -6,10 +6,12 @@
  */
 import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { addLLMLog } from '../engine/telemetry.js';
+import { recordChatStat } from '../engine/chat-telemetry.js';
 
 export let telemetryBuffer = [];
 
-export function recordTelemetry(entry) {
+export function recordTelemetry(entry, chatId) {
+    entry.chat_id = chatId || null;
     telemetryBuffer.push({ ts: new Date().toISOString(), ...entry });
     if (telemetryBuffer.length > 200) telemetryBuffer.shift();
 }
@@ -60,8 +62,16 @@ export async function callMemoryLLM(messages, options = {}) {
 
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
 
+    var chatId = options.chatId || null;
     var promptStr = JSON.stringify(messages, null, 2);
-    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), response || '', Date.now() - startTime, apiSource);
+    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), response || '', Date.now() - startTime, apiSource, chatId);
+
+    // Per-chat counters
+    if (chatId) {
+        recordChatStat(chatId, 'llm', 1);
+        var totalTokens = usage ? (usage.total_tokens || 0) : (options.operation !== 'init_power_slots' ? 0 : 0);
+        if (totalTokens > 0) recordChatStat(chatId, 'tok', totalTokens);
+    }
 
     const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {
@@ -73,19 +83,19 @@ export async function callMemoryLLM(messages, options = {}) {
             prompt_tokens: usage ? usage.prompt_tokens : undefined,
             completion_tokens: usage ? usage.completion_tokens : undefined,
             total_tokens: usage ? usage.total_tokens : undefined
-        });
+        }, chatId);
     }
     return response;
 }
 
-export async function callMemoryPipeline(messages, options = {}) {
+export async function callMemoryPipeline(messages, options = {}, chatId = null) {
     var mc = loadMemoryConfig();
-    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.temperature || 0.1, max_tokens: mc.stm_max_tokens }));
+    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.temperature || 0.1, max_tokens: mc.stm_max_tokens, chatId: chatId }));
 }
 
-export async function callMemoryRetrieval(messages, options = {}) {
+export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
     var mc = loadMemoryConfig();
-    return callMemoryLLM(messages, Object.assign({ temperature: mc.temperature || 0.3, max_tokens: mc.stm_max_tokens }, options));
+    return callMemoryLLM(messages, Object.assign({ temperature: mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
 }
 
 function loadSecondaryApiConfig() {

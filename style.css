@@ -72,22 +72,6 @@
     text-decoration: underline;
 }
 
-#narrative_vault_pin {
-    display: none;
-}
-#narrative_vault_pin:checked+label .checked {
-    display: inline;
-}
-#narrative_vault_pin:checked+label .unchecked {
-    display: none;
-}
-#narrative_vault_pin:not(:checked)+label .checked {
-    display: none;
-}
-#narrative_vault_pin:not(:checked)+label .unchecked {
-    display: inline;
-}
-
 .narrative_vault_textarea {
     background: #1e1e1e;
     color: var(--text);

@@ -77,7 +77,11 @@ Output ONLY a JSON object:
   "delete_stm_ids": []
 }${stmRangeNote}
 
-IMPORTANT: NEVER put STM IDs in "delete_stm_ids". Always keep original STM entries. Only add new LTM entries and reference the STM IDs in stm_refs.`,
+IMPORTANT: NEVER put STM IDs in "delete_stm_ids". Always keep original STM entries. Only add new LTM entries and reference the STM IDs in stm_refs. stm_refs MUST use the exact "stm_X" IDs shown in the [→stm_X] markers above. Do NOT use numeric indices — use the full "stm_X" identifier.
+
+The "period" field MUST cover the time range from the earliest stm_ref to the latest, based on their time_label fields. Derive this from the source entries, not from the current story time.
+
+Optionally include "entities" in each LTM entry to carry forward entity names from the source STM entries. This helps with entity chain lookups.`,
             user: 'Merge these short-term memories. Only output JSON.'
         };
     }
@@ -96,7 +100,11 @@ ${stmText}
   "delete_stm_ids": []
 }${stmRangeNote}
 
-重要：绝不要往 "delete_stm_ids" 中放 STM ID。始终保留原始 STM 条目。只在 ltm_entries 中新增 LTM 条目并通过 stm_refs 引用 STM ID。`,
+重要：绝不要往 "delete_stm_ids" 中放 STM ID。始终保留原始 STM 条目。只在 ltm_entries 中新增 LTM 条目并通过 stm_refs 引用 STM ID。stm_refs 必须使用上方的 [→stm_X] 标记中显示的确切 "stm_X" ID。不要使用数字索引——使用完整的 "stm_X" 标识符。
+
+"period" 字段必须覆盖从最早到最晚的 stm_ref 的时间范围，基于它们的 time_label 字段。从源条目推导，而非从当前故事时间。
+
+可选地在每个 LTM 条目中包含 "entities" 字段，以延续源 STM 条目中的实体名称。这有助于实体链查找。`,
         user: '合并这些短期记忆。仅输出 JSON。'
     };
 }
@@ -226,7 +234,7 @@ export async function executeConsolidation(chatId) {
             pipeline_task: 'consolidation',
             consolidation_stm_input_count: stmInputCount,
             consolidation_ltm_output_count: merged
-        });
+        }, chatId);
 
         await saveVaultWithSnapshot(chatId, vault);
     }

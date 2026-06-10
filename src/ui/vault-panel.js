@@ -10,11 +10,14 @@ import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, formatEntityChainHeaders } from '../vault/schema.js';
 import { renderConfigDialog } from './config-dialog.js';
 import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
+import { extractEntityNames, lookupEntityChains } from '../engine/retrieval.js';
+import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
+import { getAllChatStats } from '../engine/chat-telemetry.js';
 
 /* ──────── 工具 ──────── */
 
@@ -64,35 +67,98 @@ function injectPinCSS() {
     pdHead().appendChild(style);
 }
 
+function injectBottomDrawerCSS() {
+    if (byId('ne_vault_bottom_style')) return;
+    var style = pdCreate('style');
+    style.id = 'ne_vault_bottom_style';
+    style.textContent = '.ne-vault-bottom-overlay{' +
+        'position:absolute;left:0;right:0;z-index:35;display:flex;flex-direction:column;' +
+        'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);' +
+        'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;pointer-events:none;}' +
+        '.ne-vault-bottom-overlay.open{transform:translateY(0);pointer-events:auto;}' +
+        '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
+        'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
+        '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
+        'border-radius:3px;opacity:.6;transition:opacity .2s;}' +
+        '.ne-vault-collapse-bar:hover .ne-vault-collapse-indicator{opacity:1;}' +
+        '.ne-vault-collapse-chevron{margin-left:4px;color:var(--SmartThemeBorderColor);font-size:10px;opacity:.6;}' +
+        '.ne-vault-scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 12px 12px;}' +
+        '.ne-memory-btn{cursor:pointer;border:none;background:transparent;color:var(--grey-50,#888);' +
+        'font-size:1.1em;padding:4px 6px;border-radius:4px;transition:color .15s,background .15s;line-height:1;}' +
+        '.ne-memory-btn:hover{color:var(--text,#ddd);background:var(--black30a);}' +
+        '.ne-vault-pin-row{display:flex;align-items:center;padding:0 0 8px;min-height:24px;}';
+    pdHead().appendChild(style);
+}
+
 var vaultLLMLog = [];
 var lastVaultStateJson = '{}';
+
+/* ──────── 底部抽屉辅助函数 ──────── */
+
+function updateVaultOverlayGeometry() {
+    var overlay = byId('ne_vault_bottom_overlay');
+    var formSheld = byId('form_sheld');
+    if (!overlay || !formSheld) return;
+    var topBarHeight = parseFloat(getComputedStyle(PD.documentElement).getPropertyValue('--topBarBlockSize')) || 0;
+    var formHeight = formSheld.offsetHeight;
+    overlay.style.top = topBarHeight + 'px';
+    overlay.style.height = 'calc(100vh - ' + (topBarHeight + formHeight) + 'px)';
+}
+
+function closeVaultOverlay() {
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (overlay) overlay.classList.remove('open');
+}
+
+function renderMemoryButton(getChatId) {
+    if (byId('ne_memory_button')) return;
+    var leftSend = byId('leftSendForm');
+    if (!leftSend) return;
+    var btn = pdCreate('button');
+    btn.id = 'ne_memory_button';
+    btn.className = 'ne-memory-btn';
+    btn.title = t('Memory Vault');
+    btn.innerHTML = '<i class="fa-solid fa-book-bookmark"></i>';
+    btn.onclick = function () { createVaultPopout(getChatId); };
+    var extBtn = byId('extensionsMenuButton');
+    if (extBtn) {
+        extBtn.insertAdjacentElement('afterend', btn);
+    } else {
+        var optBtn = byId('options_button');
+        if (optBtn) optBtn.insertAdjacentElement('afterend', btn);
+        else leftSend.appendChild(btn);
+    }
+}
+
+var _vaultFormObserver = null;
+function startFormHeightObserver() {
+    if (_vaultFormObserver) return;
+    var formSheld = byId('form_sheld');
+    if (!formSheld) return;
+    _vaultFormObserver = new ResizeObserver(function () {
+        updateVaultOverlayGeometry();
+    });
+    _vaultFormObserver.observe(formSheld);
+}
 
 /* ──────── 面板切换 ──────── */
 
 function createVaultPopout(getChatId) {
-    var drawer = byId('narrative_vault_drawer');
-    var icon = qs('#narrative_vault_toggle .drawer-icon');
-    if (!drawer) return;
-    var opening = !drawer.classList.contains('openDrawer');
-    var ts = Date.now();
-    console.log('[NE-VAULT] ' + (opening ? 'OPENING' : 'CLOSING') + ' ts=' + ts + ' stack:\n' + new Error().stack);
-    qsa('.openDrawer').forEach(function (el) { if (!el.classList.contains('pinnedOpen')) { el.classList.remove('openDrawer'); el.classList.add('closedDrawer'); } });
-    qsa('.openIcon').forEach(function (el) { if (!el.classList.contains('drawerPinnedOpen')) { el.classList.remove('openIcon'); el.classList.add('closedIcon'); } });
-    drawer.classList.toggle('openDrawer');
-    drawer.classList.toggle('closedDrawer');
-    if (icon) { icon.classList.toggle('openIcon'); icon.classList.toggle('closedIcon'); }
-    if (opening) updateVaultViewerPopout(getChatId);
-    // Check if opening/closing triggered any generation state change
-    setTimeout(function() {
-        try {
-            var pd = window.parent.document;
-            var genVal = pd.body.getAttribute('data-generating');
-            console.log('[NE-VAULT] ' + (opening ? 'OPEN' : 'CLOSE') + ' done ts=' + ts + ' body[data-generating]=' + genVal);
-        } catch(e) {}
-    }, 50);
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (!overlay) return;
+    var opening = !overlay.classList.contains('open');
+    if (opening) {
+        updateVaultOverlayGeometry();
+        overlay.classList.add('open');
+        updateVaultViewerPopout(getChatId);
+    } else {
+        overlay.classList.remove('open');
+    }
 }
 
 export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
+export { closeVaultOverlay };
 
 /* ──────── 角色卡面板渲染 ──────── */
 
@@ -1016,6 +1082,24 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         query = queryParts.length > 0 ? queryParts.join(' · ') : 'recent events';
     }
 
+    // ── 模糊引用解析（策略3）──
+    var resolvedAmbiguity = null;
+    try {
+        resolvedAmbiguity = resolveAmbiguousReferences(query, content.state, content);
+        if (resolvedAmbiguity && resolvedAmbiguity.enhancedQuery && resolvedAmbiguity.enhancedQuery !== query) {
+            query = resolvedAmbiguity.enhancedQuery;
+        }
+    } catch (e) {}
+
+    // ── 实体链预取（容器A）──
+    var entityNames = extractEntityNames(query, content);
+    var entityChains = {};
+    if (entityNames && entityNames.length > 0) {
+        try {
+            entityChains = lookupEntityChains(content, entityNames);
+        } catch (e) {}
+    }
+
     var smartPushStart = Date.now();
     var bm25Start = Date.now();
 
@@ -1077,6 +1161,30 @@ export async function formatSmartContext(vault, chatMessages, budget) {
             : (content.character_schema || null);
         var charSummary = formatActiveCharacterSummary(content.state, charSchema);
         if (charSummary) {
+            // ── 实体摘要头（容器B）──
+            var chainHeaders = {};
+            try {
+                if (entityNames && entityNames.length > 0) {
+                    var activeCharNames = [];
+                    var chars = content.state.characters || {};
+                    Object.keys(chars).forEach(function(name) {
+                        if (chars[name] && chars[name].status === '活跃') activeCharNames.push(name);
+                    });
+                    chainHeaders = formatEntityChainHeaders(activeCharNames, entityChains, entityNames);
+                }
+            } catch (e) {}
+            if (Object.keys(chainHeaders).length > 0) {
+                var enhancedCharSummary = charSummary;
+                Object.keys(chainHeaders).forEach(function(name) {
+                    if (enhancedCharSummary.indexOf(name) !== -1) {
+                        enhancedCharSummary = enhancedCharSummary.replace(
+                            new RegExp('(' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':.+?)(\\n|$)'),
+                            '$1 ' + chainHeaders[name] + '\n'
+                        );
+                    }
+                });
+                charSummary = enhancedCharSummary;
+            }
             parts.push('## Characters\n' + charSummary);
         }
         var factionSummary = formatActiveFactionSummary(content.state);
@@ -1092,14 +1200,108 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     // ── Layer 2: Event memory (memory LLM synthesis) ──
     if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
         if (parts.length > 0) parts.push('---');
-        parts.push(synthesized.trim());
+        var synthText = synthesized.trim();
+        parts.push(synthText);
+
+        // ── 显式缺口标记（策略2）──
+        if (entityNames && entityNames.length > 0 && entityChains && Object.keys(entityChains).length > 0) {
+            var gapMarkers = [];
+            entityNames.forEach(function(name) {
+                var chain = entityChains[name];
+                if (chain && chain.length > 0) {
+                    gapMarkers.push('chain.' + name + '(' + chain.length + '条)');
+                }
+            });
+            if (gapMarkers.length > 0) {
+                parts.push('[ℹ 更多可用记忆: ' + gapMarkers.join(', ') + '  — 需要时使用 access("chain.X") ]');
+            }
+        }
+    }
+
+    // ── 固定预算信息打包（策略5）──
+    var neSettings = {};
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) neSettings = JSON.parse(raw);
+    } catch (e) {}
+    if (neSettings.retrievalBudgetEnabled) {
+        var budgetText = compileRetrievalBudget(content, query, entityNames, entityChains, neSettings.retrievalBudgetTokens || 300);
+        if (budgetText) {
+            if (parts.length > 0) parts.push('---');
+            parts.push(budgetText);
+        }
     }
 
     // ── Layer 3: Tool hints ──
     if (parts.length > 0) parts.push('---');
-    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
+    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, quests, entity chains, or original messages, use access. [ℹ] tags above mark available chains.');
 
     return parts.join('\n\n');
+}
+
+/* ──────── 固定预算检索包编译器（策略5）──────── */
+function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens) {
+    if (!entityChains || Object.keys(entityChains).length === 0) return ''
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || [])
+    var allLTM = content.ltm_entries || []
+
+    var scoredEntities = []
+    Object.keys(entityChains).forEach(function(name) {
+        var chain = entityChains[name]
+        if (!chain || chain.length === 0) return
+        // BM25相关性评分（简化：实体名在query中的匹配质量）
+        var bm25Score = 0
+        var qLower = (query || '').toLowerCase()
+        var nLower = name.toLowerCase()
+        if (qLower.indexOf(nLower) !== -1) bm25Score = 0.8
+        else {
+            // 部分匹配
+            var parts = name.split(/[\s\-_]+/)
+            var matched = 0
+            parts.forEach(function(p) { if (qLower.indexOf(p.toLowerCase()) !== -1) matched++ })
+            bm25Score = parts.length > 0 ? matched / parts.length * 0.5 : 0.1
+        }
+        // 最近活跃度评分
+        var recencyScore = 0
+        if (chain.length > 0) {
+            var lastEntry = chain[chain.length - 1]
+            var daysAgo = lastEntry.timestamp
+                ? (Date.now() - new Date(lastEntry.timestamp).getTime()) / 86400000
+                : 30
+            recencyScore = Math.max(0, 1 - daysAgo / 90)
+        }
+        // 链长度评分
+        var lengthScore = Math.min(chain.length / 15, 1)
+        var score = bm25Score * 0.6 + recencyScore * 0.25 + lengthScore * 0.15
+        scoredEntities.push({ name: name, chain: chain, score: score })
+    })
+    if (scoredEntities.length === 0) return ''
+
+    scoredEntities.sort(function(a, b) { return b.score - a.score })
+
+    var totalScore = 0
+    scoredEntities.forEach(function(e) { totalScore += e.score })
+    if (totalScore === 0) totalScore = 1
+
+    var result = '## 相关实体事件\n'
+    var usedTokens = 40 // header ~40 tokens
+    var tokenPerEntry = 40
+
+    for (var i = 0; i < scoredEntities.length; i++) {
+        var se = scoredEntities[i]
+        var allocTokens = Math.floor(budgetTokens * (se.score / totalScore))
+        var maxEntries = Math.max(1, Math.floor((allocTokens - 20) / tokenPerEntry))
+        var selectedEntries = se.chain.slice(-maxEntries)
+        if (usedTokens + 20 > budgetTokens) break
+
+        result += '**' + se.name + '**: '
+        var summaries = selectedEntries.map(function(e) {
+            return (e.event || e.summary || '').substring(0, 35)
+        })
+        result += summaries.join(' | ') + '\n'
+        usedTokens += 20 + summaries.length * tokenPerEntry
+    }
+    return result.trim()
 }
 
 /* ──────── Injection builders (no LLM path) ──────── */
@@ -1260,28 +1462,31 @@ function formatBM25Results(query, candidates) {
 
 /* ──────── 面板初始化 ──────── */
 
+var _currentGetChatId = null;
+
 export async function renderVaultPanel(getChatId) {
     try {
-        if (byId('narrative_vault_holder')) return;
+        if (byId('ne_vault_bottom_overlay')) return;
+        _currentGetChatId = getChatId;
         injectPinCSS();
+        injectBottomDrawerCSS();
         var vault = await read(getChatId());
         var c = vault.content || {};
 
-        var drawerHtml = '<div id="narrative_vault_holder" class="drawer">' +
-            '<div class="drawer-toggle" id="narrative_vault_toggle">' +
-            '<div class="drawer-icon fa-solid fa-book fa-fw closedIcon" title="' + t('Memory Vault') + '"></div>' +
+        var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
+            '<div class="ne-vault-collapse-bar" title="' + t('Collapse memory panel') + '">' +
+            '<span class="ne-vault-collapse-indicator"></span>' +
+            '<span class="ne-vault-collapse-chevron"><i class="fa-solid fa-chevron-down"></i></span>' +
             '</div>' +
-            '<div id="narrative_vault_drawer" class="drawer-content closedDrawer fillRight">' +
-            '<div id="narrative_vault_panel_header" class="fa-solid fa-grip drag-grabber"></div>' +
-            '<div class="flex-container flexnowrap">' +
-            '<div class="flexFlowColumn flex-container">' +
-            '<div id="narrative_vault_pin_div" class="alignitemsflexstart" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
+            '<div class="ne-vault-scroll-area">' +
+            '<div class="ne-vault-pin-row">' +
+            '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
+            '<div id="narrative_vault_pin_div" style="margin-left:auto;" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
             '<label for="narrative_vault_pin">' +
             '<div class="fa-solid unchecked fa-unlock right_menu_button" alt=""></div>' +
             '<div class="fa-solid checked fa-lock right_menu_button" alt=""></div>' +
-            '</label></div></div></div>' +
-            '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:auto;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
+            '</label></div></div>' +
             '<div class="scrollableInner" style="padding:10px;overflow-y:auto;font-size:var(--mainFontSize);">' +
             '<div style="display:flex;align-items:center;margin-bottom:6px;">' +
             '<div id="narrative_vault_panel_version" style="font-weight:bold;"></div>' +
@@ -1330,19 +1535,23 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_history_list" style="display:none;max-height:250px;overflow-y:auto;font-size:0.85em;"></div></div>' +
             '</div></div></div>';
 
-        var holder = byId('top-settings-holder');
-        if (holder) {
-            holder.insertAdjacentHTML('beforeend', drawerHtml);
+        var sheld = byId('sheld');
+        if (sheld) {
+            sheld.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
-            console.error('[NE] #top-settings-holder not found in document or parent.document');
+            console.error('[NE] #sheld not found in document or parent.document');
             return;
         }
 
-        var tgl = byId('narrative_vault_toggle');
+        renderMemoryButton(getChatId);
+        startFormHeightObserver();
+
+        var collapseBar = qs('#ne_vault_bottom_overlay .ne-vault-collapse-bar');
+        if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
+
         var ref = byId('narrative_vault_panel_refresh');
         var edt = byId('narrative_vault_panel_edit_btn');
         var sav = byId('narrative_vault_panel_save_btn');
-        if (tgl) tgl.onclick = function () { createVaultPopout(getChatId); };
         if (ref) ref.onclick = function () {
             setVaultActivity(true);
             updateVaultViewerPopout(getChatId).finally(function () { setVaultActivity(false); });
@@ -1514,12 +1723,10 @@ export async function renderVaultPanel(getChatId) {
         // Pin
         byId('narrative_vault_pin').onchange = function () {
             var pin = byId('narrative_vault_pin');
-            var drawer = byId('narrative_vault_drawer');
-            if (!pin || !drawer) return;
+            if (!pin) return;
             var checked = pin.checked;
-            drawer.classList.toggle('pinnedOpen', checked);
-            var icon = qs('#narrative_vault_toggle .drawer-icon');
-            if (icon) icon.classList.toggle('drawerPinnedOpen', checked);
+            var overlay = byId('ne_vault_bottom_overlay');
+            if (overlay) overlay.classList.toggle('pinned', checked);
         };
 
         // LLM log toggle
@@ -1621,9 +1828,49 @@ export async function renderVaultPanel(getChatId) {
         byId('narrative_vault_export_btn').onclick = function () {
             var llmLog = [];
             var toolLog = [];
+            var anomalies = [];
+            var tokenUsage = {};
+            var userSignals = {};
             try { llmLog = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
             try { toolLog = JSON.parse(localStorage.getItem('ne_tool_calls') || '[]'); } catch (e) {}
-            var data = { llm_log: llmLog, tool_log: toolLog, telemetry: telemetryBuffer };
+            try { anomalies = JSON.parse(localStorage.getItem('ne_anomalies') || '[]'); } catch (e) {}
+            try { tokenUsage = JSON.parse(localStorage.getItem('ne_token_usage') || '{}'); } catch (e) {}
+            try { userSignals = JSON.parse(localStorage.getItem('ne_user_signals') || '{}'); } catch (e) {}
+            var chatStats = getAllChatStats();
+
+            // Compute derived metrics
+            var derived = { per_chat: {} };
+            Object.keys(chatStats).forEach(function(cid) {
+                var c = chatStats[cid];
+                var agg = c.aggregates || {};
+                var turns = agg.total_turns || 1;
+                var lastTurn = c.turns && c.turns.length > 0 ? c.turns[c.turns.length - 1] : null;
+                var firstTurn = c.turns && c.turns.length > 0 ? c.turns[0] : null;
+                derived.per_chat[cid] = {
+                    stm_per_turn: (agg.total_stm_count || 0) / turns,
+                    ltm_per_turn: (agg.total_ltm_count || 0) / turns,
+                    llm_calls_per_turn: (agg.total_llm_calls || 0) / turns,
+                    tool_calls_per_turn: (agg.total_tool_calls || 0) / turns,
+                    tokens_per_turn: (agg.total_tokens || 0) / turns,
+                    error_rate: (agg.total_errors || 0) / turns,
+                    avg_pipeline_ms: (agg.total_pipeline_duration_ms || 0) / turns
+                };
+                if (lastTurn && firstTurn && turns > 1) {
+                    derived.per_chat[cid].stm_growth_rate = ((lastTurn.stm || 0) - (firstTurn.stm || 0)) / (turns - 1);
+                    derived.per_chat[cid].ltm_growth_rate = ((lastTurn.ltm || 0) - (firstTurn.ltm || 0)) / (turns - 1);
+                }
+            });
+
+            var data = {
+                llm_log: llmLog,
+                tool_log: toolLog,
+                telemetry: telemetryBuffer,
+                anomalies: anomalies,
+                token_usage: tokenUsage,
+                user_signals: userSignals,
+                chat_stats: chatStats,
+                derived: derived
+            };
             var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             var a = pdCreate('a');
             a.href = URL.createObjectURL(blob);

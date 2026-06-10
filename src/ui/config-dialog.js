@@ -42,6 +42,13 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
+        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
+        '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_ambiguity_lm"> <span>' + t_config('Ambiguity: LM-assisted resolution') + '</span></label></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Use lightweight LLM to resolve ambiguous entity references (e.g. "那个铁匠") when rule-based matching fails. Extra API call only when needed.') + '</div>' +
+        '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval_budget"> <span>' + t_config('Enable Retrieval Budget') + '</span></label></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('System-compiled extra memory package with entity chain summaries (300 tokens). Experimental — verify effect before enabling by default.') + '</div>' +
+        '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_contradiction_detection"> <span>' + t_config('Enable Contradiction Detection (Experimental)') + '</span></label></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Block generation when LLM contradicts stored memory (regenerates with evidence). Requires extra LLM calls. Use with caution.') + '</div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('STM Extraction Batch') + ': <span id="ne_stm_batch_val">10</span></span>' +
         '<input type="range" id="ne_stm_batch" min="1" max="30" step="1" value="10" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
@@ -336,6 +343,9 @@ function loadConfigUI() {
             $pd('#ne_character_schema').val(JSON.stringify(DEFAULT_CHARACTER_SCHEMA, null, 2));
         }
         $pd('#ne_enable_quests').prop('checked', s.enableQuests || false);
+        $pd('#ne_enable_ambiguity_lm').prop('checked', s.ambiguityLmEnabled || false);
+        $pd('#ne_enable_retrieval_budget').prop('checked', s.retrievalBudgetEnabled || false);
+        $pd('#ne_enable_contradiction_detection').prop('checked', s.contradictionDetectionEnabled || false);
     } catch (e) { console.warn('[NE] loadConfigUI settings failed:', e); }
     try {
         var raw = localStorage.getItem('ne_secondary_api');
@@ -358,6 +368,9 @@ function saveConfigUI() {
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
         useDynamicState: $pd('#ne_enable_dynamic_state').prop('checked'),
         retrievalEnabled: $pd('#ne_enable_retrieval').prop('checked'),
+        ambiguityLmEnabled: $pd('#ne_enable_ambiguity_lm').prop('checked'),
+        retrievalBudgetEnabled: $pd('#ne_enable_retrieval_budget').prop('checked'),
+        contradictionDetectionEnabled: $pd('#ne_enable_contradiction_detection').prop('checked'),
         memoryBudget: Number($pd('#ne_memory_budget').val()),
         stmBatch: Number($pd('#ne_stm_batch').val()),
         stmMaxUnconsolidated: Number($pd('#ne_stm_max_unconsolidated').val()),

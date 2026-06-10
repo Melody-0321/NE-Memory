@@ -782,3 +782,28 @@ export function formatQuestSummary(state) {
 
     return sections.join('\n\n');
 }
+
+/**
+ * 为活跃角色编译实体链摘要头
+ * @param {Array} activeCharacterNames - 活跃角色名列表
+ * @param {object} entityChains - lookupEntityChains 的结果
+ * @param {Array} entityNames - 实体名列表（未使用，保留供扩展）
+ * @returns {object} {角色名: 摘要头字符串}
+ */
+export function formatEntityChainHeaders(activeCharacterNames, entityChains, entityNames) {
+    var headers = {}
+    if (!entityChains || Object.keys(entityChains).length === 0) return headers
+
+    activeCharacterNames.forEach(function(name) {
+        var chain = entityChains[name]
+        if (!chain || chain.length === 0) return
+        var recent = chain.slice(-3)
+        var summaries = recent.map(function(e) {
+            return (e.event || e.summary || '').substring(0, 25)
+        })
+        var extra = chain.length > 3 ? '还有' + (chain.length - 3) + '条可用 access("chain.' + name + '")' : ''
+        headers[name] = '  最近: [' + summaries.join(' → ') + (extra ? ' | ' + extra : '') + ']'
+    })
+
+    return headers
+}
