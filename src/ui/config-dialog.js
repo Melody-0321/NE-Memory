@@ -83,9 +83,6 @@ export function renderConfigDialog(getChatId) {
         '<textarea id="ne_character_schema" style="width:100%;box-sizing:border-box;font-size:0.8em;resize:vertical;min-height:180px;font-family:monospace;"></textarea></div>' +
         '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Valid JSON defining character card field definitions. Has protagonist and npc blocks. Leave empty to use default.') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
-        '<div class="narrative-toggle" style="margin:6px 0;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_quests"> <span>' + t_config('Enable Quests Block') + '</span></label></div>' +
-        '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('When enabled, the memory engine will track tasks, goals, and world events in state.') + '</div>' +
-        '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div style="font-weight:bold;font-size:0.9em;margin:6px 0 3px;cursor:pointer;color:var(--grey70);" id="ne_power_slots_toggle">\u25B6 ' + t_config('Power Slots Templates') + '</div>' +
         '<div id="ne_power_slots_section" style="display:none;">' +
         '<div style="color:var(--grey50);font-size:0.8em;margin-bottom:6px;">' + t_config('Reference templates for auto-detecting character power/energy systems. Edit labels to match your world\'s naming.') + '</div>' +
@@ -343,7 +340,6 @@ function loadConfigUI() {
         } else {
             $pd('#ne_character_schema').val(JSON.stringify(DEFAULT_CHARACTER_SCHEMA, null, 2));
         }
-        $pd('#ne_enable_quests').prop('checked', s.enableQuests || false);
     } catch (e) { console.warn('[NE] loadConfigUI settings failed:', e); }
     try {
         var raw = localStorage.getItem('ne_secondary_api');
@@ -359,7 +355,6 @@ function loadConfigUI() {
 function saveConfigUI() {
     var settings = {
         enableTelemetry: $pd('#ne_enable_telemetry').prop('checked'),
-        enableQuests: $pd('#ne_enable_quests').prop('checked'),
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),
         useDynamicState: false,
         retrievalEnabled: $pd('#ne_enable_retrieval').prop('checked'),

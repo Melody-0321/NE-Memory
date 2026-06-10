@@ -2191,7 +2191,6 @@ function renderSettingsTab() {
             '<div class="ne-accordion-body">' +
             '<label>' + t('State Schema') + ' (Global)</label><textarea id="nes_state_schema" rows="6">' + escapeHtml(settings.stateSchema ? JSON.stringify(settings.stateSchema, null, 2) : '') + '</textarea>' +
             '<label>' + t('Character Schema') + '</label><textarea id="nes_character_schema" rows="6">' + escapeHtml(settings.characterSchema ? JSON.stringify(settings.characterSchema, null, 2) : '') + '</textarea>' +
-            '<label><input type="checkbox" id="nes_enable_quests" ' + (settings.enableQuests ? 'checked' : '') + '> <span>' + t('Enable Quests Block') + '</span></label>' +
             '</div></div>';
         advContainer.innerHTML = advHtml;
     }
@@ -2215,8 +2214,6 @@ function renderSettingsTab() {
     if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
     var chkTelemetry = byId('nes_enable_telemetry');
     if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
-    var chkQuests = byId('nes_enable_quests');
-    if (chkQuests) chkQuests.onchange = function () { saveSettingsTab(); };
     // Number inputs — save on change
     var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars'];
     for (var i = 0; i < vals.length; i++) { var el = byId(vals[i]); if (el) el.onchange = function () { saveSettingsTab(); }; }
@@ -2267,7 +2264,6 @@ function renderSettingsTab() {
 function saveSettingsTab() {
     var settings = {
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
-        enableQuests: byId('nes_enable_quests') ? byId('nes_enable_quests').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
         useDynamicState: false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
