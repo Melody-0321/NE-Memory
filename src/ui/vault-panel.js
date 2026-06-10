@@ -2131,14 +2131,19 @@ function renderSettingsTab() {
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Extraction Batch') + '</span><span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></div>' +
         '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
@@ -2156,10 +2161,10 @@ function renderSettingsTab() {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Parameters') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-settings-grid">' +
-            '<div><label>' + t('STM Max Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '"></div>' +
-            '<div><label>' + t('LTM Max Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '"></div>' +
-            '<div><label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '"></div>' +
-            '<div><label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '"></div>' +
+            '<div><label>' + t('STM Max Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '" title="' + t('Maximum tokens per single LLM call for STM extraction.') + '"></div>' +
+            '<div><label>' + t('LTM Max Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '" title="' + t('Maximum tokens per single LLM call for LTM consolidation.') + '"></div>' +
+            '<div><label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
+            '<div><label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
             '</div></div></div>' +
             '<div class="ne-accordion" id="ne-set-schema">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
