@@ -2221,11 +2221,11 @@ function renderSettingsTab() {
         var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
         if (!cfg.url) { alert('Please enter an API URL first.'); return; }
         if (testBtn) testBtn.disabled = true;
-        sendSecondaryTestMessage(cfg).then(function (reply) {
-            alert('OK: ' + (reply || '(empty)'));
+        sendSecondaryTestMessage(cfg).then(function () {
+            alert(t('API connection successful!'));
             if (testBtn) testBtn.disabled = false;
         }).catch(function (e) {
-            alert('Error: ' + (e.message || e));
+            alert(t('API connection failed. Check browser console (F12) for details.'));
             if (testBtn) testBtn.disabled = false;
         });
     };

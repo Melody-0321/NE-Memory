@@ -167,11 +167,11 @@ function bindConfigEvents(getChatId) {
         var cfg = { url: $pd('#ne_secondary_url').val().trim(), key: $pd('#ne_secondary_key').val().trim(), model: $pd('#ne_secondary_model').val().trim() };
         if (!cfg.url) { alert('Please enter an API URL first.'); return; }
         $pd('#ne_api_test').prop('disabled', true);
-        sendSecondaryTestMessage(cfg).then(function (reply) {
-            alert('OK: ' + (reply || '(empty)'));
+        sendSecondaryTestMessage(cfg).then(function () {
+            alert(t_config('API connection successful!'));
             $pd('#ne_api_test').prop('disabled', false);
         }).catch(function (e) {
-            alert('Error: ' + (e.message || e));
+            alert(t_config('API connection failed. Check browser console (F12) for details.'));
             $pd('#ne_api_test').prop('disabled', false);
         });
     });
