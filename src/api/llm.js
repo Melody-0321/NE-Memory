@@ -48,7 +48,7 @@ export async function callMemoryLLM(messages, options = {}) {
             var customResult = await callCustomAPI(secondaryConfig, messages, options);
             response = customResult.content;
             usage = customResult.usage;
-            apiSource = 'secondary';
+            apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
         } catch (e) {
             console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
             console.warn('[NE]   URL:', secondaryConfig.url, ' Model:', secondaryConfig.model);
@@ -172,56 +172,89 @@ export async function sendSecondaryTestMessage(config) {
     return result.content;
 }
 
+var _proxyNotified = false;
+
 async function callCustomAPI(config, messages, options) {
     if (!config.url) throw new Error('No API URL configured');
     if (!config.model) throw new Error('No API model configured');
     const headers = { 'Content-Type': 'application/json' };
     if (config.key) headers['Authorization'] = 'Bearer ' + config.key;
+    const body = JSON.stringify({
+        model: config.model,
+        messages: messages,
+        temperature: options.temperature || 0.3,
+        max_tokens: options.max_tokens || 2048
+    });
+    const timeoutSec = options.timeout || 120;
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), (options.timeout || 120) * 1000);
-
-    try {
-        const response = await fetch(config.url, {
+    // --- inner: attempt a single fetch ---
+    function attemptFetch(targetUrl) {
+        var controller = new AbortController();
+        var timer = setTimeout(function () { controller.abort(); }, timeoutSec * 1000);
+        return fetch(targetUrl, {
             method: 'POST',
-            headers,
-            body: JSON.stringify({
-                model: config.model,
-                messages: messages,
-                temperature: options.temperature || 0.3,
-                max_tokens: options.max_tokens || 2048
-            }),
+            headers: headers,
+            body: body,
             signal: controller.signal
+        }).then(function (response) {
+            clearTimeout(timer);
+            if (!response.ok) throw new Error('API error: ' + response.status);
+            return response.json().then(function (data) {
+                var msg = data.choices?.[0]?.message || {};
+                var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
+                var usage = data.choices?.[0]?.usage || data.usage || null;
+                if (!content) {
+                    console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
+                }
+                return { content: content, usage: usage, _raw: data };
+            });
+        }, function (e) {
+            clearTimeout(timer);
+            throw e;
         });
+    }
 
-        if (!response.ok) {
-            throw new Error('API error: ' + response.status);
-        }
-
-        const data = await response.json();
-        var msg = data.choices?.[0]?.message || {};
-        var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
-        var usage = data.choices?.[0]?.usage || data.usage || null;
-        // Diagnostic: log response structure when content is unexpectedly empty
-        if (!content) {
-            console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
-        }
-        return { content: content, usage: usage, _raw: data };
-    } catch (e) {
+    function isNetworkError(e) {
         var msg = e.message || 'Unknown error';
-        if (/Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch') {
-            var diag = 'Network error connecting to ' + (config.url || 'API') + '. Possible causes: ';
-            if (/^https?:/.test(typeof location !== 'undefined' ? location.protocol : '') && /^http:/.test(config.url)) {
-                diag += 'Mixed content (HTTPS page cannot fetch HTTP URL). ';
-            }
-            diag += 'CORS not enabled on server, URL unreachable, or firewall/VPN blocking. Check F12 → Console for details.';
-            console.error('[NE] callCustomAPI network error — URL:', config.url, '— origin:', typeof location !== 'undefined' ? location.origin : 'N/A');
-            throw new Error(diag);
+        return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
+    }
+
+    var proxyAttempted = false;
+
+    // 1. Try direct
+    try {
+        return await attemptFetch(config.url);
+    } catch (e) {
+        if (!isNetworkError(e)) {
+            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
+            throw e;
         }
-        if (e.name === 'AbortError') throw new Error('Request timed out after ' + (options.timeout || 120) + 's');
-        throw e;
-    } finally {
-        clearTimeout(timeout);
+        console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
+        proxyAttempted = true;
+    }
+
+    // 2. Retry through ST CORS proxy
+    try {
+        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
+        var result = await attemptFetch(proxyUrl);
+        result._viaProxy = true;
+        if (!_proxyNotified) {
+            _proxyNotified = true;
+            console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
+        }
+        return result;
+    } catch (e2) {
+        if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
+            throw new Error(
+                'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content). ' +
+                'ST CORS proxy is disabled or unreachable. Enable it:\n' +
+                '1. Open SillyTavern/config.yaml\n' +
+                '2. Set enableCorsProxy: true\n' +
+                '3. Restart SillyTavern'
+            );
+        }
+        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
+        throw e2;
     }
 }
 
