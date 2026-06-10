@@ -707,6 +707,10 @@ var _updatingPopout = false;
 
 async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
+    if (typeof getChatId !== 'function') {
+        console.error('[NE-VAULT] updateVaultViewerPopout called with non-function getChatId (type=' + typeof getChatId + ')', getChatId);
+        return;
+    }
     console.log('[NE-VAULT] updateVaultViewerPopout start ts=' + Date.now());
     _updatingPopout = true;
     var loading = byId('narrative_vault_loading');
@@ -722,11 +726,27 @@ async function updateVaultViewerPopout(getChatId) {
             warnDiv.style.display = 'none';
         }
     }
-    try {
-        var vault = await read(getChatId());
-        var c = vault.content || {};
-        lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
 
+    function _logSection(name, e) {
+        console.error('[NE-VAULT] Section [' + name + '] failed:', e);
+        console.error('[NE-VAULT] Stack:', e.stack);
+    }
+
+    var vault, c;
+    try {
+        vault = await read(getChatId());
+        c = vault.content || {};
+        lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
+    } catch (e) {
+        _logSection('read-vault', e);
+        if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
+        if (loading) loading.style.display = 'none';
+        _updatingPopout = false;
+        return;
+    }
+
+    // ── Section A: Header (version + API status) ──
+    try {
         var verEl = byId('narrative_vault_panel_version');
         if (verEl) {
             var verText = t('Version:') + ' ' + (vault.version || 0);
@@ -749,18 +769,20 @@ async function updateVaultViewerPopout(getChatId) {
                 }
             } catch (e) { apiStatus.textContent = ''; }
         }
+    } catch (e) { _logSection('header', e); }
 
-        var panelBody = verEl ? verEl.parentElement : null;
-        if (!panelBody) return;
+    var panelBody = verEl ? verEl.parentElement : null;
+    if (!panelBody) { if (loading) loading.style.display = 'none'; _updatingPopout = false; return; }
 
-        // 移除旧区块
-        qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
-        qsa('.narrative_opening_block').forEach(function (el) { el.remove(); });
-        qsa('.narrative_faction_block').forEach(function (el) { el.remove(); });
-        qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
-        qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
+    // 移除旧区块
+    qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
+    qsa('.narrative_opening_block').forEach(function (el) { el.remove(); });
+    qsa('.narrative_faction_block').forEach(function (el) { el.remove(); });
+    qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
+    qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
-        // State 区块 → #ne_state_block_container
+    // ── Section B: State block ──
+    try {
         var stateContainer = byId('ne_state_block_container');
         if (stateContainer) {
             var stateHtml = '';
@@ -787,53 +809,73 @@ async function updateVaultViewerPopout(getChatId) {
                 stateContainer.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No state data') + ')</div>';
             }
         }
+    } catch (e) { _logSection('state-block', e); }
 
-        // Character block → #ne_character_block_container
+    // ── Section C: Character block ──
+    try {
         var charContainer = byId('ne_character_block_container');
         if (charContainer && isStateSchemaEnabled()) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             charContainer.innerHTML = charHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No character data') + ')</div>';
         }
+    } catch (e) { _logSection('char-block', e); }
 
-        // Faction block → #ne_faction_block_container
+    // ── Section D: Faction block ──
+    try {
         var factionContainer = byId('ne_faction_block_container');
         if (factionContainer && isStateSchemaEnabled()) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
             factionContainer.innerHTML = factionHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No faction data') + ')</div>';
         }
+    } catch (e) { _logSection('faction-block', e); }
 
-        // Quest block → #ne_quest_block_container
+    // ── Section E: Quest block ──
+    try {
         var questContainer = byId('ne_quest_block_container');
         if (questContainer && isStateSchemaEnabled()) {
             var questHtml = renderQuestPanelHTML(c.state || {});
             questContainer.innerHTML = questHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No quest data') + ')</div>';
         }
+    } catch (e) { _logSection('quest-block', e); }
 
-        var stmIndexMap = {};
-        (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
-        (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
+    // ── Section F: STM index + self-heal ──
+    var stmIndexMap = {};
+    try {
+        var stmEntries = Array.isArray(c.stm_entries) ? c.stm_entries : [];
+        var unconsolidatedRaw = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
+        stmEntries.forEach(function (s) { stmIndexMap[s.id] = s; });
+        unconsolidatedRaw.forEach(function (s) { stmIndexMap[s.id] = s; });
 
-        // Self-heal
-        var misplacedEntries = (c.unconsolidated_stm || []).filter(function (e) { return e.parent_ltm; });
+        var misplacedEntries = unconsolidatedRaw.filter(function (e) { return e.parent_ltm; });
         if (misplacedEntries.length > 0) {
             console.log('[NE] Vault panel: moving ' + misplacedEntries.length + ' consolidated STM entries from unconsolidated_stm to stm_entries');
-            c.stm_entries = (c.stm_entries || []).concat(misplacedEntries);
-            c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
+            c.stm_entries = stmEntries.concat(misplacedEntries);
+            c.unconsolidated_stm = unconsolidatedRaw.filter(function (e) { return !e.parent_ltm; });
             await write(getChatId(), vault);
             stmIndexMap = {};
-            (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
-            (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
+            var stmEntries2 = Array.isArray(c.stm_entries) ? c.stm_entries : [];
+            var unconsolidatedRaw2 = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
+            stmEntries2.forEach(function (s) { stmIndexMap[s.id] = s; });
+            unconsolidatedRaw2.forEach(function (s) { stmIndexMap[s.id] = s; });
         }
+    } catch (e) { _logSection('stm-index+selfheal', e); }
 
-        var unconsolidatedSTM = c.unconsolidated_stm || [];
-        var ltmCount = (c.ltm_entries || []).length;
-        var stmCount = unconsolidatedSTM.length;
+    // ── Section G: Memory table rendering ──
+    var unconsolidatedSTM = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
+    var ltmEntries = Array.isArray(c.ltm_entries) ? c.ltm_entries : [];
+    var ltmCount = ltmEntries.length;
+    var stmCount = unconsolidatedSTM.length;
 
-        renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
+    try {
+        renderMemoryTable('#narrative_vault_panel_ltm_body', ltmEntries, 'ltm', stmIndexMap);
+    } catch (e) { _logSection('render-ltm-table', e); }
+    try {
         renderMemoryTable('#narrative_vault_panel_stm_body', unconsolidatedSTM, 'stm');
+    } catch (e) { _logSection('render-stm-table', e); }
 
-        // Update counts
+    // ── Section H: Counts + quick index ──
+    try {
         var stmCountEl = byId('ne-stm-count');
         if (stmCountEl) stmCountEl.textContent = '\u00B7 ' + stmCount + ' ' + t('entries');
         var ltmCountEl = byId('ne-ltm-count');
@@ -853,11 +895,12 @@ async function updateVaultViewerPopout(getChatId) {
         var factionCountEl = byId('ne-faction-count');
         if (factionCountEl) factionCountEl.textContent = '\u00B7 ' + factionCount;
 
-        // Update quick index
-        var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
+        var chatId = getChatId();
         renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, c.state && Object.keys(c.state).length > 0, chatId);
+    } catch (e) { _logSection('counts+quickindex', e); }
 
-        // State inline edit handlers
+    // ── Section I: Event handlers ──
+    try {
         qsa('.ne-inline-state-edit-btn').forEach(function(btn) {
             btn.onclick = function() {
                 qs('.ne-inline-state-view').classList.add('hidden');
@@ -882,7 +925,6 @@ async function updateVaultViewerPopout(getChatId) {
             };
         });
 
-        // Clear state
         qsa('.narrative_clear_state_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 try {
@@ -896,13 +938,10 @@ async function updateVaultViewerPopout(getChatId) {
                 }
             };
         });
-    } catch (e) {
-        console.error('[NE] updateVaultViewerPopout error:', e);
-        if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
-    } finally {
-        if (loading) loading.style.display = 'none';
-        _updatingPopout = false;
-    }
+    } catch (e) { _logSection('event-handlers', e); }
+
+    if (loading) loading.style.display = 'none';
+    _updatingPopout = false;
 }
 
 /* ──────── 表格渲染 ──────── */
