@@ -119,10 +119,12 @@ export async function testSecondaryApiConnection(config) {
             { role: 'user', content: 'ping' }
         ], { timeout: 10, temperature: 0, max_tokens: 16 });
         if (!result.content || result.content.trim().length === 0) {
-            return { success: false, error: 'API returned empty response (model may not exist or may reject requests)' };
+            console.warn('[NE] testSecondaryApiConnection — raw response:', JSON.stringify(result._raw).substring(0, 500));
+            return { success: false, error: 'API returned empty response. Check browser console (F12) for raw response data.' };
         }
         return { success: true, model: config.model || 'connected' };
     } catch (e) {
+        console.warn('[NE] testSecondaryApiConnection — error:', e.message);
         return { success: false, error: e.message || 'Connection failed' };
     }
 }
@@ -130,6 +132,10 @@ export async function testSecondaryApiConnection(config) {
 export async function sendSecondaryTestMessage(config) {
     if (!config || !config.url) throw new Error('No URL configured');
     var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 32 });
+    if (!result.content || result.content.trim().length === 0) {
+        console.warn('[NE] sendSecondaryTestMessage — raw response:', JSON.stringify(result._raw).substring(0, 500));
+        throw new Error('API returned empty response. Check browser console (F12) for raw response data.');
+    }
     return result.content;
 }
 
@@ -160,13 +166,13 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        var content = data.choices?.[0]?.message?.content || data.content || '';
+        var content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.content || '';
         var usage = data.choices?.[0]?.usage || data.usage || null;
         // Diagnostic: log response structure when content is unexpectedly empty
         if (!content) {
-            console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', finishReason=' + (data.choices?.[0]?.finish_reason || 'none') + ', usage=' + JSON.stringify(usage || {}));
+            console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
         }
-        return { content: content, usage: usage };
+        return { content: content, usage: usage, _raw: data };
     } finally {
         clearTimeout(timeout);
     }
