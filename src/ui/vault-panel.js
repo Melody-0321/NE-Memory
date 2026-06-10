@@ -71,7 +71,7 @@ function injectBottomDrawerCSS() {
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = '.ne-vault-bottom-overlay{' +
-        'position:absolute;left:0;right:0;z-index:35;display:flex;flex-direction:column;' +
+        'position:absolute;left:0;right:0;display:flex;flex-direction:column;' +
         'transform:translateY(100%);transition:transform .35s cubic-bezier(.4,0,.2,1);overflow:hidden;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;pointer-events:none;}' +
@@ -1839,11 +1839,11 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div></div>';
 
-        var sheld = byId('sheld');
-        if (sheld) {
-            sheld.insertAdjacentHTML('beforeend', drawerHtml);
+        var chat = byId('chat');
+        if (chat) {
+            chat.insertAdjacentHTML('afterend', drawerHtml);
         } else {
-            console.error('[NE] #sheld not found');
+            console.error('[NE] #chat not found');
             return;
         }
 
