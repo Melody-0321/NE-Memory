@@ -11,7 +11,6 @@ import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, formatEntityChainHeaders } from '../vault/schema.js';
-import { renderConfigDialog } from './config-dialog.js';
 import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
@@ -87,7 +86,50 @@ function injectBottomDrawerCSS() {
         '.ne-memory-btn{cursor:pointer;border:none;background:transparent;color:var(--grey-50,#888);' +
         'font-size:1.1em;padding:4px 6px;border-radius:4px;transition:color .15s,background .15s;line-height:1;}' +
         '.ne-memory-btn:hover{color:var(--text,#ddd);background:var(--black30a);}' +
-        '.ne-vault-pin-row{display:flex;align-items:center;padding:0 0 8px;min-height:24px;}';
+        '.ne-vault-pin-row{display:flex;align-items:center;padding:0 0 8px;min-height:24px;}' +
+        '.ne-vault-tab-bar{display:flex;gap:2px;padding:0 12px 6px;border-bottom:1px solid var(--SmartThemeBorderColor);margin-bottom:4px;}' +
+        '.ne-vault-tab{flex:1;text-align:center;padding:8px 0;cursor:pointer;font-size:0.9em;color:var(--grey-70);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;user-select:none;}' +
+        '.ne-vault-tab:hover{color:var(--text,#ddd);}' +
+        '.ne-vault-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor);font-weight:bold;}' +
+        '.ne-vault-tab-content{display:none;}' +
+        '.ne-vault-tab-content.active{display:block;}' +
+        '.ne-quick-index{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px;padding:4px 12px;margin-bottom:6px;background:var(--SmartThemeBlurTintColor);border-radius:0 0 6px 6px;}' +
+        '.ne-index-item{font-size:0.78em;padding:2px 8px;cursor:pointer;border-radius:4px;background:var(--black30a);color:var(--grey-70);white-space:nowrap;transition:background .15s,color .15s;}' +
+        '.ne-index-item:hover{background:var(--black50a);color:var(--text,#ddd);}' +
+        '.ne-index-item em{font-style:normal;font-weight:bold;color:var(--grey-50);margin-left:2px;}' +
+        '.ne-accordion{margin-bottom:4px;}' +
+        '.ne-accordion-header{display:flex;align-items:center;padding:8px 12px;cursor:pointer;user-select:none;background:var(--black30a);border-radius:6px;font-weight:bold;font-size:0.95em;transition:background .15s;}' +
+        '.ne-accordion-header:hover{background:var(--black50a);}' +
+        '.ne-accordion-chevron{margin-right:8px;font-size:0.7em;transition:transform .2s;color:var(--grey-50);display:inline-block;}' +
+        '.ne-accordion.open>.ne-accordion-header .ne-accordion-chevron{transform:rotate(90deg);}' +
+        '.ne-accordion-body{display:none;padding:4px 0 4px 12px;}' +
+        '.ne-accordion.open>.ne-accordion-body{display:block;}' +
+        '.ne-accordion-body .ne-accordion-header{background:transparent;font-weight:normal;font-size:0.9em;padding:6px 8px;border-left:3px solid transparent;border-radius:0;}' +
+        '.ne-accordion-body .ne-accordion.open>.ne-accordion-header{border-left-color:var(--SmartThemeBorderColor);}' +
+        '.ne-accordion-highlight{box-shadow:0 0 0 2px var(--SmartThemeBorderColor)!important;}' +
+        '.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}' +
+        '.ne-inline-edit-btn:hover{opacity:1;}' +
+        '.ne-inline-row td{padding:2px 4px!important;}' +
+        '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;}' +
+        '.ne-inline-save,.ne-inline-cancel{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
+        '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
+        '.ne-inline-cancel{background:transparent;color:var(--grey-50);border:1px solid var(--grey-50);}' +
+        '.ne-settings-section{margin-bottom:8px;}' +
+        '.ne-settings-section .ne-accordion-body{padding:8px 12px;}' +
+        '.ne-settings-section label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
+        '.ne-settings-section input[type=text],.ne-settings-section input[type=password],.ne-settings-section input[type=number]{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;}' +
+        '.ne-settings-section textarea{width:100%;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;}' +
+        '.ne-settings-section input[type=range]{width:100%;margin:4px 0;}' +
+        '.ne-settings-section .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
+        '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
+        '.ne-settings-save-btn:hover{background:var(--black70a);}' +
+        '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
+        '.ne-inline-state-edit-btn{margin-left:6px;font-size:0.75em;cursor:pointer;opacity:0.5;transition:opacity .15s;}' +
+        '.ne-inline-state-edit-btn:hover{opacity:1;}' +
+        '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
+        '.ne-inline-state-edit-area.active{display:block;}' +
+        '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;}' +
+        '.ne-inline-state-view.hidden{display:none;}';
     pdHead().appendChild(style);
 }
 
@@ -95,6 +137,124 @@ var vaultLLMLog = [];
 var lastVaultStateJson = '{}';
 
 /* ──────── 底部抽屉辅助函数 ──────── */
+
+var _currentCollapseState = {};
+var _currentChatIdForCollapse = null;
+
+function saveCollapseState(chatId) {
+    var state = {};
+    qsa('#tab-memory .ne-accordion').forEach(function(acc) {
+        if (acc.id) state[acc.id] = acc.classList.contains('open');
+    });
+    try { var k = 'ne_collapse_' + (chatId || _currentChatIdForCollapse || 'global');
+        if (chatId || _currentChatIdForCollapse) localStorage.setItem(k, JSON.stringify(state)); 
+    } catch(e) {}
+}
+
+function loadCollapseState(chatId) {
+    try {
+        var k = 'ne_collapse_' + (chatId || 'global');
+        var raw = localStorage.getItem(k);
+        return raw ? JSON.parse(raw) : null;
+    } catch(e) { return null; }
+}
+
+function navigateToAccordion(accId, chatId) {
+    var target = byId(accId);
+    if (!target) return;
+    var parent = target.parentElement;
+    while (parent) {
+        if (parent.classList.contains('ne-accordion') && !parent.classList.contains('open')) {
+            parent.classList.add('open');
+        }
+        parent = parent.parentElement;
+    }
+    target.classList.add('open');
+    saveCollapseState(chatId);
+    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    target.classList.add('ne-accordion-highlight');
+    setTimeout(function() { target.classList.remove('ne-accordion-highlight'); }, 1500);
+}
+
+function setupAccordionHandlers(chatId) {
+    qsa('#tab-memory .ne-accordion-header').forEach(function(header) {
+        if (header._neAccBound) return;
+        header._neAccBound = true;
+        header.onclick = function() {
+            var acc = header.parentElement;
+            var isOpen = acc.classList.contains('open');
+            var siblings = acc.parentElement.querySelectorAll(':scope > .ne-accordion');
+            siblings.forEach(function(sib) { sib.classList.remove('open'); });
+            if (!isOpen) acc.classList.add('open');
+            saveCollapseState(chatId);
+        };
+    });
+}
+
+function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, hasState, chatId) {
+    var idx = byId('ne_quick_index');
+    if (!idx) return;
+    var html = '';
+    var addItem = function(id, label, count, show) {
+        if (show === undefined) show = count > 0;
+        if (!show) return;
+        html += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
+    };
+    addItem('ne-acc-stm', 'STM', stmCount, true);
+    addItem('ne-acc-ltm', 'LTM', ltmCount, true);
+    addItem('ne-acc-global', '全局', null, hasState);
+    addItem('ne-acc-characters', '角色', charCount, true);
+    addItem('ne-acc-quests', '任务', questCount, true);
+    addItem('ne-acc-factions', '势力', factionCount, true);
+    idx.innerHTML = html;
+    qsa('.ne-index-item').forEach(function(item) {
+        item.onclick = function() {
+            navigateToAccordion(this.getAttribute('data-target'), chatId);
+        };
+    });
+}
+
+function setupTabSwitching() {
+    qsa('.ne-vault-tab').forEach(function(tab) {
+        tab.onclick = function() {
+            var tabName = this.getAttribute('data-tab');
+            qsa('.ne-vault-tab').forEach(function(t) { t.classList.remove('active'); });
+            this.classList.add('active');
+            qsa('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
+            var content = byId('tab-' + tabName);
+            if (content) content.classList.add('active');
+        };
+    });
+}
+
+var _pendingInlineStorage = null;
+
+function saveSingleEntry(chatId, entryType, entryId, updates) {
+    var vault = _pendingInlineStorage;
+    if (!vault) return;
+    var c = vault.content || {};
+    var list;
+    if (entryType === 'stm') list = c.unconsolidated_stm || [];
+    else list = c.ltm_entries || [];
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].id === entryId) {
+            Object.keys(updates).forEach(function(k) { list[i][k] = updates[k]; });
+            break;
+        }
+    }
+    if (entryType === 'ltm') {
+        var stmList = c.stm_entries || [];
+        for (var j = 0; j < stmList.length; j++) {
+            if (stmList[j].id === entryId) {
+                Object.keys(updates).forEach(function(k) { stmList[j][k] = updates[k]; });
+                break;
+            }
+        }
+    }
+    write(chatId, vault).then(function() {
+        _pendingInlineStorage = null;
+    });
+}
 
 function updateVaultOverlayGeometry() {
     var overlay = byId('ne_vault_bottom_overlay');
@@ -592,75 +752,127 @@ async function updateVaultViewerPopout(getChatId) {
         qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
         qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
-        // State 区块 — 始终显示（Schema OFF 时仅显示 Core 字段）
-        var stmContainer = byId('narrative_vault_panel_stm_container');
-        if (c.state && Object.keys(c.state).length > 0) {
-            var stateHtml;
-            if (isStateSchemaEnabled()) {
-                stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(vault));
-            } else {
-                stateHtml = formatCoreStateSummary(c.state);
-            }
-            if (stmContainer && stateHtml) {
-                stmContainer.insertAdjacentHTML('beforebegin',
-                    '<div class="narrative_state_block" style="margin-bottom:14px;">' +
-                    '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t_narrative('Current State') + '</div>' +
+        // State 区块 → #ne_state_block_container
+        var stateContainer = byId('ne_state_block_container');
+        if (stateContainer) {
+            var stateHtml = '';
+            if (c.state && Object.keys(c.state).length > 0) {
+                if (isStateSchemaEnabled()) {
+                    stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(vault));
+                } else {
+                    stateHtml = formatCoreStateSummary(c.state);
+                }
+                stateContainer.innerHTML =
+                    '<div class="ne-inline-state-view">' +
                     '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;white-space:pre-wrap;font-family:monospace;">' + escapeHtml(stateHtml) + '</div>' +
-                    '<div style="margin-top:4px;display:flex;gap:4px;">' +
+                    '<div style="margin-top:4px;display:flex;gap:4px;align-items:center;">' +
+                    '<span class="ne-inline-state-edit-btn fa-solid fa-pen-to-square" title="' + t('Edit State') + '" style="font-size:0.75em;opacity:0.5;cursor:pointer;"></span>' +
                     '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t_narrative('Clear') + '</button>' +
-                    '</div></div>'
-                );
+                    '</div></div>' +
+                    '<div class="ne-inline-state-edit-area">' +
+                    '<textarea id="ne_state_edit_textarea" style="width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;">' + escapeHtml(JSON.stringify(c.state, null, 2)) + '</textarea>' +
+                    '<div style="margin-top:4px;display:flex;gap:4px;">' +
+                    '<button class="ne-state-edit-save menu_button" style="font-size:0.85em;padding:2px 8px;background:#4caf50;color:#fff;border:none;">' + t('Save') + '</button>' +
+                    '<button class="ne-state-edit-cancel menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Cancel') + '</button>' +
+                    '</div></div>';
+            } else {
+                stateContainer.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No state data') + ')</div>';
             }
         }
 
-        // Character panel — 仅 Schema ON 时显示
-        if (isStateSchemaEnabled()) {
+        // Character block → #ne_character_block_container
+        var charContainer = byId('ne_character_block_container');
+        if (charContainer && isStateSchemaEnabled()) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
-            if (charHtml) {
-                if (stmContainer) {
-                    stmContainer.insertAdjacentHTML('beforebegin', charHtml);
-                }
-            }
+            charContainer.innerHTML = charHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No character data') + ')</div>';
+        }
 
-            // Faction panel
+        // Faction block → #ne_faction_block_container
+        var factionContainer = byId('ne_faction_block_container');
+        if (factionContainer && isStateSchemaEnabled()) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
-            if (factionHtml) {
-                if (stmContainer) {
-                    stmContainer.insertAdjacentHTML('beforebegin', factionHtml);
-                }
-            }
+            factionContainer.innerHTML = factionHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No faction data') + ')</div>';
+        }
 
-            // Quest panel
+        // Quest block → #ne_quest_block_container
+        var questContainer = byId('ne_quest_block_container');
+        if (questContainer && isStateSchemaEnabled()) {
             var questHtml = renderQuestPanelHTML(c.state || {});
-            if (questHtml) {
-                if (stmContainer) {
-                    stmContainer.insertAdjacentHTML('beforebegin', questHtml);
-                }
-            }
+            questContainer.innerHTML = questHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No quest data') + ')</div>';
         }
 
         var stmIndexMap = {};
         (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
 
-        // Self-heal: move entries with parent_ltm from unconsolidated_stm to stm_entries
+        // Self-heal
         var misplacedEntries = (c.unconsolidated_stm || []).filter(function (e) { return e.parent_ltm; });
         if (misplacedEntries.length > 0) {
             console.log('[NE] Vault panel: moving ' + misplacedEntries.length + ' consolidated STM entries from unconsolidated_stm to stm_entries');
             c.stm_entries = (c.stm_entries || []).concat(misplacedEntries);
             c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
-            // Persist the fix
             await write(getChatId(), vault);
-            // Rebuild index after move
             stmIndexMap = {};
             (c.stm_entries || []).forEach(function (s) { stmIndexMap[s.id] = s; });
             (c.unconsolidated_stm || []).forEach(function (s) { stmIndexMap[s.id] = s; });
         }
 
         var unconsolidatedSTM = c.unconsolidated_stm || [];
+        var ltmCount = (c.ltm_entries || []).length;
+        var stmCount = unconsolidatedSTM.length;
+
         renderMemoryTable('#narrative_vault_panel_ltm_body', c.ltm_entries || [], 'ltm', stmIndexMap);
         renderMemoryTable('#narrative_vault_panel_stm_body', unconsolidatedSTM, 'stm');
+
+        // Update counts
+        var stmCountEl = byId('ne-stm-count');
+        if (stmCountEl) stmCountEl.textContent = '\u00B7 ' + stmCount + ' ' + t('entries');
+        var ltmCountEl = byId('ne-ltm-count');
+        if (ltmCountEl) ltmCountEl.textContent = '\u00B7 ' + ltmCount + ' ' + t('entries');
+
+        var chars = (c.state && c.state.characters) ? c.state.characters : {};
+        var charCount = Object.keys(chars).length;
+        var factions = (c.state && c.state.factions) ? c.state.factions : {};
+        var factionCount = Object.keys(factions).length;
+        var quests = (c.state && c.state.quests) ? c.state.quests : {};
+        var questCount = (quests.tasks ? Object.keys(quests.tasks).length : 0) + (quests.goals ? Object.keys(quests.goals).length : 0) + (quests.events ? Object.keys(quests.events).length : 0);
+
+        var charCountEl = byId('ne-char-count');
+        if (charCountEl) charCountEl.textContent = '\u00B7 ' + charCount;
+        var questCountEl = byId('ne-quest-count');
+        if (questCountEl) questCountEl.textContent = '\u00B7 ' + questCount;
+        var factionCountEl = byId('ne-faction-count');
+        if (factionCountEl) factionCountEl.textContent = '\u00B7 ' + factionCount;
+
+        // Update quick index
+        var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
+        renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, c.state && Object.keys(c.state).length > 0, chatId);
+
+        // State inline edit handlers
+        qsa('.ne-inline-state-edit-btn').forEach(function(btn) {
+            btn.onclick = function() {
+                qs('.ne-inline-state-view').classList.add('hidden');
+                qs('.ne-inline-state-edit-area').classList.add('active');
+            };
+        });
+        qsa('.ne-state-edit-cancel').forEach(function(btn) {
+            btn.onclick = function() {
+                qs('.ne-inline-state-edit-area').classList.remove('active');
+                qs('.ne-inline-state-view').classList.remove('hidden');
+            };
+        });
+        qsa('.ne-state-edit-save').forEach(function(btn) {
+            btn.onclick = async function() {
+                try {
+                    var ta = byId('ne_state_edit_textarea');
+                    var json = ta ? JSON.parse(ta.value) : {};
+                    c.state = json;
+                    await write(getChatId(), vault);
+                    await updateVaultViewerPopout(getChatId());
+                } catch(e) { alert(t('Invalid JSON') + ': ' + e.message); }
+            };
+        });
 
         // Clear state
         qsa('.narrative_clear_state_btn').forEach(function (btn) {
@@ -669,7 +881,6 @@ async function updateVaultViewerPopout(getChatId) {
                     if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
                         c.state = {};
                         await write(getChatId(), vault);
-                        console.log('[NE] State cleared, re-rendering vault panel');
                         await updateVaultViewerPopout(getChatId());
                     }
                 } catch (e) {
@@ -870,11 +1081,49 @@ async function saveVaultEdits(getChatId) {
 
 /* ──────── 表格渲染 ──────── */
 
+function toggleInlineEdit(row, entryId, entryType) {
+    if (!row) return;
+    var cells = row.querySelectorAll('td');
+    if (cells.length < 4) return;
+    var origPeriod = (cells[1].textContent || '').trim();
+    var origScene = (cells[2].textContent || '').trim();
+    var origEvent = (cells[3].textContent || '').trim();
+    row.classList.add('ne-inline-row');
+    var savedHTML = row.innerHTML;
+    row._neOrigHTML = savedHTML;
+    row._neOrigPeriod = origPeriod;
+    row._neOrigScene = origScene;
+    row._neOrigEvent = origEvent;
+    row.innerHTML = '<td style="text-align:center;width:2em;">' + cells[0].innerHTML + '</td>' +
+        '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
+        '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
+        '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
+        '<td><button class="ne-inline-save">\u2714</button><button class="ne-inline-cancel">\u2716</button></td>';
+    row.querySelector('.ne-inline-save').onclick = function() {
+        var period = row.querySelector('.ne-inline-period').value;
+        var scene = row.querySelector('.ne-inline-scene').value;
+        var event = row.querySelector('.ne-inline-event').value;
+        saveSingleEntry(null, entryType, entryId, { period: period, scene: scene, event: event });
+        row.innerHTML = row._neOrigHTML;
+        row.classList.remove('ne-inline-row');
+        row.querySelector('td:nth-child(2)').textContent = period;
+        row.querySelector('td:nth-child(3)').textContent = scene;
+        row.querySelector('td:nth-child(4)').innerHTML = escapeHtml(event);
+        row._neOrigPeriod = period;
+        row._neOrigScene = scene;
+        row._neOrigEvent = event;
+    };
+    row.querySelector('.ne-inline-cancel').onclick = function() {
+        row.innerHTML = row._neOrigHTML;
+        row.classList.remove('ne-inline-row');
+    };
+}
+
 export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = qs(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="color:#888;">(empty)</td></tr>'; return; }
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
         var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
         var refs = type === 'ltm'
@@ -882,7 +1131,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -891,10 +1140,10 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                 if (stm) {
                     var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
                     var subRefs = (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
-                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + ' ' + subRefs + '</td></tr>';
+                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + ' ' + subRefs + '</td><td></td></tr>';
                 }
             });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="4"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
         }
     });
     if (type === 'ltm') {
@@ -906,6 +1155,16 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             };
         });
     }
+    // Bind inline edit buttons
+    qsa(tbodyId + ' .ne-inline-edit-btn').forEach(function(btn) {
+        btn.onclick = function() {
+            var row = this.closest('tr');
+            if (!row || row.classList.contains('ne-inline-row')) return;
+            var entryId = this.getAttribute('data-entry-id');
+            var entryType = this.getAttribute('data-entry-type');
+            toggleInlineEdit(row, entryId, entryType);
+        };
+    });
 }
 
 /* ──────── 注入格式化 ──────── */
@@ -1468,6 +1727,7 @@ export async function renderVaultPanel(getChatId) {
     try {
         if (byId('ne_vault_bottom_overlay')) return;
         _currentGetChatId = getChatId;
+        _currentChatIdForCollapse = typeof getChatId === 'function' ? getChatId() : getChatId;
         injectPinCSS();
         injectBottomDrawerCSS();
         var vault = await read(getChatId());
@@ -1478,86 +1738,134 @@ export async function renderVaultPanel(getChatId) {
             '<span class="ne-vault-collapse-indicator"></span>' +
             '<span class="ne-vault-collapse-chevron"><i class="fa-solid fa-chevron-down"></i></span>' +
             '</div>' +
-            '<div class="ne-vault-scroll-area">' +
-            '<div class="ne-vault-pin-row">' +
+            '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
-            '<div id="narrative_vault_pin_div" style="margin-left:auto;" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
+            '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
+            '<span id="narrative_vault_activity" style="font-size:0.8em;color:#888;">\u25CF</span>' +
+            '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
+            '<span id="narrative_secondary_api_status" style="font-size:0.75em;color:#666;cursor:help;" title=""></span>' +
+            '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
             '<label for="narrative_vault_pin">' +
             '<div class="fa-solid unchecked fa-unlock right_menu_button" alt=""></div>' +
             '<div class="fa-solid checked fa-lock right_menu_button" alt=""></div>' +
-            '</label></div></div>' +
-            '<div class="scrollableInner" style="padding:10px;overflow-y:auto;font-size:var(--mainFontSize);">' +
-            '<div style="display:flex;align-items:center;margin-bottom:6px;">' +
-            '<div id="narrative_vault_panel_version" style="font-weight:bold;"></div>' +
-            '<span id="narrative_vault_activity" style="margin-left:6px;font-size:0.8em;color:#888;">\u25CF</span>' +
-            '<span id="narrative_secondary_api_status" style="margin-left:4px;font-size:0.75em;color:#666;cursor:help;" title=""></span></div>' +
+            '</label></div></div></div>' +
+            '<div class="ne-vault-tab-bar">' +
+            '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
+            '</div>' +
+            '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
-            '<div id="narrative_vault_panel_stm_container" style="margin-bottom:10px;">' +
-            '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Short-term Memory (STM)') + '</div>' +
+            '<div id="tab-memory" class="ne-vault-tab-content active">' +
+            '<div id="ne_quick_index" class="ne-quick-index"></div>' +
+            '<div class="ne-accordion open" id="ne-acc-memory-list">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
+            '<div class="ne-accordion-body">' +
+            '<div class="ne-accordion open" id="ne-acc-stm">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event') + '</th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
-            '<div id="narrative_vault_panel_stm_edit" style="display:none;"></div></div>' +
-            '<div>' +
-            '<div style="font-weight:bold;margin:6px 0 3px;border-bottom:1px solid var(--black50a);">' + t('Long-term Memory (LTM)') + '</div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-ltm">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Long-term Memory (LTM)') + ' <span id="ne-ltm-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
-            '<div id="narrative_vault_panel_ltm_edit" style="display:none;"></div></div>' +
-            '<div style="margin-top:8px;display:flex;gap:4px;white-space:nowrap;">' +
-            '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Refresh') + '</button>' +
-            '<button id="narrative_vault_panel_edit_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Edit') + '</button>' +
-            '<button id="narrative_vault_panel_save_btn" class="menu_button" style="display:none;font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Save') + '</button>' +
-            '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
-            '<button id="narrative_vault_process_history" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;margin-left:4px;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
+            '</div></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion open" id="ne-acc-state-board">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('State Board') + '</div>' +
+            '<div class="ne-accordion-body">' +
+            '<div class="ne-accordion open" id="ne-acc-global">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Global Data') + '</div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_state_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-characters">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_character_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-quests">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_quest_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-factions">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_faction_block_container"></div>' +
+            '</div></div>' +
+            '</div></div>' +
             '</div>' +
-            '<div style="margin-top:4px;display:flex;gap:4px;white-space:nowrap;">' +
+            '<div id="tab-tools" class="ne-vault-tab-content">' +
+            '<div style="padding:4px 12px;">' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' +
+            '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Refresh') + '</button>' +
+            '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
+            '<button id="narrative_vault_process_history" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
+            '</div>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;">' +
             '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export JSON') + '</button>' +
             '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Import JSON') + '</button>' +
             '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Embed vault into chat_metadata so it travels with chat export/backup') + '">' + t('Embed into Chat') + '</button>' +
             '</div>' +
-            '<div id="narrative_vault_llm_log" style="margin-top:10px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
+            '<div id="narrative_vault_llm_log" style="margin-bottom:8px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
             '<div id="narrative_vault_llm_entries" style="display:none;max-height:250px;overflow-y:auto;"></div></div>' +
             '<div id="narrative_vault_tool_call_log" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_tool_call_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('Tool Calling Log') + '</div>' +
             '<div id="narrative_vault_tool_calls" style="display:none;max-height:200px;overflow-y:auto;"></div></div>' +
-            '<div style="margin-top:8px;display:flex;gap:4px;">' +
+            '<div style="margin-top:8px;display:flex;gap:4px;margin-bottom:8px;">' +
             '<button id="narrative_vault_export_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export Logs') + '</button>' +
             '</div>' +
             '<div id="narrative_vault_history_section" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
             '<div id="narrative_vault_history_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('History') + '</div>' +
             '<div id="narrative_vault_history_list" style="display:none;max-height:250px;overflow-y:auto;font-size:0.85em;"></div></div>' +
-            '</div></div></div>';
+            '</div></div>' +
+            '<div id="tab-settings" class="ne-vault-tab-content">' +
+            '<div class="ne-settings-scroll" style="padding:4px 12px;overflow-y:auto;">' +
+            '<div id="ne_settings_content"></div>' +
+            '</div></div>' +
+            '</div></div>';
 
         var sheld = byId('sheld');
         if (sheld) {
             sheld.insertAdjacentHTML('beforeend', drawerHtml);
         } else {
-            console.error('[NE] #sheld not found in document or parent.document');
+            console.error('[NE] #sheld not found');
             return;
         }
 
         renderMemoryButton(getChatId);
         startFormHeightObserver();
+        setupTabSwitching();
 
         var collapseBar = qs('#ne_vault_bottom_overlay .ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
 
+        setupAccordionHandlers(typeof getChatId === 'function' ? getChatId() : getChatId);
+        var savedState = loadCollapseState(typeof getChatId === 'function' ? getChatId() : getChatId);
+        if (savedState) {
+            qsa('#tab-memory .ne-accordion').forEach(function(acc) {
+                if (acc.id && savedState[acc.id] === true) acc.classList.add('open');
+                else if (acc.id && savedState[acc.id] === false) acc.classList.remove('open');
+            });
+        }
+
         var ref = byId('narrative_vault_panel_refresh');
-        var edt = byId('narrative_vault_panel_edit_btn');
-        var sav = byId('narrative_vault_panel_save_btn');
         if (ref) ref.onclick = function () {
             setVaultActivity(true);
             updateVaultViewerPopout(getChatId).finally(function () { setVaultActivity(false); });
         };
-        if (edt) edt.onclick = function () { toggleVaultEditMode(getChatId); };
-        if (sav) sav.onclick = function () { saveVaultEdits(getChatId); };
 
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
@@ -1879,7 +2187,7 @@ export async function renderVaultPanel(getChatId) {
         };
 
         freezeIframeHeight();
-        renderConfigDialog(getChatId);
+        renderSettingsTab();
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
@@ -1970,4 +2278,123 @@ async function renderHistory(getChatId) {
     } catch (e) {
         container.innerHTML = '<div style="color:#f44336;">' + t('Failed to load history') + '</div>';
     }
+}
+
+/* ──────── 设置面板 ──────── */
+
+function renderSettingsTab() {
+    var container = byId('ne_settings_content');
+    if (!container) return;
+    var settings = {};
+    try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
+    var mc = settings.memoryConfig || {};
+
+    var html = '<div class="ne-settings-section">' +
+        '<div class="ne-accordion open" id="ne-set-basic">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Basic Settings') + '</div>' +
+        '<div class="ne-accordion-body">' +
+        '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
+        '<div class="ne-settings-cascade" id="nes_gm_section"><label><input type="checkbox" id="nes_enable_gm" ' + (settings.gmEnabled ? 'checked' : '') + '> <span>' + t('Enable GM Agent') + '</span></label></div>' +
+        '<div class="ne-settings-cascade" id="nes_memory_section"><label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
+        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
+        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_dynamic" ' + (settings.useDynamicState ? 'checked' : '') + '> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
+        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
+        '<div style="margin-left:1em;"><span>' + t('Memory Budget') + ': <span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + '</span> tok</span>' +
+        '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;"></div></div></div>' +
+        '<label><input type="checkbox" id="nes_enable_ambiguity" ' + (settings.ambiguityLmEnabled ? 'checked' : '') + '> <span>' + t('Ambiguity: LM-assisted resolution') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_retrieval_budget" ' + (settings.retrievalBudgetEnabled ? 'checked' : '') + '> <span>' + t('Enable Retrieval Budget') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_contradiction" ' + (settings.contradictionDetectionEnabled ? 'checked' : '') + '> <span>' + t('Enable Contradiction Detection') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_telemetry" ' + (settings.enableTelemetry ? 'checked' : '') + '> <span>' + t('Enable Telemetry') + '</span></label>' +
+        '<div style="margin:6px 0;"><span>' + t('STM Extraction Batch') + ': <span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></span>' +
+        '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;"></div>' +
+        '<div style="margin:6px 0;"><span>' + t('Max Unconsolidated STM') + ': <span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></span>' +
+        '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;"></div>' +
+        '</div></div></div>' +
+        '<div class="ne-settings-section">' +
+        '<div class="ne-accordion open" id="ne-set-api">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
+        '<div class="ne-accordion-body">';
+
+    var secApi = {};
+    try { var rawApi = localStorage.getItem('ne_secondary_api'); if (rawApi) secApi = JSON.parse(rawApi); } catch (e) {}
+
+    html += '<label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="http://127.0.0.1:8000/llm/chat" value="' + escapeHtml(secApi.url || '') + '">' +
+        '<label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '">' +
+        '<label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '">' +
+        '</div></div></div>' +
+        '<div class="ne-settings-section">' +
+        '<div class="ne-accordion" id="ne-set-memory">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Processing') + '</div>' +
+        '<div class="ne-accordion-body">' +
+        '<div style="margin:4px 0;"><span>' + t('Temperature') + ': <span class="range-val" id="nes_temp_val">' + ((mc.temperature || 0.2)).toFixed(1) + '</span></span>' +
+        '<input type="range" id="nes_memory_temperature" min="0" max="1" step="0.1" value="' + (mc.temperature || 0.2) + '" style="width:100%;"></div>' +
+        '<label>' + t('STM Max Output Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '">' +
+        '<label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '">' +
+        '<label>' + t('LTM Max Output Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '">' +
+        '<label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '">' +
+        '</div></div></div>' +
+        '<div class="ne-settings-section">' +
+        '<div class="ne-accordion" id="ne-set-schema">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
+        '<div class="ne-accordion-body">' +
+        '<label>' + t('State Schema') + ' (Global)</label><textarea id="nes_state_schema" rows="6">' + escapeHtml(settings.stateSchema ? JSON.stringify(settings.stateSchema, null, 2) : '') + '</textarea>' +
+        '<label>' + t('Character Schema') + '</label><textarea id="nes_character_schema" rows="6">' + escapeHtml(settings.characterSchema ? JSON.stringify(settings.characterSchema, null, 2) : '') + '</textarea>' +
+        '<label><input type="checkbox" id="nes_enable_quests" ' + (settings.enableQuests ? 'checked' : '') + '> <span>' + t('Enable Quests Block') + '</span></label>' +
+        '</div></div></div>' +
+        '<button id="nes_save_btn" class="ne-settings-save-btn">' + t('Save Settings') + '</button>';
+
+    container.innerHTML = html;
+
+    byId('nes_save_btn').onclick = function () { saveSettingsTab(); };
+    byId('nes_memory_temperature').oninput = function () { byId('nes_temp_val').textContent = Number(byId('nes_memory_temperature').value).toFixed(1); };
+    byId('nes_memory_budget').oninput = function () { byId('nes_budget_val').textContent = byId('nes_memory_budget').value; };
+    byId('nes_stm_batch').oninput = function () { byId('nes_stm_batch_val').textContent = byId('nes_stm_batch').value; };
+    byId('nes_stm_max_unconsolidated').oninput = function () { byId('nes_stm_unconsolidated_val').textContent = byId('nes_stm_max_unconsolidated').value; };
+}
+
+function saveSettingsTab() {
+    var settings = {
+        enabled: byId('nes_enable_engine').checked,
+        gmEnabled: byId('nes_enable_gm').checked,
+        memoryEnabled: byId('nes_enable_memory').checked,
+        enableTelemetry: byId('nes_enable_telemetry').checked,
+        enableQuests: byId('nes_enable_quests').checked,
+        enableStateSchema: byId('nes_enable_state_schema').checked,
+        useDynamicState: byId('nes_enable_dynamic').checked,
+        retrievalEnabled: byId('nes_enable_retrieval').checked,
+        ambiguityLmEnabled: byId('nes_enable_ambiguity').checked,
+        retrievalBudgetEnabled: byId('nes_enable_retrieval_budget').checked,
+        contradictionDetectionEnabled: byId('nes_enable_contradiction').checked,
+        memoryBudget: Number(byId('nes_memory_budget').value),
+        stmBatch: Number(byId('nes_stm_batch').value),
+        stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
+        memoryConfig: {
+            temperature: Number(byId('nes_memory_temperature').value),
+            stm_max_tokens: Number(byId('nes_stm_max_tokens').value),
+            stm_max_chars: Number(byId('nes_stm_max_chars').value),
+            ltm_max_tokens: Number(byId('nes_ltm_max_tokens').value),
+            ltm_max_chars: Number(byId('nes_ltm_max_chars').value)
+        }
+    };
+    var schemaText = byId('nes_state_schema').value.trim();
+    if (schemaText) {
+        try { var parsed = JSON.parse(schemaText); if (typeof parsed === 'object' && parsed !== null) settings.stateSchema = parsed; } catch (e) {}
+    }
+    var charSchemaText = byId('nes_character_schema').value.trim();
+    if (charSchemaText) {
+        try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
+    }
+    localStorage.setItem('ne_settings', JSON.stringify(settings));
+    try {
+        import('../vault/schema.js').then(function(m) {
+            if (m.setDynamicStateMode) m.setDynamicStateMode(settings.useDynamicState || false);
+        });
+    } catch (e) {}
+    var secApi = {
+        url: byId('nes_secondary_url').value.trim(),
+        key: byId('nes_secondary_key').value.trim(),
+        model: byId('nes_secondary_model').value.trim()
+    };
+    localStorage.setItem('ne_secondary_api', JSON.stringify(secApi));
+    console.log('[NE] Settings saved from Settings tab');
 }
