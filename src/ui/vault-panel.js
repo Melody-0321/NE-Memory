@@ -897,6 +897,7 @@ async function updateVaultViewerPopout(getChatId) {
             };
         });
     } catch (e) {
+        console.error('[NE] updateVaultViewerPopout error:', e);
         if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
     } finally {
         if (loading) loading.style.display = 'none';
@@ -2107,6 +2108,7 @@ async function renderHistory(getChatId) {
             };
         });
     } catch (e) {
+        console.error('[NE] renderHistory error:', e);
         container.innerHTML = '<div style="color:#f44336;">' + t('Failed to load history') + '</div>';
     }
 }
