@@ -2123,10 +2123,9 @@ function renderSettingsTab() {
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
         '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_gm" ' + (settings.gmEnabled ? 'checked' : '') + '> <span>' + t('Enable GM Agent') + '</span></label></div>' +
         '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
         '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
-        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_dynamic" ' + (settings.useDynamicState ? 'checked' : '') + '> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
         '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label></div>' +
         '</div></div>' +
         '<div style="margin:8px 0;">' +
@@ -2194,12 +2193,11 @@ function renderSettingsTab() {
 function saveSettingsTab() {
     var settings = {
         enabled: byId('nes_enable_engine').checked,
-        gmEnabled: byId('nes_enable_gm').checked,
         memoryEnabled: byId('nes_enable_memory').checked,
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableQuests: byId('nes_enable_quests') ? byId('nes_enable_quests').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
-        useDynamicState: byId('nes_enable_dynamic').checked,
+        useDynamicState: false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
