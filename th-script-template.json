@@ -3,8 +3,8 @@
   "enabled": false,
   "name": "NE Memory Engine",
   "id": "ne_memory_engine",
-  "content": "import('https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@main/dist/index.js').catch(e => console.error('[NE] Import failed:', e))",
-  "info": "纯前端记忆管理引擎 v0.5 — Smart Push 智能注入 + recall_memory 语义检索 + BM25 预过滤 + 状态Schema系统。增量维护，O(1) 成本，事件无损回溯。",
+  "content": "import('https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@v1.1.0/dist/index.js').catch(e => console.error('[NE] Import failed:', e))",
+  "info": "纯前端记忆管理引擎 v1.1.0 — 副API自动连接 | Connect/Test Message | 改动即保存 | reasoning模型适配 | Smart Push智能注入 + recall_memory语义检索 + BM25预过滤 + 状态Schema系统。",
   "button": {
     "enabled": false,
     "buttons": []
