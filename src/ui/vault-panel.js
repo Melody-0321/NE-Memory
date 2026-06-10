@@ -877,7 +877,7 @@ async function updateVaultViewerPopout(getChatId) {
                     var json = ta ? JSON.parse(ta.value) : {};
                     c.state = json;
                     await write(getChatId(), vault);
-                    await updateVaultViewerPopout(getChatId());
+                    await updateVaultViewerPopout(getChatId);
                 } catch(e) { alert(t('Invalid JSON') + ': ' + e.message); }
             };
         });
@@ -889,7 +889,7 @@ async function updateVaultViewerPopout(getChatId) {
                     if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
                         c.state = {};
                         await write(getChatId(), vault);
-                        await updateVaultViewerPopout(getChatId());
+                        await updateVaultViewerPopout(getChatId);
                     }
                 } catch (e) {
                     console.warn('[NE] Clear state failed:', e);
@@ -1713,7 +1713,7 @@ export async function renderVaultPanel(getChatId) {
                 try {
                     setVaultActivity(true);
                     await executeConsolidation(getChatId());
-                    await updateVaultViewerPopout(getChatId());
+                    await updateVaultViewerPopout(getChatId);
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
                     alert(t('Consolidation failed') + ': ' + e.message);
@@ -1793,7 +1793,7 @@ export async function renderVaultPanel(getChatId) {
                 } finally {
                     processHistoryBtn.textContent = prevText;
                     processHistoryBtn.disabled = false;
-                    updateVaultViewerPopout(getChatId());
+                    updateVaultViewerPopout(getChatId);
                 }
             };
         }
@@ -1837,7 +1837,7 @@ export async function renderVaultPanel(getChatId) {
                             return;
                         }
                         await write(getChatId(), vault);
-                        updateVaultViewerPopout(getChatId());
+                        updateVaultViewerPopout(getChatId);
                     } catch (e) {
                         console.error('[NE] Import failed:', e);
                         alert(t('Import JSON') + ' failed: ' + e.message);
@@ -2094,7 +2094,7 @@ async function renderHistory(getChatId) {
                 var ver = parseInt(btn.getAttribute('data-ver'));
                 if (confirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
                     await restoreSnapshot(getChatId(), ver);
-                    updateVaultViewerPopout(getChatId());
+                    updateVaultViewerPopout(getChatId);
                 }
             };
         });
