@@ -519,13 +519,19 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     var itemsText = windowItems.map(function(item, i) {
         var idx = position + i;
         var role = item.role || (item.is_user ? 'user' : 'assistant');
-        return '[' + idx + '] ' + role + ': ' + (item.content || item.mes || '');
+        var name = item.name ? item.name + ': ' : '';
+        return '[' + idx + '] ' + role + ': ' + name + (item.content || item.mes || '');
     }).join('\n');
 
     // 当前状态摘要
     var currentStateSnapshot = '';
     if (content.story_time || content.story_scene || content.story_date) {
         currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    }
+    var state = content.state || {};
+    var present = state.present_characters;
+    if (present) {
+        currentStateSnapshot += '活跃角色: ' + present + '\n';
     }
 
     // Partial 上下文
