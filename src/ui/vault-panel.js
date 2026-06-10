@@ -11,7 +11,7 @@ import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, formatEntityChainHeaders } from '../vault/schema.js';
-import { telemetryBuffer, recordTelemetry, callMemoryRetrieval } from '../api/llm.js';
+import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, testSecondaryApiConnection, sendSecondaryTestMessage } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
 import { extractEntityNames, lookupEntityChains } from '../engine/retrieval.js';
@@ -138,6 +138,11 @@ function injectBottomDrawerCSS() {
         '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
         '.ne-settings-toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;margin:4px 0 6px;}' +
         '.ne-settings-toggle-grid label{padding:3px 0 !important;font-size:0.85em !important;}' +
+        '.ne-api-status{display:flex;align-items:center;gap:6px;margin:4px 0;font-size:0.85em;}' +
+        '.ne-api-dot{width:10px;height:10px;border-radius:50%;display:inline-block;background:#cc3333;}' +
+        '.ne-api-dot.ok{background:#4caf50;}' +
+        '.ne-api-btn{padding:4px 10px;margin:4px 4px 0 0;cursor:pointer;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--SmartThemeBodyColor);font-size:0.8em;}' +
+        '.ne-api-btn:disabled{opacity:0.4;cursor:not-allowed;}' +
         '.ne-settings-section-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
         '.ne-settings-section-card .ne-settings-section-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;display:flex;align-items:center;gap:4px;}' +
         '.ne-settings-section-card .ne-accordion-body{padding:4px 0 0 0;}' +
@@ -2134,14 +2139,14 @@ function renderSettingsTab() {
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Extraction Batch') + '</span><span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></div>' +
         '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature (rec. 0.3)') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
         '</div></div>' +
@@ -2152,7 +2157,10 @@ function renderSettingsTab() {
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="http://127.0.0.1:8000/llm/chat" value="' + escapeHtml(secApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
         '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
-        '</div></div></div>';
+        '</div>' +
+        '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
+        '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
+        '</div></div>';
     container.innerHTML = commonHtml;
 
     // === Advanced Settings ===
@@ -2191,6 +2199,36 @@ function renderSettingsTab() {
     if (sbEl) sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; };
     var suEl = byId('nes_stm_max_unconsolidated');
     if (suEl) suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; };
+    // Secondary API connect / test
+    var connBtn = byId('nes_api_connect');
+    if (connBtn) connBtn.onclick = function () {
+        var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+        localStorage.setItem('ne_secondary_api', JSON.stringify(cfg));
+        var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+        if (dot) dot.className = 'ne-api-dot';
+        if (text) text.textContent = t('Connecting...');
+        if (connBtn) connBtn.disabled = true;
+        testSecondaryApiConnection(cfg).then(function (r) {
+            if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+            if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+            if (connBtn) connBtn.disabled = false;
+            var hdr = byId('narrative_secondary_api_status');
+            if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
+        });
+    };
+    var testBtn = byId('nes_api_test');
+    if (testBtn) testBtn.onclick = function () {
+        var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+        if (!cfg.url) { alert('Please enter an API URL first.'); return; }
+        if (testBtn) testBtn.disabled = true;
+        sendSecondaryTestMessage(cfg).then(function (reply) {
+            alert('OK: ' + (reply || '(empty)'));
+            if (testBtn) testBtn.disabled = false;
+        }).catch(function (e) {
+            alert('Error: ' + (e.message || e));
+            if (testBtn) testBtn.disabled = false;
+        });
+    };
 }
 
 function saveSettingsTab() {

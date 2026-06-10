@@ -4,7 +4,7 @@
  * UI 挂载到 ST 主页面 DOM 的 #extensions_settings 抽屉中。
  */
 import { t_config, t_narrative } from '../i18n.js';
-import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled } from '../api/llm.js';
+import { saveSecondaryApiConfig, telemetryBuffer, recordTelemetry, isTelemetryEnabled, testSecondaryApiConnection, sendSecondaryTestMessage } from '../api/llm.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, POWER_SLOTS_TEMPLATES, setDynamicStateMode } from '../vault/schema.js';
 import { escapeHtml } from './utils.js';
 import { setRetrievalEnabled } from '../settings.js';
@@ -42,7 +42,7 @@ export function renderConfigDialog(getChatId) {
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('STM Extraction Batch') + ': <span id="ne_stm_batch_val">10</span></span>' +
         '<input type="range" id="ne_stm_batch" min="1" max="30" step="1" value="10" style="width:100%;margin-top:2px;"></div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.') + '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('Max Unconsolidated STM') + ': <span id="ne_stm_max_unconsolidated_val">5</span></span>' +
         '<input type="range" id="ne_stm_max_unconsolidated" min="2" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
@@ -54,13 +54,15 @@ export function renderConfigDialog(getChatId) {
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API URL') + '</label><br><input id="ne_secondary_url" class="text_pole" style="width:100%;" placeholder="http://127.0.0.1:8000/llm/chat (local proxy)"></div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('API Key (leave empty for local proxy)') + '</label><br><input id="ne_secondary_key" class="text_pole" style="width:100%;" type="password" placeholder="sk-..."></div>' +
         '<div style="margin:4px 0 8px;"><label style="font-size:0.85em;">' + t_config('Model') + '</label><br><input id="ne_secondary_model" class="text_pole" style="width:100%;" placeholder="deepseek-v4-flash"></div>' +
+        '<div style="margin:4px 0;"><button class="ne-api-btn" id="ne_api_connect" style="margin-right:6px;">' + t_config('Connect') + '</button><button class="ne-api-btn" id="ne_api_test">' + t_config('Test Message') + '</button></div>' +
+        '<div class="ne-api-status" style="display:flex;align-items:center;gap:6px;margin:4px 0;font-size:0.85em;"><span class="ne-api-dot" id="ne_api_dot" style="width:10px;height:10px;border-radius:50%;display:inline-block;background:#cc3333;"></span><span id="ne_api_status_text">' + t_config('Not connected') + '</span></div>' +
         '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_memory" style="display:none;">' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Extraction Temperature') + '</label><br>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Extraction Temperature') + ' <span style="color:var(--grey50);font-size:0.85em;">(推荐0.2)</span></label><br>' +
         '<input id="ne_extraction_temperature" type="range" min="0" max="1" step="0.1" style="width:100%;"><span id="ne_extraction_temperature_val" style="margin-left:6px;">0.2</span></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Retrieval Temperature') + '</label><br>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Retrieval Temperature') + ' <span style="color:var(--grey50);font-size:0.85em;">(推荐0.3)</span></label><br>' +
         '<input id="ne_retrieval_temperature" type="range" min="0" max="1" step="0.1" style="width:100%;"><span id="ne_retrieval_temperature_val" style="margin-left:6px;">0.3</span></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('STM 单次输出上限') + '</label><br><input id="ne_stm_max_tokens" class="text_pole" type="number" style="width:100%;" min="100" max="4096"></div>' +
@@ -148,6 +150,30 @@ function bindConfigEvents(getChatId) {
         var on = $pd('#ne_enable_state_schema').prop('checked');
         $pd('#ne_schema_sub_sections').toggle(on);
         $pd('#ne_dynamic_section').toggle(on);
+    });
+    $pd('#ne_api_connect').on('click', function () {
+        var cfg = { url: $pd('#ne_secondary_url').val().trim(), key: $pd('#ne_secondary_key').val().trim(), model: $pd('#ne_secondary_model').val().trim() };
+        localStorage.setItem('ne_secondary_api', JSON.stringify(cfg));
+        $pd('#ne_api_dot').css('background', '#cc3333');
+        $pd('#ne_api_status_text').text('Connecting...');
+        $pd('#ne_api_connect').prop('disabled', true);
+        testSecondaryApiConnection(cfg).then(function (r) {
+            $pd('#ne_api_dot').css('background', r.success ? '#4caf50' : '#cc3333');
+            $pd('#ne_api_status_text').text(r.success ? ('Connected: ' + cfg.model) : ('Not connected — ' + (r.error || '')));
+            $pd('#ne_api_connect').prop('disabled', false);
+        });
+    });
+    $pd('#ne_api_test').on('click', function () {
+        var cfg = { url: $pd('#ne_secondary_url').val().trim(), key: $pd('#ne_secondary_key').val().trim(), model: $pd('#ne_secondary_model').val().trim() };
+        if (!cfg.url) { alert('Please enter an API URL first.'); return; }
+        $pd('#ne_api_test').prop('disabled', true);
+        sendSecondaryTestMessage(cfg).then(function (reply) {
+            alert('OK: ' + (reply || '(empty)'));
+            $pd('#ne_api_test').prop('disabled', false);
+        }).catch(function (e) {
+            alert('Error: ' + (e.message || e));
+            $pd('#ne_api_test').prop('disabled', false);
+        });
     });
 }
 

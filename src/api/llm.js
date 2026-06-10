@@ -110,6 +110,22 @@ export function saveSecondaryApiConfig(config) {
     localStorage.setItem('ne_secondary_api', JSON.stringify(config));
 }
 
+export async function testSecondaryApiConnection(config) {
+    if (!config || !config.url) return { success: false, error: 'No URL configured' };
+    try {
+        var result = await callCustomAPI(config, [{ role: 'system', content: 'ping' }], { timeout: 8, temperature: 0, max_tokens: 1 });
+        return { success: true, model: config.model || 'connected' };
+    } catch (e) {
+        return { success: false, error: e.message || 'Connection failed' };
+    }
+}
+
+export async function sendSecondaryTestMessage(config) {
+    if (!config || !config.url) throw new Error('No URL configured');
+    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 32 });
+    return result.content;
+}
+
 async function callCustomAPI(config, messages, options) {
     const headers = { 'Content-Type': 'application/json' };
     if (config.key) headers['Authorization'] = 'Bearer ' + config.key;
