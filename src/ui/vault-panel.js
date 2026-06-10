@@ -125,7 +125,20 @@ function injectBottomDrawerCSS() {
         '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
         '.ne-inline-state-edit-area.active{display:block;}' +
         '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;}' +
-        '.ne-inline-state-view.hidden{display:none;}';
+        '.ne-inline-state-view.hidden{display:none;}' +
+        '.ne-tool-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
+        '.ne-tool-card-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;}' +
+        '.ne-btn-warning{background:rgba(255,152,0,.12)!important;border-color:rgba(255,152,0,.3)!important;color:#ff9800!important;}' +
+        '.ne-btn-danger{background:rgba(244,67,54,.12)!important;border-color:rgba(244,67,54,.3)!important;color:#f44336!important;}' +
+        '.ne-injection-preview{font-size:0.82em;color:var(--text);white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black30a);padding:6px 8px;border-radius:4px;font-family:monospace;line-height:1.4;}' +
+        '.ne-injection-meta{font-size:0.75em;color:var(--grey-50);margin-bottom:4px;}' +
+        '.ne-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}' +
+        '.ne-settings-grid>.ne-settings-full{grid-column:1/-1;}' +
+        '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
+        '.ne-settings-section-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
+        '.ne-settings-section-card .ne-settings-section-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;display:flex;align-items:center;gap:4px;}' +
+        '.ne-settings-section-card .ne-accordion-body{padding:4px 0 0 0;}' +
+        '.ne-status-dot{font-size:0.7em;margin-left:4px;}';
     pdHead().appendChild(style);
 }
 
@@ -287,6 +300,8 @@ function createVaultPopout(getChatId) {
         if (chat) chat.style.display = 'none';
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
+        renderInjectionPreview();
+        renderSettingsTab();
     } else {
         overlay.classList.remove('open');
         if (chat) chat.style.display = '';
@@ -1601,32 +1616,47 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div id="tab-tools" class="ne-vault-tab-content">' +
             '<div style="padding:4px 12px;">' +
-            '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:8px;">' +
+            '<div class="ne-tool-card">' +
+            '<div class="ne-tool-card-title">' + t('Operations') + '</div>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
             '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Refresh') + '</button>' +
-            '<button class="narrative_btn_consolidate menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
-            '<button id="narrative_vault_process_history" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
-            '</div>' +
-            '<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px;">' +
+            '<button class="narrative_btn_consolidate ne-btn-warning menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
+            '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
+            '</div></div>' +
+            '<div class="ne-tool-card">' +
+            '<div class="ne-tool-card-title">' + t('Data') + '</div>' +
+            '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
             '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export JSON') + '</button>' +
             '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Import JSON') + '</button>' +
             '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Embed vault into chat_metadata so it travels with chat export/backup') + '">' + t('Embed into Chat') + '</button>' +
-            '</div>' +
-            '<div id="narrative_vault_llm_log" style="margin-bottom:8px;font-size:0.8em;border-top:1px solid var(--black50a);">' +
-            '<div id="narrative_vault_llm_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('LLM Operation Log') + '</div>' +
-            '<div id="narrative_vault_llm_entries" style="display:none;max-height:250px;overflow-y:auto;"></div></div>' +
-            '<div id="narrative_vault_tool_call_log" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
-            '<div id="narrative_vault_tool_call_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('Tool Calling Log') + '</div>' +
-            '<div id="narrative_vault_tool_calls" style="display:none;max-height:200px;overflow-y:auto;"></div></div>' +
-            '<div style="margin-top:8px;display:flex;gap:4px;margin-bottom:8px;">' +
+            '</div></div>' +
+            '<div class="ne-tool-card">' +
+            '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
+            '<div class="ne-accordion open" id="ne-tool-injection">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Injection Preview') + '</div>' +
+            '<div class="ne-accordion-body"><div id="ne_injection_preview_content"></div></div></div>' +
+            '<div class="ne-accordion" id="ne-tool-llm-log">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('LLM Operation Log') + '</div>' +
+            '<div class="ne-accordion-body"><div id="narrative_vault_llm_entries" style="font-size:0.8em;"></div></div></div>' +
+            '<div class="ne-accordion" id="ne-tool-tool-log">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Tool Calling Log') + '</div>' +
+            '<div class="ne-accordion-body"><div id="narrative_vault_tool_calls" style="font-size:0.8em;"></div></div></div>' +
+            '<div class="ne-accordion" id="ne-tool-history">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
+            '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
+            '<div style="margin-top:8px;">' +
             '<button id="narrative_vault_export_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export Logs') + '</button>' +
-            '</div>' +
-            '<div id="narrative_vault_history_section" style="font-size:0.8em;border-top:1px solid var(--black50a);">' +
-            '<div id="narrative_vault_history_toggle" style="font-weight:bold;margin:6px 0 3px;cursor:pointer;color:var(--grey70);">\u25B6 ' + t('History') + '</div>' +
-            '<div id="narrative_vault_history_list" style="display:none;max-height:250px;overflow-y:auto;font-size:0.85em;"></div></div>' +
+            '</div></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-scroll" style="padding:4px 12px;overflow-y:auto;">' +
-            '<div id="ne_settings_content"></div>' +
+            '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
+            '<div class="ne-settings-section-title">\u2B50 ' + t('Common Settings') + '</div>' +
+            '<div id="ne_common_settings"></div></div>' +
+            '<div class="ne-settings-section-card">' +
+            '<div class="ne-settings-section-title">\U0001F52C ' + t('Advanced Settings') + '</div>' +
+            '<div id="ne_advanced_settings"></div></div>' +
+            '<button id="nes_save_btn" class="ne-settings-save-btn">' + t('Save Settings') + '</button>' +
             '</div></div>' +
             '</div></div>';
 
@@ -1662,6 +1692,7 @@ export async function renderVaultPanel(getChatId) {
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
+                if (!confirm(t('Consolidate will convert STM entries into LTM. Continue?'))) return;
                 try {
                     setVaultActivity(true);
                     await executeConsolidation(getChatId());
@@ -1669,15 +1700,14 @@ export async function renderVaultPanel(getChatId) {
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
                     alert(t('Consolidation failed') + ': ' + e.message);
-                } finally {
-                    setVaultActivity(false);
-                }
+                } finally { setVaultActivity(false); }
             };
         }
 
         var processHistoryBtn = byId('narrative_vault_process_history');
         if (processHistoryBtn) {
             processHistoryBtn.onclick = async function () {
+                if (!confirm(t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
                 var chatMessages = [];
                 try {
                     if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
@@ -1829,17 +1859,31 @@ export async function renderVaultPanel(getChatId) {
             if (overlay) overlay.classList.toggle('pinned', checked);
         };
 
-        // LLM log toggle
-        byId('narrative_vault_llm_toggle').onclick = function () {
-            var entries = byId('narrative_vault_llm_entries');
-            if (!entries) return;
-            var h = entries.style.display !== 'none';
-            entries.style.display = h ? 'none' : '';
-            byId('narrative_vault_llm_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('LLM Operation Log');
-            if (!h) renderLLMLog();
-        };
+        // Tools tab accordions — lazy render on first expand
+        var renderedLLMLog = false, renderedToolLog = false, renderedHistory = false;
+        var llmAcc = byId('ne-tool-llm-log');
+        var toolAcc = byId('ne-tool-tool-log');
+        var histAcc = byId('ne-tool-history');
+        if (llmAcc) {
+            llmAcc.querySelector('.ne-accordion-header').onclick = function() {
+                llmAcc.classList.toggle('open');
+                if (llmAcc.classList.contains('open') && !renderedLLMLog) { renderLLMLog(); renderedLLMLog = true; }
+            };
+        }
+        if (toolAcc) {
+            toolAcc.querySelector('.ne-accordion-header').onclick = function() {
+                toolAcc.classList.toggle('open');
+                if (toolAcc.classList.contains('open') && !renderedToolLog) { renderToolCallLog(); renderedToolLog = true; }
+            };
+        }
+        if (histAcc) {
+            histAcc.querySelector('.ne-accordion-header').onclick = function() {
+                histAcc.classList.toggle('open');
+                if (histAcc.classList.contains('open') && !renderedHistory) { renderHistory(getChatId); renderedHistory = true; }
+            };
+        }
 
-        // LLM log entry expand/collapse
+        // LLM log entry & card expand/collapse
         pdAddEventListener('click', function (e) {
             var header = e.target.closest('.ne_log_header');
             if (header) {
@@ -1904,26 +1948,6 @@ export async function renderVaultPanel(getChatId) {
             }
         });
 
-        // Tool call toggle
-        byId('narrative_vault_tool_call_toggle').onclick = function () {
-            var entries = byId('narrative_vault_tool_calls');
-            if (!entries) return;
-            var h = entries.style.display !== 'none';
-            entries.style.display = h ? 'none' : '';
-            byId('narrative_vault_tool_call_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('Tool Calling Log');
-            if (!h) renderToolCallLog();
-        };
-
-        // History toggle
-        byId('narrative_vault_history_toggle').onclick = function () {
-            var list = byId('narrative_vault_history_list');
-            if (!list) return;
-            var h = list.style.display !== 'none';
-            list.style.display = h ? 'none' : '';
-            byId('narrative_vault_history_toggle').textContent = (h ? '\u25B6' : '\u25BC') + ' ' + t('History');
-            if (!h) renderHistory(getChatId);
-        };
-
         // Export logs
         byId('narrative_vault_export_btn').onclick = function () {
             var llmLog = [];
@@ -1983,6 +2007,27 @@ export async function renderVaultPanel(getChatId) {
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
+}
+
+function renderInjectionPreview() {
+    var container = byId('ne_injection_preview_content');
+    if (!container) return;
+    var logs = [];
+    try { logs = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
+    var injection = null;
+    for (var i = logs.length - 1; i >= 0; i--) {
+        if (logs[i].type === 'smartpush_injection') { injection = logs[i]; break; }
+    }
+    if (!injection) {
+        container.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">' + t('No injection recorded yet. Send a message to trigger SmartPush.') + '</div>';
+        return;
+    }
+    var content = (injection.request || '').substring(0, 800);
+    var truncated = injection.request && injection.request.length > 800 ? ' ...(' + t('truncated') + ')' : '';
+    var charCount = content.length;
+    var tokenEst = Math.round(charCount / 3.5);
+    container.innerHTML = '<div class="ne-injection-meta">' + t('Last injection') + ' \u00b7 ' + formatLocalTime(injection.time) + ' \u00b7 ~' + tokenEst + ' tokens' + truncated + '</div>' +
+        '<div class="ne-injection-preview">' + escapeHtml(content) + (truncated ? '<div style="color:var(--grey-50);margin-top:4px;">' + t('Content truncated at 800 characters.') + '</div>' : '') + '</div>';
 }
 
 /* ──────── LLM 日志 ──────── */
@@ -2075,73 +2120,87 @@ async function renderHistory(getChatId) {
 /* ──────── 设置面板 ──────── */
 
 function renderSettingsTab() {
-    var container = byId('ne_settings_content');
+    var container = byId('ne_common_settings');
+    var advContainer = byId('ne_advanced_settings');
     if (!container) return;
     var settings = {};
     try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
     var mc = settings.memoryConfig || {};
-
-    var html = '<div class="ne-settings-section">' +
-        '<div class="ne-accordion open" id="ne-set-basic">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Basic Settings') + '</div>' +
-        '<div class="ne-accordion-body">' +
-        '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
-        '<div class="ne-settings-cascade" id="nes_gm_section"><label><input type="checkbox" id="nes_enable_gm" ' + (settings.gmEnabled ? 'checked' : '') + '> <span>' + t('Enable GM Agent') + '</span></label></div>' +
-        '<div class="ne-settings-cascade" id="nes_memory_section"><label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
-        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
-        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_dynamic" ' + (settings.useDynamicState ? 'checked' : '') + '> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
-        '<div class="ne-settings-cascade"><label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
-        '<div style="margin-left:1em;"><span>' + t('Memory Budget') + ': <span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + '</span> tok</span>' +
-        '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;"></div></div></div>' +
-        '<label><input type="checkbox" id="nes_enable_ambiguity" ' + (settings.ambiguityLmEnabled ? 'checked' : '') + '> <span>' + t('Ambiguity: LM-assisted resolution') + '</span></label>' +
-        '<label><input type="checkbox" id="nes_enable_retrieval_budget" ' + (settings.retrievalBudgetEnabled ? 'checked' : '') + '> <span>' + t('Enable Retrieval Budget') + '</span></label>' +
-        '<label><input type="checkbox" id="nes_enable_contradiction" ' + (settings.contradictionDetectionEnabled ? 'checked' : '') + '> <span>' + t('Enable Contradiction Detection') + '</span></label>' +
-        '<label><input type="checkbox" id="nes_enable_telemetry" ' + (settings.enableTelemetry ? 'checked' : '') + '> <span>' + t('Enable Telemetry') + '</span></label>' +
-        '<div style="margin:6px 0;"><span>' + t('STM Extraction Batch') + ': <span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></span>' +
-        '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;"></div>' +
-        '<div style="margin:6px 0;"><span>' + t('Max Unconsolidated STM') + ': <span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></span>' +
-        '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;"></div>' +
-        '</div></div></div>' +
-        '<div class="ne-settings-section">' +
-        '<div class="ne-accordion open" id="ne-set-api">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
-        '<div class="ne-accordion-body">';
-
     var secApi = {};
     try { var rawApi = localStorage.getItem('ne_secondary_api'); if (rawApi) secApi = JSON.parse(rawApi); } catch (e) {}
+    var statusDot = settings.enabled ? '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>' : '<span class="ne-status-dot" style="color:#666;">\u25CF</span>';
 
-    html += '<label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="http://127.0.0.1:8000/llm/chat" value="' + escapeHtml(secApi.url || '') + '">' +
-        '<label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '">' +
-        '<label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '">' +
-        '</div></div></div>' +
-        '<div class="ne-settings-section">' +
-        '<div class="ne-accordion" id="ne-set-memory">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Processing') + '</div>' +
+    // === Common Settings ===
+    var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<div style="margin:4px 0;"><span>' + t('Temperature') + ': <span class="range-val" id="nes_temp_val">' + ((mc.temperature || 0.2)).toFixed(1) + '</span></span>' +
-        '<input type="range" id="nes_memory_temperature" min="0" max="1" step="0.1" value="' + (mc.temperature || 0.2) + '" style="width:100%;"></div>' +
-        '<label>' + t('STM Max Output Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '">' +
-        '<label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '">' +
-        '<label>' + t('LTM Max Output Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '">' +
-        '<label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '">' +
+        '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_gm" ' + (settings.gmEnabled ? 'checked' : '') + '> <span>' + t('Enable GM Agent') + '</span></label></div>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_dynamic" ' + (settings.useDynamicState ? 'checked' : '') + '> <span>' + t('Use Dynamic Field Discovery') + '</span></label></div>' +
+        '<div class="ne-settings-cascade-card"><label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label></div>' +
+        '</div></div>' +
+        '<div style="margin:8px 0;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:4px 0;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
+        '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Extraction Batch') + '</span><span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></div>' +
+        '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
+        '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Temperature') + '</span><span class="range-val" id="nes_temp_val">' + ((mc.temperature || 0.2)).toFixed(1) + '</span></div>' +
+        '<input type="range" id="nes_memory_temperature" min="0" max="1" step="0.1" value="' + (mc.temperature || 0.2) + '" style="width:100%;">' +
         '</div></div></div>' +
-        '<div class="ne-settings-section">' +
-        '<div class="ne-accordion" id="ne-set-schema">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
+        '<div class="ne-accordion open" id="ne-set-api">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<label>' + t('State Schema') + ' (Global)</label><textarea id="nes_state_schema" rows="6">' + escapeHtml(settings.stateSchema ? JSON.stringify(settings.stateSchema, null, 2) : '') + '</textarea>' +
-        '<label>' + t('Character Schema') + '</label><textarea id="nes_character_schema" rows="6">' + escapeHtml(settings.characterSchema ? JSON.stringify(settings.characterSchema, null, 2) : '') + '</textarea>' +
-        '<label><input type="checkbox" id="nes_enable_quests" ' + (settings.enableQuests ? 'checked' : '') + '> <span>' + t('Enable Quests Block') + '</span></label>' +
-        '</div></div></div>' +
-        '<button id="nes_save_btn" class="ne-settings-save-btn">' + t('Save Settings') + '</button>';
+        '<div class="ne-settings-grid">' +
+        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="http://127.0.0.1:8000/llm/chat" value="' + escapeHtml(secApi.url || '') + '"></div>' +
+        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
+        '</div></div></div>';
+    container.innerHTML = commonHtml;
 
-    container.innerHTML = html;
+    // === Advanced Settings ===
+    if (advContainer) {
+        var advHtml = '<div class="ne-accordion" id="ne-set-memory">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Parameters') + '</div>' +
+            '<div class="ne-accordion-body">' +
+            '<div class="ne-settings-grid">' +
+            '<div><label>' + t('STM Max Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '"></div>' +
+            '<div><label>' + t('LTM Max Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '"></div>' +
+            '<div><label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '"></div>' +
+            '<div><label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '"></div>' +
+            '</div></div></div>' +
+            '<div class="ne-accordion" id="ne-set-schema">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
+            '<div class="ne-accordion-body">' +
+            '<label>' + t('State Schema') + ' (Global)</label><textarea id="nes_state_schema" rows="6">' + escapeHtml(settings.stateSchema ? JSON.stringify(settings.stateSchema, null, 2) : '') + '</textarea>' +
+            '<label>' + t('Character Schema') + '</label><textarea id="nes_character_schema" rows="6">' + escapeHtml(settings.characterSchema ? JSON.stringify(settings.characterSchema, null, 2) : '') + '</textarea>' +
+            '<label><input type="checkbox" id="nes_enable_quests" ' + (settings.enableQuests ? 'checked' : '') + '> <span>' + t('Enable Quests Block') + '</span></label>' +
+            '</div></div>';
+        advContainer.innerHTML = advHtml;
+    }
 
-    byId('nes_save_btn').onclick = function () { saveSettingsTab(); };
-    byId('nes_memory_temperature').oninput = function () { byId('nes_temp_val').textContent = Number(byId('nes_memory_temperature').value).toFixed(1); };
-    byId('nes_memory_budget').oninput = function () { byId('nes_budget_val').textContent = byId('nes_memory_budget').value; };
-    byId('nes_stm_batch').oninput = function () { byId('nes_stm_batch_val').textContent = byId('nes_stm_batch').value; };
-    byId('nes_stm_max_unconsolidated').oninput = function () { byId('nes_stm_unconsolidated_val').textContent = byId('nes_stm_max_unconsolidated').value; };
+    // --- Event bindings ---
+    // Save button
+    var saveBtn = byId('nes_save_btn');
+    if (saveBtn) saveBtn.onclick = function () { saveSettingsTab(); };
+    // Range sliders
+    var tEl = byId('nes_memory_temperature');
+    if (tEl) tEl.oninput = function () { var v = byId('nes_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); };
+    var bEl = byId('nes_memory_budget');
+    if (bEl) bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; };
+    var sbEl = byId('nes_stm_batch');
+    if (sbEl) sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; };
+    var suEl = byId('nes_stm_max_unconsolidated');
+    if (suEl) suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; };
+    // Engine toggle -> status dot
+    var engEl = byId('nes_enable_engine');
+    if (engEl) engEl.onchange = function () {
+        var dot = qs('#ne-set-engine .ne-status-dot');
+        if (dot) { dot.style.color = engEl.checked ? '#4caf50' : '#666'; }
+    };
 }
 
 function saveSettingsTab() {
@@ -2149,14 +2208,11 @@ function saveSettingsTab() {
         enabled: byId('nes_enable_engine').checked,
         gmEnabled: byId('nes_enable_gm').checked,
         memoryEnabled: byId('nes_enable_memory').checked,
-        enableTelemetry: byId('nes_enable_telemetry').checked,
-        enableQuests: byId('nes_enable_quests').checked,
+        enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
+        enableQuests: byId('nes_enable_quests') ? byId('nes_enable_quests').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
         useDynamicState: byId('nes_enable_dynamic').checked,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
-        ambiguityLmEnabled: byId('nes_enable_ambiguity').checked,
-        retrievalBudgetEnabled: byId('nes_enable_retrieval_budget').checked,
-        contradictionDetectionEnabled: byId('nes_enable_contradiction').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
