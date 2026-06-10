@@ -192,71 +192,59 @@ JavaScript 不支持大写 `\U` Unicode 转义，只支持小写 `\u`。`\U0001F
 
 | 属性 | 值 |
 |---|---|
-| **状态** | 🔴 未解决 |
+| **状态** | ✅ 已解决 |
 | **发现** | 2026-06-10 |
-| **解决** | — |
+| **解决** | 2026-06-10 |
 | **严重程度** | **Medium** |
 | **复现步骤** | 1. 点击"处理历史"按钮处理历史消息 2. 或在历史记录 Tab 中恢复某个历史版本快照 |
 | **错误信息** | `加载 Vault 失败: n is not a function` |
-| **错误位置** | [vault-panel.js:L900](src/ui/vault-panel.js#L900) — `updateVaultViewerPopout()` 的 catch 块 |
 
-### 流程图
+### 根本原因
 
+在 [vault-panel.js](src/ui/vault-panel.js) 中，有 **6 处** `updateVaultViewerPopout` 调用写了多余的括号：
+
+```javascript
+// ❌ 错误 — 把 getChatId() 的返回值（字符串）传给了 updateVaultViewerPopout
+updateVaultViewerPopout(getChatId());   // 传入字符串 "abc123"
+
+// ✅ 正确 — 把 getChatId 函数引用本身传入
+updateVaultViewerPopout(getChatId);     // 传入函数引用
 ```
-处理历史 / 恢复快照
-        │
-        ▼
-updateVaultViewerPopout(getChatId)  ← 渲染失败，catch 捕获 "n is not a function"
-        │
-        ▼
-[L900] errDiv.textContent = '加载 Vault 失败: n is not a function'
-```
 
-### 影响范围分析
+`updateVaultViewerPopout` 内部会将参数 `getChatId` 当作函数调用（`read(getChatId())`），如果传入的是字符串而非函数，`"abc123"()` 就会抛出 `TypeError: n is not a function`。
 
-| 流程 | 是否受影响 | 说明 |
+**为什么"正常页面加载"不受影响？** `renderVaultPanel(getChatId)` → `createVaultPopout(getChatId)` → `updateVaultViewerPopout(getChatId)` 这条初始路径写的是 `getChatId` 不带括号，正确传入了函数引用。只有 6 处事件处理器（按钮点击后刷新面板）误写了多余的 `()`。
+
+### 修复
+
+修改了 [vault-panel.js](src/ui/vault-panel.js) 中 **6 处**代码，去掉多余的括号：
+
+| 行号 | 位置 | 修改 |
+|------|------|------|
+| L880 | 主面板——清除状态按钮 | `getChatId()` → `getChatId` |
+| L892 | 主面板——清除状态按钮（备用） | `getChatId()` → `getChatId` |
+| L1716 | 合并按钮 | `getChatId()` → `getChatId` |
+| L1796 | 处理历史按钮 | `getChatId()` → `getChatId` |
+| L1840 | 导入按钮 | `getChatId()` → `getChatId` |
+| L2097 | 历史记录 Tab——恢复快照按钮 | `getChatId()` → `getChatId` |
+
+### 影响范围
+
+| 流程 | 之前 | 修复后 |
 |---|---|---|
-| **处理历史** (Process History) | ❌ 受影响 | `executeIncrementalUpdate` → `executeConsolidation` → `updateVaultViewerPopout` 渲染失败 |
-| **恢复历史快照** | ❌ 受影响 | `restoreSnapshot` → `write` → `updateVaultViewerPopout` 渲染失败 |
-| **正常页面加载** | ✅ 正常 | 初始 `renderVaultPanel` → `updateVaultViewerPopout` 正常工作 |
-| **正常聊天轮次** | ✅ 正常 | 增量更新后的渲染正常（空 vault 或少量条目时不触发） |
-| **ST 生成流程** | ✅ 正常 | `onBeforeGenerate` 中的 prompt 注入走独立路径，不依赖 vault 面板渲染 |
-| **记忆存储** | ✅ 正常 | 处理历史时数据已通过 `saveVaultWithSnapshot` 写入 IndexedDB，渲染失败不影响存储 |
+| **处理历史** (Process History) | ❌ 处理后渲染崩溃 | ✅ 正常 |
+| **恢复历史快照** | ❌ 恢复后渲染崩溃 | ✅ 正常 |
+| **正常页面加载** | ✅ 正常（未受影响） | ✅ 正常 |
+| **正常聊天轮次** | ✅ 正常（未受影响） | ✅ 正常 |
+| **记忆存储** | ✅ 正常（渲染崩溃不影响存储） | ✅ 正常 |
 
-### 诊断困难点
+### 为什么正常页面加载未受影响
 
-项目使用 **Rollup + Terser** 构建，所有函数名被压缩成单字母（`a`, `b`, `n`, ...）：
+`renderVaultPanel` 在 [L1706](src/ui/vault-panel.js#L1706) 写的是正确的 `updateVaultViewerPopout(getChatId)`（无括号）。只有事件处理器内部的 6 处调用误加了 `()`。由于事件处理器在用户点击按钮后才运行，正常加载时不会触发。
 
-- `n` 不是源代码中的变量名，是 terser 在 minification 阶段分配的单字母标识符
-- 原始错误可能来自 `formatStateSummary()`、`renderCharacterPanelHTML()`、`buildDynamicCharacterSchema()` 等任一函数
-- 错误消息中**没有调用栈**（terser 默认 production 模式不保留堆栈映射）
+### commit
 
-### 根因推测
-
-错误仅出现在 vault 包含**大量数据**（处理历史后几百条 STM/LTM + 复杂 state）的渲染路径中。最可能的触发场景：
-
-1. **格式遗漏**：处理历史时 LLM 输出的 STM 条目格式不规范，`postFillSTM` 未覆盖该边缘情况，写入后渲染时某函数收到意外类型
-2. **schema 版本不匹配**：恢复旧快照时 state 结构与当前 schema 不兼容，`formatStateSummary` / `renderCharacterPanelHTML` 中某函数调用非函数值
-3. **terser bug**：极少数情况下 terser 对特定代码模式（如内联函数 + 立即调用）产生错误的变量重命名
-
-### 建议修复方向
-
-1. **保留调用栈**：在 `updateVaultViewerPopout` 的 catch 块中打印完整错误堆栈
-   ```javascript
-   } catch (e) {
-       console.error('[NE] updateVaultViewerPopout error:', e);
-       if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
-   }
-   ```
-   用户下次触发时 F12 Console 会有完整堆栈，可以看到是哪个源函数出问题。
-
-2. **防御性渲染**：核心渲染函数（`renderCharacterCard`, `replace` → `formatStateSummary`）增加入参类型守卫
-
-3. **考虑 sourcemap**：开发/调试阶段保留 sourcemap 映射，但会增大分发体积
-
-### 需用户提供
-
-请在触发此 bug 时打开浏览器 Console (F12)，截图或复制完整的红色错误堆栈信息，以定位准确的源函数。
+`e859b04` — fix: remove extra () from updateVaultViewerPopout(getChatId) calls
 
 ---
 
