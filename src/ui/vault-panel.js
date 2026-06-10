@@ -178,10 +178,7 @@ function setupAccordionHandlers(chatId) {
         header._neAccBound = true;
         header.onclick = function() {
             var acc = header.parentElement;
-            var isOpen = acc.classList.contains('open');
-            var siblings = acc.parentElement.querySelectorAll(':scope > .ne-accordion');
-            siblings.forEach(function(sib) { sib.classList.remove('open'); });
-            if (!isOpen) acc.classList.add('open');
+            acc.classList.toggle('open');
             saveCollapseState(chatId);
         };
     });
