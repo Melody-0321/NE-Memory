@@ -2222,10 +2222,10 @@ function renderSettingsTab() {
         if (!cfg.url) { alert('Please enter an API URL first.'); return; }
         if (testBtn) testBtn.disabled = true;
         sendSecondaryTestMessage(cfg).then(function () {
-            alert(t('API connection successful!'));
+            typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
             if (testBtn) testBtn.disabled = false;
         }).catch(function (e) {
-            alert(t('API connection failed. Check browser console (F12) for details.'));
+            typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
             if (testBtn) testBtn.disabled = false;
         });
     };
