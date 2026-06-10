@@ -106,15 +106,15 @@ function injectBottomDrawerCSS() {
         '.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}' +
         '.ne-inline-edit-btn:hover{opacity:1;}' +
         '.ne-inline-row td{padding:2px 4px!important;}' +
-        '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;text-shadow:none;}' +
+        '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--black70a);border:1px solid var(--SmartThemeBorderColor);color:#000 !important;padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;text-shadow:none !important;}' +
         '.ne-inline-save,.ne-inline-cancel{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
         '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
         '.ne-inline-cancel{background:transparent;color:var(--grey-50);border:1px solid var(--grey-50);}' +
         '.ne-settings-section{margin-bottom:8px;}' +
         '.ne-settings-section .ne-accordion-body{padding:8px 12px;}' +
         '.ne-settings-section label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
-        '.ne-settings-section input[type=text],.ne-settings-section input[type=password],.ne-settings-section input[type=number]{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none;}' +
-        '.ne-settings-section textarea{width:100%;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none;}' +
+        '.ne-settings-section input[type=text],.ne-settings-section input[type=password],.ne-settings-section input[type=number]{width:100%;background:var(--black70a);border:1px solid var(--SmartThemeBorderColor);color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
+        '.ne-settings-section textarea{width:100%;background:var(--black70a);border:1px solid var(--SmartThemeBorderColor);color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
         '.ne-settings-section input[type=range]{width:100%;margin:4px 0;}' +
         '.ne-settings-section .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
@@ -124,7 +124,7 @@ function injectBottomDrawerCSS() {
         '.ne-inline-state-edit-btn:hover{opacity:1;}' +
         '.ne-inline-state-edit-area{display:none;margin-top:6px;}' +
         '.ne-inline-state-edit-area.active{display:block;}' +
-        '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black50a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;text-shadow:none;}' +
+        '.ne-inline-state-edit-area textarea{width:100%;min-height:120px;background:var(--black70a);border:1px solid var(--SmartThemeBorderColor);color:#000 !important;padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;text-shadow:none !important;}' +
         '.ne-inline-state-view.hidden{display:none;}' +
         '.ne-tool-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
         '.ne-tool-card-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;}' +
@@ -185,15 +185,24 @@ function navigateToAccordion(accId, chatId) {
     setTimeout(function() { target.classList.remove('ne-accordion-highlight'); }, 1500);
 }
 
+var _lazyRendered = {};
 function setupAccordionHandlers(chatId) {
-    qsa('.ne-vault-tab-content .ne-accordion-header').forEach(function(header) {
-        if (header._neAccBound) return;
-        header._neAccBound = true;
-        header.onclick = function() {
-            var acc = header.parentElement;
-            acc.classList.toggle('open');
-            if (acc.closest('#tab-memory')) saveCollapseState(chatId);
-        };
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (!overlay || overlay._neAccDel) return;
+    overlay._neAccDel = true;
+    overlay.addEventListener('click', function(e) {
+        var header = e.target.closest('.ne-vault-tab-content .ne-accordion-header');
+        if (!header) return;
+        var acc = header.closest('.ne-accordion');
+        if (!acc) return;
+        acc.classList.toggle('open');
+        if (acc.closest('#tab-memory')) saveCollapseState(chatId);
+        if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
+            _lazyRendered[acc.id] = true;
+            if (acc.id === 'ne-tool-llm-log') renderLLMLog();
+            else if (acc.id === 'ne-tool-tool-log') renderToolCallLog();
+            else if (acc.id === 'ne-tool-history') renderHistory(_currentGetChatId);
+        }
     });
 }
 
@@ -1859,29 +1868,7 @@ export async function renderVaultPanel(getChatId) {
             if (overlay) overlay.classList.toggle('pinned', checked);
         };
 
-        // Tools tab accordions — lazy render on first expand
-        var renderedLLMLog = false, renderedToolLog = false, renderedHistory = false;
-        var llmAcc = byId('ne-tool-llm-log');
-        var toolAcc = byId('ne-tool-tool-log');
-        var histAcc = byId('ne-tool-history');
-        if (llmAcc) {
-            llmAcc.querySelector('.ne-accordion-header').onclick = function() {
-                llmAcc.classList.toggle('open');
-                if (llmAcc.classList.contains('open') && !renderedLLMLog) { renderLLMLog(); renderedLLMLog = true; }
-            };
-        }
-        if (toolAcc) {
-            toolAcc.querySelector('.ne-accordion-header').onclick = function() {
-                toolAcc.classList.toggle('open');
-                if (toolAcc.classList.contains('open') && !renderedToolLog) { renderToolCallLog(); renderedToolLog = true; }
-            };
-        }
-        if (histAcc) {
-            histAcc.querySelector('.ne-accordion-header').onclick = function() {
-                histAcc.classList.toggle('open');
-                if (histAcc.classList.contains('open') && !renderedHistory) { renderHistory(getChatId); renderedHistory = true; }
-            };
-        }
+        // Tools tab accordion lazy render handled by setupAccordionHandlers delegation
 
         // LLM log entry & card expand/collapse
         pdAddEventListener('click', function (e) {
