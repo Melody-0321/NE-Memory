@@ -1671,7 +1671,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-settings-section-title">\u2B50 ' + t('Common Settings') + '</div>' +
             '<div id="ne_common_settings"></div></div>' +
             '<div class="ne-settings-section-card">' +
-            '<div class="ne-settings-section-title">\U0001F52C ' + t('Advanced Settings') + '</div>' +
+            '<div class="ne-settings-section-title">\uD83D\uDD2C ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
             '</div></div>' +
             '</div></div>';
