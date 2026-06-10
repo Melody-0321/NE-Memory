@@ -8,17 +8,5 @@ export function isRetrievalEnabled() {
 }
 
 export function setRetrievalEnabled(val) {
-    if (val) {
-        try {
-            var raw = localStorage.getItem('ne_settings');
-            if (raw) {
-                var s = JSON.parse(raw);
-                if (!s.memoryEnabled) {
-                    console.warn('[NE] Cannot enable Smart Retrieval: Memory System is not enabled');
-                    return;
-                }
-            }
-        } catch (e) {}
-    }
     _retrievalEnabled = !!val;
 }

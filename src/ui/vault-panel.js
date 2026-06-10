@@ -2118,15 +2118,13 @@ function renderSettingsTab() {
     var mc = settings.memoryConfig || {};
     var secApi = {};
     try { var rawApi = localStorage.getItem('ne_secondary_api'); if (rawApi) secApi = JSON.parse(rawApi); } catch (e) {}
-    var statusDot = settings.enabled ? '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>' : '<span class="ne-status-dot" style="color:#666;">\u25CF</span>';
+    var statusDot = '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>';
 
     // === Common Settings ===
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<label><input type="checkbox" id="nes_enable_engine" ' + (settings.enabled ? 'checked' : '') + '> <span>' + t('Enable Narrative Engine') + '</span></label>' +
         '<div class="ne-settings-toggle-grid">' +
-        '<label><input type="checkbox" id="nes_enable_memory" ' + (settings.memoryEnabled ? 'checked' : '') + '> <span>' + t('Enable Memory System') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
@@ -2190,18 +2188,10 @@ function renderSettingsTab() {
     if (sbEl) sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; };
     var suEl = byId('nes_stm_max_unconsolidated');
     if (suEl) suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; };
-    // Engine toggle -> status dot
-    var engEl = byId('nes_enable_engine');
-    if (engEl) engEl.onchange = function () {
-        var dot = qs('#ne-set-engine .ne-status-dot');
-        if (dot) { dot.style.color = engEl.checked ? '#4caf50' : '#666'; }
-    };
 }
 
 function saveSettingsTab() {
     var settings = {
-        enabled: byId('nes_enable_engine').checked,
-        memoryEnabled: byId('nes_enable_memory').checked,
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableQuests: byId('nes_enable_quests') ? byId('nes_enable_quests').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,

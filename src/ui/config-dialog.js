@@ -34,12 +34,10 @@ export function renderConfigDialog(getChatId) {
         '<div class="ne-tab" data-tab="schema" style="flex:1;text-align:center;cursor:pointer;padding:4px 0;border-radius:4px;font-size:0.85em;color:var(--grey50);">' + t_config('状态 Schema') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_basic">' +
-        '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_engine"> <span>' + t_config('Enable Narrative Engine') + '</span></label></div>' +
-        '<div class="narrative-toggle ne-sub-toggle" id="ne_memory_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_memory"> <span>' + t_config('Enable Memory System') + '</span></label></div>' +
-        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_schema_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label>' +
-        '<div class="narrative-toggle ne-sub-sub-sub-toggle" id="ne_dynamic_section" style="margin-left:3em;display:none;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_dynamic_state" disabled> <span>' + t_config('Use Dynamic Field Discovery') + '</span></label>' +
+        '<div class="narrative-toggle" id="ne_schema_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_state_schema"> <span>' + t_config('Enable State Schema') + '</span></label>' +
+        '<div class="narrative-toggle" id="ne_dynamic_section" style="margin-left:3em;display:none;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_dynamic_state" disabled> <span>' + t_config('Use Dynamic Field Discovery') + '</span></label>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-left:1em;">' + t_config('Automatically discover state fields from character cards and world books. Disable to use preset schema fields.') + '</div></div></div>' +
-        '<div class="narrative-toggle ne-sub-sub-toggle" id="ne_retrieval_section" style="margin-left:3em;"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
+        '<div class="narrative-toggle" id="ne_retrieval_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('STM Extraction Batch') + ': <span id="ne_stm_batch_val">10</span></span>' +
@@ -128,22 +126,6 @@ function bindConfigEvents(getChatId) {
     });
     $pd('#ne_stm_max_unconsolidated').on('input', function () {
         $pd('#ne_stm_max_unconsolidated_val').text($pd('#ne_stm_max_unconsolidated').val());
-    });
-    $pd('#ne_enable_engine').on('change', function () {
-        var on = $pd('#ne_enable_engine').prop('checked');
-        $pd('#ne_memory_section').toggleClass('enabled', on);
-        if (!on) {
-            $pd('#ne_schema_section').hide();
-            $pd('#ne_retrieval_section').hide();
-        } else {
-            $pd('#ne_schema_section').toggle($pd('#ne_enable_memory').prop('checked'));
-            $pd('#ne_retrieval_section').toggle($pd('#ne_enable_memory').prop('checked'));
-        }
-    });
-    $pd('#ne_enable_memory').on('change', function () {
-        var on = $pd('#ne_enable_memory').prop('checked');
-        $pd('#ne_schema_section').toggle(on);
-        $pd('#ne_retrieval_section').toggle(on);
     });
     // Tab switching
     $pd('.ne-tab').on('click', function () {
@@ -298,8 +280,6 @@ function loadConfigUI() {
     try {
         var raw = localStorage.getItem('ne_settings');
         var s = raw ? JSON.parse(raw) : {};
-        $pd('#ne_enable_engine').prop('checked', s.enabled || false);
-        $pd('#ne_enable_memory').prop('checked', s.memoryEnabled || false);
         $pd('#ne_enable_telemetry').prop('checked', s.enableTelemetry || false);
         var ssEnabled = s.enableStateSchema || false;
         $pd('#ne_enable_state_schema').prop('checked', ssEnabled);
@@ -327,9 +307,6 @@ function loadConfigUI() {
         $pd('#ne_opening_max_tokens').val(mc.opening_max_tokens || defaultMemoryConfig.opening_max_tokens);
         $pd('#ne_opening_max_chars').val(mc.opening_max_chars || defaultMemoryConfig.opening_max_chars);
         $pd('#ne_init_max_tokens').val(mc.init_max_tokens || defaultMemoryConfig.init_max_tokens);
-        $pd('#ne_memory_section').toggleClass('enabled', s.enabled);
-        $pd('#ne_schema_section').toggle(s.memoryEnabled && s.enabled);
-        $pd('#ne_retrieval_section').toggle(s.memoryEnabled && s.enabled);
         if (s.stateSchema) {
             $pd('#ne_state_schema').val(JSON.stringify(s.stateSchema, null, 2));
         } else {
@@ -355,8 +332,6 @@ function loadConfigUI() {
 
 function saveConfigUI() {
     var settings = {
-        enabled: $pd('#ne_enable_engine').prop('checked'),
-        memoryEnabled: $pd('#ne_enable_memory').prop('checked'),
         enableTelemetry: $pd('#ne_enable_telemetry').prop('checked'),
         enableQuests: $pd('#ne_enable_quests').prop('checked'),
         enableStateSchema: $pd('#ne_enable_state_schema').prop('checked'),

@@ -54,8 +54,7 @@ export const NARRATIVE_I18N = {
         'This will re-process ALL past messages. It may take a long time. Continue?': 'This will re-process ALL past messages. It may take a long time. Continue?',
         'Collapse memory panel': 'Collapse memory panel', 'Edit State': 'Edit State',
         'Invalid JSON': 'Invalid JSON',
-        'Enable Narrative Engine': 'Enable Narrative Engine',
-        'Enable Memory System': 'Enable Memory System', 'Enable State Schema': 'Enable State Schema',
+        'Enable State Schema': 'Enable State Schema',
         'Use Dynamic Field Discovery': 'Use Dynamic Field Discovery',
         'Enable Smart Retrieval': 'Enable Smart Retrieval',
         'Memory Budget': 'Memory Budget', 'STM Extraction Batch': 'STM Extraction Batch',
@@ -114,8 +113,7 @@ export const NARRATIVE_I18N = {
         'This will re-process ALL past messages. It may take a long time. Continue?': '这将重新处理全部历史消息，可能耗时较长。继续？',
         'Collapse memory panel': '收起记忆面板', 'Edit State': '编辑状态',
         'Invalid JSON': '无效JSON',
-        'Enable Narrative Engine': '启用Narrative Engine',
-        'Enable Memory System': '启用记忆系统', 'Enable State Schema': '启用状态Schema系统',
+        'Enable State Schema': '启用状态Schema系统',
         'Use Dynamic Field Discovery': '使用动态字段发现',
         'Enable Smart Retrieval': '启用智能检索',
         'Memory Budget': '记忆预算', 'STM Extraction Batch': '消息触发阈值',
@@ -174,8 +172,7 @@ export const NARRATIVE_I18N = {
         'This will re-process ALL past messages. It may take a long time. Continue?': '這將重新處理全部歷史訊息，可能耗時較長。繼續？',
         'Collapse memory panel': '收起記憶面板', 'Edit State': '編輯狀態',
         'Invalid JSON': '無效JSON',
-        'Enable Narrative Engine': '啟用Narrative Engine',
-        'Enable Memory System': '啟用記憶系統', 'Enable State Schema': '啟用狀態Schema系統',
+        'Enable State Schema': '啟用狀態Schema系統',
         'Use Dynamic Field Discovery': '使用動態欄位發現',
         'Enable Smart Retrieval': '啟用智能檢索',
         'Memory Budget': '記憶預算', 'STM Extraction Batch': '訊息觸發閾值',
@@ -205,8 +202,6 @@ export const CONFIG_I18N = {
         '开场摘要输出上限': 'Opening Max Tokens', '开场摘要截断上限': 'Opening Char Limit',
         '状态初始化输出上限': 'Init State Max Tokens',
         '以上参数将应用于记忆区 LLM 调用。修改后对下次对话生效。': 'Parameters above apply to memory LLM calls on next turn.',
-        'Enable Narrative Engine': 'Enable Narrative Engine',
-        'Enable Memory System': 'Enable Memory System',
         'Secondary API (for memory processing)': 'Secondary API (for memory processing)',
         'API URL': 'API URL', 'API Key': 'API Key', 'Model': 'Model',
         'Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.':
@@ -247,8 +242,7 @@ export const CONFIG_I18N = {
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用, 数值越大消耗越多 token。',
     },
     'zh-cn': {
-        'Enable Narrative Engine': '启用 Narrative Engine',
-        'Enable Memory System': '启用记忆系统', 'Secondary API (for memory processing)': '副 API（用于记忆处理）',
+        'Enable State Schema': '启用状态Schema系统', 'Secondary API (for memory processing)': '副 API（用于记忆处理）',
         'API URL': 'API URL', 'API Key': 'API Key', 'Model': '模型',
         'Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.':
             '留空则使用主聊天 API。建议使用更便宜/更快的模型进行记忆提取。',
@@ -299,8 +293,7 @@ export const CONFIG_I18N = {
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。',
     },
     'zh-tw': {
-        'Enable Narrative Engine': '啟用 Narrative Engine',
-        'Enable Memory System': '啟用記憶系統', 'Secondary API (for memory processing)': '副 API（用於記憶處理）',
+        'Enable State Schema': '啟用狀態Schema系統', 'Secondary API (for memory processing)': '副 API（用於記憶處理）',
         'API URL': 'API URL', 'API Key': 'API Key', 'Model': '模型',
         'Leave empty to use the same API as the main chat. Recommended: use a cheaper/faster model for memory extraction.':
             '留空則使用主聊天 API。建議使用更便宜/更快的模型進行記憶提取。',

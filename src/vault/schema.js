@@ -23,18 +23,6 @@ export function isStateSchemaEnabled() {
 }
 
 export function setStateSchemaEnabled(val) {
-    if (val) {
-        try {
-            var raw = localStorage.getItem('ne_settings');
-            if (raw) {
-                var s = JSON.parse(raw);
-                if (!s.memoryEnabled) {
-                    console.warn('[NE] Cannot enable State Schema: Memory System is not enabled');
-                    return;
-                }
-            }
-        } catch (e) {}
-    }
     _stateSchemaEnabled = !!val;
 }
 
