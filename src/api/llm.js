@@ -117,7 +117,7 @@ export async function testSecondaryApiConnection(config) {
         var result = await callCustomAPI(config, [
             { role: 'system', content: 'Respond with OK only. No other text.' },
             { role: 'user', content: 'ping' }
-        ], { timeout: 10, temperature: 0, max_tokens: 16 });
+        ], { timeout: 10, temperature: 0, max_tokens: 64 });
         if (!result.content || result.content.trim().length === 0) {
             console.warn('[NE] testSecondaryApiConnection — raw response:', JSON.stringify(result._raw).substring(0, 500));
             return { success: false, error: 'API returned empty response. Check browser console (F12) for raw response data.' };
@@ -131,7 +131,7 @@ export async function testSecondaryApiConnection(config) {
 
 export async function sendSecondaryTestMessage(config) {
     if (!config || !config.url) throw new Error('No URL configured');
-    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 32 });
+    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 128 });
     if (!result.content || result.content.trim().length === 0) {
         console.warn('[NE] sendSecondaryTestMessage — raw response:', JSON.stringify(result._raw).substring(0, 500));
         throw new Error('API returned empty response. Check browser console (F12) for raw response data.');
@@ -166,7 +166,8 @@ async function callCustomAPI(config, messages, options) {
         }
 
         const data = await response.json();
-        var content = data.choices?.[0]?.message?.content || data.choices?.[0]?.text || data.content || '';
+        var msg = data.choices?.[0]?.message || {};
+        var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
         var usage = data.choices?.[0]?.usage || data.usage || null;
         // Diagnostic: log response structure when content is unexpectedly empty
         if (!content) {
