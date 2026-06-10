@@ -273,32 +273,35 @@ async function callTavernHelper(messages, options) {
         ]);
     };
 
-    try {
-        if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
-            console.log('[NE] callTavernHelper via generateRaw, timeout=' + (options.timeout || 120) + 's');
-            const response = await raceWithTimeout(TavernHelper.generateRaw({
-                ordered_prompts: messages,
-                should_stream: false
-            }));
-            return response || '';
-        }
-    } catch (e) {
-        console.warn('[NE] TavernHelper.generateRaw failed:', e);
-    }
+    // 1. Primary: generateQuietPrompt — silent background processing, no chat output
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            const ctx = SillyTavern.getContext();
+            var ctx = SillyTavern.getContext();
             if (ctx.generateQuietPrompt) {
                 console.log('[NE] callTavernHelper via generateQuietPrompt, timeout=' + (options.timeout || 120) + 's');
-                const response = await raceWithTimeout(ctx.generateQuietPrompt(
+                var quietResponse = await raceWithTimeout(ctx.generateQuietPrompt(
                     messages[messages.length - 1].content,
                     messages[0].content
                 ));
-                return response || '';
+                return quietResponse || '';
             }
         }
     } catch (e) {
         console.warn('[NE] Quiet prompt failed:', e);
+    }
+
+    // 2. Fallback: generateRaw — may produce visible chat output in some ST versions
+    try {
+        if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
+            console.log('[NE] callTavernHelper via generateRaw (fallback), timeout=' + (options.timeout || 120) + 's');
+            var rawResponse = await raceWithTimeout(TavernHelper.generateRaw({
+                ordered_prompts: messages,
+                should_stream: false
+            }));
+            return rawResponse || '';
+        }
+    } catch (e) {
+        console.warn('[NE] TavernHelper.generateRaw failed:', e);
     }
     throw new Error('No LLM backend available. Configure secondary API in NE settings or ensure TavernHelper is loaded.');
 }
