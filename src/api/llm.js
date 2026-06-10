@@ -90,12 +90,12 @@ export async function callMemoryLLM(messages, options = {}) {
 
 export async function callMemoryPipeline(messages, options = {}, chatId = null) {
     var mc = loadMemoryConfig();
-    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.temperature || 0.1, max_tokens: mc.stm_max_tokens, chatId: chatId }));
+    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens, chatId: chatId }));
 }
 
 export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
     var mc = loadMemoryConfig();
-    return callMemoryLLM(messages, Object.assign({ temperature: mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
+    return callMemoryLLM(messages, Object.assign({ temperature: mc.retrieval_temperature || mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
 }
 
 function loadSecondaryApiConfig() {

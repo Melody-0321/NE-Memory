@@ -322,7 +322,7 @@ function registerRecallMemory(getChatId) {
                     messages[0].content += dedupNote;
                 }
 
-                var result = await callMemoryRetrieval(messages, { timeout: 3, temperature: 0.3 });
+                var result = await callMemoryRetrieval(messages, { timeout: 3 });
                 var answer = result || 'No answer synthesized.';
 
                 // Cache msg_ids from answer for next dedup

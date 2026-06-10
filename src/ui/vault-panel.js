@@ -2135,8 +2135,10 @@ function renderSettingsTab() {
         '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Temperature') + '</span><span class="range-val" id="nes_temp_val">' + ((mc.temperature || 0.2)).toFixed(1) + '</span></div>' +
-        '<input type="range" id="nes_memory_temperature" min="0" max="1" step="0.1" value="' + (mc.temperature || 0.2) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
+        '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
+        '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
         '</div></div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
@@ -2174,8 +2176,10 @@ function renderSettingsTab() {
     var saveBtn = byId('nes_save_btn');
     if (saveBtn) saveBtn.onclick = function () { saveSettingsTab(); };
     // Range sliders
-    var tEl = byId('nes_memory_temperature');
-    if (tEl) tEl.oninput = function () { var v = byId('nes_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); };
+    var tEl = byId('nes_extraction_temperature');
+    if (tEl) tEl.oninput = function () { var v = byId('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); };
+    var rEl = byId('nes_retrieval_temperature');
+    if (rEl) rEl.oninput = function () { var v = byId('nes_retrieval_temp_val'); if (v) v.textContent = Number(rEl.value).toFixed(1); };
     var bEl = byId('nes_memory_budget');
     if (bEl) bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; };
     var sbEl = byId('nes_stm_batch');
@@ -2203,7 +2207,9 @@ function saveSettingsTab() {
         stmBatch: Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
         memoryConfig: {
-            temperature: Number(byId('nes_memory_temperature').value),
+            extraction_temperature: Number(byId('nes_extraction_temperature').value),
+            retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
+            temperature: Number(byId('nes_extraction_temperature').value),
             stm_max_tokens: Number(byId('nes_stm_max_tokens').value),
             stm_max_chars: Number(byId('nes_stm_max_chars').value),
             ltm_max_tokens: Number(byId('nes_ltm_max_tokens').value),

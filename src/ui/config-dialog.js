@@ -12,6 +12,7 @@ import { setRetrievalEnabled } from '../settings.js';
 function $pd(selector) { return $(selector); }
 
 var defaultMemoryConfig = {
+    extraction_temperature: 0.2, retrieval_temperature: 0.3,
     temperature: 0.2, stm_max_tokens: 800, stm_max_chars: 120,
     ltm_max_tokens: 500, ltm_max_chars: 100, opening_max_tokens: 300, opening_max_chars: 300,
     init_max_tokens: 600
@@ -58,9 +59,12 @@ export function renderConfigDialog(getChatId) {
         '<div style="color:var(--grey50);font-size:0.8em;">' + t_config('Local proxy uses ST server credentials. Fill URL only (no key) for local proxy, or full URL+Key for direct API access.') + '</div>' +
         '</div>' +
         '<div class="ne-tab-content" id="ne_tab_memory" style="display:none;">' +
-        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Temperature') + '</label><br>' +
-        '<input id="ne_memory_temperature" type="range" min="0" max="1" step="0.1" style="width:100%;"><span id="ne_memory_temperature_val" style="margin-left:6px;">0.2</span></div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('低温度确保记忆摘要的一致性和准确性。0.1=极度保守，0.3=略有变化。') + '</div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Extraction Temperature') + '</label><br>' +
+        '<input id="ne_extraction_temperature" type="range" min="0" max="1" step="0.1" style="width:100%;"><span id="ne_extraction_temperature_val" style="margin-left:6px;">0.2</span></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
+        '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('Retrieval Temperature') + '</label><br>' +
+        '<input id="ne_retrieval_temperature" type="range" min="0" max="1" step="0.1" style="width:100%;"><span id="ne_retrieval_temperature_val" style="margin-left:6px;">0.3</span></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('STM 单次输出上限') + '</label><br><input id="ne_stm_max_tokens" class="text_pole" type="number" style="width:100%;" min="100" max="4096"></div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('STM 单条事件上限') + '</label><br><input id="ne_stm_max_chars" class="text_pole" type="number" style="width:100%;" min="20" max="500"></div>' +
         '<div style="margin:4px 0;"><label style="font-size:0.85em;">' + t_config('LTM 单次输出上限') + '</label><br><input id="ne_ltm_max_tokens" class="text_pole" type="number" style="width:100%;" min="100" max="4096"></div>' +
@@ -110,8 +114,11 @@ function bindConfigEvents(getChatId) {
         var data = collectTelemetryData(getChatId ? getChatId() : 'default');
         uploadTelemetryToIssue(data);
     });
-    $pd('#ne_memory_temperature').on('input', function () {
-        $pd('#ne_memory_temperature_val').text(Number($pd('#ne_memory_temperature').val()).toFixed(1));
+    $pd('#ne_extraction_temperature').on('input', function () {
+        $pd('#ne_extraction_temperature_val').text(Number($pd('#ne_extraction_temperature').val()).toFixed(1));
+    });
+    $pd('#ne_retrieval_temperature').on('input', function () {
+        $pd('#ne_retrieval_temperature_val').text(Number($pd('#ne_retrieval_temperature').val()).toFixed(1));
     });
     $pd('#ne_memory_budget').on('input', function () {
         $pd('#ne_memory_budget_val').text($pd('#ne_memory_budget').val());
@@ -309,8 +316,10 @@ function loadConfigUI() {
         $pd('#ne_stm_max_unconsolidated').val(s.stmMaxUnconsolidated || 5);
         $pd('#ne_stm_max_unconsolidated_val').text(s.stmMaxUnconsolidated || 5);
         var mc = s.memoryConfig || defaultMemoryConfig;
-        $pd('#ne_memory_temperature').val(mc.temperature || defaultMemoryConfig.temperature);
-        $pd('#ne_memory_temperature_val').text(Number(mc.temperature || defaultMemoryConfig.temperature).toFixed(1));
+        $pd('#ne_extraction_temperature').val(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature);
+        $pd('#ne_extraction_temperature_val').text(Number(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature).toFixed(1));
+        $pd('#ne_retrieval_temperature').val(mc.retrieval_temperature || mc.temperature || defaultMemoryConfig.retrieval_temperature);
+        $pd('#ne_retrieval_temperature_val').text(Number(mc.retrieval_temperature || mc.temperature || defaultMemoryConfig.retrieval_temperature).toFixed(1));
         $pd('#ne_stm_max_tokens').val(mc.stm_max_tokens || defaultMemoryConfig.stm_max_tokens);
         $pd('#ne_stm_max_chars').val(mc.stm_max_chars || defaultMemoryConfig.stm_max_chars);
         $pd('#ne_ltm_max_tokens').val(mc.ltm_max_tokens || defaultMemoryConfig.ltm_max_tokens);
@@ -357,7 +366,9 @@ function saveConfigUI() {
         stmBatch: Number($pd('#ne_stm_batch').val()),
         stmMaxUnconsolidated: Number($pd('#ne_stm_max_unconsolidated').val()),
         memoryConfig: {
-            temperature: Number($pd('#ne_memory_temperature').val()),
+            extraction_temperature: Number($pd('#ne_extraction_temperature').val()),
+            retrieval_temperature: Number($pd('#ne_retrieval_temperature').val()),
+            temperature: Number($pd('#ne_extraction_temperature').val()),
             stm_max_tokens: Number($pd('#ne_stm_max_tokens').val()),
             stm_max_chars: Number($pd('#ne_stm_max_chars').val()),
             ltm_max_tokens: Number($pd('#ne_ltm_max_tokens').val()),
