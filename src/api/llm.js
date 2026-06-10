@@ -207,6 +207,19 @@ async function callCustomAPI(config, messages, options) {
             console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
         }
         return { content: content, usage: usage, _raw: data };
+    } catch (e) {
+        var msg = e.message || 'Unknown error';
+        if (/Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch') {
+            var diag = 'Network error connecting to ' + (config.url || 'API') + '. Possible causes: ';
+            if (/^https?:/.test(typeof location !== 'undefined' ? location.protocol : '') && /^http:/.test(config.url)) {
+                diag += 'Mixed content (HTTPS page cannot fetch HTTP URL). ';
+            }
+            diag += 'CORS not enabled on server, URL unreachable, or firewall/VPN blocking. Check F12 → Console for details.';
+            console.error('[NE] callCustomAPI network error — URL:', config.url, '— origin:', typeof location !== 'undefined' ? location.origin : 'N/A');
+            throw new Error(diag);
+        }
+        if (e.name === 'AbortError') throw new Error('Request timed out after ' + (options.timeout || 120) + 's');
+        throw e;
     } finally {
         clearTimeout(timeout);
     }
