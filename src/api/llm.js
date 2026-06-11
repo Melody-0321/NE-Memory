@@ -99,30 +99,90 @@ function robustParseJson(raw) {
     if (!raw) return {};
     var text = String(raw);
     // 1) 剥离 <thought>...</thought> 推理缓冲区（DeepSeek-R1 系列常见）
-    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
+    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
     // 2) 剥离 ```json / ``` 代码围栏
     text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
     // 3) 尝试直接解析
     try { return JSON.parse(text); } catch (_) {}
     // 4) 寻找第一对 {} 之间的内容
     var firstBrace = text.indexOf('{');
+    if (firstBrace === -1) {
+        // 没有 {} 就不可能是对象，尝试数组 [ ]
+        var firstBracket = text.indexOf('[');
+        if (firstBracket !== -1) {
+            try {
+                var lastBracket = text.lastIndexOf(']');
+                if (lastBracket > firstBracket) return JSON.parse(text.substring(firstBracket, lastBracket + 1));
+            } catch (_) {}
+        }
+        console.warn('[NE] robustParseJson gave up on input:', text.substring(0, 200));
+        return {};
+    }
     var lastBrace = text.lastIndexOf('}');
-    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    if (lastBrace !== -1 && lastBrace > firstBrace) {
         try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch (_) {}
     }
-    // 5) 尝试宽松补全：去掉尾部不完整的 value
-    try {
-        var stripped = text.replace(/["']?[^"']*?["']?\s*:\s*["']?[^"']*$/, '');
-        while (true) {
-            var open = (stripped.match(/\{/g) || []).length;
-            var close = (stripped.match(/\}/g) || []).length;
-            if (open > close) stripped += '}';
-            else break;
+    // 5) JSON 前缀处理（字符串被截断或未闭合）：逐字符扫描，
+    //    追踪引号/转义状态，找到最后一个完整的 JSON 前缀位置，
+    //    然后补全括号。
+    var sliceEnd = findValidJsonPrefixEnd(text, firstBrace);
+    if (sliceEnd > firstBrace) {
+        var prefix = text.substring(firstBrace, sliceEnd);
+        // 去掉尾部可能残留的逗号或冒号
+        prefix = prefix.replace(/[,:\s]+$/, '');
+        // 补全未闭合的括号/数组
+        var depth = 0;
+        var stack = [];
+        for (var ci = 0; ci < prefix.length; ci++) {
+            var c = prefix[ci];
+            if (c === '"') {
+                ci = skipString(prefix, ci);
+                if (ci >= prefix.length) break;
+                continue;
+            }
+            if (c === '{' || c === '[') { stack.push(c === '{' ? '}' : ']'); depth++; }
+            else if (c === '}' || c === ']') { stack.pop(); depth--; }
         }
-        return JSON.parse(stripped);
-    } catch (_) {}
+        while (stack.length > 0) prefix += stack.pop();
+        try { return JSON.parse(prefix); } catch (_) {}
+    }
     console.warn('[NE] robustParseJson gave up on input:', text.substring(0, 200));
     return {};
+}
+
+function skipString(s, startIdx) {
+    for (var i = startIdx + 1; i < s.length; i++) {
+        var c = s[i];
+        if (c === '\\') { i++; continue; }
+        if (c === '"') return i;
+    }
+    return s.length;
+}
+
+function findValidJsonPrefixEnd(text, startIdx) {
+    var inString = false;
+    var i = startIdx;
+    while (i < text.length) {
+        var c = text[i];
+        if (inString) {
+            if (c === '\\') { i += 2; continue; }
+            if (c === '"') inString = false;
+            i++;
+        } else {
+            if (c === '"') { inString = true; i++; continue; }
+            // 允许在非字符串区域的字符（数字、字母、{ } [ ] : , 空白）
+            // 遇到不在这些集合里的字符视为截断点
+            if (c !== '{' && c !== '}' && c !== '[' && c !== ']' && c !== ':' && c !== ','
+                && c !== '-' && c !== '.' && !(c >= '0' && c <= '9')
+                && c !== 't' && c !== 'r' && c !== 'u' && c !== 'e' && c !== 'f' && c !== 'a' && c !== 'l' && c !== 's' && c !== 'n' && c !== 'u'
+                && c !== ' ' && c !== '\t' && c !== '\n' && c !== '\r'
+                && c.charCodeAt(0) < 128) {
+                return i;
+            }
+            i++;
+        }
+    }
+    return i;
 }
 
 export async function callMemoryLLMWithTools(messages, tools, toolExecutors, options, chatId) {

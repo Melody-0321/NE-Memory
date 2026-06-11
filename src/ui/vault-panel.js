@@ -976,7 +976,11 @@ function toggleInlineEdit(row, entryId, entryType) {
     if (cells.length < 4) return;
     var origPeriod = (cells[1].textContent || '').trim();
     var origScene = (cells[2].textContent || '').trim();
-    var origEvent = (cells[3].textContent || '').trim();
+    // New column layout: [0]No. [1]Period [2]Scene [3]MsgIDs [4]Event [5]Edit
+    // Old column layout: [0]No. [1]Period [2]Scene [3]Event [4]Edit
+    var hasIdColumn = cells.length > 5;
+    var origEvent = (cells[hasIdColumn ? 4 : 3].textContent || '').trim();
+    var origIds = hasIdColumn ? (cells[3].textContent || '').trim() : '';
     row.classList.add('ne-inline-row');
     var savedHTML = row.innerHTML;
     row._neOrigHTML = savedHTML;
@@ -996,9 +1000,15 @@ function toggleInlineEdit(row, entryId, entryType) {
         };
     }
 
+    var idColumnCell = hasIdColumn
+        ? '<td style="font-size:0.75em;max-width:180px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(origIds) + '">' + escapeHtml(origIds) + '</td>'
+        : '';
+    var eventCellTarget = hasIdColumn ? 5 : 4;
+
     row.innerHTML = '<td style="text-align:center;width:2em;">' + cells[0].innerHTML + '</td>' +
         '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
+        idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
         '<td style="white-space:nowrap;"><button class="ne-inline-save" title="' + t('Save') + '">\u2714</button>' +
         '<button class="ne-inline-cancel" style="background:#f44336;color:#fff;border:none;" title="' + t('Cancel') + '">\u2716</button>' +
@@ -1012,7 +1022,7 @@ function toggleInlineEdit(row, entryId, entryType) {
         row.classList.remove('ne-inline-row');
         row.querySelector('td:nth-child(2)').textContent = period;
         row.querySelector('td:nth-child(3)').textContent = scene;
-        row.querySelector('td:nth-child(4)').innerHTML = escapeHtml(event);
+        row.querySelector('td:nth-child(' + eventCellTarget + ')').innerHTML = escapeHtml(event);
         row._neOrigPeriod = period;
         row._neOrigScene = scene;
         row._neOrigEvent = event;
@@ -1034,15 +1044,16 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = qs(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="5" style="color:#888;">(empty)</td></tr>'; return; }
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
         var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
-        var refs = type === 'ltm'
-            ? (entry.stm_refs || []).map(function (r) { return '<span class="narrative_link stm-link" data-stm-id="' + r + '">[\u2192' + r + ']</span>'; }).join(' ')
-            : (entry.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
+        var idList = type === 'ltm'
+            ? (entry.stm_refs || []).slice(0, 5).join(', ') + ((entry.stm_refs || []).length > 5 ? '...(' + entry.stm_refs.length + ')' : '')
+            : (entry.msg_ids || []).slice(0, 5).join(', ') + ((entry.msg_ids || []).length > 5 ? '...(' + entry.msg_ids.length + ')' : '');
+        var idListCell = '<td style="font-size:0.75em;max-width:180px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(idList || '') + '">' + escapeHtml(idList || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td><td>' + (entry.event || entry.summary || '') + ' ' + refs + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td>' + idListCell + '<td>' + (entry.event || entry.summary || '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -1050,11 +1061,11 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                 var stm = stmIndexMap && stmIndexMap[stmId];
                 if (stm) {
                     var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
-                    var subRefs = (stm.msg_ids || []).map(function (mid) { return '<span class="narrative_link msg-link" data-msg-id="' + mid + '">[\u2192' + mid + ']</span>'; }).join(' ');
-                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + ' ' + subRefs + '</td><td></td></tr>';
+                    var subMsgIds = (stm.msg_ids || []).slice(0, 3).join(',') + ((stm.msg_ids || []).length > 3 ? '...' : '');
+                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.7em;max-width:180px;color:#666;">' + escapeHtml(subMsgIds || stmId) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }
             });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="6"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
         }
     });
     if (type === 'ltm') {
@@ -1589,7 +1600,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('Msg IDs') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-ltm">' +
@@ -1597,7 +1608,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
             '</div></div>' +
             '</div></div>' +
@@ -1762,10 +1773,10 @@ export async function renderVaultPanel(getChatId) {
                 }
 
                 var prevText = processHistoryBtn.textContent;
-                processHistoryBtn.textContent = t('Processing...');
                 processHistoryBtn.disabled = true;
                 var BATCH = 30;
                 var total = toProcess.length;
+                processHistoryBtn.textContent = t('Processing...') + ' (0/' + total + ')';
 
                 var cpKey = 'ne_ph_' + getChatId();
                 var processedCount = 0;
@@ -1786,7 +1797,8 @@ export async function renderVaultPanel(getChatId) {
                 try {
                     for (var i = processedCount; i < total; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
-                        processHistoryBtn.textContent = t('Processing...');
+                        var doneBefore = i;
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + doneBefore + '/' + total + ')';
                         var result = await executeIncrementalUpdate(getChatId(), batch, true);
                         if (result.added === 0 && batch.length > 0) {
                             console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
@@ -1798,12 +1810,16 @@ export async function renderVaultPanel(getChatId) {
                         } catch (e2) {}
                     }
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
+                    processHistoryBtn.textContent = t('Completed') + ' (' + total + '/' + total + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
                     alert(t('Process History') + ' failed: ' + e.message);
+                    processHistoryBtn.textContent = t('Failed');
                 } finally {
-                    processHistoryBtn.textContent = prevText;
-                    processHistoryBtn.disabled = false;
+                    setTimeout(function () {
+                        processHistoryBtn.textContent = prevText;
+                        processHistoryBtn.disabled = false;
+                    }, 1500);
                     updateVaultViewerPopout(getChatId);
                 }
             };

@@ -117,12 +117,19 @@ export async function runStmExtractorCore(turns, params) {
     if (hasTools) {
         // === Hub-Spoke path (multi-event with parallel sub-agents) ===
         var subAgentExecutor = async function(args) {
+            // 从 args.turns 提取 turn 范围；如果 args 不完整则回退到当前 batch 的全部 turns
             var turnIndices = [];
-            var start = args.turns[0];
-            var end = args.turns[1];
+            var start = 0;
+            var end = turns.length - 1;
+            if (args && args.turns && Array.isArray(args.turns) && args.turns.length >= 2
+                && typeof args.turns[0] === 'number' && typeof args.turns[1] === 'number') {
+                start = Math.max(0, args.turns[0]);
+                end = Math.min(turns.length - 1, args.turns[1]);
+                if (end < start) end = start;
+            }
             for (var ti = start; ti <= end; ti++) turnIndices.push(ti);
 
-            var summary = args.event_summary || '';
+            var summary = (args && args.event_summary) || '';
             var subPrompt = buildSubAgentPrompt(turns, turnIndices, summary, vault);
 
             var subResponse = await callMemoryPipeline([
@@ -144,13 +151,14 @@ export async function runStmExtractorCore(turns, params) {
             }
 
             var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
-            var isDeferred = parsed.status === 'deferred' || args.status === 'deferred';
+            var isDeferred = parsed.status === 'deferred' || (args && args.status === 'deferred');
 
             var resultEntry = {
                 event: parsed.event || summary,
-                status: isDeferred ? 'deferred' : (parsed.status || args.status || 'closed'),
+                status: isDeferred ? 'deferred' : (parsed.status || (args && args.status) || 'closed'),
                 entity: parsed.entity || '',
                 turns: [start, end],
+                msgRange: [start, end],
                 msg_ids: msgIds,
                 deferred: isDeferred
             };
@@ -261,11 +269,24 @@ export async function runStmExtractorCore(turns, params) {
         var entry = stmEntries[ei];
 
         var turnRange;
-        if (entry.turns && Array.isArray(entry.turns)) {
+        if (entry.turns && Array.isArray(entry.turns) && entry.turns.length >= 2
+            && typeof entry.turns[0] === 'number' && typeof entry.turns[1] === 'number') {
             turnRange = entry.turns;
+        } else if (entry.msgRange && Array.isArray(entry.msgRange) && entry.msgRange.length >= 2
+            && typeof entry.msgRange[0] === 'number' && typeof entry.msgRange[1] === 'number') {
+            // parseSTMResponse 产生的 entry 只有 msgRange（message 索引范围），
+            // 这里将其映射到 batch 内的 turn 索引
+            var rawStart = Math.max(0, Math.min(turns.length - 1, entry.msgRange[0]));
+            var rawEnd = Math.max(0, Math.min(turns.length - 1, entry.msgRange[1]));
+            turnRange = [rawStart, rawEnd];
         } else {
             turnRange = [0, turns.length - 1];
         }
+
+        // 钳制到有效范围
+        var rStart = Math.max(0, Math.min(turns.length - 1, turnRange[0]));
+        var rEnd = Math.max(rStart, Math.min(turns.length - 1, turnRange[1]));
+        turnRange = [rStart, rEnd];
 
         var turnIndices = [];
         for (var ti = turnRange[0]; ti <= turnRange[1]; ti++) turnIndices.push(ti);
@@ -277,8 +298,7 @@ export async function runStmExtractorCore(turns, params) {
 
         entry.turns = turnRange;
         entry.msg_ids = msgIds;
-        // 将 turns 映射为全局消息索引范围，供 validateMsgRanges 使用
-        // turns 内部相对；若有 globalIndexMap 则转换为全局；没有时直接使用 turnRange
+        // 将 turns 映射为全局消息索引范围
         var localStart = turnRange[0];
         var localEnd = turnRange[1];
         var mappedStart = (globalIndexMap && globalIndexMap[localStart] !== undefined) ? globalIndexMap[localStart] : localStart;
