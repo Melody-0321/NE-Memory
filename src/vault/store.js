@@ -133,7 +133,12 @@ function migrateTimeRange(vault) {
 function ensureCursorState(vault) {
     var content = vault.content || {};
     if (!content.cursor_state) {
-        content.cursor_state = { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } };
+        content.cursor_state = { stm: { completedTurns: 0, position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } };
+    }
+    // Migrate old position-based stm state to completedTurns
+    var stm = content.cursor_state.stm;
+    if (stm && stm.completedTurns === undefined) {
+        stm.completedTurns = stm.position || 0;
     }
 }
 

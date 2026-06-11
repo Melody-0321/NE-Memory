@@ -4,14 +4,13 @@
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
 import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
-import { callMemoryPipeline, callMemoryLLMWithTools, initPowerSlots, recordTelemetry, loadSecondaryApiConfig } from '../api/llm.js';
-import { executeAccess } from '../tools.js';
+import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
-import { runStmCursorLoop } from './cursor.js';
+import { runStmExtractor } from './stm-extractor.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
@@ -614,6 +613,110 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     return { system: instruction, user: userPrompt };
 }
 
+// ── Hub-Spoke prompt builders ──
+
+function buildRetrospectiveContext(content) {
+    var retrospectiveCtx = '';
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var sortedSTM = allSTM.filter(function(s) { return s.event && s.msgRange && s.msgRange.length === 2; })
+        .sort(function(a, b) { return b.msgRange[0] - a.msgRange[0]; });
+    if (sortedSTM.length > 0) {
+        retrospectiveCtx = '\n\n## 往期事件（供角色身份参考）\n';
+        for (var li = 0; li < Math.min(sortedSTM.length, 3); li++) {
+            retrospectiveCtx += '- [msg ' + sortedSTM[li].msgRange.join('-') + '] ' + (sortedSTM[li].event || '') + '\n';
+        }
+        retrospectiveCtx += '\n请使用角色全名，参考往期事件确定人物身份。';
+    }
+    return retrospectiveCtx;
+}
+
+function buildStateSnapshot(content) {
+    var snapshot = '';
+    if (content.story_time || content.story_scene || content.story_date) {
+        snapshot += 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    }
+    var state = content.state || {};
+    var allChars = state.characters ? Object.keys(state.characters) : [];
+    if (allChars.length > 0) {
+        snapshot += '已知角色: ' + allChars.join(', ') + '\n';
+    }
+    return snapshot;
+}
+
+export function buildSegmentationPrompt(turns, pendingPartials, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+    var retrospectiveCtx = buildRetrospectiveContext(content);
+    var stateSnapshot = buildStateSnapshot(content);
+
+    var partialCtx = '';
+    if (pendingPartials && pendingPartials.length > 0) {
+        partialCtx = '\n## 未完成的 partial 事件：\n';
+        pendingPartials.forEach(function(p, i) {
+            partialCtx += '  ' + (i + 1) + '. ' + (p.event || '') + ' (第' + (p._partial_generation || 1) + '代)\n';
+        });
+        partialCtx += '可在对应条目中设置 parent_partial 来闭合这些事件。\n';
+    }
+
+    var turnsText = [];
+    for (var i = 0; i < turns.length; i++) {
+        var t = turns[i];
+        turnsText.push('[Turn ' + i + ']');
+        if (t.user) {
+            var uname = t.user.name ? t.user.name + ': ' : '';
+            turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
+        }
+        if (t.assistant) {
+            var aname = t.assistant.name ? t.assistant.name + ': ' : '';
+            turnsText.push('  assistant: ' + aname + (t.assistant.content || t.assistant.mes || ''));
+        }
+        turnsText.push('');
+    }
+
+    var system = lang === 'en' ?
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- For turns at the END that are still ongoing → status:"partial".\n- For single events with all turns → output JSON array directly (no tool calls).\n- Do NOT include deferred turns in tool calls — list them separately as deferred:[].\n- Turns between already-processed events must be covered (cannot skip).') :
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- 末尾尚未完成的事件 → status:"partial"。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 被标记为延迟的 turns 单独列出为 deferred:[]。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
+
+    var user = lang === 'en' ?
+        'Turns:\n\n' + turnsText.join('\n') + '\nOutput format (multi-event): call extract_stm for each event, never output msg body directly.\nOutput format (single-event): JSON array of STM entries.\nIf some turns should be deferred, list them as {"deferred": [turnIdx, ...]}" in plain text.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n多事件时：为每个事件调用 extract_stm。\n单事件时：直接输出 JSON 数组。\n若有需要延迟的 turns，以 {"deferred": [turnIdx, ...]} 在纯文本中列出。';
+
+    return { system: system, user: user };
+}
+
+export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+    var retrospectiveCtx = buildRetrospectiveContext(content);
+    var stateSnapshot = buildStateSnapshot(content);
+
+    var turnsText = [];
+    for (var ti = 0; ti < turnIndices.length; ti++) {
+        var t = turns[turnIndices[ti]];
+        if (!t) continue;
+        turnsText.push('[Turn ' + turnIndices[ti] + ']');
+        if (t.user) {
+            var uname = t.user.name ? t.user.name + ': ' : '';
+            turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
+        }
+        if (t.assistant) {
+            var aname = t.assistant.name ? t.assistant.name + ': ' : '';
+            turnsText.push('  assistant: ' + aname + (t.assistant.content || t.assistant.mes || ''));
+        }
+        turnsText.push('');
+    }
+
+    var system = lang === 'en' ?
+        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Extract ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format:\n{\n  "event": "event description (20-80 chars)",\n  "status": "closed" | "partial",\n  "entity": "optional entity name"\n}\n\nIMPORTANT: Use character proper names in event descriptions. Do NOT use pronouns (I/he/she).') :
+        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。从下列对话中提取一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：\n{\n  "event": "事件描述（20-80字）",\n  "status": "closed" | "partial",\n  "entity": "可选实体名"\n}\n\n重要：event 中使用角色全名，禁止代词。');
+
+    var user = lang === 'en' ?
+        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput ONLY the JSON object above. No extra text.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n仅输出上述 JSON 对象，不要多余文字。';
+
+    return { system: system, user: user };
+}
+
 // ── State prompt builders（每种模式专用 prompt）──
 
 function buildStatePrompt_Preset(messages, vault) {
@@ -926,41 +1029,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
     var newEntries = [];
     try {
-        cursorResult = await runStmCursorLoop({
+        cursorResult = await runStmExtractor({
             vault: vault,
             messages: filteredMessages,
-            callLLM: (function() {
-                var secCfg = loadSecondaryApiConfig();
-                if (secCfg && secCfg.url && secCfg.model) {
-                    var accessSchema = {
-                        type: 'function',
-                        function: {
-                            name: 'access',
-                            description: 'Read original message text by msg ID. Use when you need to disambiguate speaker identity (e.g. access("15") to check who "he" refers to). Also supports memory/state references.',
-                            parameters: { type: 'object', properties: { ref: { type: 'string', description: 'Reference string: msg ID (e.g. "15"), "stm_xxx", "ltm_xxx", "characters.Name"' } }, required: ['ref'] }
-                        }
-                    };
-                    return function(promptMsgs) {
-                        return callMemoryLLMWithTools(promptMsgs, [accessSchema], {
-                            access: function(args) {
-                                var ref = args.ref || '';
-                                var fm = filteredMessages;
-                                for (var k = 0; k < fm.length; k++) {
-                                    if (String(fm[k].id || fm[k].mes_id) === String(ref)) {
-                                        return (fm[k].content || fm[k].mes || '') + ' [msg ' + ref + ']';
-                                    }
-                                }
-                                try {
-                                    return executeAccess(ref, null, getChatId, getChatMessages);
-                                } catch (e2) {
-                                    return 'Not found: ' + ref;
-                                }
-                            }
-                        });
-                    };
-                }
-                return callMemoryPipeline;
-            })(),
+            callLLM: callMemoryPipeline,
             parseResponse: parseSTMResponse,
             validateOutput: validateSTMOutput,
             postFill: function(parsed, v) { postFillSTM(parsed, v); },
@@ -968,7 +1040,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             getCursorState: getCursorState,
             updateCursorState: updateCursorState,
             markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
-            buildPrompt: buildCursorPrompt
+            buildSegmentationPrompt: buildSegmentationPrompt,
+            buildSubAgentPrompt: buildSubAgentPrompt
         });
 
         newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));

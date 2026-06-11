@@ -121,21 +121,18 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
             var toolCalls = assistantMsg.tool_calls;
             if (!toolCalls || toolCalls.length === 0) break;
 
-            for (var ti = 0; ti < toolCalls.length; ti++) {
-                var tc = toolCalls[ti];
+            var parallelJobs = toolCalls.map(function(tc) {
                 var fn = tc.function;
                 var executor = toolExecutors[fn.name];
-                if (!executor) {
-                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: 'Error: unknown tool ' + fn.name });
-                    continue;
-                }
-                try {
-                    var toolResult = await executor(JSON.parse(fn.arguments));
-                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
-                } catch (te) {
-                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: 'Error: ' + te.message });
-                }
-            }
+                if (!executor) return Promise.resolve({ tc: tc, content: 'Error: unknown tool ' + fn.name });
+                return executor(JSON.parse(fn.arguments))
+                    .then(function(r) { return { tc: tc, content: r }; })
+                    .catch(function(e) { return { tc: tc, content: 'Error: ' + e.message }; });
+            });
+            var results = await Promise.all(parallelJobs);
+            results.forEach(function(r) {
+                msgs.push({ role: 'tool', tool_call_id: r.tc.id, content: r.content });
+            });
         } catch (e) {
             console.warn('[NE] Tool call round ' + (round + 1) + ' failed:', e.message);
             break;

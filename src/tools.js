@@ -155,6 +155,40 @@ function registerAccess(getChatId, getChatMessages) {
     });
 }
 
+// ── STM extraction tool (used by Hub-Spoke architecture) ──
+
+export var EXTRACT_STM_TOOL_SCHEMA = Object.freeze({
+    type: 'function',
+    function: {
+        name: 'extract_stm',
+        description: 'Extract an STM event from a contiguous range of dialog turns. The system will provide the turn range context — you MUST write the complete event text in the event_summary parameter. For multiple semantic events spanning different turn ranges, call this tool once per event (they will execute in parallel). For turns that are incomplete or deferred, mark status as "partial".',
+        parameters: {
+            type: 'object',
+            properties: {
+                turns: {
+                    type: 'array',
+                    items: { type: 'integer' },
+                    description: 'Array of two integers [startTurn, endTurn] marking the inclusive turn range. Turns indexed from 0.'
+                },
+                event_summary: {
+                    type: 'string',
+                    description: 'Complete event description (20-80 characters). This is the actual STM event text — write it as a concise factual statement, not a placeholder. Include character proper names, NOT pronouns.'
+                },
+                status: {
+                    type: 'string',
+                    enum: ['closed', 'partial'],
+                    description: '"closed" if a complete semantic event (no continuation expected), "partial" if the event continues beyond this turn range.'
+                },
+                entity: {
+                    type: 'string',
+                    description: 'Optional. The main character/entity/group involved in this event.'
+                }
+            },
+            required: ['turns', 'event_summary']
+        }
+    }
+});
+
 var lastRecallMsgIds = null;
 var lastRecallHeaders = null;
 var lastRecallChatId = null;
