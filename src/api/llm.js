@@ -95,6 +95,36 @@ export async function callMemoryPipeline(messages, options = {}, chatId = null) 
     return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens, chatId: chatId }));
 }
 
+function robustParseJson(raw) {
+    if (!raw) return {};
+    var text = String(raw);
+    // 1) 剥离 <thought>...</thought> 推理缓冲区（DeepSeek-R1 系列常见）
+    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
+    // 2) 剥离 ```json / ``` 代码围栏
+    text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    // 3) 尝试直接解析
+    try { return JSON.parse(text); } catch (_) {}
+    // 4) 寻找第一对 {} 之间的内容
+    var firstBrace = text.indexOf('{');
+    var lastBrace = text.lastIndexOf('}');
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+        try { return JSON.parse(text.substring(firstBrace, lastBrace + 1)); } catch (_) {}
+    }
+    // 5) 尝试宽松补全：去掉尾部不完整的 value
+    try {
+        var stripped = text.replace(/["']?[^"']*?["']?\s*:\s*["']?[^"']*$/, '');
+        while (true) {
+            var open = (stripped.match(/\{/g) || []).length;
+            var close = (stripped.match(/\}/g) || []).length;
+            if (open > close) stripped += '}';
+            else break;
+        }
+        return JSON.parse(stripped);
+    } catch (_) {}
+    console.warn('[NE] robustParseJson gave up on input:', text.substring(0, 200));
+    return {};
+}
+
 export async function callMemoryLLMWithTools(messages, tools, toolExecutors, options, chatId) {
     var secondaryConfig = loadSecondaryApiConfig();
     if (!secondaryConfig || !secondaryConfig.url || !secondaryConfig.model) {
@@ -125,7 +155,15 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
                 var fn = tc.function;
                 var executor = toolExecutors[fn.name];
                 if (!executor) return Promise.resolve({ tc: tc, content: 'Error: unknown tool ' + fn.name });
-                return executor(JSON.parse(fn.arguments))
+                // 使用健壮的 JSON 解析，避免 DeepSeek v4/R1 的 reasoning 内容污染 arguments
+                var parsedArgs = {};
+                try {
+                    parsedArgs = robustParseJson(fn.arguments);
+                } catch (argErr) {
+                    console.warn('[NE] tool ' + fn.name + ' arguments unparseable, falling back to {}:', (fn.arguments || '').substring(0, 200));
+                }
+                return Promise.resolve()
+                    .then(function() { return executor(parsedArgs); })
                     .then(function(r) { return { tc: tc, content: r }; })
                     .catch(function(e) { return { tc: tc, content: 'Error: ' + e.message }; });
             });
@@ -137,6 +175,11 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
             console.warn('[NE] Tool call round ' + (round + 1) + ' failed:', e.message);
             break;
         }
+    }
+
+    // 剥离最终文本中的推理标记，避免下游 parseResponse 失败
+    if (finalContent) {
+        finalContent = String(finalContent).replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
     }
 
     console.log('[NE] LLM with tools done — dur=' + (Date.now() - startTime) + 'ms, rounds=' + (msgs.length > Math.min(2, messages.length) ? Math.ceil((msgs.length - messages.length) / 2) : 0) + ', len=' + (finalContent ? finalContent.length : 0));

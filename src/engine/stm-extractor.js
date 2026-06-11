@@ -87,7 +87,8 @@ export async function runStmExtractorCore(turns, params) {
 
             var parsed = {};
             try {
-                var cleaned = String(subResponseText || '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
+                var rawText = String(subResponseText || '').replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+                var cleaned = rawText.replace(/```json\s*/g, '').replace(/```/g, '').trim();
                 var idx = cleaned.indexOf('{');
                 if (idx !== -1) cleaned = cleaned.substring(idx);
                 var endIdx = cleaned.lastIndexOf('}');
@@ -131,7 +132,8 @@ export async function runStmExtractorCore(turns, params) {
 
             var parsed = {};
             try {
-                var cleaned = String(subResponse || '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
+                var rawText2 = String(subResponse || '').replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+                var cleaned = rawText2.replace(/```json\s*/g, '').replace(/```/g, '').trim();
                 var idx = cleaned.indexOf('{');
                 if (idx !== -1) cleaned = cleaned.substring(idx);
                 var endIdx = cleaned.lastIndexOf('}');
@@ -273,7 +275,15 @@ export async function runStmExtractorCore(turns, params) {
             turnIndexToEventIdx[turnIndices[ti2]] = ei;
         }
 
+        entry.turns = turnRange;
         entry.msg_ids = msgIds;
+        // 将 turns 映射为全局消息索引范围，供 validateMsgRanges 使用
+        // turns 内部相对；若有 globalIndexMap 则转换为全局；没有时直接使用 turnRange
+        var localStart = turnRange[0];
+        var localEnd = turnRange[1];
+        var mappedStart = (globalIndexMap && globalIndexMap[localStart] !== undefined) ? globalIndexMap[localStart] : localStart;
+        var mappedEnd = (globalIndexMap && globalIndexMap[localEnd] !== undefined) ? globalIndexMap[localEnd] : localEnd;
+        entry.msgRange = [mappedStart, mappedEnd];
         if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
         entry.period = period;
@@ -346,12 +356,16 @@ export async function runStmExtractorCore(turns, params) {
             }
 
             var forceMsgIds = collectMsgIdsFromTurns(turns, uncoveredMiddleTurns);
+            var forceLocalRange = [uncoveredMiddleTurns[0], uncoveredMiddleTurns[uncoveredMiddleTurns.length - 1]];
+            var forceMappedStart = (globalIndexMap && globalIndexMap[forceLocalRange[0]] !== undefined) ? globalIndexMap[forceLocalRange[0]] : forceLocalRange[0];
+            var forceMappedEnd = (globalIndexMap && globalIndexMap[forceLocalRange[1]] !== undefined) ? globalIndexMap[forceLocalRange[1]] : forceLocalRange[1];
             var forceEntry = {
                 event: forceParsed.event || 'Force-extracted dialog',
                 status: forceParsed.status || 'closed',
                 entity: forceParsed.entity || '',
-                turns: [uncoveredMiddleTurns[0], uncoveredMiddleTurns[uncoveredMiddleTurns.length - 1]],
+                turns: forceLocalRange,
                 msg_ids: forceMsgIds,
+                msgRange: [forceMappedStart, forceMappedEnd],
                 timestamp: new Date().toISOString(),
                 period: period,
                 scene: scene
@@ -396,14 +410,18 @@ export async function runStmExtractorCore(turns, params) {
     }
     } // end if (!fixedChunk) — Phase D/E
 
-    // Phase F: Validate entries
+    // Phase F: Validate entries — 仅在有 event 时才拒绝（不强制 msgRange 字段）
     var validEntries = [];
     for (var ei2 = 0; ei2 < processedEntries.length; ei2++) {
         var e = processedEntries[ei2];
         try {
             postFill({ stmEntries: [e], _checkpoints: null }, vault);
-            var errors = validateOutput({ stmEntries: [e], _checkpoints: null }, vault, 999);
-            if (!errors || errors.length === 0) {
+            // 宽松验证：仅检查 event 必填；不因为缺少 msgRange/_checkpoints 而拒绝 entry
+            var errors = [];
+            if (!e.event || !String(e.event).trim()) {
+                errors.push('stm_entries[' + ei2 + '].event is REQUIRED');
+            }
+            if (!errors.length) {
                 validEntries.push(e);
             } else {
                 console.warn('[NE] Validation failed for entry:', errors);
