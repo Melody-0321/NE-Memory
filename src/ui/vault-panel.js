@@ -1844,6 +1844,12 @@ export async function renderVaultPanel(getChatId) {
                     var cp = localStorage.getItem(cpKey);
                     if (cp) {
                         var cpData = JSON.parse(cp);
+                        if (cpData.t && cpData.i >= toProcess.length) {
+                            console.log('[NE] Process History already completed, skipping');
+                            try { localStorage.removeItem(cpKey); } catch (e2) {}
+                            alert(t('All messages have already been processed.'));
+                            return;
+                        }
                         if (cpData.t && cpData.i < toProcess.length) {
                             startBatch = Math.floor(cpData.i / BATCH);
                             console.log('[NE] Resuming Process History from batch', startBatch + 1, '/', totalBatches);
@@ -1856,7 +1862,7 @@ export async function renderVaultPanel(getChatId) {
                         var batch = toProcess.slice(i, i + BATCH);
                         var batchNum = Math.floor(i / BATCH) + 1;
                         processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
-                        await executeIncrementalUpdate(getChatId(), batch, true);
+                        await executeIncrementalUpdate(getChatId(), batch);
                         try {
                             localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, toProcess.length) }));
                         } catch (e2) {}
