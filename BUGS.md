@@ -246,6 +246,10 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 
 `e859b04` — fix: remove extra () from updateVaultViewerPopout(getChatId) calls
 
+### 后续加固
+
+`c02bb55` — 分段 try-catch + 类型守卫 + Array.isArray 护盾，彻底防止同类错误。
+
 ---
 
 ## 汇总
@@ -261,4 +265,4 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 | 7 | `generateRaw` 泄露记忆 | **High** | ✅ 已解决 |
 | 8 | CDN `import()` → `<script>` | High | ✅ 已解决 |
 | 9 | 副 API CORS / Load Failed | **High** | ✅ 已解决 |
-| 10 | `n is not a function` | Medium | 🔴 未解决 |
+| 10 | `n is not a function` | Medium | ✅ 已解决 |
