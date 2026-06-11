@@ -136,7 +136,7 @@ export async function runStmCursorLoop(params) {
             continue;
         }
 
-        var errors = params.validateOutput(parsed, vault, messages.length);
+        var errors = params.validateOutput(parsed, vault, ws2.items.length);
         if (errors.length > 0) {
             console.warn('[NE Cursor] Validation window', wi2 + 1, ':', errors.join('; '));
         }
@@ -148,10 +148,9 @@ export async function runStmCursorLoop(params) {
 
         // Map msg_ids
         stmEntries.forEach(function(entry) {
-            var rawRange = entry.msgRange || [ws2.position, ws2.position + ws2.items.length - 1];
-            // Convert global offsets to window-local indices
-            var r0 = rawRange[0] - ws2.position;
-            var r1 = rawRange[1] - ws2.position;
+            var rawRange = entry.msgRange || [0, ws2.items.length - 1];
+            var r0 = rawRange[0];
+            var r1 = rawRange[1];
             r0 = Math.max(0, Math.min(r0, ws2.items.length - 1));
             r1 = Math.max(r0, Math.min(r1, ws2.items.length - 1));
             entry.msg_ids = [];
@@ -199,10 +198,10 @@ export async function runStmCursorLoop(params) {
             var ae = stmEntries[ai];
             var aeRange = ae.msgRange || [];
             if (ae.status === 'closed' && aeRange[1] !== undefined) {
-                maxClosedEnd = Math.max(maxClosedEnd, aeRange[1] + 1);
+                maxClosedEnd = Math.max(maxClosedEnd, ws2.position + aeRange[1] + 1);
             }
             if (ae.status === 'partial' && aeRange[0] !== undefined) {
-                firstPartialStart = Math.min(firstPartialStart, aeRange[0]);
+                firstPartialStart = Math.min(firstPartialStart, ws2.position + aeRange[0]);
             }
         }
         if (firstPartialStart < Infinity) {

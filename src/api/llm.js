@@ -95,12 +95,113 @@ export async function callMemoryPipeline(messages, options = {}, chatId = null) 
     return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens, chatId: chatId }));
 }
 
+export async function callMemoryLLMWithTools(messages, tools, toolExecutors, options, chatId) {
+    var secondaryConfig = loadSecondaryApiConfig();
+    if (!secondaryConfig || !secondaryConfig.url || !secondaryConfig.model) {
+        throw new Error('Tool calling requires secondary API configured');
+    }
+    var mc = loadMemoryConfig();
+    var opts = Object.assign({ temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens || 2048, chatId: chatId }, options || {});
+    var msgs = messages.slice();
+    var finalContent = '';
+    var startTime = Date.now();
+    var totalUsage = null;
+
+    for (var round = 0; round < 5; round++) {
+        try {
+            var result = await callCustomAPITools(secondaryConfig, msgs, opts, tools);
+            var assistantMsg = result.msg;
+            if (!assistantMsg) throw new Error('No message in response');
+
+            msgs.push(assistantMsg);
+            if (result.usage) totalUsage = result.usage;
+
+            if (assistantMsg.content) finalContent = assistantMsg.content;
+
+            var toolCalls = assistantMsg.tool_calls;
+            if (!toolCalls || toolCalls.length === 0) break;
+
+            for (var ti = 0; ti < toolCalls.length; ti++) {
+                var tc = toolCalls[ti];
+                var fn = tc.function;
+                var executor = toolExecutors[fn.name];
+                if (!executor) {
+                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: 'Error: unknown tool ' + fn.name });
+                    continue;
+                }
+                try {
+                    var toolResult = await executor(JSON.parse(fn.arguments));
+                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: toolResult });
+                } catch (te) {
+                    msgs.push({ role: 'tool', tool_call_id: tc.id, content: 'Error: ' + te.message });
+                }
+            }
+        } catch (e) {
+            console.warn('[NE] Tool call round ' + (round + 1) + ' failed:', e.message);
+            break;
+        }
+    }
+
+    console.log('[NE] LLM with tools done — dur=' + (Date.now() - startTime) + 'ms, rounds=' + (msgs.length > Math.min(2, messages.length) ? Math.ceil((msgs.length - messages.length) / 2) : 0) + ', len=' + (finalContent ? finalContent.length : 0));
+    return finalContent || (msgs.length > 0 && msgs[msgs.length - 1].content) || '';
+}
+
+async function callCustomAPITools(config, messages, options, tools) {
+    if (!config.url) throw new Error('No API URL configured');
+    if (!config.model) throw new Error('No API model configured');
+    var headers = { 'Content-Type': 'application/json' };
+    if (config.key) headers['Authorization'] = 'Bearer ' + config.key;
+    var body = JSON.stringify({
+        model: config.model,
+        messages: messages,
+        tools: tools,
+        tool_choice: 'auto',
+        temperature: options.temperature || 0.3,
+        max_tokens: options.max_tokens || 2048
+    });
+    var timeoutSec = options.timeout || 120;
+    var controller = new AbortController();
+    var timer = setTimeout(function() { controller.abort(); }, timeoutSec * 1000);
+
+    function attemptFetch(url) {
+        return fetch(url, {
+            method: 'POST',
+            headers: headers,
+            body: body,
+            signal: controller.signal
+        }).then(function(resp) {
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('API error: ' + resp.status);
+            return resp.json();
+        }).then(function(data) {
+            var msg = data.choices?.[0]?.message;
+            var usage = data.usage || null;
+            return { msg: msg, usage: usage, _raw: data };
+        }).catch(function(e) {
+            clearTimeout(timer);
+            throw e;
+        });
+    }
+
+    try {
+        return await attemptFetch(config.url);
+    } catch (e) {
+        if (!/Load[_ ]?[Ff]ailed|NetworkError|Failed to fetch|TypeError: Failed to fetch/i.test(e.message || '')) {
+            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
+            throw e;
+        }
+        console.warn('[NE] Direct tools fetch failed (' + (e.message || '') + '), trying ST proxy...');
+        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
+        return await attemptFetch(proxyUrl);
+    }
+}
+
 export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
     var mc = loadMemoryConfig();
     return callMemoryLLM(messages, Object.assign({ temperature: mc.retrieval_temperature || mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
 }
 
-function loadSecondaryApiConfig() {
+export function loadSecondaryApiConfig() {
     try {
         const raw = localStorage.getItem('ne_secondary_api');
         if (raw) return JSON.parse(raw);

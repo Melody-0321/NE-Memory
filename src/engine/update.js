@@ -4,7 +4,8 @@
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
 import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
-import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
+import { callMemoryPipeline, callMemoryLLMWithTools, initPowerSlots, recordTelemetry, loadSecondaryApiConfig } from '../api/llm.js';
+import { executeAccess } from '../tools.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
@@ -517,7 +518,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
 
     // 格式化窗口消息
     var itemsText = windowItems.map(function(item, i) {
-        var idx = position + i;
+        var idx = i;
         var role = item.role || (item.is_user ? 'user' : 'assistant');
         var name = item.name ? item.name + ': ' : '';
         return '[' + idx + '] ' + role + ': ' + name + (item.content || item.mes || '');
@@ -529,9 +530,9 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
         currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
     }
     var state = content.state || {};
-    var present = state.present_characters;
-    if (present) {
-        currentStateSnapshot += '活跃角色: ' + present + '\n';
+    var allChars = state.characters ? Object.keys(state.characters) : [];
+    if (allChars.length > 0) {
+        currentStateSnapshot += '已知角色: ' + allChars.join(', ') + '\n';
     }
 
     // Partial 上下文
@@ -543,6 +544,27 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
             partialCtx += '  ' + (i + 1) + '. [' + rangeStr + '] (' + (p.event || '') + ') — 第' + (p._partial_generation || 1) + '代 partial\n';
         });
         partialCtx += '如果当前窗口中的消息能闭合上述 partial 事件，请在对应条目中设置 "parent_partial": <事件描述>。\n';
+    }
+
+    // 往期上下文 — 为 LLM 提供角色身份参考
+    var retrospectiveCtx = '';
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var sortedSTM = allSTM.filter(function(s) { return s.msgRange && s.msgRange.length === 2; })
+        .sort(function(a, b) { return b.msgRange[0] - a.msgRange[0]; });
+    var properNameCount = 0;
+    windowItems.forEach(function(item) {
+        var text = item.content || item.mes || '';
+        if (/[\u4e00-\u9fff]{2}/.test(text)) properNameCount++;
+    });
+    if (sortedSTM.length > 0 && properNameCount < windowItems.length * 0.3) {
+        retrospectiveCtx = '\n\n## 往期上下文（供角色身份参考）\n';
+        var latestSTM = sortedSTM[0];
+        retrospectiveCtx += '上一事件 [msg ' + latestSTM.msgRange.join('-') + ']: ' + (latestSTM.event || '');
+        for (var li = 1; li < Math.min(sortedSTM.length, 3); li++) {
+            retrospectiveCtx += '\n更早事件 [msg ' + sortedSTM[li].msgRange.join('-') + ']: ' + (sortedSTM[li].event || '');
+        }
+        retrospectiveCtx += '\n\n上述事件中应包含当前对话涉及的角色名字。请优先使用角色全名。';
+        retrospectiveCtx += '若仍无法确认身份，使用 access(msg_id) 追溯原文。\n';
     }
 
     // BM25 预分组提示
@@ -558,7 +580,8 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
 
     // 语言感知指令
     var instruction = lang === 'en' ?
-        (currentStateSnapshot + 'You are a story memory extractor. Extract key events from these ' + windowItems.length + ' messages.\n\n' +
+        (retrospectiveCtx + currentStateSnapshot + 'You are a story memory extractor. Extract key events from these ' + windowItems.length + ' messages.\n\n' +
+         'IMPORTANT: Always use character proper names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\n' +
          'Each entry must have:\n' +
          '- "event" (REQUIRED, 20-80 chars)\n' +
          '- "msgRange": [startIdx, endIdx] (REQUIRED)\n' +
@@ -569,7 +592,8 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
          '\nNote: "period" and "scene" are auto-filled. Do NOT include them.\n' +
          'Messages must be covered contiguously, no skipping.\n' +
          'If window content is insufficient for a complete event → return status:"partial".') :
-        (currentStateSnapshot + '你是故事记忆提取器。从以下 ' + windowItems.length + ' 条消息中提取关键事件。\n\n' +
+        (retrospectiveCtx + currentStateSnapshot + '你是故事记忆提取器。从以下 ' + windowItems.length + ' 条消息中提取关键事件。\n\n' +
+         '重要：event 中涉及人物时必须使用角色全名。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n' +
          '每个条目包含：\n' +
          '- "event"（必填，20-80字）\n' +
          '- "msgRange": [startIdx, endIdx]（必填）\n' +
@@ -768,19 +792,6 @@ function autoDecayStaleCharacters(state, messages) {
 export async function executeIncrementalUpdate(chatId, newMessages, force) {
     const vault = await read(chatId);
 
-    // 一次性迁移：若 processed_msg_ids 为空但已有 STM 条目，从现有条目重建并持久化
-    var procMap = (vault.content || {}).processed_msg_ids;
-    if (!procMap || Object.keys(procMap).length === 0) {
-        var content = vault.content || {};
-        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-        var allIds = [];
-        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { allIds.push(id); }); });
-        if (allIds.length > 0) {
-            markMessagesProcessed(vault, allIds);
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) {}
-        }
-    }
-
     var processedIds = new Set();
     if (!force) {
         processedIds = collectProcessedMsgIds(vault);
@@ -920,7 +931,38 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         cursorResult = await runStmCursorLoop({
             vault: vault,
             messages: filteredMessages,
-            callLLM: callMemoryPipeline,
+            callLLM: (function() {
+                var secCfg = loadSecondaryApiConfig();
+                if (secCfg && secCfg.url && secCfg.model) {
+                    var accessSchema = {
+                        type: 'function',
+                        function: {
+                            name: 'access',
+                            description: 'Read original message text by msg ID. Use when you need to disambiguate speaker identity (e.g. access("15") to check who "he" refers to). Also supports memory/state references.',
+                            parameters: { type: 'object', properties: { ref: { type: 'string', description: 'Reference string: msg ID (e.g. "15"), "stm_xxx", "ltm_xxx", "characters.Name"' } }, required: ['ref'] }
+                        }
+                    };
+                    return function(promptMsgs) {
+                        return callMemoryLLMWithTools(promptMsgs, [accessSchema], {
+                            access: function(args) {
+                                var ref = args.ref || '';
+                                var fm = filteredMessages;
+                                for (var k = 0; k < fm.length; k++) {
+                                    if (String(fm[k].id || fm[k].mes_id) === String(ref)) {
+                                        return (fm[k].content || fm[k].mes || '') + ' [msg ' + ref + ']';
+                                    }
+                                }
+                                try {
+                                    return executeAccess(ref, null, getChatId, getChatMessages);
+                                } catch (e2) {
+                                    return 'Not found: ' + ref;
+                                }
+                            }
+                        });
+                    };
+                }
+                return callMemoryPipeline;
+            })(),
             parseResponse: parseSTMResponse,
             validateOutput: validateSTMOutput,
             postFill: function(parsed, v) { postFillSTM(parsed, v); },

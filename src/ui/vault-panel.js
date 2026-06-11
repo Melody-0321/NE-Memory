@@ -284,6 +284,14 @@ function deleteSingleEntry(entryType, entryId) {
     var vault = stored.vault;
     var getChatId = stored.getChatId;
     var c = vault.content || {};
+    var targetList = (entryType === 'stm')
+        ? (c.unconsolidated_stm || [])
+        : (c.ltm_entries || []);
+    var targetEntry = targetList.find(function(e) { return e.id === entryId; });
+    if (targetEntry && targetEntry.msg_ids) {
+        var processed = c.processed_msg_ids || {};
+        targetEntry.msg_ids.forEach(function(mid) { delete processed[mid]; });
+    }
     if (entryType === 'stm') {
         c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function(e) { return e.id !== entryId; });
     } else {

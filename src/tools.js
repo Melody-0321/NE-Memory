@@ -17,22 +17,7 @@ export function registerAllTools(getChatId, getChatMessages) {
     }
 }
 
-function registerAccess(getChatId, getChatMessages) {
-    ToolManager.registerFunctionTool({
-        name: 'access',
-        displayName: 'Access Memory & State',
-        description: 'A unified tool to read any memory or state data by reference. Use when you know exactly what to look up (e.g., a specific message, character, item, or entity chain). Prefer recall_memory when you need to discover which entries are relevant.\n\nSupported ref formats:\n  Memory: "stm_12" or "ltm_3" — returns full entry text + children for further drill-down.\n  Message: "95" or "msg#95" — returns original message text. Optionally filter to passages mentioning specific entities: access("95", ["Frost"]).\n  Entity chain: "chain.龙牙剑" — returns complete timeline of all events related to an entity, sorted by time. The system may pre-mark available chains with [ℹ] tags — if you see such a tag, you know the chain exists and can be accessed.\n  State: "characters.爱丽丝", "factions.House Frost", "quests.Main" — returns full entity detail.\n\nNOT for open-ended searches — use recall_memory for those.',
-        parameters: Object.freeze({
-            $schema: 'http://json-schema.org/draft-04/schema#',
-            type: 'object',
-            properties: {
-                ref: { type: 'string', description: 'Reference string: "stm_12", "ltm_3", "95", "characters.爱丽丝", "factions.House Frost", "quests.Main".' },
-                entities: { type: 'array', items: { type: 'string' }, description: 'Optional. When expanding a msg, only return passages mentioning these entity names.' }
-            },
-            required: ['ref']
-        }),
-        action: async function (args) {
-            var ref = args.ref || '';
+export async function executeAccess(ref, entities, getChatId, getChatMessages) {
             var refType = 'unknown';
             var result = '';
             var t0 = Date.now();
@@ -51,12 +36,12 @@ function registerAccess(getChatId, getChatMessages) {
                     if (!msg) result = 'Message #' + msgId + ' not found.';
                     else {
                         var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
-                        if (args.entities && args.entities.length > 0) {
+                        if (entities && entities.length > 0) {
                             var entitySet = {};
-                            args.entities.forEach(function(e) { entitySet[e.toLowerCase()] = true; });
+                            entities.forEach(function(e) { entitySet[e.toLowerCase()] = true; });
                             var sentences = text.split(/(?<=[。！？.!?\n])/);
                             text = sentences.filter(function(s) {
-                                return args.entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
+                                return entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
                             }).join('').trim() || text.substring(0, 300) + '... [filtered]';
                         }
                         result = '[→' + msgId + ']\n' + text;
@@ -148,6 +133,24 @@ function registerAccess(getChatId, getChatMessages) {
                 recordChatStat(chatId, 'tool', 1);
                 return 'Error: ' + e.message;
             }
+}
+
+function registerAccess(getChatId, getChatMessages) {
+    ToolManager.registerFunctionTool({
+        name: 'access',
+        displayName: 'Access Memory & State',
+        description: 'A unified tool to read any memory or state data by reference. Use when you know exactly what to look up (e.g., a specific message, character, item, or entity chain). Prefer recall_memory when you need to discover which entries are relevant.\n\nSupported ref formats:\n  Memory: "stm_12" or "ltm_3" — returns full entry text + children for further drill-down.\n  Message: "95" or "msg#95" — returns original message text. Optionally filter to passages mentioning specific entities: access("95", ["Frost"]).\n  Entity chain: "chain.龙牙剑" — returns complete timeline of all events related to an entity, sorted by time. The system may pre-mark available chains with [ℹ] tags — if you see such a tag, you know the chain exists and can be accessed.\n  State: "characters.爱丽丝", "factions.House Frost", "quests.Main" — returns full entity detail.\n\nNOT for open-ended searches — use recall_memory for those.',
+        parameters: Object.freeze({
+            $schema: 'http://json-schema.org/draft-04/schema#',
+            type: 'object',
+            properties: {
+                ref: { type: 'string', description: 'Reference string: "stm_12", "ltm_3", "95", "characters.爱丽丝", "factions.House Frost", "quests.Main".' },
+                entities: { type: 'array', items: { type: 'string' }, description: 'Optional. When expanding a msg, only return passages mentioning these entity names.' }
+            },
+            required: ['ref']
+        }),
+        action: async function (args) {
+            return executeAccess(args.ref || '', args.entities, getChatId, getChatMessages);
         }
     });
 }

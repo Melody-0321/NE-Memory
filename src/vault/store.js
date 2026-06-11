@@ -60,7 +60,7 @@ export async function read(chatId) {
             if (result) {
                 const vault = result.vault;
                 migrateTimeRange(vault);
-                migrateProcessedMsgIds(vault);
+                ensureCursorState(vault);
                 if (!vault._meta) {
                     vault._meta = {
                         created_at: vault.created_at || new Date().toISOString(),
@@ -130,18 +130,8 @@ function migrateTimeRange(vault) {
     return dirty;
 }
 
-function migrateProcessedMsgIds(vault) {
+function ensureCursorState(vault) {
     var content = vault.content || {};
-    if (!content.processed_msg_ids || Object.keys(content.processed_msg_ids).length === 0) {
-        var allIds = [];
-        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { allIds.push(id); }); });
-        if (allIds.length > 0) {
-            var set = {};
-            allIds.forEach(function(id) { set[id] = true; });
-            content.processed_msg_ids = set;
-        }
-    }
     if (!content.cursor_state) {
         content.cursor_state = { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } };
     }
