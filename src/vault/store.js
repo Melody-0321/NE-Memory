@@ -210,7 +210,7 @@ export function collectAllMsgIds(vault) {
     const content = vault.content || {};
     const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     allSTM.forEach(stm => {
-        (stm.msg_ids || []).forEach(id => ids.add(id));
+        (stm.msg_ids || []).forEach(id => ids.add(String(id)));
     });
     return ids;
 }

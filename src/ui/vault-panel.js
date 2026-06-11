@@ -1788,7 +1788,7 @@ export async function renderVaultPanel(getChatId) {
                         var batch = toProcess.slice(i, i + BATCH);
                         var batchNum = Math.floor(i / BATCH) + 1;
                         processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
-                        await executeIncrementalUpdate(getChatId(), batch);
+                        await executeIncrementalUpdate(getChatId(), batch, true);
                         try {
                             localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, toProcess.length) }));
                         } catch (e2) {}

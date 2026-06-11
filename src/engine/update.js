@@ -898,7 +898,7 @@ function autoDecayStaleCharacters(state, messages) {
     return state;
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages) {
+export async function executeIncrementalUpdate(chatId, newMessages, force) {
     const vault = await read(chatId);
 
     // ── 语义切分上下限 ──
@@ -914,8 +914,11 @@ export async function executeIncrementalUpdate(chatId, newMessages) {
     } catch (e) {}
     if (segMinTurns > segMaxTurns) segMinTurns = segMaxTurns;
 
-    var processedIds = collectProcessedMsgIds(vault);
-    var filteredMessages = filterNewMessages(newMessages, processedIds);
+    var processedIds = new Set();
+    if (!force) {
+        processedIds = collectProcessedMsgIds(vault);
+    }
+    var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
     if (filteredMessages.length === 0) return { vault: vault, added: 0 };
 
     // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
