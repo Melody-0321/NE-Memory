@@ -581,7 +581,6 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     // 语言感知指令
     var instruction = lang === 'en' ?
         (retrospectiveCtx + currentStateSnapshot + 'You are a story memory extractor. Extract key events from these ' + windowItems.length + ' messages.\n\n' +
-         'FOR STM EXTRACTION ONLY: In event descriptions, always use the character names as they appear in dialogue (use everyday forms like "Alice", not full titles). Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\n' +
          'Each entry must have:\n' +
          '- "event" (REQUIRED, 20-80 chars)\n' +
          '- "msgRange": [startIdx, endIdx] (REQUIRED)\n' +
@@ -593,7 +592,6 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
          'Messages must be covered contiguously, no skipping.\n' +
          'If window content is insufficient for a complete event → return status:"partial".') :
         (retrospectiveCtx + currentStateSnapshot + '你是故事记忆提取器。从以下 ' + windowItems.length + ' 条消息中提取关键事件。\n\n' +
-         '【STM 提取专用】event 中涉及人物时必须使用对话中常用的角色称呼（如"林雪"而非"林雪·月影"）。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n' +
          '每个条目包含：\n' +
          '- "event"（必填，20-80字）\n' +
          '- "msgRange": [startIdx, endIdx]（必填）\n' +
@@ -610,8 +608,8 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     if (force) instruction += '\n\n⚠️ 已到达窗口上限，请务必返回至少一条事件。不允许返回空数组。';
 
     var userPrompt = lang === 'en' ?
-        'Messages:\n' + itemsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\nIf nothing significant, return [].' :
-        '消息：\n' + itemsText + '\n\n仅输出一个 JSON 数组：\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\n如果没有重要事件，返回 []。';
+        'IMPORTANT: Always use character proper names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\nMessages:\n' + itemsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\nIf nothing significant, return [].' :
+        '重要：event 中涉及人物时必须使用角色全名。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n消息：\n' + itemsText + '\n\n仅输出一个 JSON 数组：\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\n如果没有重要事件，返回 []。';
 
     return { system: instruction, user: userPrompt };
 }
