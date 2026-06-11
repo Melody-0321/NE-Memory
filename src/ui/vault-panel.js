@@ -1845,12 +1845,9 @@ export async function renderVaultPanel(getChatId) {
                     if (cp) {
                         var cpData = JSON.parse(cp);
                         if (cpData.t && cpData.i >= toProcess.length) {
-                            console.log('[NE] Process History already completed, skipping');
+                            console.log('[NE] Process History checkpoint stale, resetting');
                             try { localStorage.removeItem(cpKey); } catch (e2) {}
-                            alert(t('All messages have already been processed.'));
-                            return;
-                        }
-                        if (cpData.t && cpData.i < toProcess.length) {
+                        } else if (cpData.t && cpData.i > 0) {
                             startBatch = Math.floor(cpData.i / BATCH);
                             console.log('[NE] Resuming Process History from batch', startBatch + 1, '/', totalBatches);
                         }
