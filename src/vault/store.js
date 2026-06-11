@@ -221,16 +221,16 @@ function collectAllMsgIds(vault) {
 }
 
 export function appendSTMEntries(vault, stmEntries) {
-    const content = vault.content;
+    const content = vault.content || {};
     const existingIds = new Set();
-    content.unconsolidated_stm.forEach(e => existingIds.add(e.id));
-    content.stm_entries.forEach(e => existingIds.add(e.id));
+    (content.unconsolidated_stm || []).forEach(e => existingIds.add(e.id));
+    (content.stm_entries || []).forEach(e => existingIds.add(e.id));
     let maxId = 0;
-    content.unconsolidated_stm.forEach(e => {
+    (content.unconsolidated_stm || []).forEach(e => {
         const num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
-    content.stm_entries.forEach(e => {
+    (content.stm_entries || []).forEach(e => {
         const num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
@@ -256,7 +256,11 @@ export function appendSTMEntries(vault, stmEntries) {
 }
 
 export function rollbackByMsgIds(vault, removedMsgIds) {
-    const content = vault.content || {};
+    let content = vault.content;
+    if (!content) {
+        content = {};
+        vault.content = content;
+    }
     const ridSet = new Set(removedMsgIds);
     const updated = { removedSTM: 0, removedLTM: 0 };
     const filterSTM = (list) => {
@@ -291,9 +295,9 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     });
     content.ltm_entries = keptLTM;
 
-    // 清除 processed_msg_ids，允许这些消息在下一次提取时重新参与
     var processed = content.processed_msg_ids || {};
     removedMsgIds.forEach(function(id) { delete processed[id]; });
+    content.processed_msg_ids = processed;
 
     return updated;
 }

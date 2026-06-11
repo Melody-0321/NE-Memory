@@ -18,15 +18,14 @@ export async function saveSnapshot(chatId, vault) {
         updated_at: vault.updated_at || new Date().toISOString(),
         data: JSON.parse(JSON.stringify(vault))
     };
-    return new Promise((resolve, reject) => {
+    await new Promise((resolve, reject) => {
         const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
         const store = tx.objectStore(SNAPSHOT_STORE);
         store.put(snapshot);
-        tx.oncomplete = () => {
-            pruneOldSnapshots(db, chatId).then(() => resolve());
-        };
+        tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
     });
+    await pruneOldSnapshots(db, chatId);
 }
 
 async function pruneOldSnapshots(db, chatId) {
@@ -63,19 +62,20 @@ export async function listSnapshots(chatId) {
 export async function restoreSnapshot(chatId, version) {
     const db = await openDB();
     const snapshotId = chatId + '_v' + version;
-    return new Promise((resolve, reject) => {
+    const snapshot = await new Promise((resolve, reject) => {
         const tx = db.transaction(SNAPSHOT_STORE, 'readonly');
         const store = tx.objectStore(SNAPSHOT_STORE);
         const req = store.get(snapshotId);
-        req.onsuccess = async () => {
-            if (!req.result) { resolve(null); return; }
-            const vault = req.result.data;
-            const { write } = await import('./store.js');
-            await write(chatId, vault);
-            resolve(vault);
-        };
+        req.onsuccess = () => resolve(req.result);
         req.onerror = () => reject(req.error);
     });
+    if (!snapshot) {
+        return null;
+    }
+    const vault = snapshot.data;
+    const { write } = await import('./store.js');
+    await write(chatId, vault);
+    return vault;
 }
 
 export async function deleteSnapshot(chatId, version) {
