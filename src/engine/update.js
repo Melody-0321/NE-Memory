@@ -563,7 +563,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
         for (var li = 1; li < Math.min(sortedSTM.length, 3); li++) {
             retrospectiveCtx += '\n更早事件 [msg ' + sortedSTM[li].msgRange.join('-') + ']: ' + (sortedSTM[li].event || '');
         }
-        retrospectiveCtx += '\n\n上述事件中应包含当前对话涉及的角色名字。请在 event 中使用角色名（日常称呼即可）。';
+        retrospectiveCtx += '\n\n上述事件中应包含当前对话涉及的角色名字。请优先使用角色全名。';
         retrospectiveCtx += '若仍无法确认身份，使用 access(msg_id) 追溯原文。\n';
     }
 
@@ -581,7 +581,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     // 语言感知指令
     var instruction = lang === 'en' ?
         (retrospectiveCtx + currentStateSnapshot + 'You are a story memory extractor. Extract key events from these ' + windowItems.length + ' messages.\n\n' +
-         'IMPORTANT: Always use character names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\n' +
+         'FOR STM EXTRACTION ONLY: In event descriptions, always use the character names as they appear in dialogue (use everyday forms like "Alice", not full titles). Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\n' +
          'Each entry must have:\n' +
          '- "event" (REQUIRED, 20-80 chars)\n' +
          '- "msgRange": [startIdx, endIdx] (REQUIRED)\n' +
@@ -593,7 +593,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
          'Messages must be covered contiguously, no skipping.\n' +
          'If window content is insufficient for a complete event → return status:"partial".') :
         (retrospectiveCtx + currentStateSnapshot + '你是故事记忆提取器。从以下 ' + windowItems.length + ' 条消息中提取关键事件。\n\n' +
-         '重要：event 中涉及人物时必须使用角色名（日常称呼即可）。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n' +
+         '【STM 提取专用】event 中涉及人物时必须使用对话中常用的角色称呼（如"林雪"而非"林雪·月影"）。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n' +
          '每个条目包含：\n' +
          '- "event"（必填，20-80字）\n' +
          '- "msgRange": [startIdx, endIdx]（必填）\n' +
