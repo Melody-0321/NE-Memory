@@ -1764,36 +1764,34 @@ export async function renderVaultPanel(getChatId) {
                 var prevText = processHistoryBtn.textContent;
                 processHistoryBtn.textContent = t('Processing...');
                 processHistoryBtn.disabled = true;
-                var BATCH = 10;
-                var totalBatches = Math.ceil(toProcess.length / BATCH);
+                var BATCH = 30;
+                var total = toProcess.length;
 
                 var cpKey = 'ne_ph_' + getChatId();
-                var startBatch = 0;
+                var processedCount = 0;
                 try {
                     var cp = localStorage.getItem(cpKey);
                     if (cp) {
                         var cpData = JSON.parse(cp);
-                        if (cpData.t && cpData.i >= toProcess.length) {
+                        if (cpData.t && cpData.i >= total) {
                             console.log('[NE] Process History checkpoint stale, resetting');
                             try { localStorage.removeItem(cpKey); } catch (e2) {}
                         } else if (cpData.t && cpData.i > 0) {
-                            startBatch = Math.floor(cpData.i / BATCH);
-                            console.log('[NE] Resuming Process History from batch', startBatch + 1, '/', totalBatches);
+                            processedCount = cpData.i;
+                            console.log('[NE] Resuming Process History from message', processedCount + 1, '/', total);
                         }
                     }
                 } catch (e) {}
 
                 try {
-                    for (var i = startBatch * BATCH; i < toProcess.length; i += BATCH) {
+                    for (var i = processedCount; i < total; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
-                        var batchNum = Math.floor(i / BATCH) + 1;
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + Math.min(i + BATCH, total) + '/' + total + ')';
                         await executeIncrementalUpdate(getChatId(), batch, true);
                         try {
-                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, toProcess.length) }));
+                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, total) }));
                         } catch (e2) {}
                     }
-                    await executeConsolidation(getChatId());
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
