@@ -10,7 +10,7 @@ import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
-import { runStmExtractor } from './stm-extractor.js';
+import { runStmExtractor, processTurnsInBatches } from './stm-extractor.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
@@ -674,12 +674,12 @@ export function buildSegmentationPrompt(turns, pendingPartials, vault) {
     }
 
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- For turns at the END that are still ongoing → status:"partial".\n- For single events with all turns → output JSON array directly (no tool calls).\n- Do NOT include deferred turns in tool calls — list them separately as deferred:[].\n- Turns between already-processed events must be covered (cannot skip).') :
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- 末尾尚未完成的事件 → status:"partial"。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 被标记为延迟的 turns 单独列出为 deferred:[]。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- For turns at the END that are still ongoing → status:"partial".\n- For turns at the END that have not yet formed any event (opening not reached) → call extract_stm with status:"deferred" so the system can postpone them.\n- For single events with all turns → output JSON array directly (no tool calls).\n- Turns between already-processed events must be covered (cannot skip).') :
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- 末尾尚未完成的事件 → status:"partial"。\n- 末尾尚不构成任何事件的 turns（仅剩开篇、未到主体） → 仍调用 extract_stm 并传入 status:"deferred"，系统会将其推迟到下一批处理。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
 
     var user = lang === 'en' ?
-        'Turns:\n\n' + turnsText.join('\n') + '\nOutput format (multi-event): call extract_stm for each event, never output msg body directly.\nOutput format (single-event): JSON array of STM entries.\nIf some turns should be deferred, list them as {"deferred": [turnIdx, ...]}" in plain text.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n多事件时：为每个事件调用 extract_stm。\n单事件时：直接输出 JSON 数组。\n若有需要延迟的 turns，以 {"deferred": [turnIdx, ...]} 在纯文本中列出。';
+        'Turns:\n\n' + turnsText.join('\n') + '\nOutput format (multi-event): call extract_stm for each event, including deferred turns with status:"deferred".\nOutput format (single-event): JSON array of STM entries.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n多事件时：为每个事件调用 extract_stm，被推迟的事件传 status:"deferred"。\n单事件时：直接输出 JSON 数组。';
 
     return { system: system, user: user };
 }
@@ -707,8 +707,8 @@ export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
     }
 
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Extract ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format:\n{\n  "event": "event description (20-80 chars)",\n  "status": "closed" | "partial",\n  "entity": "optional entity name"\n}\n\nIMPORTANT: Use character proper names in event descriptions. Do NOT use pronouns (I/he/she).') :
-        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。从下列对话中提取一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：\n{\n  "event": "事件描述（20-80字）",\n  "status": "closed" | "partial",\n  "entity": "可选实体名"\n}\n\n重要：event 中使用角色全名，禁止代词。');
+        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Extract ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format:\n{\n  "event": "event description (20-80 chars)",\n  "status": "closed" | "partial" | "deferred",\n  "entity": "optional entity name"\n}\n\n- "closed" = complete event.\n- "partial" = event continues beyond these turns.\n- "deferred" = turns are insufficient to form any event yet (open-ended start, main body not reached).\n\nIMPORTANT: Use character proper names in event descriptions. Do NOT use pronouns (I/he/she).') :
+        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。从下列对话中提取一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：\n{\n  "event": "事件描述（20-80字）",\n  "status": "closed" | "partial" | "deferred",\n  "entity": "可选实体名"\n}\n\n- "closed" = 完整事件。\n- "partial" = 事件延续到这些回合之后。\n- "deferred" = 这些对话轮次尚不构成完整事件（仅剩开篇、未到主体），推迟处理。\n\n重要：event 中使用角色全名，禁止代词。');
 
     var user = lang === 'en' ?
         'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput ONLY the JSON object above. No extra text.' :
@@ -1029,9 +1029,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
     var newEntries = [];
     try {
-        cursorResult = await runStmExtractor({
-            vault: vault,
-            messages: filteredMessages,
+        cursorResult = await processTurnsInBatches(vault, filteredMessages, {
             callLLM: callMemoryPipeline,
             parseResponse: parseSTMResponse,
             validateOutput: validateSTMOutput,

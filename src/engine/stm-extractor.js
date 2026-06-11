@@ -4,15 +4,29 @@
  * Replaces cursor.js. Main LLM segments turns into semantic events,
  * spawns parallel sub-agents for each event range, then code-fills metadata.
  * Single-event path skips tool calling entirely.
+ *
+ * Batch support: processTurnsInBatches() splits large turn sets into
+ * maxTurns-sized batches with deferred carry-forward between batches.
  */
 
 import { callMemoryLLMWithTools, callMemoryPipeline, loadSecondaryApiConfig } from '../api/llm.js';
 import { EXTRACT_STM_TOOL_SCHEMA } from '../tools.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
+var DEFAULT_MAX_TURNS = 10;
+
+// ── 外层入口（向后兼容）──
+
 export async function runStmExtractor(params) {
-    var vault = params.vault;
     var messages = params.messages;
+    var turns = groupMessagesIntoTurns(messages);
+    return runStmExtractorCore(turns, params);
+}
+
+// ── 内层（直接接收 turns）──
+
+export async function runStmExtractorCore(turns, params) {
+    var vault = params.vault;
     var callLLM = params.callLLM;
     var parseResponse = params.parseResponse;
     var validateOutput = params.validateOutput;
@@ -23,19 +37,15 @@ export async function runStmExtractor(params) {
     var markProcessed = params.markProcessed;
     var buildSegmentationPrompt = params.buildSegmentationPrompt;
     var buildSubAgentPrompt = params.buildSubAgentPrompt;
+    var carryForwardCount = params.carryForwardCount || 0;
+    var maxTurns = params.maxTurns || DEFAULT_MAX_TURNS;
 
-    if (!messages || messages.length === 0) {
-        return { vault: vault, cursorState: null, totalAdded: 0 };
+    if (!turns || turns.length === 0) {
+        return { vault: vault, cursorState: null, totalAdded: 0, tailDeferred: [] };
     }
 
     var cursorState = getCursorState(vault, 'stm');
     var pendingPartials = cursorState.pending_partials || [];
-
-    // Phase A: Turn segmentation
-    var turns = groupMessagesIntoTurns(messages);
-    if (turns.length === 0) {
-        return { vault: vault, cursorState: cursorState, totalAdded: 0 };
-    }
 
     // Phase B: Build segmentation prompt
     var segPrompt = buildSegmentationPrompt(turns, pendingPartials, vault);
@@ -61,13 +71,11 @@ export async function runStmExtractor(params) {
             var summary = args.event_summary || '';
             var subPrompt = buildSubAgentPrompt(turns, turnIndices, summary, vault);
 
-            // Sub-agent uses regular memory LLM (single-turn)
             var subResponse = await callMemoryPipeline([
                 { role: 'system', content: subPrompt.system },
                 { role: 'user', content: subPrompt.user }
             ]);
 
-            // Parse sub-agent response
             var parsed = {};
             try {
                 var cleaned = String(subResponse || '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
@@ -80,15 +88,16 @@ export async function runStmExtractor(params) {
                 parsed = { event: (summary || String(subResponse).substring(0, 80)), status: 'closed' };
             }
 
-            // Code-fill: msg_ids from turns
             var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
+            var isDeferred = parsed.status === 'deferred' || args.status === 'deferred';
 
             return JSON.stringify({
                 event: parsed.event || summary,
-                status: parsed.status || args.status || 'closed',
+                status: isDeferred ? 'deferred' : (parsed.status || args.status || 'closed'),
                 entity: parsed.entity || '',
                 turns: [start, end],
-                msg_ids: msgIds
+                msg_ids: msgIds,
+                deferred: isDeferred
             });
         };
 
@@ -110,15 +119,34 @@ export async function runStmExtractor(params) {
 
         // Parse main LLM final response
         var finalText = String(mainLLMResponse || '').trim();
+
+        // Extract deferred entries from tool results
+        var toolResultEntries = [];
+        for (var ri = 0; ri < segMessages.length; ri++) {
+            if (segMessages[ri].role === 'tool') {
+                try {
+                    var tr = JSON.parse(segMessages[ri].content);
+                    if (tr && tr.deferred) {
+                        deferredTurns.push(tr.turns[0]);
+                        if (tr.turns[1] > tr.turns[0]) {
+                            for (var di = tr.turns[0] + 1; di <= tr.turns[1]; di++) deferredTurns.push(di);
+                        }
+                    } else if (tr && tr.event && tr.turns) {
+                        toolResultEntries.push(tr);
+                    }
+                } catch (e) {}
+            }
+        }
+
         if (finalText) {
             try {
-                // Check for deferred list
+                // Check for deferred list in text output (fallback for single-event path)
                 var deferredMatch = finalText.match(/\{"deferred"\s*:\s*\[([^\]]+)\]\}/);
                 if (deferredMatch) {
                     try {
-                        deferredTurns = JSON.parse('[' + deferredMatch[1] + ']');
+                        var txtDeferred = JSON.parse('[' + deferredMatch[1] + ']');
+                        txtDeferred.forEach(function(dt) { if (deferredTurns.indexOf(dt) === -1) deferredTurns.push(dt); });
                     } catch (e2) {}
-                    // Remove deferred from final text
                     finalText = finalText.replace(/\{"deferred"\s*:\s*\[([^\]]*)\]\}/g, '').trim();
                 }
 
@@ -131,10 +159,9 @@ export async function runStmExtractor(params) {
             }
         }
 
-        // Also extract entries from tool call results (in case main LLM final output is empty)
-        if (stmEntries.length === 0) {
-            // Fallback: parse tool call args as events
-            stmEntries = _extractFromToolCalls(toolExecs, turns);
+        // If stmEntries is empty, use tool result entries
+        if (stmEntries.length === 0 && toolResultEntries.length > 0) {
+            stmEntries = toolResultEntries;
         }
 
     } else {
@@ -146,13 +173,22 @@ export async function runStmExtractor(params) {
         var subPrompt = buildSubAgentPrompt(turns, allIndices, '', vault);
         var responseText = await callMemoryPipeline([
             { role: 'system', content: subPrompt.system },
-            { role: 'user', content: allTurnsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "status": "closed"|"partial", "entity": "..." },\n  ...\n]\nIf nothing significant, return [].' }
+            { role: 'user', content: allTurnsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "status": "closed"|"partial"|"deferred", "entity": "..." },\n  ...\n]\nIf nothing significant, return [].' }
         ]);
 
         var parsed = parseResponse(responseText);
         if (parsed && parsed.stmEntries) {
-            stmEntries = parsed.stmEntries;
-            // Assign turns: if single entry, cover all turns
+            // Separate deferred entries
+            var nonDeferred = [];
+            for (var ei3 = 0; ei3 < parsed.stmEntries.length; ei3++) {
+                var pe = parsed.stmEntries[ei3];
+                if (pe.status === 'deferred') {
+                    deferredTurns.push(0); // Fallback path doesn't have turn-level granularity for deferred
+                } else {
+                    nonDeferred.push(pe);
+                }
+            }
+            stmEntries = nonDeferred;
             if (stmEntries.length === 1) {
                 stmEntries[0].turns = [0, turns.length - 1];
             }
@@ -168,32 +204,27 @@ export async function runStmExtractor(params) {
     for (var ei = 0; ei < stmEntries.length; ei++) {
         var entry = stmEntries[ei];
 
-        // Determine turn range
         var turnRange;
         if (entry.turns && Array.isArray(entry.turns)) {
             turnRange = entry.turns;
         } else {
-            // Default: if only one entry, cover all turns
             turnRange = [0, turns.length - 1];
         }
 
-        // Code-calculate msg_ids
         var turnIndices = [];
         for (var ti = turnRange[0]; ti <= turnRange[1]; ti++) turnIndices.push(ti);
         var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
 
-        // Mark turn->event mapping
         for (var ti2 = 0; ti2 < turnIndices.length; ti2++) {
             turnIndexToEventIdx[turnIndices[ti2]] = ei;
         }
 
         entry.msg_ids = msgIds;
-        if (!entry.id) entry.id = null; // let appendSTMEntries generate
+        if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
         entry.period = period;
         entry.scene = scene;
 
-        // Merge msg_ids into allMsgIds
         msgIds.forEach(function(id) {
             if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
         });
@@ -202,10 +233,29 @@ export async function runStmExtractor(params) {
     }
 
     // Phase D: Handle deferred turns (only at the end)
-    // Middle turns not covered → force extraction (they can't improve)
     var coveredTurns = {};
     for (var key in turnIndexToEventIdx) coveredTurns[Number(key)] = true;
 
+    // ── Code-level tail deferred detection ──
+    // Find the last covered turn; everything after it is tail-uncovered.
+    var maxCoveredTurn = -1;
+    for (var ti4 = 0; ti4 < turns.length; ti4++) {
+        if (coveredTurns[ti4]) maxCoveredTurn = ti4;
+    }
+
+    var tailDeferred = [];
+    for (var ti5 = maxCoveredTurn + 1; ti5 < turns.length; ti5++) {
+        if (deferredTurns.indexOf(ti5) === -1) {
+            tailDeferred.push(ti5);
+        }
+    }
+
+    // Merge LLM-marked deferred with code-detected tail deferred
+    deferredTurns = deferredTurns.concat(tailDeferred.filter(function(t) {
+        return deferredTurns.indexOf(t) === -1;
+    }));
+
+    // Middle turns not covered (between two covered turns) → force extraction
     var uncoveredMiddleTurns = [];
     var lastCoveredTurn = -1;
     for (var ti3 = 0; ti3 < turns.length; ti3++) {
@@ -216,9 +266,8 @@ export async function runStmExtractor(params) {
         }
     }
 
-    // Force-extract uncovered middle turns as a single event
     if (uncoveredMiddleTurns.length > 0) {
-        var forceSummary = turns.length > 0 ? '中间未录入对话轮次' : '';
+        var forceSummary = '中间未录入对话轮次';
         var subPrompt2 = buildSubAgentPrompt(turns, uncoveredMiddleTurns, forceSummary, vault);
         var forceResponse = '';
         try {
@@ -259,15 +308,17 @@ export async function runStmExtractor(params) {
         }
     }
 
-    // Phase E: Deferred handling (only the last unchecked turns can be deferred)
+    // Phase E: Deferred handling
     var newPendingPartials = pendingPartials.slice();
     if (deferredTurns.length > 0) {
+        // Track deferred as pending partials for carry-forward
         var deferredPartial = {
-            event: 'Deferred turns ' + deferredTurns.join('-'),
-            turns: deferredTurns,
+            event: 'Deferred turns ' + deferredTurns[0] + '-' + deferredTurns[deferredTurns.length - 1],
+            turns: deferredTurns.slice(),
             _partial_generation: 1
         };
         newPendingPartials.push(deferredPartial);
+
         // Don't mark deferred turns as processed
         deferredTurns.forEach(function(dt) {
             var dtMsgIds = collectMsgIdsFromTurns(turns, [dt]);
@@ -319,10 +370,80 @@ export async function runStmExtractor(params) {
 
     console.log('[NE] Extractor done — entries=' + totalAdded + ', msg_ids=' + allMsgIds.length + ', deferred=' + deferredTurns.length);
 
-    return { vault: vault, cursorState: finalState, totalAdded: totalAdded };
+    return {
+        vault: vault,
+        cursorState: finalState,
+        totalAdded: totalAdded,
+        tailDeferred: deferredTurns.slice()
+    };
 }
 
-function _extractFromToolCalls(toolExecs, turns) {
-    // Fallback when main LLM didn't output a final JSON array
-    return [];
+// ── 批量分治入口 ──
+
+export async function processTurnsInBatches(vault, messages, buildParams) {
+    var allTurns = groupMessagesIntoTurns(messages);
+    if (allTurns.length === 0) return { vault: vault, totalAdded: 0 };
+
+    var maxTurns = buildParams.maxTurns || DEFAULT_MAX_TURNS;
+    var cursorState = buildParams.getCursorState(vault, 'stm');
+    var pendingPartials = cursorState.pending_partials || [];
+
+    // 从 pending_partials 提取 deferred turns（carry-forward）
+    var carryForwardTurns = [];
+    if (pendingPartials.length > 0) {
+        pendingPartials.forEach(function(p) {
+            if (p.turns && Array.isArray(p.turns)) {
+                p.turns.forEach(function(ti) { carryForwardTurns.push(ti); });
+            }
+        });
+        carryForwardTurns.sort(function(a, b) { return a - b; });
+    }
+
+    // 短路径：如果所有 turns 在 maxTurns 内且无 carry-forward，直接单次调用
+    if (allTurns.length <= maxTurns && carryForwardTurns.length === 0) {
+        return runStmExtractorCore(allTurns, buildParams);
+    }
+
+    var totalAdded = 0;
+    var turnIdx = 0;
+
+    while (turnIdx < allTurns.length || carryForwardTurns.length > 0) {
+        var batchTurns = [];
+
+        // Step 1: 先加入 carry-forward turns
+        if (carryForwardTurns.length > 0) {
+            for (var ci = 0; ci < carryForwardTurns.length; ci++) {
+                var t = allTurns[carryForwardTurns[ci]];
+                if (t) batchTurns.push(t);
+            }
+        }
+
+        // Step 2: 从 allTurns 补充新 turns 到满 maxTurns
+        while (batchTurns.length < maxTurns && turnIdx < allTurns.length) {
+            batchTurns.push(allTurns[turnIdx]);
+            turnIdx++;
+        }
+
+        if (batchTurns.length === 0) break;
+
+        var carryCount = carryForwardTurns.length;
+
+        var batchResult = await runStmExtractorCore(batchTurns, Object.assign({}, buildParams, {
+            vault: vault,
+            carryForwardCount: carryCount,
+            maxTurns: maxTurns
+        }));
+
+        totalAdded += batchResult.totalAdded;
+        vault = batchResult.vault;
+
+        // 下一批的 carry-forward = 本批的 tailDeferred
+        carryForwardTurns = batchResult.tailDeferred || [];
+
+        console.log('[NE] Batch processed — entries=' + batchResult.totalAdded + ', tailDeferred=' + carryForwardTurns.length);
+
+        if (batchTurns.length < maxTurns && carryForwardTurns.length === 0) break;
+    }
+
+    return { vault: vault, totalAdded: totalAdded };
 }
