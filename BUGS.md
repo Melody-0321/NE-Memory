@@ -252,6 +252,103 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 
 ---
 
+## #11 内联编辑保存无效 / 取消后无法再编辑 / 无删除按钮
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-11 |
+| **解决** | 2026-06-11 |
+| **严重程度** | **High** |
+
+### 根因
+
+1. `_pendingInlineStorage` 仅在声明时赋 `null`，从未被赋值为 vault，`saveSingleEntry` 首行 `if (!vault) return` 直接跳过
+2. 取消/保存后 `row.innerHTML = row._neOrigHTML` 还原了 HTML，但新 DOM 元素的 onclick 未重新绑定，✏️ 按钮失效
+3. 从未实现删除功能
+
+### 修复
+
+- `updateVaultViewerPopout` 读 vault 后赋值 `_pendingInlineStorage = { vault, getChatId }`
+- 还原后调用 `rebindEditBtn(row)` 重新绑定编辑按钮
+- 新增 `deleteSingleEntry()` + 🗑 红色删除按钮 + `confirm()` 确认弹窗
+- 修正 `saveSingleEntry` 参数签名
+
+### commit
+
+`c38da69` — fix: inline edit save broken, cancel broke re-edit, add delete button with confirmation
+
+---
+
+## #12 Process History `force=true` 导致消息全部重复处理
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-11 |
+| **解决** | 2026-06-11 |
+| **严重程度** | **High** |
+
+### 根因
+
+1. Process History 调用 `executeIncrementalUpdate(getChatId(), batch, true)`，传入 `force=true` 跳过 `collectProcessedMsgIds` + `filterNewMessages` 去重，所有消息全部重新送入 STM 提取
+2. 去掉 `force` 后，`collectProcessedMsgIds` 的回退逻辑扫描了 `stm_entries`（已合入 LTM 的归档条目），一旦聊天有过处理历史，所有 msg_id 永久锁死，导致 Process History 什么都不做
+3. 上轮加的 checkpoint guard 误把断点恢复标记当成"已完成"标记，`alert + return` 直接阻塞
+
+### 修复
+
+- 去掉 Process History 的 `force=true`
+- 去掉 `collectProcessedMsgIds` 的 STM 条目回退扫描，只信任 `processed_msg_ids`
+- 在 `executeIncrementalUpdate` 中加一次性迁移：`processed_msg_ids` 为空时从现有 STM 条目重建并持久化
+- 过期 checkpoint 改为静默清除而非阻塞
+
+### commit
+
+`08b89f9` — 去掉 force；`b50aed9` — 修复 checkpoint guard；`1ee283d` — 修复回退逻辑
+
+---
+
+## #13 cursor 窗口 2+ msg_ids 全部丢失
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-11 |
+| **解决** | 2026-06-11 |
+| **严重程度** | **High** |
+| **影响** | 一次性收录 ≥ 8 条消息时，窗口 2+（msg index 4+）的 STM 条目的 `msg_ids` 几乎全部丢失，`processed_msg_ids` 记录不完整，后续去重失效 |
+
+### 根因
+
+[cursor.js](src/engine/cursor.js) 的 `msgRange → msg_ids` 映射中，`msgRange` 是 LLM 输出的**全局偏移**（对应 prompt 中 `[position + i]` 标记），但 `ws2.items` 是**窗口局部切片**。原代码直接拿 `msgRange` 值作为 `ws2.items` 的局部索引，未减去 `ws2.position`：
+
+| 窗口 | msgRange | 旧代码 `ws2.items[msgRange]` | 实际取到 |
+|------|----------|---------------------------|---------|
+| 1 (pos=0) | [0, 2] | ws2.items[0..2] ✅ | msg[0..2] |
+| 2 (pos=4) | [5, 6] | Math.min(5,3)=3 → ws2.items[3] ❌ | msg[7]（仅 1 条） |
+| 2 (pos=4) | [4, 7] | Math.min(7,3)=3 → ws2.items[3] ❌ | msg[7]（仅 1 条，丢了 3 条） |
+
+同时 `validateOutput` 传入了 `ws2.items.length`（局部），导致窗口 2+ 产生虚假的「msgRange 越界」告警。
+
+### 修复
+
+```diff
+- var r0 = Math.max(0, Math.min(range[0], ws2.items.length - 1));
+- var r1 = Math.max(r0, Math.min(range[1], ws2.items.length - 1));
++ var r0 = rawRange[0] - ws2.position;
++ var r1 = rawRange[1] - ws2.position;
++ r0 = Math.max(0, Math.min(r0, ws2.items.length - 1));
++ r1 = Math.max(r0, Math.min(r1, ws2.items.length - 1));
+```
+
+同时 validate 调用 `ws2.items.length` → `messages.length`（全局）。
+
+### commit
+
+`ccf670b` — fix: cursor msgRange global→local index offset bug
+
+---
+
 ## 汇总
 
 | # | 描述 | 严重度 | 状态 |
@@ -266,3 +363,6 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 | 8 | CDN `import()` → `<script>` | High | ✅ 已解决 |
 | 9 | 副 API CORS / Load Failed | **High** | ✅ 已解决 |
 | 10 | `n is not a function` | Medium | ✅ 已解决 |
+| 11 | 内联编辑保存无效 / 取消后无法再编辑 / 无删除 | **High** | ✅ 已解决 |
+| 12 | Process History `force=true` 导致消息全部重复处理 | **High** | ✅ 已解决 |
+| 13 | cursor 窗口 2+ msg_ids 全部丢失（msgRange 全局偏移未减 position） | **High** | ✅ 已解决 |
