@@ -73,7 +73,7 @@ export function extractEntityNames(query, content) {
 // ─── Main prompt builder ───
 
 export function buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode) {
-    budget = budget || 800;
+    budget = budget || 1200;
     isSummaryMode = isSummaryMode || false;
     var content = vault.content || {};
     var lang = (content.language === 'en') ? 'en' : 'zh';
@@ -86,21 +86,13 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
     var candidatesText = candidates.map(function(e, i) {
         var timePart = (e.time_range || e.period || '');
         if (e.time_label) timePart = timePart + '·' + e.time_label;
-        var refs;
-        if (e.msg_ids && e.msg_ids.length > 0) {
-            refs = ' [→' + e.msg_ids.join(',') + ']';
-        } else if (e.stm_refs && e.stm_refs.length > 0) {
-            refs = ' [→' + e.stm_refs.join(',') + ']';
-        } else {
-            refs = '';
-        }
-        return (i + 1) + '. [' + timePart + '] ' + (e.scene || '') + ': ' + (e.event || e.summary || '') + refs;
+        var idRef = e.id || '';
+        return (i + 1) + '. [' + timePart + '] ' + (e.scene || '') + ': ' + (e.event || e.summary || '') + (idRef ? ' [id:' + idRef + ']' : '');
     }).join('\n');
 
     var stmCount = content.stm_entries ? content.stm_entries.length : 0;
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
-    // ── 实体链查找 ──
     var entityNames = extractEntityNames(query, content);
     var chains = lookupEntityChains(content, entityNames);
     var chainKeys = Object.keys(chains);
@@ -122,39 +114,52 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
         });
     }
 
-    // ── Summary mode: skip synthesis, return raw timeline ──
     if (isSummaryMode) {
         var summaryBlock = '\n\nRelevant memories (time-ordered):\n' + candidatesText;
         if (lang === 'en') {
             return {
-                system: 'You are a memory archivist. Return all memory entries as a chronological timeline. Do NOT synthesize, group, or omit any entry. Format each entry as:\n[time] location: event description\n\nCurrent story time: ' + currentTime,
+                system: 'You are a memory archivist. Return all memory entries as a chronological timeline. Do NOT synthesize, group, or omit any entry.\n\nCurrent story time: ' + currentTime,
                 user: 'List all entries below in chronological order. Include every entry.' + summaryBlock
             };
         }
         return {
-            system: '你是记忆档案员。按时间顺序列出所有记忆条目。不要合成、分组或省略。格式：[时间] 地点: 事件描述\n\n当前故事时间：' + currentTime,
+            system: '你是记忆档案员。按时间顺序列出所有记忆条目。不要合成、分组或省略。\n\n当前故事时间：' + currentTime,
             user: '按时间顺序列出所有条目，不要省略。' + summaryBlock
         };
     }
 
+    var toolGuidanceEn = '## Search Tool\n' +
+        'You have access to: access(ref). Supported refs:\n' +
+        '- access(stm_id): get full original text of an STM entry\n' +
+        '- access(ltm_id): get full content of an LTM entry\n' +
+        '- access(msg_id): view the original chat message\n' +
+        '- access(chain.X): get full timeline of entity X\n\n' +
+        'The BM25 candidate list is only the first round. If you find entity names or event references with incomplete info, use access to dig deeper. Search until you have sufficient context before synthesizing. At most 3 search rounds.\n\n';
+
+    var toolGuidanceZh = '## 搜索工具\n' +
+        '你可以使用：access(ref)。支持的 ref 格式：\n' +
+        '- access(stm_id): 获取 STM 条目完整原文\n' +
+        '- access(ltm_id): 获取 LTM 归档完整内容\n' +
+        '- access(msg_id): 查看原始对话消息\n' +
+        '- access(chain.X): 获取实体 X 的完整事件时间线\n\n' +
+        'BM25 候选列表仅是第一轮线索。若发现候选中有实体名或事件引用但信息不完整，使用 access 获取更多上下文。搜索直到信息充足后再合成。最多搜索 3 轮。\n\n';
+
     if (lang === 'en') {
         var system = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
-            'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a concise synthesized answer.\n\n' +
+            'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a detailed synthesized answer.\n\n' +
             'Rules:\n' +
             '1. RELEVANCE: remove entries unrelated to the query. If relevance is uncertain, keep.\n' +
             '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
-            '3. SYNTHESIS: write each thread as a single coherent paragraph, using narrative prose (not bullet points). Include key details from entries.\n' +
-            '4. TIME FORMAT: prefix each reference with its time coordinate. Use the format "{period}·{time_label}·{scene}". The period comes from state.time format — do NOT invent your own time labels or "X rounds ago".\n' +
-            '5. SOURCE MARKERS: end each factual claim with [→X] or [→stm:id] or [→state:path]. If multiple entries support the same claim, list all.\n' +
-            '6. CURRENT TIME ANCHOR: after each narrative thread, add a line:\n' +
-            '   → Current time: ' + currentTime + ' [→state:time]\n\n' +
+            '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
+            '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
+            '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>".\n' +
+            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n\n' +
             'Output format:\n' +
-            '## <narrative thread 1>\n<coherent paragraph with source markers>\n→ Current time: ' + currentTime + ' [→state:time]\n\n' +
-            '## <narrative thread 2>\n...\n\n' +
-            '## Other relevant\n<any remaining relevant entries, brief>\n\n' +
+            '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n\n' +
             'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
-            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Group by topic segment, NOT by narrative thread. Output one "## <topic>" section per segment. If topics are related to the same entity, combine them.\n\n' +
+            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
+            toolGuidanceEn +
             chainsBlock +
             'Query: ' + query + '\n\nCandidates:\n' + candidatesText;
 
@@ -165,22 +170,20 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
     }
 
     var systemZh = '你是这个角色扮演的记忆中枢。当前故事时间：' + currentTime + '。你已追踪 ' + stmCount + ' 条 STM 条目和 ' + ltmCount + ' 条 LTM 条目。\n\n' +
-        '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回简洁的叙事合成答案。\n\n' +
+        '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回详细展开的叙事合成答案。\n\n' +
         '规则：\n' +
         '1. 相关性：剔除与查询无关的条目。不确定时保留。\n' +
         '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
-        '3. 合成：每条叙事线写成一个连贯段落，使用叙事性语言（非列表格式）。包含条目的关键细节。\n' +
-        '4. 时间格式：每个引用前标注时间坐标，格式为"{period}·{time_label}·{scene}"。禁止编造 "Chapter X" 或 "X轮前" 等标签。\n' +
-        '5. 来源标记：每个事实性陈述后标注 [→X] 或 [→stm:id] 或 [→state:path]。\n' +
-        '6. 当前时间锚点：每个叙事段末尾追加：\n' +
-        '   → 当前时间: ' + currentTime + ' [→state:time]\n\n' +
+        '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
+        '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
+        '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。\n' +
+        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n\n' +
         '输出格式：\n' +
-        '## <叙事线1>\n<连贯段落 + 来源标记>\n→ 当前时间: ' + currentTime + ' [→state:time]\n\n' +
-        '## <叙事线2>\n...\n\n' +
-        '## 其他相关\n<剩余相关条目，简要>\n\n' +
+        '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n\n' +
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
-        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。按话题分段输出，而非按叙事线。每个片段输出一个 "## <话题>" 节。如果话题涉及同一实体，合并它们。\n\n' +
+        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
+        toolGuidanceZh +
         chainsBlock +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText;
 

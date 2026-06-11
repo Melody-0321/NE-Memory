@@ -10,12 +10,13 @@ import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, formatEntityChainHeaders } from '../vault/schema.js';
-import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig } from '../api/llm.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
+import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
 import { extractEntityNames, lookupEntityChains } from '../engine/retrieval.js';
 import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
+import { executeAccess } from '../tools.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
 
 /* ──────── 工具 ──────── */
@@ -1217,7 +1218,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     );
     var allLTM = content.ltm_entries || [];
 
-    var SMART_PUSH_MIN_STM = 20;
+    var SMART_PUSH_MIN_STM = 5;
 
     if (allSTM.length === 0 && allLTM.length === 0) {
         return buildStateOnlyInjection(vault);
@@ -1290,7 +1291,22 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var smPushMethod;
     try {
         var messages = buildRetrievalMessages(query, topCandidates, vault, budget);
-        var result = await callMemoryRetrieval(messages, { timeout: 3 });
+        var accessTool = {
+            type: 'function',
+            function: {
+                name: 'access',
+                description: 'Deep-search memory by reference.',
+                parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] }
+            }
+        };
+        var accessExecutor = function(args) {
+            var ref = args.ref || '';
+            for (var ci = 0; ci < topCandidates.length; ci++) {
+                if (topCandidates[ci].id === ref || topCandidates[ci].__id === ref) return JSON.stringify(topCandidates[ci]);
+            }
+            return executeAccess(ref, null, getChatId, getChatMessages);
+        };
+        var result = await callMemoryRetrievalWithTools(messages, [accessTool], { access: accessExecutor }, { timeout: 8, maxTokens: 2048 });
         synthesized = result;
         smPushMethod = 'llm_synthesis';
     } catch (e) {
@@ -1318,55 +1334,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         parts.push(vault.memory_system_prompt);
     }
 
-    // ── Layer 1: Current situation (state snapshot) ──
-    if (content.state && Object.keys(content.state).length > 0 && isStateSchemaEnabled()) {
-        var stateSchema = content.state_schema || null;
-        var stateSummary = formatStateSummary(content.state, stateSchema);
-        if (stateSummary) {
-            parts.push('## Current State\n' + stateSummary);
-        }
-        var charSchema = isDynamicStateMode() && content.dynamic_state
-            ? buildDynamicCharacterSchema(content.dynamic_state)
-            : (content.character_schema || null);
-        var charSummary = formatActiveCharacterSummary(content.state, charSchema);
-        if (charSummary) {
-            // ── 实体摘要头（容器B）──
-            var chainHeaders = {};
-            try {
-                if (entityNames && entityNames.length > 0) {
-                    var activeCharNames = [];
-                    var chars = content.state.characters || {};
-                    Object.keys(chars).forEach(function(name) {
-                        if (chars[name] && chars[name].status === '活跃') activeCharNames.push(name);
-                    });
-                    chainHeaders = formatEntityChainHeaders(activeCharNames, entityChains, entityNames);
-                }
-            } catch (e) {}
-            if (Object.keys(chainHeaders).length > 0) {
-                var enhancedCharSummary = charSummary;
-                Object.keys(chainHeaders).forEach(function(name) {
-                    if (enhancedCharSummary.indexOf(name) !== -1) {
-                        enhancedCharSummary = enhancedCharSummary.replace(
-                            new RegExp('(' + name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':.+?)(\\n|$)'),
-                            '$1 ' + chainHeaders[name] + '\n'
-                        );
-                    }
-                });
-                charSummary = enhancedCharSummary;
-            }
-            parts.push('## Characters\n' + charSummary);
-        }
-        var factionSummary = formatActiveFactionSummary(content.state);
-        if (factionSummary) {
-            parts.push('## Factions\n' + factionSummary);
-        }
-        var questSummary = formatQuestSummary(content.state);
-        if (questSummary) {
-            parts.push('## Quests\n' + questSummary);
-        }
-    }
-
-    // ── Layer 2: Event memory (memory LLM synthesis) ──
+    // ── Event memory (memory LLM synthesis) ──
     if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
         if (parts.length > 0) parts.push('---');
         var synthText = synthesized.trim();
@@ -1378,11 +1346,14 @@ export async function formatSmartContext(vault, chatMessages, budget) {
             entityNames.forEach(function(name) {
                 var chain = entityChains[name];
                 if (chain && chain.length > 0) {
-                    gapMarkers.push('chain.' + name + '(' + chain.length + '条)');
+                    var firstPeriod = chain[0].period || '';
+                    var lastPeriod = chain[chain.length - 1].period || '';
+                    var span = firstPeriod && lastPeriod && firstPeriod !== lastPeriod ? ' ' + firstPeriod + '-' + lastPeriod : (firstPeriod ? ' ' + firstPeriod : '');
+                    gapMarkers.push(name + ' 另有 ' + chain.length + ' 条相关事件未展开，跨度' + span);
                 }
             });
             if (gapMarkers.length > 0) {
-                parts.push('[ℹ 更多可用记忆: ' + gapMarkers.join(', ') + '  — 需要时使用 access("chain.X") ]');
+                parts.push(gapMarkers.join('\n'));
             }
         }
     }
@@ -1400,10 +1371,6 @@ export async function formatSmartContext(vault, chatMessages, budget) {
             parts.push(budgetText);
         }
     }
-
-    // ── Layer 3: Tool hints ──
-    if (parts.length > 0) parts.push('---');
-    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, quests, entity chains, or original messages, use access. [ℹ] tags above mark available chains.');
 
     return parts.join('\n\n');
 }
@@ -1506,77 +1473,20 @@ function formatFullDump(allSTM, allLTM) {
 }
 
 export function buildStateOnlyInjection(vault) {
-    var content = vault.content || {};
-    var state = content.state || {};
     var parts = [];
-
     if (vault.memory_system_prompt) {
         parts.push(vault.memory_system_prompt);
     }
-
-    if (state && Object.keys(state).length > 0 && isStateSchemaEnabled()) {
-        var stateSchema = content.state_schema || null;
-        var stateSummary = formatStateSummary(state, stateSchema);
-        if (stateSummary) {
-            parts.push('## Current State\n' + stateSummary);
-        }
-        var charSchema = isDynamicStateMode() && content.dynamic_state
-            ? buildDynamicCharacterSchema(content.dynamic_state)
-            : (content.character_schema || null);
-        var charSummary = formatActiveCharacterSummary(state, charSchema);
-        if (charSummary) {
-            parts.push('## Characters\n' + charSummary);
-        }
-        var factionSummary = formatActiveFactionSummary(state);
-        if (factionSummary) {
-            parts.push('## Factions\n' + factionSummary);
-        }
-        var questSummary = formatQuestSummary(state);
-        if (questSummary) {
-            parts.push('## Quests\n' + questSummary);
-        }
-    }
-
-    if (parts.length === 0) {
-        return formatMinimalState(vault);
-    }
-
-    parts.push('---');
-    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
-
+    parts.push('[ℹ Current state is maintained in the World Book: NE_Memory_State]');
     return parts.join('\n\n');
 }
 
 function buildFullDumpInjection(vault, allSTM, allLTM) {
     var content = vault.content || {};
-    var state = content.state || {};
     var parts = [];
 
     if (vault.memory_system_prompt) {
         parts.push(vault.memory_system_prompt);
-    }
-
-    if (state && Object.keys(state).length > 0 && isStateSchemaEnabled()) {
-        var stateSchema = content.state_schema || null;
-        var stateSummary = formatStateSummary(state, stateSchema);
-        if (stateSummary) {
-            parts.push('## Current State\n' + stateSummary);
-        }
-        var charSchema = isDynamicStateMode() && content.dynamic_state
-            ? buildDynamicCharacterSchema(content.dynamic_state)
-            : (content.character_schema || null);
-        var charSummary = formatActiveCharacterSummary(state, charSchema);
-        if (charSummary) {
-            parts.push('## Characters\n' + charSummary);
-        }
-        var factionSummary = formatActiveFactionSummary(state);
-        if (factionSummary) {
-            parts.push('## Factions\n' + factionSummary);
-        }
-        var questSummary = formatQuestSummary(state);
-        if (questSummary) {
-            parts.push('## Quests\n' + questSummary);
-        }
     }
 
     var dumpText = formatFullDump(allSTM, allLTM);
@@ -2231,6 +2141,14 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Segmentation Turns Range') + '</span></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' +
+        '<label style="font-size:0.85em;">' + t('Min:') + '</label>' +
+        '<input id="nes_seg_min_turns" class="text_pole" type="number" min="1" max="100" value="' + (settings.segMinTurns || 2) + '" style="width:60px;">' +
+        '<label style="font-size:0.85em;margin-left:6px;">' + t('Max:') + '</label>' +
+        '<input id="nes_seg_max_turns" class="text_pole" type="number" min="1" max="100" value="' + (settings.segMaxTurns || 6) + '" style="width:60px;">' +
+        '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Per-event turn range. When min = max, semantic segmentation is skipped.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
@@ -2304,7 +2222,7 @@ function renderSettingsTab() {
     var chkTelemetry = byId('nes_enable_telemetry');
     if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
     // Number inputs — save on change
-    var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars'];
+    var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars', 'nes_seg_min_turns', 'nes_seg_max_turns'];
     for (var i = 0; i < vals.length; i++) { var el = byId(vals[i]); if (el) el.onchange = function () { saveSettingsTab(); }; }
     // Textareas — save on blur (not every keystroke to avoid perf issues)
     var ta1 = byId('nes_state_schema');
@@ -2351,6 +2269,14 @@ function renderSettingsTab() {
 }
 
 function saveSettingsTab() {
+    var minEl = byId('nes_seg_min_turns');
+    var maxEl = byId('nes_seg_max_turns');
+    if (minEl && maxEl) {
+        var minVal = Number(minEl.value) || 1;
+        var maxVal = Number(maxEl.value) || 1;
+        if (minVal > maxVal) { minEl.value = maxVal; }
+        if (maxVal < minVal) { maxEl.value = minVal; }
+    }
     var settings = {
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
@@ -2359,6 +2285,8 @@ function saveSettingsTab() {
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
+        segMinTurns: Number(byId('nes_seg_min_turns').value) || 2,
+        segMaxTurns: Number(byId('nes_seg_max_turns').value) || 6,
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),

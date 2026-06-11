@@ -12,6 +12,7 @@ import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { runStmExtractor, processTurnsInBatches } from './stm-extractor.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
+import { syncStateToWorldBook } from './worldbook-sync.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { writeWithSnapshot } = await import('../vault/store.js');
@@ -643,7 +644,7 @@ function buildStateSnapshot(content) {
     return snapshot;
 }
 
-export function buildSegmentationPrompt(turns, pendingPartials, vault) {
+export function buildSegmentationPrompt(turns, pendingPartials, vault, segMinTurns, segMaxTurns) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
@@ -673,9 +674,16 @@ export function buildSegmentationPrompt(turns, pendingPartials, vault) {
         turnsText.push('');
     }
 
+    var segRange = segMinTurns === segMaxTurns
+        ? '每个事件覆盖恰好 ' + segMaxTurns + ' 轮对话（硬限制）。'
+        : '每个事件覆盖 ' + segMinTurns + '~' + segMaxTurns + ' 轮对话。优先按语义边界切分，但每个事件不得少于 ' + segMinTurns + ' 轮、不得超过 ' + segMaxTurns + ' 轮。';
+    var segRangeEn = segMinTurns === segMaxTurns
+        ? 'Each event covers exactly ' + segMaxTurns + ' turns (hard limit).'
+        : 'Each event covers ' + segMinTurns + '~' + segMaxTurns + ' turns. Prefer semantic boundaries, but each event must have at least ' + segMinTurns + ' turns and at most ' + segMaxTurns + ' turns.';
+
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- For turns at the END that are still ongoing → status:"partial".\n- For turns at the END that have not yet formed any event (opening not reached) → call extract_stm with status:"deferred" so the system can postpone them.\n- For single events with all turns → output JSON array directly (no tool calls).\n- Turns between already-processed events must be covered (cannot skip).') :
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- 末尾尚未完成的事件 → status:"partial"。\n- 末尾尚不构成任何事件的 turns（仅剩开篇、未到主体） → 仍调用 extract_stm 并传入 status:"deferred"，系统会将其推迟到下一批处理。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- ' + segRangeEn + '\n- For turns at the END that are still ongoing → status:"partial".\n- For turns at the END that have not yet formed any event (opening not reached) → call extract_stm with status:"deferred" so the system can postpone them.\n- For single events with all turns → output JSON array directly (no tool calls).\n- Turns between already-processed events must be covered (cannot skip).') :
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- ' + segRange + '\n- 末尾尚未完成的事件 → status:"partial"。\n- 末尾尚不构成任何事件的 turns（仅剩开篇、未到主体） → 仍调用 extract_stm 并传入 status:"deferred"，系统会将其推迟到下一批处理。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
 
     var user = lang === 'en' ?
         'Turns:\n\n' + turnsText.join('\n') + '\nOutput format (multi-event): call extract_stm for each event, including deferred turns with status:"deferred".\nOutput format (single-event): JSON array of STM entries.' :
@@ -893,6 +901,19 @@ function autoDecayStaleCharacters(state, messages) {
 export async function executeIncrementalUpdate(chatId, newMessages, force) {
     const vault = await read(chatId);
 
+    // ── 语义切分上下限 ──
+    var segMinTurns = 2;
+    var segMaxTurns = 6;
+    try {
+        var neSettingsRaw = localStorage.getItem('ne_settings');
+        if (neSettingsRaw) {
+            var neSettings = JSON.parse(neSettingsRaw);
+            if (neSettings.segMinTurns !== undefined) segMinTurns = Math.max(1, Number(neSettings.segMinTurns) || 2);
+            if (neSettings.segMaxTurns !== undefined) segMaxTurns = Math.max(1, Number(neSettings.segMaxTurns) || 6);
+        }
+    } catch (e) {}
+    if (segMinTurns > segMaxTurns) segMinTurns = segMaxTurns;
+
     var processedIds = new Set();
     if (!force) {
         processedIds = collectProcessedMsgIds(vault);
@@ -1011,6 +1032,15 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
 
                 console.log('[NE] State pipeline — state_changes saved, state keys=' + Object.keys(vault.content.state || {}).length);
 
+                try { await syncStateToWorldBook(vault); } catch (e) { console.warn('[NE] WB sync failed:', e.message); }
+
+                globalThis.__ne_debug_last_state = JSON.parse(JSON.stringify(vault.content.state || {}));
+                globalThis.__ne_debug_last_pipeline = {
+                    changes: JSON.parse(JSON.stringify(stateChanges || {})),
+                    state: JSON.parse(JSON.stringify(vault.content.state || {})),
+                    time: new Date().toISOString()
+                };
+
                 recordTelemetry({
                     pipeline_task: 'state_extract',
                     new_state_change_count: Object.keys(stateChanges).length,
@@ -1039,7 +1069,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             updateCursorState: updateCursorState,
             markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
             buildSegmentationPrompt: buildSegmentationPrompt,
-            buildSubAgentPrompt: buildSubAgentPrompt
+            buildSubAgentPrompt: buildSubAgentPrompt,
+            segMinTurns: segMinTurns,
+            segMaxTurns: segMaxTurns
         });
 
         newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));

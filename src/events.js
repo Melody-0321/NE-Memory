@@ -274,23 +274,31 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         var injectType = 'smartpush_injection';
         try {
             const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
-            // Wrap formatSmartContext with a hard timeout to prevent blocking ST's generation pipeline.
-            // SmartPush LLM (retrieval synthesis) has its own 3s timeout, but BM25 filtering or
-            // other sync operations could also be slow. This outer timeout is the safety net.
-            var SMART_CONTEXT_TIMEOUT_MS = 5000;
+            var smPushTimeoutMs = 5000;
+            try {
+                var neSettingsRaw = localStorage.getItem('ne_settings');
+                if (neSettingsRaw) {
+                    var neSettings = JSON.parse(neSettingsRaw);
+                    if (neSettings.smPushTimeoutMs !== undefined) smPushTimeoutMs = Number(neSettings.smPushTimeoutMs) || 0;
+                }
+            } catch (e) {}
             var formatted;
             var timedOut = false;
             try {
-                formatted = await Promise.race([
-                    formatSmartContext(vault, chatMessages),
-                    new Promise(function(resolve) {
-                        setTimeout(function() {
-                            timedOut = true;
-                            console.warn('[NE] formatSmartContext timed out after ' + SMART_CONTEXT_TIMEOUT_MS + 'ms, falling back to state-only injection');
-                            resolve(buildStateOnlyInjection(vault));
-                        }, SMART_CONTEXT_TIMEOUT_MS);
-                    })
-                ]);
+                if (smPushTimeoutMs > 0) {
+                    formatted = await Promise.race([
+                        formatSmartContext(vault, chatMessages),
+                        new Promise(function(resolve) {
+                            setTimeout(function() {
+                                timedOut = true;
+                                console.warn('[NE] formatSmartContext timed out after ' + smPushTimeoutMs + 'ms, falling back to state-only injection');
+                                resolve(buildStateOnlyInjection(vault));
+                            }, smPushTimeoutMs);
+                        })
+                    ]);
+                } else {
+                    formatted = await formatSmartContext(vault, chatMessages);
+                }
             } catch (e) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);
@@ -298,6 +306,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
             if (timedOut) injectType = 'smartpush_timeout';
             if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+                globalThis.__ne_debug_last_injection = formatted;
                 TavernHelper.injectPrompts([{
                     id: 'ne_memory_vault',
                     position: 'in_chat',

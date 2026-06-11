@@ -198,6 +198,14 @@ export async function callMemoryRetrieval(messages, options = {}, chatId = null)
     return callMemoryLLM(messages, Object.assign({ temperature: mc.retrieval_temperature || mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
 }
 
+export async function callMemoryRetrievalWithTools(messages, tools, toolExecutors, options = {}) {
+    var secCfg = loadSecondaryApiConfig();
+    if (secCfg && secCfg.url && secCfg.model) {
+        return callMemoryLLMWithTools(messages, tools, toolExecutors, options, options.chatId);
+    }
+    return callMemoryRetrieval(messages, options, options.chatId);
+}
+
 export function loadSecondaryApiConfig() {
     try {
         const raw = localStorage.getItem('ne_secondary_api');

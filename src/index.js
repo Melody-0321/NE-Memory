@@ -13,6 +13,7 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled,
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection } from './api/llm.js';
+import { ensureStateWorldBook } from './engine/worldbook-sync.js';
 
 var _retryTimer = null;
 
@@ -66,10 +67,22 @@ async function init() {
     restorePending();
     await renderVaultPanel(getChatId);
     autoConnectSecondaryApi();
+    ensureStateWorldBook().catch(function(e) { console.warn('[NE] World book init failed:', e.message); });
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
 
     console.log('[NE] Engine initialized — chatId=' + chatId + ', version=' + vault.version);
+
+    globalThis.__ne_debug = {
+        getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
+        getVaultState: async function() {
+            try {
+                var v = await read(getChatId());
+                return v && v.content ? v.content.state : null;
+            } catch (e) { return null; }
+        },
+        getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; }
+    };
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {

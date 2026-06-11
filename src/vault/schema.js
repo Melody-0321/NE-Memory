@@ -782,3 +782,114 @@ export function formatEntityChainHeaders(activeCharNames, entityChains, entityNa
     });
     return headers;
 }
+
+function stringifyVal(val) {
+    if (val === null || val === undefined || val === '') return null;
+    if (typeof val === 'object') {
+        try { return JSON.stringify(val); } catch (e) { return String(val); }
+    }
+    return String(val);
+}
+
+export function formatWorldBookGlobal(state) {
+    if (!state) return '';
+    var lines = [];
+    if (state.time) lines.push('Time: ' + state.time);
+    if (state.scene) lines.push('Scene: ' + state.scene);
+    if (state.story_date) lines.push('Story Date: ' + state.story_date);
+    if (state.main_event) lines.push('Main Event: ' + state.main_event);
+    if (state.present_characters) lines.push('Present Characters: ' + state.present_characters);
+    if (lines.length === 0) return '';
+    return lines.join('\n');
+}
+
+export function formatWorldBookCharacterCard(state, name) {
+    if (!state || !state.characters) return '';
+    var card = state.characters[name];
+    if (!card || typeof card !== 'object') return '';
+
+    var lines = ['## ' + name];
+    var fields = [
+        { key: 'status', label: 'Status' },
+        { key: 'gender_age', label: 'Gender/Age' },
+        { key: 'occupation', label: 'Occupation' },
+        { key: 'clothing_build', label: 'Appearance' },
+        { key: 'personality', label: 'Personality' },
+        { key: 'inner_thoughts', label: 'Inner Thoughts' },
+        { key: 'affection', label: 'Affection' },
+        { key: 'relationship', label: 'Relationship' },
+        { key: 'current_mood', label: 'Mood' },
+        { key: 'past_experience', label: 'Past Experience' },
+        { key: 'clothing_mode', label: 'Clothing Mode' },
+        { key: 'inventory_mode', label: 'Inventory Mode' },
+        { key: 'inventory', label: 'Inventory' },
+        { key: 'injuries', label: 'Injuries' },
+        { key: 'status_effects', label: 'Status Effects' },
+        { key: 'power_slots', label: 'Power Slots' }
+    ];
+
+    for (var i = 0; i < fields.length; i++) {
+        var f = fields[i];
+        var val = stringifyVal(card[f.key]);
+        if (val) lines.push(f.key + ': ' + val.substring(0, 120));
+    }
+
+    var extraKeys = Object.keys(card).filter(function(k) {
+        for (var j = 0; j < fields.length; j++) {
+            if (fields[j].key === k) return false;
+        }
+        return true;
+    });
+    for (var ei = 0; ei < extraKeys.length; ei++) {
+        var ek = extraKeys[ei];
+        var ev = stringifyVal(card[ek]);
+        if (ev) lines.push(ek + ': ' + ev.substring(0, 80));
+    }
+
+    return lines.join('\n');
+}
+
+export function formatWorldBookFactionCard(state, name) {
+    if (!state || !state.factions) return '';
+    var card = state.factions[name];
+    if (!card || typeof card !== 'object') return '';
+
+    var lines = ['## ' + name];
+    var fields = ['name', 'description', 'leader', 'attitude_toward_player', 'relations', 'notes'];
+
+    for (var i = 0; i < fields.length; i++) {
+        var f = fields[i];
+        if (f === 'name') continue;
+        var val = stringifyVal(card[f]);
+        if (val) lines.push(f + ': ' + val.substring(0, 120));
+    }
+
+    var extraKeys = Object.keys(card).filter(function(k) { return fields.indexOf(k) === -1; });
+    for (var ei = 0; ei < extraKeys.length; ei++) {
+        var ek = extraKeys[ei];
+        var ev = stringifyVal(card[ek]);
+        if (ev) lines.push(ek + ': ' + ev.substring(0, 80));
+    }
+
+    return lines.join('\n');
+}
+
+export function formatWorldBookQuestCard(state, section, name) {
+    if (!state || !state.quests) return '';
+    var group = state.quests[section];
+    if (!group || typeof group !== 'object') return '';
+    var item = group[name];
+    if (!item || typeof item !== 'object') return '';
+
+    var sectionLabel = section === 'tasks' ? 'Task' : (section === 'goals' ? 'Goal' : 'Event');
+    var lines = ['## [' + sectionLabel + '] ' + (item.name || name)];
+
+    var keys = Object.keys(item);
+    for (var i = 0; i < keys.length; i++) {
+        var k = keys[i];
+        var val = stringifyVal(item[k]);
+        if (val) lines.push(k + ': ' + val.substring(0, 120));
+    }
+
+    return lines.join('\n');
+}

@@ -46,6 +46,14 @@ export function renderConfigDialog(getChatId) {
         '<div style="margin:6px 0 2px;"><span>' + t_config('Max Unconsolidated STM') + ': <span id="ne_stm_max_unconsolidated_val">5</span></span>' +
         '<input type="range" id="ne_stm_max_unconsolidated" min="2" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div style="margin:8px 0 4px;"><span>' + t_config('Segmentation Turns Range') + '</span></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' +
+        '<label style="font-size:0.85em;">' + t_config('Min:') + '</label>' +
+        '<input id="ne_seg_min_turns" class="text_pole" type="number" min="1" max="100" value="2" style="width:60px;">' +
+        '<label style="font-size:0.85em;margin-left:6px;">' + t_config('Max:') + '</label>' +
+        '<input id="ne_seg_max_turns" class="text_pole" type="number" min="1" max="100" value="6" style="width:60px;">' +
+        '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Per-event turn range for STM extraction. When min equals max, semantic segmentation is skipped and turns are split by fixed count.') + '</div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
@@ -125,6 +133,16 @@ function bindConfigEvents(getChatId) {
     });
     $pd('#ne_stm_max_unconsolidated').on('input', function () {
         $pd('#ne_stm_max_unconsolidated_val').text($pd('#ne_stm_max_unconsolidated').val());
+    });
+    $pd('#ne_seg_min_turns').on('change', function () {
+        var minVal = Number($pd('#ne_seg_min_turns').val()) || 1;
+        var maxVal = Number($pd('#ne_seg_max_turns').val()) || 1;
+        if (minVal > maxVal) { $pd('#ne_seg_min_turns').val(maxVal); }
+    });
+    $pd('#ne_seg_max_turns').on('change', function () {
+        var minVal = Number($pd('#ne_seg_min_turns').val()) || 1;
+        var maxVal = Number($pd('#ne_seg_max_turns').val()) || 1;
+        if (maxVal < minVal) { $pd('#ne_seg_max_turns').val(minVal); }
     });
     // Tab switching
     $pd('.ne-tab').on('click', function () {
@@ -318,6 +336,8 @@ function loadConfigUI() {
         $pd('#ne_stm_batch_val').text(s.stmBatch || 10);
         $pd('#ne_stm_max_unconsolidated').val(s.stmMaxUnconsolidated || 5);
         $pd('#ne_stm_max_unconsolidated_val').text(s.stmMaxUnconsolidated || 5);
+        $pd('#ne_seg_min_turns').val(s.segMinTurns || 2);
+        $pd('#ne_seg_max_turns').val(s.segMaxTurns || 6);
         var mc = s.memoryConfig || defaultMemoryConfig;
         $pd('#ne_extraction_temperature').val(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature);
         $pd('#ne_extraction_temperature_val').text(Number(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature).toFixed(1));
@@ -361,6 +381,8 @@ function saveConfigUI() {
         memoryBudget: Number($pd('#ne_memory_budget').val()),
         stmBatch: Number($pd('#ne_stm_batch').val()),
         stmMaxUnconsolidated: Number($pd('#ne_stm_max_unconsolidated').val()),
+        segMinTurns: Number($pd('#ne_seg_min_turns').val()) || 2,
+        segMaxTurns: Number($pd('#ne_seg_max_turns').val()) || 6,
         memoryConfig: {
             extraction_temperature: Number($pd('#ne_extraction_temperature').val()),
             retrieval_temperature: Number($pd('#ne_retrieval_temperature').val()),
