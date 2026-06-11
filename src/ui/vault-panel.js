@@ -251,6 +251,7 @@ function setupTabSwitching() {
 }
 
 var _pendingInlineStorage = null;
+var _pendingInlineGetChatId = null;
 
 function saveSingleEntry(chatId, entryType, entryId, updates) {
     var vault = _pendingInlineStorage;
@@ -274,9 +275,44 @@ function saveSingleEntry(chatId, entryType, entryId, updates) {
             }
         }
     }
-    write(chatId, vault).then(function() {
-        _pendingInlineStorage = null;
-    });
+    var writeChatId = _pendingInlineGetChatId;
+    if (writeChatId) {
+        write(writeChatId, vault);
+    }
+}
+
+function deleteSingleEntry(entryType, entryId) {
+    var vault = _pendingInlineStorage;
+    if (!vault) return false;
+    var c = vault.content || {};
+    var list;
+    if (entryType === 'stm') list = c.unconsolidated_stm || [];
+    else list = c.ltm_entries || [];
+    var found = false;
+    for (var i = 0; i < list.length; i++) {
+        if (list[i].id === entryId) {
+            list.splice(i, 1);
+            found = true;
+            break;
+        }
+    }
+    if (entryType === 'ltm' && !found) {
+        var stmList = c.stm_entries || [];
+        for (var j = 0; j < stmList.length; j++) {
+            if (stmList[j].id === entryId) {
+                stmList.splice(j, 1);
+                found = true;
+                break;
+            }
+        }
+    }
+    if (found) {
+        var writeChatId = _pendingInlineGetChatId;
+        if (writeChatId) {
+            write(writeChatId, vault);
+        }
+    }
+    return found;
 }
 
 function closeVaultOverlay() {
@@ -735,6 +771,8 @@ async function updateVaultViewerPopout(getChatId) {
     var vault, c;
     try {
         vault = await read(getChatId());
+        _pendingInlineStorage = vault;
+        _pendingInlineGetChatId = getChatId;
         c = vault.content || {};
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
     } catch (e) {
@@ -963,7 +1001,7 @@ function toggleInlineEdit(row, entryId, entryType) {
         '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
-        '<td><button class="ne-inline-save">\u2714</button><button class="ne-inline-cancel">\u2716</button></td>';
+        '<td><button class="ne-inline-save">\u2714</button><button class="ne-inline-delete" style="color:#f44336;background:none;border:1px solid #f44336;border-radius:3px;cursor:pointer;padding:0 4px;font-weight:bold;">\u2716</button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
@@ -978,9 +1016,10 @@ function toggleInlineEdit(row, entryId, entryType) {
         row._neOrigScene = scene;
         row._neOrigEvent = event;
     };
-    row.querySelector('.ne-inline-cancel').onclick = function() {
-        row.innerHTML = row._neOrigHTML;
-        row.classList.remove('ne-inline-row');
+    row.querySelector('.ne-inline-delete').onclick = function() {
+        if (!confirm(t('Delete this entry? This cannot be undone.'))) return;
+        deleteSingleEntry(entryType, entryId);
+        row.remove();
     };
 }
 

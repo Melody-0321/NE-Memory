@@ -15,6 +15,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.',
         'Restore to version v{VER}?': 'Restore to version v{VER}?', 'Confirm delete v{VER}?': 'Confirm delete v{VER}?',
+        'Delete this entry? This cannot be undone.': 'Delete this entry? This cannot be undone.',
         'Restore': 'Restore', 'Delete': 'Delete', 'Confirm': 'Confirm', 'Restore failed': 'Restore failed',
         'Delete failed': 'Delete failed', 'No history yet': 'No history yet', 'Failed to load vault:': 'Failed to load vault:',
         'Failed to load history': 'Failed to load history', 'Tool Calling Log': 'Tool Calling Log', 'Export Logs': 'Export Logs',
@@ -96,6 +97,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             '确定清除所有状态？\n\n下次对话时 LLM 将从角色卡和世界书重新生成。',
         'Restore to version v{VER}?': '确定恢复到版本 v{VER}？', 'Confirm delete v{VER}?': '确定删除 v{VER}？',
+        'Delete this entry? This cannot be undone.': '确定删除该条目？此操作无法撤销。',
         'Restore': '恢复', 'Delete': '删除', 'Confirm': '确认', 'Restore failed': '恢复失败', 'Delete failed': '删除失败',
         'No history yet': '暂无历史', 'Failed to load vault:': '加载 Vault 失败：', 'Failed to load history': '加载历史失败',
         'Opening Summary (always visible)': '开场设定（始终可见）', 'Current Scene': '当前场景',
@@ -172,6 +174,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             '確定清除所有狀態？\n\n下次對話時 LLM 將從角色卡和世界書重新生成。',
         'Restore to version v{VER}?': '確定恢復到版本 v{VER}？', 'Confirm delete v{VER}?': '確定刪除 v{VER}？',
+        'Delete this entry? This cannot be undone.': '確定刪除該條目？此操作無法撤銷。',
         'Restore': '恢復', 'Delete': '刪除', 'Confirm': '確認', 'Restore failed': '恢復失敗', 'Delete failed': '刪除失敗',
         'No history yet': '暫無歷史', 'Failed to load vault:': '載入 Vault 失敗：', 'Failed to load history': '載入歷史失敗',
         'Opening Summary (always visible)': '開場設定（始終可見）', 'Current Scene': '當前場景',
