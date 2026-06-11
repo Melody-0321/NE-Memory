@@ -108,9 +108,8 @@ function injectBottomDrawerCSS() {
         '.ne-inline-edit-btn:hover{opacity:1;}' +
         '.ne-inline-row td{padding:2px 4px!important;}' +
         '.ne-inline-row input,.ne-inline-row textarea{width:100%;background:#fff;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;text-shadow:none !important;}' +
-        '.ne-inline-save,.ne-inline-cancel{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
+        '.ne-inline-save,.ne-inline-cancel,.ne-inline-delete{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
         '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
-        '.ne-inline-cancel{background:transparent;color:var(--grey-50);border:1px solid var(--grey-50);}' +
         '.ne-settings-section{margin-bottom:8px;}' +
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
         '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
@@ -251,11 +250,12 @@ function setupTabSwitching() {
 }
 
 var _pendingInlineStorage = null;
-var _pendingInlineGetChatId = null;
 
-function saveSingleEntry(chatId, entryType, entryId, updates) {
-    var vault = _pendingInlineStorage;
-    if (!vault) return;
+function saveSingleEntry(entryType, entryId, updates) {
+    var stored = _pendingInlineStorage;
+    if (!stored || !stored.vault) return;
+    var vault = stored.vault;
+    var getChatId = stored.getChatId;
     var c = vault.content || {};
     var list;
     if (entryType === 'stm') list = c.unconsolidated_stm || [];
@@ -275,44 +275,22 @@ function saveSingleEntry(chatId, entryType, entryId, updates) {
             }
         }
     }
-    var writeChatId = _pendingInlineGetChatId;
-    if (writeChatId) {
-        write(writeChatId, vault);
-    }
+    write(getChatId(), vault).then(function() {});
 }
 
 function deleteSingleEntry(entryType, entryId) {
-    var vault = _pendingInlineStorage;
-    if (!vault) return false;
+    var stored = _pendingInlineStorage;
+    if (!stored || !stored.vault) return;
+    var vault = stored.vault;
+    var getChatId = stored.getChatId;
     var c = vault.content || {};
-    var list;
-    if (entryType === 'stm') list = c.unconsolidated_stm || [];
-    else list = c.ltm_entries || [];
-    var found = false;
-    for (var i = 0; i < list.length; i++) {
-        if (list[i].id === entryId) {
-            list.splice(i, 1);
-            found = true;
-            break;
-        }
+    if (entryType === 'stm') {
+        c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function(e) { return e.id !== entryId; });
+    } else {
+        c.ltm_entries = (c.ltm_entries || []).filter(function(e) { return e.id !== entryId; });
+        c.stm_entries = (c.stm_entries || []).filter(function(e) { return e.id !== entryId; });
     }
-    if (entryType === 'ltm' && !found) {
-        var stmList = c.stm_entries || [];
-        for (var j = 0; j < stmList.length; j++) {
-            if (stmList[j].id === entryId) {
-                stmList.splice(j, 1);
-                found = true;
-                break;
-            }
-        }
-    }
-    if (found) {
-        var writeChatId = _pendingInlineGetChatId;
-        if (writeChatId) {
-            write(writeChatId, vault);
-        }
-    }
-    return found;
+    write(getChatId(), vault).then(function() {});
 }
 
 function closeVaultOverlay() {
@@ -771,9 +749,8 @@ async function updateVaultViewerPopout(getChatId) {
     var vault, c;
     try {
         vault = await read(getChatId());
-        _pendingInlineStorage = vault;
-        _pendingInlineGetChatId = getChatId;
         c = vault.content || {};
+        _pendingInlineStorage = { vault: vault, getChatId: getChatId };
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
     } catch (e) {
         _logSection('read-vault', e);
@@ -997,16 +974,31 @@ function toggleInlineEdit(row, entryId, entryType) {
     row._neOrigPeriod = origPeriod;
     row._neOrigScene = origScene;
     row._neOrigEvent = origEvent;
+
+    function rebindEditBtn(el) {
+        var btn = el.querySelector('.ne-inline-edit-btn');
+        if (!btn) return;
+        btn.onclick = function() {
+            var r = this.closest('tr');
+            if (!r || r.classList.contains('ne-inline-row')) return;
+            var eid = this.getAttribute('data-entry-id');
+            var etype = this.getAttribute('data-entry-type');
+            toggleInlineEdit(r, eid, etype);
+        };
+    }
+
     row.innerHTML = '<td style="text-align:center;width:2em;">' + cells[0].innerHTML + '</td>' +
         '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
-        '<td><button class="ne-inline-save">\u2714</button><button class="ne-inline-delete" style="color:#f44336;background:none;border:1px solid #f44336;border-radius:3px;cursor:pointer;padding:0 4px;font-weight:bold;">\u2716</button></td>';
+        '<td style="white-space:nowrap;"><button class="ne-inline-save" title="' + t('Save') + '">\u2714</button>' +
+        '<button class="ne-inline-cancel" style="background:#f44336;color:#fff;border:none;" title="' + t('Cancel') + '">\u2716</button>' +
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" title="' + t('Delete') + '">\uD83D\uDDD1</button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
         var event = row.querySelector('.ne-inline-event').value;
-        saveSingleEntry(null, entryType, entryId, { period: period, scene: scene, event: event });
+        saveSingleEntry(entryType, entryId, { period: period, scene: scene, event: event });
         row.innerHTML = row._neOrigHTML;
         row.classList.remove('ne-inline-row');
         row.querySelector('td:nth-child(2)').textContent = period;
@@ -1015,6 +1007,12 @@ function toggleInlineEdit(row, entryId, entryType) {
         row._neOrigPeriod = period;
         row._neOrigScene = scene;
         row._neOrigEvent = event;
+        rebindEditBtn(row);
+    };
+    row.querySelector('.ne-inline-cancel').onclick = function() {
+        row.innerHTML = row._neOrigHTML;
+        row.classList.remove('ne-inline-row');
+        rebindEditBtn(row);
     };
     row.querySelector('.ne-inline-delete').onclick = function() {
         if (!confirm(t('Delete this entry? This cannot be undone.'))) return;
