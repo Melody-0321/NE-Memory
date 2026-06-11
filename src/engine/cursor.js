@@ -136,7 +136,7 @@ export async function runStmCursorLoop(params) {
             continue;
         }
 
-        var errors = params.validateOutput(parsed, vault, ws2.items.length);
+        var errors = params.validateOutput(parsed, vault, messages.length);
         if (errors.length > 0) {
             console.warn('[NE Cursor] Validation window', wi2 + 1, ':', errors.join('; '));
         }
@@ -148,9 +148,12 @@ export async function runStmCursorLoop(params) {
 
         // Map msg_ids
         stmEntries.forEach(function(entry) {
-            var range = entry.msgRange || [0, ws2.items.length - 1];
-            var r0 = Math.max(0, Math.min(range[0], ws2.items.length - 1));
-            var r1 = Math.max(r0, Math.min(range[1], ws2.items.length - 1));
+            var rawRange = entry.msgRange || [ws2.position, ws2.position + ws2.items.length - 1];
+            // Convert global offsets to window-local indices
+            var r0 = rawRange[0] - ws2.position;
+            var r1 = rawRange[1] - ws2.position;
+            r0 = Math.max(0, Math.min(r0, ws2.items.length - 1));
+            r1 = Math.max(r0, Math.min(r1, ws2.items.length - 1));
             entry.msg_ids = [];
             for (var j = r0; j <= r1; j++) {
                 var msg = ws2.items[j];
