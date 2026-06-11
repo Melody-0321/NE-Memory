@@ -332,16 +332,6 @@ export function getProcessedMessageIds(vault) {
 }
 
 export function collectProcessedMsgIds(vault) {
-    // 优先使用 processed_msg_ids (O(1) 查询)
     var processed = (vault.content || {}).processed_msg_ids || {};
-    var ids = Object.keys(processed);
-    // 降级：如果 processed_msg_ids 为空但 STM 有数据，从 STM 重建
-    if (ids.length === 0) {
-        var content = vault.content || {};
-        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { ids.push(id); }); });
-        // 重建 processed_msg_ids 集合
-        if (ids.length > 0) markMessagesProcessed(vault, ids);
-    }
-    return new Set(ids);
+    return new Set(Object.keys(processed));
 }

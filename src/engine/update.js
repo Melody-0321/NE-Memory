@@ -767,6 +767,20 @@ function autoDecayStaleCharacters(state, messages) {
 
 export async function executeIncrementalUpdate(chatId, newMessages, force) {
     const vault = await read(chatId);
+
+    // 一次性迁移：若 processed_msg_ids 为空但已有 STM 条目，从现有条目重建并持久化
+    var procMap = (vault.content || {}).processed_msg_ids;
+    if (!procMap || Object.keys(procMap).length === 0) {
+        var content = vault.content || {};
+        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+        var allIds = [];
+        allSTM.forEach(function(stm) { (stm.msg_ids || []).forEach(function(id) { allIds.push(id); }); });
+        if (allIds.length > 0) {
+            markMessagesProcessed(vault, allIds);
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) {}
+        }
+    }
+
     var processedIds = new Set();
     if (!force) {
         processedIds = collectProcessedMsgIds(vault);
