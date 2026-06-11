@@ -205,7 +205,7 @@ export function mergeVaultFromMessages(messages, existingVault) {
     return { vault, newMessages };
 }
 
-function collectAllMsgIds(vault) {
+export function collectAllMsgIds(vault) {
     const ids = new Set();
     const content = vault.content || {};
     const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);

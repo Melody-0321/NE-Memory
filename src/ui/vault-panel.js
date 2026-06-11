@@ -4,7 +4,7 @@
  * 通过 window.parent.document 操作主 ST 页面 DOM。
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
-import { read, write, isStorageBlocked } from '../vault/store.js';
+import { read, write, isStorageBlocked, collectAllMsgIds } from '../vault/store.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
@@ -1750,6 +1750,17 @@ export async function renderVaultPanel(getChatId) {
                     return;
                 }
 
+                var vault = await read(getChatId());
+                var stmMsgIdSet = collectAllMsgIds(vault);
+                toProcess = toProcess.filter(function (msg) {
+                    return !stmMsgIdSet.has(String(msg.id));
+                });
+
+                if (toProcess.length === 0) {
+                    alert(t('All messages have already been processed.'));
+                    return;
+                }
+
                 var prevText = processHistoryBtn.textContent;
                 processHistoryBtn.textContent = t('Processing...');
                 processHistoryBtn.disabled = true;
@@ -1777,7 +1788,7 @@ export async function renderVaultPanel(getChatId) {
                         var batch = toProcess.slice(i, i + BATCH);
                         var batchNum = Math.floor(i / BATCH) + 1;
                         processHistoryBtn.textContent = t('Processing...') + ' (' + batchNum + '/' + totalBatches + ')';
-                        await executeIncrementalUpdate(getChatId(), batch);
+                        await executeIncrementalUpdate(getChatId(), batch, true);
                         try {
                             localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, toProcess.length) }));
                         } catch (e2) {}

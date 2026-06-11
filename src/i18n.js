@@ -85,6 +85,7 @@ export const NARRATIVE_I18N = {
         'Min': 'Min',
         'Max': 'Max',
         'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': 'Number of dialogue turns each STM event should cover. When Min = Max, semantic segmentation is skipped.',
+        'All messages have already been processed.': 'All messages have already been processed.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -165,6 +166,7 @@ export const NARRATIVE_I18N = {
         'Min': '下限',
         'Max': '上限',
         'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '每个 STM 事件覆盖的对话轮数范围。下限=上限时跳过语义切分，改用固定轮数均分。',
+        'All messages have already been processed.': '全部消息都已被处理过。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -247,6 +249,7 @@ export const NARRATIVE_I18N = {
         'Min': '下限',
         'Max': '上限',
         'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '每個 STM 事件覆蓋的對話輪數範圍。下限=上限時跳過語義切分，改用固定輪數均分。',
+        'All messages have already been processed.': '全部訊息都已被處理過。',
     }
 };
 
