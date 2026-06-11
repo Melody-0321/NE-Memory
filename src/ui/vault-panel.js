@@ -1786,10 +1786,15 @@ export async function renderVaultPanel(getChatId) {
                 try {
                     for (var i = processedCount; i < total; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + Math.min(i + BATCH, total) + '/' + total + ')';
-                        await executeIncrementalUpdate(getChatId(), batch, true);
+                        processHistoryBtn.textContent = t('Processing...');
+                        var result = await executeIncrementalUpdate(getChatId(), batch, true);
+                        if (result.added === 0 && batch.length > 0) {
+                            console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
+                        }
+                        var done = Math.min(i + BATCH, total);
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + done + '/' + total + ')';
                         try {
-                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: Math.min(i + BATCH, total) }));
+                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: done }));
                         } catch (e2) {}
                     }
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
