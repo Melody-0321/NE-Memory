@@ -40,20 +40,20 @@ export function renderConfigDialog(getChatId) {
         '<div class="narrative-toggle" id="ne_retrieval_section"><label class="checkbox_label"><input type="checkbox" id="ne_enable_retrieval"> <span>' + t_config('Enable Smart Retrieval') + '</span></label>' +
         '<div style="margin-left:1em;margin-top:4px;"><span>' + t_config('Memory Budget') + ': <span id="ne_memory_budget_val">800</span> tok</span>' +
         '<input type="range" id="ne_memory_budget" min="500" max="2000" step="100" value="800" style="width:100%;margin-top:2px;"></div></div>' +
+        '<div style="margin:10px 0 4px;"><span style="font-weight:500;">' + t_config('Segmentation Turns Range') + '</span></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;margin:0 0 4px;">' +
+        '<label style="font-size:0.82em;">' + t_config('Min') + '</label>' +
+        '<input id="ne_seg_min_turns" type="number" min="1" max="100" value="2" style="width:56px;text-align:center;">' +
+        '<label style="font-size:0.82em;margin-left:6px;">' + t_config('Max') + '</label>' +
+        '<input id="ne_seg_max_turns" type="number" min="1" max="100" value="6" style="width:56px;text-align:center;">' +
+        '</div>' +
+        '<div style="color:var(--grey50);font-size:0.72em;margin-bottom:6px;">' + t_config('Per-event turn count range for semantic segmentation. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.') + '</div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('STM Extraction Batch') + ': <span id="ne_stm_batch_val">10</span></span>' +
         '<input type="range" id="ne_stm_batch" min="1" max="30" step="1" value="10" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
         '<div style="margin:6px 0 2px;"><span>' + t_config('Max Unconsolidated STM') + ': <span id="ne_stm_max_unconsolidated_val">5</span></span>' +
         '<input type="range" id="ne_stm_max_unconsolidated" min="2" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
-        '<div style="margin:8px 0 4px;"><span>' + t_config('Segmentation Turns Range') + '</span></div>' +
-        '<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px;">' +
-        '<label style="font-size:0.85em;">' + t_config('Min:') + '</label>' +
-        '<input id="ne_seg_min_turns" class="text_pole" type="number" min="1" max="100" value="2" style="width:60px;">' +
-        '<label style="font-size:0.85em;margin-left:6px;">' + t_config('Max:') + '</label>' +
-        '<input id="ne_seg_max_turns" class="text_pole" type="number" min="1" max="100" value="6" style="width:60px;">' +
-        '</div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Per-event turn range for STM extraction. When min equals max, semantic segmentation is skipped and turns are split by fixed count.') + '</div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +

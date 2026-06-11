@@ -81,6 +81,10 @@ export const NARRATIVE_I18N = {
         'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': 'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.',
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': 'STM/State/LTM memory extraction. Lower = more consistent summaries.',
         'Smart retrieval and tool queries. Higher = more creative answers.': 'Smart retrieval and tool queries. Higher = more creative answers.',
+        'Segmentation Turns Range': 'Semantic Turns Range',
+        'Min': 'Min',
+        'Max': 'Max',
+        'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': 'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -157,6 +161,10 @@ export const NARRATIVE_I18N = {
         'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 达到此数量时触发长期记忆合并。较小值使 LTM 更及时更新。',
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': '记忆提取（STM/状态/LTM）。值越低摘要越一致。',
         'Smart retrieval and tool queries. Higher = more creative answers.': '智能检索与工具查询。值越高回答越有创造性。',
+        'Segmentation Turns Range': '语义切分对话轮数',
+        'Min': '下限',
+        'Max': '上限',
+        'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '每事件对话轮数范围。下限=上限时跳过语义切分，改用固定轮数硬分割。下限不可大于上限。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -235,6 +243,10 @@ export const NARRATIVE_I18N = {
         'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 達到此數量時觸發長期記憶合併。較小值使 LTM 更及時更新。',
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': '記憶提取（STM/狀態/LTM）。值越低摘要越一致。',
         'Smart retrieval and tool queries. Higher = more creative answers.': '智能檢索與工具查詢。值越高回答越有創造性。',
+        'Segmentation Turns Range': '語義切分對話輪數',
+        'Min': '下限',
+        'Max': '上限',
+        'Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '每事件對話輪數範圍。下限=上限時跳過語義切分，改用固定輪數硬分割。下限不可大於上限。',
     }
 };
 
@@ -297,6 +309,10 @@ export const CONFIG_I18N = {
         'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
             'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用, 数值越大消耗越多 token。',
+        'Segmentation Turns Range': 'Semantic Turns Range',
+        'Min': 'Min',
+        'Max': 'Max',
+        'Per-event turn count range for semantic segmentation. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': 'Per-event turn count range for semantic segmentation. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.',
     },
     'zh-cn': {
         'Enable State Schema': '启用状态Schema系统', 'Secondary API (for memory processing)': '副 API（用于记忆处理）',
@@ -353,6 +369,10 @@ export const CONFIG_I18N = {
         'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
             'URL 必须指向 /v1/chat/completions 端点。ST 本地代理用户：http://127.0.0.1:8000/llm/chat。本地代理可留空 Key。',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。',
+        'Segmentation Turns Range': '语义切分对话轮数',
+        'Min': '下限',
+        'Max': '上限',
+        'Per-event turn count range for semantic segmentation. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '语义切分每事件对话轮数范围。下限=上限时跳过语义切分，改用固定轮数硬分割。下限不可大于上限。',
     },
     'zh-tw': {
         'Enable State Schema': '啟用狀態Schema系統', 'Secondary API (for memory processing)': '副 API（用於記憶處理）',
@@ -409,6 +429,10 @@ export const CONFIG_I18N = {
         'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
             'URL 必須指向 /v1/chat/completions 端點。ST 本地代理用戶：http://127.0.0.1:8000/llm/chat。本地代理可留空 Key。',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上參數將應用於記憶區 LLM 調用，數值越大消耗越多 token。',
+        'Segmentation Turns Range': '語義切分對話輪數',
+        'Min': '下限',
+        'Max': '上限',
+        'Per-event turn count range for semantic segmentation. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.': '語義切分每事件對話輪數範圍。下限=上限時跳過語義切分，改用固定輪數硬分割。下限不可大於上限。',
     }
 };
 
