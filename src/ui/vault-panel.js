@@ -1730,14 +1730,19 @@ export async function renderVaultPanel(getChatId) {
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
                 if (!confirm(t('Consolidate will convert STM entries into LTM. Continue?'))) return;
+                var prevText = consolidateBtn.textContent;
+                consolidateBtn.disabled = true;
+                consolidateBtn.textContent = t('Processing...');
                 try {
-                    setVaultActivity(true);
                     await executeConsolidation(getChatId());
                     await updateVaultViewerPopout(getChatId);
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
                     alert(t('Consolidation failed') + ': ' + e.message);
-                } finally { setVaultActivity(false); }
+                } finally {
+                    consolidateBtn.disabled = false;
+                    consolidateBtn.textContent = prevText;
+                }
             };
         }
 
