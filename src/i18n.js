@@ -27,7 +27,7 @@ export const NARRATIVE_I18N = {
         'Opening Summary (always visible)': 'Opening Summary (always visible)', 'Current Scene': 'Current Scene',
         'Long-term Memory (LTM) \u2014 Direct': 'Long-term Memory (LTM) \u2014 Direct',
         'Short-term Memory (Unconsolidated) \u2014 Direct': 'Short-term Memory (Unconsolidated) \u2014 Direct (recent, detailed)',
-        'No.': 'No.', 'Period': 'Period', 'Scene': 'Scene', 'Event': 'Event', 'Event (Summary)': 'Event (Summary)',
+        'No.': 'No.', 'Period': 'Period', 'Scene': 'Scene', 'Event': 'Event', 'Event (Summary)': 'Event (Summary)', 'Messages': 'Messages', 'turns_label': 'Turn {range} / {count}',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.',
         'Characters': 'Characters', '活跃': 'Active', '非活跃': 'Inactive', '已退场': 'Departed',
@@ -106,7 +106,7 @@ export const NARRATIVE_I18N = {
         'Opening Summary (always visible)': '开场设定（始终可见）', 'Current Scene': '当前场景',
         'Long-term Memory (LTM) \u2014 Direct': '长期记忆 (LTM) \u2014 直接可见',
         'Short-term Memory (Unconsolidated) \u2014 Direct': '短期记忆·未整合 \u2014 直接可见（最近发生，最详细）',
-        'No.': 'No.', 'Period': '时段', 'Scene': '场景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)',
+        'No.': 'No.', 'Period': '时段', 'Scene': '场景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)', 'Messages': '消息', 'turns_label': 'Turn {range}（{count}条）',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             '以下内容不直接注入。如需查看，使用 lookup_stm 或 lookup_memory_source 工具。',
         'Characters': '角色卡', '活跃': '活跃', '非活跃': '非活跃', '已退场': '已退场',
@@ -187,7 +187,7 @@ export const NARRATIVE_I18N = {
         'Opening Summary (always visible)': '開場設定（始終可見）', 'Current Scene': '當前場景',
         'Long-term Memory (LTM) \u2014 Direct': '長期記憶 (LTM) \u2014 直接可見',
         'Short-term Memory (Unconsolidated) \u2014 Direct': '短期記憶·未整合 \u2014 直接可見（最近發生，最詳細）',
-        'No.': 'No.', 'Period': '時段', 'Scene': '場景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)',
+        'No.': 'No.', 'Period': '時段', 'Scene': '場景', 'Event': '事件', 'Event (Summary)': '事件 (摘要)', 'Messages': '訊息', 'turns_label': 'Turn {range}（{count}條）',
         'The following content is not directly injected. If needed, use lookup_stm or lookup_memory_source tool.':
             '以下內容不直接注入。如需查看，使用 lookup_stm 或 lookup_memory_source 工具。',
         'Characters': '角色卡', 'Active': '活躍', 'Inactive': '非活躍', 'Departed': '已退場',

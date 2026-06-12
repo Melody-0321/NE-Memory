@@ -71,22 +71,26 @@ ${ltmText || '(none)'}
 Unconsolidated STM:
 ${stmText}
 
-Output ONLY a JSON object:
-{
-  "ltm_entries": [{ "period": "time range from source STM entries (max 15). Use same format as state.time, e.g. 'Day 3-5' or 'Day 3·黄昏→Day 5·深夜'", "scene": "scene (max 20)", "event": "merged summary (max 100)", "stm_refs": ["stm_id1", "stm_id2"] }],
-  "delete_stm_ids": []
-}${stmRangeNote}
+Output format (plain text, not JSON):
+For each new LTM entry, output:
+stm_refs: stm_X, stm_Y
+period: time range
+scene: scene name
+event: merged summary (max 100 chars)
 
-IMPORTANT: NEVER put STM IDs in "delete_stm_ids". Always keep original STM entries. Only add new LTM entries and reference the STM IDs in stm_refs. stm_refs MUST use the exact "stm_X" IDs shown in the [→stm_X] markers above. Do NOT use numeric indices — use the full "stm_X" identifier.
+Example:
+stm_refs: stm_1, stm_3
+period: Day 3-5
+scene: Hospital
+event: Alice and Bob discuss treatment plan for Carol
+${stmRangeNote}
 
-The "period" field MUST cover the time range from the earliest stm_ref to the latest, based on their time_label fields. Derive this from the source entries, not from the current story time.
-
-Optionally include "entities" in each LTM entry to carry forward entity names from the source STM entries. This helps with entity chain lookups.`,
-            user: 'Merge these short-term memories. Only output JSON.'
+IMPORTANT: Use character proper names. Do NOT output JSON.`,
+            user: 'Merge these short-term memories. Output plain text, not JSON.'
         };
     }
     return {
-        system: `你将短期记忆合并为长期记忆摘要。
+        system: `你将短期记忆整合为长期记忆摘要。
 
 已有 LTM：
 ${ltmText || '(无)'}
@@ -94,29 +98,95 @@ ${ltmText || '(无)'}
 待整合 STM：
 ${stmText}
 
-仅输出 JSON 对象：
-{
-  "ltm_entries": [{ "period": "时间范围（最长15字）。使用与 state.time 相同的格式，如 'Day 3-5' 或 'Day 3·黄昏→Day 5·深夜'", "scene": "场景(最长20字)", "event": "合并摘要(最长100字)", "stm_refs": ["stm_id1", "stm_id2"] }],
-  "delete_stm_ids": []
-}${stmRangeNote}
+输出格式（纯文本，不是 JSON）：
+每个新 LTM 条目输出：
+stm_refs: stm_X, stm_Y
+period: 时间范围
+scene: 场景名
+event: 整合摘要（最长100字）
 
-重要：绝不要往 "delete_stm_ids" 中放 STM ID。始终保留原始 STM 条目。只在 ltm_entries 中新增 LTM 条目并通过 stm_refs 引用 STM ID。stm_refs 必须使用上方的 [→stm_X] 标记中显示的确切 "stm_X" ID。不要使用数字索引——使用完整的 "stm_X" 标识符。
+示例：
+stm_refs: stm_1, stm_3
+period: Day 3-5
+scene: 医院
+event: 角色A与角色B讨论角色C的治疗方案
+${stmRangeNote}
 
-"period" 字段必须覆盖从最早到最晚的 stm_ref 的时间范围，基于它们的 time_label 字段。从源条目推导，而非从当前故事时间。
-
-可选地在每个 LTM 条目中包含 "entities" 字段，以延续源 STM 条目中的实体名称。这有助于实体链查找。`,
-        user: '合并这些短期记忆。仅输出 JSON。'
+重要：使用角色全名，禁止代词。不要输出 JSON。`,
+        user: '整合这些短期记忆。输出纯文本，不要 JSON。'
     };
 }
 
-export function parseConsolidateResponse(llmResponse) {
+function parseConsolidateText(text, stmIds) {
+    var ltmEntries = [];
+    var currentEntry = null;
+    var lines = String(text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) {
+            if (currentEntry && currentEntry.event) {
+                ltmEntries.push(currentEntry);
+                currentEntry = null;
+            }
+            continue;
+        }
+        var refMatch = line.match(/stm_refs?\s*[:：]\s*(.+)/i);
+        if (refMatch) {
+            if (currentEntry && currentEntry.event) {
+                ltmEntries.push(currentEntry);
+            }
+            var refs = refMatch[1].split(/[,，\s]+/);
+            var stmRefs = [];
+            refs.forEach(function(r) {
+                r = r.trim();
+                if (r.indexOf('stm_') === 0) r = r;
+                else r = 'stm_' + r;
+                if (stmIds.indexOf(r) !== -1) stmRefs.push(r);
+            });
+            currentEntry = { stm_refs: stmRefs.length > 0 ? stmRefs : stmIds.slice(0, 3), period: '', scene: '', event: '' };
+            continue;
+        }
+        if (!currentEntry) {
+            currentEntry = { stm_refs: stmIds.slice(0, 3), period: '', scene: '', event: '' };
+        }
+        var periodMatch = line.match(/period\s*[:：]\s*(.+)/i);
+        if (periodMatch) {
+            currentEntry.period = periodMatch[1].trim().substring(0, 15);
+            continue;
+        }
+        var sceneMatch = line.match(/scene\s*[:：]\s*(.+)/i);
+        if (sceneMatch) {
+            currentEntry.scene = sceneMatch[1].trim().substring(0, 20);
+            continue;
+        }
+        var eventMatch = line.match(/event\s*[:：]\s*(.+)/i);
+        if (eventMatch) {
+            currentEntry.event = eventMatch[1].trim().substring(0, 100);
+            continue;
+        }
+        if (line.length >= 3) {
+            currentEntry.event = (currentEntry.event ? currentEntry.event + ' ' : '') + line;
+        }
+    }
+    if (currentEntry && currentEntry.event) {
+        ltmEntries.push(currentEntry);
+    }
+    if (ltmEntries.length === 0) {
+        ltmEntries.push({ stm_refs: stmIds, period: '', scene: '', event: 'Consolidated STM ' + stmIds.join(', ') });
+    }
+    ltmEntries.forEach(function(e) { e.event = e.event.substring(0, 100).trim(); });
+    return { ltm_entries: ltmEntries, delete_stm_ids: [] };
+}
+
+export function parseConsolidateResponse(llmResponse, stmIds) {
     try {
         const text = String(llmResponse || '').trim();
         const jsonMatch = text.match(/\{[\s\S]*\}/);
         if (jsonMatch) return JSON.parse(jsonMatch[0]);
         return JSON.parse(text);
     } catch (e) {
-        return { ltm_entries: [], delete_stm_ids: [] };
+        console.warn('[NE] Consolidate JSON parse failed, using text fallback');
+        return parseConsolidateText(llmResponse, stmIds || []);
     }
 }
 
@@ -205,9 +275,10 @@ export async function executeConsolidation(chatId) {
     if (!checkConsolidateThreshold(vault)) return { vault, merged: 0 };
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
     const prompt = buildConsolidatePrompt(vault);
     var response = await callMemoryPipeline([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
-    var result = parseConsolidateResponse(response);
+    var result = parseConsolidateResponse(response, stmIds);
 
     var validateErrors = validateLTMOutput(result);
     if (validateErrors.length > 0) {
@@ -219,7 +290,7 @@ export async function executeConsolidation(chatId) {
             { role: 'assistant', content: response },
             { role: 'user', content: retryMsg }
         ]);
-        result = parseConsolidateResponse(retryResponse);
+        result = parseConsolidateResponse(retryResponse, stmIds);
     }
 
     postFillLTM(result, unconsolidated);

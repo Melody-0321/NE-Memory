@@ -386,6 +386,32 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
     };
 }
 
+function parseStateChangesText(text) {
+    var changes = {};
+    var lines = String(text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        var m = line.match(/"path"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*(.+)/);
+        if (m) {
+            var p = m[1];
+            var v = m[2].replace(/^"|"$/g, '').replace(/,$/, '').trim();
+            try { v = JSON.parse(v); } catch (_) { v = v.replace(/^"|"$/g, ''); }
+            changes[p] = v;
+            continue;
+        }
+        m = line.match(/"path"\s*:\s*"([^"]+)"/);
+        if (!m) m = line.match(/"(\S+)"\s*:\s*(.+)/);
+        if (m) {
+            var p2 = m[1].replace(/^"|"$/g, '');
+            var v2 = m[2].replace(/^"|"$/g, '').replace(/,$/, '').trim();
+            try { v2 = JSON.parse(v2); } catch (_) {}
+            changes[p2] = v2;
+        }
+    }
+    return changes;
+}
+
 export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
     // 剥离 <thought> 推理缓冲区
@@ -485,7 +511,13 @@ export function parseSTMResponse(llmResponse) {
                     stateChanges = parsedState;
                 }
             }
-        } catch (e) {}
+        } catch (e) {
+            console.warn('[NE] State changes JSON parse failed, trying text fallback');
+            var fallback = parseStateChangesText(stateChangesText);
+            if (Object.keys(fallback).length > 0) {
+                stateChanges = isStateSchemaEnabled() ? fallback : whitelistStateChanges(fallback);
+            }
+        }
     }
 
     return { stmEntries: stmEntries, stateChanges: stateChanges, _checkpoints: checkpoints };
@@ -898,7 +930,7 @@ function autoDecayStaleCharacters(state, messages) {
     return state;
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages, force) {
+export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
@@ -1061,7 +1093,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
     var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
     var newEntries = [];
     try {
-        cursorResult = await processTurnsInBatches(vault, filteredMessages, {
+        var buildParams = {
             callLLM: callMemoryPipeline,
             parseResponse: parseSTMResponse,
             validateOutput: validateSTMOutput,
@@ -1074,7 +1106,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             buildSubAgentPrompt: buildSubAgentPrompt,
             segMinTurns: segMinTurns,
             segMaxTurns: segMaxTurns
-        });
+        };
+        cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
 
         var totalAdded = cursorResult.totalAdded || 0;
         newEntries = totalAdded > 0 ? (vault.content.unconsolidated_stm || []).slice(-totalAdded) : [];

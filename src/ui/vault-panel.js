@@ -1047,10 +1047,23 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
         var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
-        var idList = type === 'ltm'
-            ? (entry.stm_refs || []).slice(0, 5).join(', ') + ((entry.stm_refs || []).length > 5 ? '...(' + entry.stm_refs.length + ')' : '')
-            : (entry.msg_ids || []).slice(0, 5).join(', ') + ((entry.msg_ids || []).length > 5 ? '...(' + entry.msg_ids.length + ')' : '');
-        var idListCell = '<td style="font-size:0.75em;max-width:180px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(idList || '') + '">' + escapeHtml(idList || '') + '</td>';
+        var idListFull = type === 'ltm'
+            ? (entry.stm_refs || []).join(', ')
+            : (entry.msg_ids || []).join(', ');
+        var idDisplay = '';
+        if (type === 'ltm') {
+            var refs = entry.stm_refs || [];
+            idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
+        } else {
+            var turns = entry.turns || [];
+            var msgCount = (entry.msg_ids || []).length;
+            if (turns.length >= 2 && msgCount > 0) {
+                idDisplay = 'Turn ' + turns[0] + '-' + turns[1] + ' / ' + msgCount + '\u6761';
+            } else if (msgCount > 0) {
+                idDisplay = msgCount + '\u6761';
+            }
+        }
+        var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
         tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td>' + idListCell + '<td>' + (entry.event || entry.summary || '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
@@ -1061,8 +1074,10 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                 var stm = stmIndexMap && stmIndexMap[stmId];
                 if (stm) {
                     var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
-                    var subMsgIds = (stm.msg_ids || []).slice(0, 3).join(',') + ((stm.msg_ids || []).length > 3 ? '...' : '');
-                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.7em;max-width:180px;color:#666;">' + escapeHtml(subMsgIds || stmId) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
+                    var subTurns = stm.turns || [];
+                    var subMsgCount = (stm.msg_ids || []).length;
+                    var subMsgDisplay = subTurns.length >= 2 && subMsgCount > 0 ? 'Turn ' + subTurns[0] + '-' + subTurns[1] + ' / ' + subMsgCount : (subMsgCount > 0 ? subMsgCount + '\u6761' : stmId);
+                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }
             });
             if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="6"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
@@ -1776,7 +1791,7 @@ export async function renderVaultPanel(getChatId) {
                 processHistoryBtn.disabled = true;
                 var BATCH = 30;
                 var total = toProcess.length;
-                processHistoryBtn.textContent = t('Processing...') + ' (0/' + total + ')';
+                processHistoryBtn.textContent = t('Processing...') + ' (0' + '\u8f6e' + ')';
 
                 var cpKey = 'ne_ph_' + getChatId();
                 var processedCount = 0;
@@ -1795,22 +1810,24 @@ export async function renderVaultPanel(getChatId) {
                 } catch (e) {}
 
                 try {
+                    var accumTurns = processedCount;
+                    processHistoryBtn.textContent = t('Processing...') + ' (0' + '\u8f6e' + ')';
                     for (var i = processedCount; i < total; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
-                        var doneBefore = i;
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + doneBefore + '/' + total + ')';
-                        var result = await executeIncrementalUpdate(getChatId(), batch, true);
+                        var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
+                            accumTurns = progress.processedTurns;
+                            processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + '\u8f6e' + ')';
+                        });
                         if (result.added === 0 && batch.length > 0) {
                             console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
                         }
                         var done = Math.min(i + BATCH, total);
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + done + '/' + total + ')';
                         try {
                             localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: done }));
                         } catch (e2) {}
                     }
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
-                    processHistoryBtn.textContent = t('Completed') + ' (' + total + '/' + total + ')';
+                    processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + '\u8f6e' + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
                     alert(t('Process History') + ' failed: ' + e.message);

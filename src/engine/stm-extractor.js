@@ -442,11 +442,12 @@ export async function runStmExtractorCore(turns, params) {
 
 // ── 批量分治入口 ──
 
-export async function processTurnsInBatches(vault, messages, buildParams) {
+export async function processTurnsInBatches(vault, messages, buildParams, onProgress) {
     var allTurns = groupMessagesIntoTurns(messages);
     if (allTurns.length === 0) return { vault: vault, totalAdded: 0 };
 
     var maxTurns = buildParams.maxTurns || DEFAULT_MAX_TURNS;
+    var totalTurns = allTurns.length;
     var cursorState = buildParams.getCursorState(vault, 'stm');
     var pendingPartials = cursorState.pending_partials || [];
 
@@ -463,7 +464,9 @@ export async function processTurnsInBatches(vault, messages, buildParams) {
 
     // 短路径：如果所有 turns 在 maxTurns 内且无 carry-forward，直接单次调用
     if (allTurns.length <= maxTurns && carryForwardTurns.length === 0) {
-        return runStmExtractorCore(allTurns, buildParams);
+        var result = await runStmExtractorCore(allTurns, buildParams);
+        if (onProgress) onProgress({ processedTurns: allTurns.length, totalTurns: allTurns.length });
+        return result;
     }
 
     var totalAdded = 0;
@@ -510,6 +513,11 @@ export async function processTurnsInBatches(vault, messages, buildParams) {
         carryForwardTurns = batchResult.tailDeferred || [];
 
         console.log('[NE] Batch processed — entries=' + batchResult.totalAdded + ', tailDeferred=' + carryForwardTurns.length);
+
+        if (onProgress) {
+            var processedSoFar = Math.min(turnIdx, totalTurns);
+            onProgress({ processedTurns: processedSoFar, totalTurns: totalTurns });
+        }
 
         if (batchTurns.length < maxTurns && carryForwardTurns.length === 0) break;
     }
