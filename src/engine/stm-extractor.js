@@ -290,11 +290,15 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
     var totalAdded = 0;
     var turnIdx = 0;
 
+    var numBatches = Math.ceil(totalTurns / maxTurns);
+    var batchSize = Math.ceil(totalTurns / numBatches);
+
     while (turnIdx < allTurns.length) {
+        var thisBatchSize = Math.min(batchSize, allTurns.length - turnIdx);
         var batchTurns = [];
         var globalIndexMap = [];
 
-        while (batchTurns.length < maxTurns && turnIdx < allTurns.length) {
+        while (batchTurns.length < thisBatchSize && turnIdx < allTurns.length) {
             batchTurns.push(allTurns[turnIdx]);
             globalIndexMap.push(turnIdx);
             turnIdx++;
