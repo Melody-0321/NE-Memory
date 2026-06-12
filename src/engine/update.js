@@ -682,7 +682,7 @@ function buildStateSnapshot(content) {
     return snapshot;
 }
 
-export function buildBatchPrompt(turns, vault, retryAttempt) {
+export function buildBatchPrompt(turns, vault, retryAttempt, missingTurnRanges) {
     retryAttempt = retryAttempt || 0;
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -709,14 +709,21 @@ export function buildBatchPrompt(turns, vault, retryAttempt) {
 
     if (retryAttempt === 0) {
         var system = lang === 'en' ?
-            (retrospectiveCtx + '\nYou are a story memory extractor. Describe ALL significant events from the dialog below.\n\nOutput ONLY event blocks — no reasoning, analysis, or extra text.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5". Maximum turn is ' + maxTurnLabel + '.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Each event covers contiguous turns.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Use character proper names only. No pronouns.\n- Do NOT repeat events already described in prior events above.') :
-            (retrospectiveCtx + '\n你是故事记忆提取器。描述下列对话中所有重要事件。\n\n只输出事件块，不要推理、分析或任何额外文字。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」。最大 turn 为 ' + maxTurnLabel + '。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 每个事件使用连续的 turns。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 使用角色全名，禁止代词。\n- 不要重复往期事件中已描述过的内容。');
+            (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput ONLY event blocks — no reasoning, analysis, or extra text.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5". Maximum turn is ' + maxTurnLabel + '.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Each event covers contiguous turns.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones. Prior events are for time format reference only.\n- Use character proper names only. No pronouns.') :
+            (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n只输出事件块，不要推理、分析或任何额外文字。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」。最大 turn 为 ' + maxTurnLabel + '。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 每个事件使用连续的 turns。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。');
     } else {
         // 重试：极简 prompt，减少 flash 模型回显概率
         if (retrospectiveCtx) retrospectiveCtx = retrospectiveCtx.replace(/## [^\n]+/g, '').trim();
         var system = lang === 'en' ?
             (retrospectiveCtx + '\nExtract all events from turns 0-' + maxTurnLabel + ' below.\nOutput format:\nevent: <description>\nperiod: <time or ->\nscene: <location or ->\nturns: N-M\n\nSeparate each event with a blank line. No other text.') :
             (retrospectiveCtx + '\n提取 0~' + maxTurnLabel + ' 轮对话中的所有事件。\n输出格式：\nevent: <描述>\nperiod: <时间或->\nscene: <场景或->\nturns: N-M\n\n每个事件用空行分隔。不要其他任何文字。');
+    }
+
+    if (missingTurnRanges && missingTurnRanges.length > 0) {
+        var rangeList = missingTurnRanges.join(', ');
+        userText = lang === 'en'
+            ? 'WARNING: You missed turns ' + rangeList + '. ONLY output events for these missing turns:\n\n' + turnsText.join('\n')
+            : '警告：你遗漏了 Turn ' + rangeList + '。只输出这些缺失 turn 的事件：\n\n' + turnsText.join('\n');
     }
 
     return { system: system, user: userText };
@@ -899,13 +906,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
-    var processedIds = new Set();
-    if (!force) {
-        processedIds = collectProcessedMsgIds(vault);
-    }
-    var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
+    var processedIds = collectProcessedMsgIds(vault);
+    var filteredMessages = filterNewMessages(newMessages, processedIds);
     console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');
-    if (filteredMessages.length === 0) { console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process'); return { vault: vault, added: 0 }; }
+    if (filteredMessages.length === 0 && !force) { console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process'); return { vault: vault, added: 0 }; }
 
     // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
     if (isDynamicStateMode() && !vault.content.dynamic_state) {

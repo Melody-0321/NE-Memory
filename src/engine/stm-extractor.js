@@ -72,10 +72,11 @@ function parseBatchResponse(raw, maxTurn) {
     for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi].trim();
         if (!block) continue;
-        // 只接受包含 event: 字段的块，丢弃推理/分析文本
-        if (!/^event\s*[:：]/im.test(block)) continue;
-        // 优先从 event/turns 行提取，找不到再兜底
-        var hasTurnLine = /^turns?\s*[:：]/im.test(block);
+        // 接受 event: 字段 或 Turn N-M: 开头的块
+        var hasEventLine = /^event\s*[:：]/im.test(block);
+        var turnPrefixMatch = block.match(/^Turn\s+(\d+)\s*[-–~至到]\s*(\d+)\s*[:：]/im);
+        if (!hasEventLine && !turnPrefixMatch) continue;
+        var hasTurnLine = /^turns?\s*[:：]/im.test(block) || !!turnPrefixMatch;
         var turnStart = -1, turnEnd = -1;
         var blockLines = block.split('\n');
         for (var li = 0; li < blockLines.length; li++) {
@@ -86,10 +87,19 @@ function parseBatchResponse(raw, maxTurn) {
                 turnEnd = Math.max(turnStart, Math.min(maxTurn, parseInt(tm[2], 10)));
                 break;
             }
+            // Fallback: Turn N-M: ... 格式
+            var tpm = line.match(/^Turn\s+(\d+)\s*[-–~至到]\s*(\d+)\s*[:：]/i);
+            if (tpm) {
+                turnStart = Math.max(0, Math.min(maxTurn, parseInt(tpm[1], 10)));
+                turnEnd = Math.max(turnStart, Math.min(maxTurn, parseInt(tpm[2], 10)));
+                break;
+            }
         }
-        // 没有 turns 行的块跳过（无法定位到具体 turn）
-        if (!hasTurnLine) continue;
-        if (turnStart < 0) continue;
+        if (turnStart < 0 && !hasTurnLine) continue;
+        if (turnStart < 0) {
+            turnStart = 0;
+            turnEnd = maxTurn - 1;
+        }
         var turnIndices = [];
         for (var ti = turnStart; ti <= turnEnd; ti++) turnIndices.push(ti);
         var fields = extractEntryFields(block);
@@ -163,6 +173,50 @@ export async function runStmExtractorCore(turns, params) {
         if (rawEvents.length === 0) {
             console.warn('[NE] Batch LLM returned 0 valid events (attempt ' + (attempt + 1) + '), retrying...');
             continue;
+        }
+
+        // 检查缺失的 turn 范围
+        if (attempt < maxRetries) {
+            var coveredSet = {};
+            for (var ei = 0; ei < rawEvents.length; ei++) {
+                for (var ti = rawEvents[ei].start; ti <= rawEvents[ei].end; ti++) {
+                    coveredSet[ti] = true;
+                }
+            }
+            var missing = [];
+            for (var ti = 0; ti <= maxTurn; ti++) {
+                if (!coveredSet[ti]) missing.push(ti);
+            }
+            if (missing.length > 0) {
+                var missingRanges = [];
+                var ms = missing[0], me = missing[0];
+                for (var mi = 1; mi < missing.length; mi++) {
+                    if (missing[mi] === me + 1) { me = missing[mi]; }
+                    else { missingRanges.push(ms === me ? '' + ms : ms + '-' + me); ms = missing[mi]; me = missing[mi]; }
+                }
+                missingRanges.push(ms === me ? '' + ms : ms + '-' + me);
+                console.warn('[NE] Batch LLM missed turns ' + missingRanges.join(',') + ' (attempt ' + (attempt + 1) + '), retrying with feedback...');
+
+                var feedbackPrompt = buildBatchPrompt(turns, vault, -1, missingRanges);
+                try {
+                    responseText = await callLLM([
+                        { role: 'system', content: feedbackPrompt.system },
+                        { role: 'user', content: feedbackPrompt.user }
+                    ]);
+                } catch (e) {
+                    console.warn('[NE] Batch LLM feedback retry failed:', e.message);
+                    continue;
+                }
+                if (isResponseEcho(responseText, feedbackPrompt.system)) {
+                    console.warn('[NE] Feedback retry response is prompt echo, giving up');
+                    continue;
+                }
+                var supplementEvents = parseBatchResponse(responseText, maxTurn);
+                if (supplementEvents.length > 0) {
+                    rawEvents = rawEvents.concat(supplementEvents);
+                }
+                break;
+            }
         }
 
         // 回显检测 2：event 文本中含 prompt 原句
