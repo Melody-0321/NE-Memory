@@ -2179,14 +2179,6 @@ function renderSettingsTab() {
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
         '</div>' +
-        '<div style="margin:10px 0 4px;"><span style="font-weight:500;">' + t('Segmentation Turns Range') + '</span></div>' +
-        '<div style="display:flex;gap:6px;align-items:center;margin:0 0 4px;">' +
-        '<label style="font-size:0.82em;">' + t('Min') + '</label>' +
-        '<input id="nes_seg_min_turns" type="number" min="1" max="100" value="' + (settings.segMinTurns || 2) + '" style="width:56px;text-align:center;">' +
-        '<label style="font-size:0.82em;margin-left:6px;">' + t('Max') + '</label>' +
-        '<input id="nes_seg_max_turns" type="number" min="1" max="100" value="' + (settings.segMaxTurns || 6) + '" style="width:56px;text-align:center;">' +
-        '</div>' +
-        '<div style="color:var(--grey50);font-size:0.72em;margin:0 0 8px;">' + t('Per-event turn range. When Min = Max, segmentation is skipped and turns are split by fixed-size chunks.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
@@ -2331,8 +2323,6 @@ function saveSettingsTab() {
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
-        segMinTurns: Number(byId('nes_seg_min_turns').value) || 2,
-        segMaxTurns: Number(byId('nes_seg_max_turns').value) || 6,
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
