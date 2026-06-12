@@ -511,6 +511,11 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
         }
 
         // Step 2: 从 allTurns 补充新 turns 到满 maxTurns
+        // 关键：先确保 turnIdx 不会重新处理已被 carry-forward 覆盖的 turn
+        if (carryForwardTurns.length > 0) {
+            var maxCF = carryForwardTurns[carryForwardTurns.length - 1];
+            if (turnIdx <= maxCF) turnIdx = maxCF + 1;
+        }
         var newTurnGlobalStart = turnIdx;
         while (batchTurns.length < maxTurns && turnIdx < allTurns.length) {
             batchTurns.push(allTurns[turnIdx]);
