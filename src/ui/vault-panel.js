@@ -1075,7 +1075,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td><td style="font-size:0.85em;max-width:100px;">' + (entry.scene || '') + '</td>' + idListCell + '<td>' + (entry.event || entry.summary || '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + (entry.event || entry.summary || '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -1089,7 +1089,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                     detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }
             });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="6"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
         }
     });
     if (type === 'ltm') {
@@ -1636,7 +1636,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
             '</div></div>' +
             '</div></div>' +

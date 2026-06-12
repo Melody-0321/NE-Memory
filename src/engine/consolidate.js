@@ -58,23 +58,19 @@ STM to consolidate (detail events describing continuous story segments):
 ${stmText}
 
 Requirements:
-1. Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
-2. The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
-3. event length: max 50 chars.
+- Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
+- The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
+- event length: max 50 chars.
 
 Output format (plain text, one LTM block separated by blank lines):
 stm_refs: stm_X, stm_Y
-period: time range (e.g. 2026-06-01 23:30 → 2026-06-02 02:10)
-scene: scene name (1-2 words)
 event: abstract summary (max 50 chars)
 
 Example:
 stm_refs: stm_1, stm_2, stm_3, stm_4, stm_5
-period: Day 3 → Day 5
-scene: Hospital
 event: Alice and Bob treat Carol's injury at the hospital
 
-IMPORTANT: Use character proper names. Do NOT output JSON.`,
+IMPORTANT: Use character proper names. Do NOT output JSON. No other fields besides stm_refs and event.`,
             user: 'Elevate these STM entries into high-level LTM. Output plain text, not JSON.'
         };
     }
@@ -88,31 +84,30 @@ ${ltmText || '(无)'}
 ${stmText}
 
 要求：
-1. 将内容连续的 STM 按剧情弧合并为 LTM。禁止 1:1 映射。
-2. LTM 的 event 是对合并内容的高层抽象概要，不是 STM 原文拼句。去掉具体步骤、手术名称、植入件名。
-3. event 长度不超过 50 字。
+- 将内容连续的 STM 按剧情弧合并为 LTM。禁止 1:1 映射。
+- LTM 的 event 是对合并内容的高层抽象概要，不是 STM 原文拼句。去掉具体步骤、手术名称、植入件名。
+- event 长度不超过 50 字。
 
 输出格式（纯文本，空行分隔每个 LTM 块）：
 stm_refs: stm_X, stm_Y
-period: 时间范围（如 2026年6月1日 23:30 → 2026年6月2日 02:10）
-scene: 场景名（1~2 词）
 event: 抽象概要（最多50字）
 
 示例：
 stm_refs: stm_1, stm_2, stm_3, stm_4, stm_5
-period: 2026年6月1日 23:30 → 2026年6月2日 01:30
-scene: 长安殡仪馆
 event: 江岚接收并处理了前女友苏蔓和邻居许瑶的遗体
 
-重要：使用角色全名，禁止代词。不要输出 JSON。`,
+重要：只输出 stm_refs 和 event 两个字段，不要输出其他内容。使用角色全名，禁止代词。不要输出 JSON。`,
         user: '将以下 STM 条目提升为高层 LTM。输出纯文本，不要 JSON。'
     };
 }
 
 function parseConsolidateText(text, stmIds) {
+    // Strip reasoning segments: <thought>...</thought> blocks and lines that look like inner monologue
+    var clean = String(text || '').replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, '');
+    var lines = clean.split('\n');
+
     var ltmEntries = [];
     var currentEntry = null;
-    var lines = String(text || '').split('\n');
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].trim();
         if (!line) {
@@ -135,36 +130,21 @@ function parseConsolidateText(text, stmIds) {
                 else r = 'stm_' + r;
                 if (stmIds.indexOf(r) !== -1) stmRefs.push(r);
             });
-            currentEntry = { stm_refs: stmRefs.length > 0 ? stmRefs : stmIds, period: '', scene: '', event: '' };
+            currentEntry = { stm_refs: stmRefs.length > 0 ? stmRefs : stmIds, event: '' };
             continue;
         }
-        if (!currentEntry) {
-            currentEntry = { stm_refs: stmIds, period: '', scene: '', event: '' };
-        }
-        var periodMatch = line.match(/period\s*[:：]\s*(.+)/i);
-        if (periodMatch) {
-            currentEntry.period = periodMatch[1].trim().substring(0, 15);
-            continue;
-        }
-        var sceneMatch = line.match(/scene\s*[:：]\s*(.+)/i);
-        if (sceneMatch) {
-            currentEntry.scene = sceneMatch[1].trim().substring(0, 20);
-            continue;
-        }
+        if (!currentEntry) continue;
         var eventMatch = line.match(/event\s*[:：]\s*(.+)/i);
         if (eventMatch) {
             currentEntry.event = eventMatch[1].trim().substring(0, 50);
             continue;
-        }
-        if (line.length >= 3) {
-            currentEntry.event = (currentEntry.event ? currentEntry.event + ' ' : '') + line;
         }
     }
     if (currentEntry && currentEntry.event) {
         ltmEntries.push(currentEntry);
     }
     if (ltmEntries.length === 0) {
-        ltmEntries.push({ stm_refs: stmIds, period: '', scene: '', event: 'Consolidated STM ' + stmIds.join(', ') });
+        ltmEntries.push({ stm_refs: stmIds, event: 'Consolidated STM ' + stmIds.join(', ') });
     }
     ltmEntries.forEach(function(e) { e.event = e.event.substring(0, 50).trim(); });
     return { ltm_entries: ltmEntries, delete_stm_ids: [] };

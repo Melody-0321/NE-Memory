@@ -88,12 +88,6 @@ export function validateLTMOutput(result) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('ltm_entries[' + i + '].event is REQUIRED');
         }
-        if (!e.period || !String(e.period).trim()) {
-            errors.push('ltm_entries[' + i + '].period is REQUIRED');
-        }
-        if (!e.scene || !String(e.scene).trim()) {
-            errors.push('ltm_entries[' + i + '].scene is REQUIRED');
-        }
         if (!e.stm_refs || e.stm_refs.length === 0) {
             errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
         }
@@ -140,24 +134,6 @@ export function postFillLTM(result, sourceSTMList) {
                 var unique = [];
                 periods.forEach(function(p) { if (unique.indexOf(p) === -1) unique.push(p); });
                 e.period = unique.join('→');
-            }
-        }
-
-        if (!e.scene || !String(e.scene).trim()) {
-            var scenes = [];
-            (e.stm_refs || []).forEach(function(refId) {
-                var found = sourceSTMList.find(function(s) { return s.id === refId; });
-                if (found && found.scene) scenes.push(found.scene);
-            });
-            if (scenes.length > 0) {
-                var sceneCounts = {};
-                scenes.forEach(function(s) { sceneCounts[s] = (sceneCounts[s] || 0) + 1; });
-                var best = '';
-                var bestCount = 0;
-                Object.keys(sceneCounts).forEach(function(k) {
-                    if (sceneCounts[k] > bestCount) { best = k; bestCount = sceneCounts[k]; }
-                });
-                e.scene = best;
             }
         }
 
