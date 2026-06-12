@@ -1,16 +1,14 @@
 /**
- * engine/stm-extractor.js — Hub-Spoke STM extraction engine
+ * engine/stm-extractor.js — Batch-level STM extraction engine
  *
- * Replaces cursor.js. Main LLM segments turns into semantic events,
- * spawns parallel sub-agents for each event range, then code-fills metadata.
- * Single-event path skips tool calling entirely.
+ * Each batch makes ONE LLM call. LLM outputs all events for the batch
+ * as plain-text blocks (separated by blank lines), code parses them.
  *
- * Batch support: processTurnsInBatches() splits large turn sets into
- * maxTurns-sized batches with deferred carry-forward between batches.
+ * processTurnsInBatches() splits large turn sets into maxTurns-sized batches
+ * with simple cursor advancement — no carry-forward / deferred.
  */
 
-import { callMemoryPipeline } from '../api/llm.js';
-import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
+import { groupMessagesIntoTurns, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
 var DEFAULT_MAX_TURNS = 10;
 
@@ -49,421 +47,182 @@ function extractEntryFields(raw) {
     return result;
 }
 
-// ── 从 LLM 纯文本切分中提取 turn 范围 ──
+// ── 从整批 LLM 响应中解析多个 event 块 ──
 
-function parseSegmentation(text, maxTurn) {
-    var segments = [];
-    var deferred = [];
-    var seenTurns = {};
-    var lines = String(text || '').split('\n');
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (!line) continue;
-        var dm = line.match(/deferred[\s:：]*(\d+)\s*[-–至到]\s*(\d+)/i);
-        if (dm) {
-            var ds = Math.max(0, Math.min(maxTurn, parseInt(dm[1], 10)));
-            var de = Math.max(ds, Math.min(maxTurn, parseInt(dm[2], 10)));
-            for (var ti = ds; ti <= de; ti++) {
-                if (deferred.indexOf(ti) === -1) deferred.push(ti);
+function parseBatchResponse(raw, maxTurn) {
+    var events = [];
+    if (!raw) return events;
+    var text = String(raw).trim();
+    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+    text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    // 按连续空行分割为 event 块
+    var blocks = text.split(/\n\s*\n/);
+    for (var bi = 0; bi < blocks.length; bi++) {
+        var block = blocks[bi].trim();
+        if (!block) continue;
+        var fields = extractEntryFields(block);
+        if (!fields.event || fields.event.length < 3) continue;
+        var turnStart = -1, turnEnd = -1;
+        var blockLines = block.split('\n');
+        for (var li = 0; li < blockLines.length; li++) {
+            var line = blockLines[li].trim();
+            var tm = line.match(/^turns?\s*[:：]\s*(\d+)\s*[-–~至到]\s*(\d+)/i);
+            if (tm) {
+                turnStart = Math.max(0, Math.min(maxTurn, parseInt(tm[1], 10)));
+                turnEnd = Math.max(turnStart, Math.min(maxTurn, parseInt(tm[2], 10)));
+                break;
             }
-            continue;
         }
-        var m = line.match(/^(\d+)\s*[-–~至到]\s*(\d+)/);
-        if (m) {
-            var s = Math.max(0, Math.min(maxTurn, parseInt(m[1], 10)));
-            var e = Math.max(s, Math.min(maxTurn, parseInt(m[2], 10)));
-            var conflict = false;
-            for (var ti = s; ti <= e; ti++) {
-                if (seenTurns[ti]) { conflict = true; break; }
-            }
-            if (conflict) continue;
-            for (var ti = s; ti <= e; ti++) seenTurns[ti] = true;
-            segments.push({
-                start: s, end: e,
-                summary: line.replace(/^\d+\s*[-–~至到]\s*\d+/, '').trim()
-            });
+        if (turnStart < 0) {
+            var prevEnd = events.length > 0 ? events[events.length - 1].end : -1;
+            turnStart = prevEnd + 1;
+            turnEnd = Math.min(turnStart + 1, maxTurn - 1);
+            if (turnStart > maxTurn) turnStart = maxTurn;
         }
+        var turnIndices = [];
+        for (var ti = turnStart; ti <= turnEnd; ti++) turnIndices.push(ti);
+        events.push({
+            event: fields.event,
+            period: fields.period,
+            scene: fields.scene,
+            start: turnStart,
+            end: turnEnd,
+            turnIndices: turnIndices
+        });
     }
-    var uncovered = [];
-    for (var ti = 0; ti <= maxTurn; ti++) {
-        if (!seenTurns[ti] && deferred.indexOf(ti) === -1) uncovered.push(ti);
+    // 如果 LLM 一个 event 都没输出，退化为全批一个 entry
+    if (events.length === 0) {
+        var fullIndices = [];
+        for (var ti = 0; ti < maxTurn; ti++) fullIndices.push(ti);
+        events.push({
+            event: 'Batch turns 0-' + (maxTurn - 1),
+            period: '',
+            scene: '',
+            start: 0,
+            end: maxTurn - 1,
+            turnIndices: fullIndices
+        });
     }
-    for (var i = 0; i < uncovered.length; ) {
-        var j = i;
-        while (j + 1 < uncovered.length && uncovered[j + 1] === uncovered[j] + 1) j++;
-        segments.push({ start: uncovered[i], end: uncovered[j], summary: '' });
-        i = j + 1;
-    }
-    segments.sort(function (a, b) { return a.start - b.start; });
-    return { segments: segments, deferred: deferred };
-}
-
-// ── 外层入口（向后兼容）──
-
-export async function runStmExtractor(params) {
-    var messages = params.messages;
-    var turns = groupMessagesIntoTurns(messages);
-    return runStmExtractorCore(turns, params);
+    return events;
 }
 
 // ── 内层（直接接收 turns）──
 
 export async function runStmExtractorCore(turns, params) {
     var vault = params.vault;
-    console.log('[NE-DIAG] runStmExtractorCore ENTER — turns=' + turns.length + ', carryForward=' + (params.carryForwardCount || 0));
+    console.log('[NE-DIAG] runStmExtractorCore ENTER — turns=' + turns.length);
     var callLLM = params.callLLM;
-    var parseResponse = params.parseResponse;
-    var validateOutput = params.validateOutput;
+    var buildBatchPrompt = params.buildBatchPrompt;
     var postFill = params.postFill;
     var appendEntries = params.appendEntries;
     var getCursorState = params.getCursorState;
     var updateCursorState = params.updateCursorState;
     var markProcessed = params.markProcessed;
-    var buildSegmentationPrompt = params.buildSegmentationPrompt;
-    var buildSubAgentPrompt = params.buildSubAgentPrompt;
-    var carryForwardCount = params.carryForwardCount || 0;
-    var maxTurns = params.maxTurns || DEFAULT_MAX_TURNS;
     var globalIndexMap = params.globalIndexMap || null;
 
     if (!turns || turns.length === 0) {
         return { vault: vault, cursorState: null, totalAdded: 0, tailDeferred: [] };
     }
 
-    var cursorState = getCursorState(vault, 'stm');
-    var pendingPartials = cursorState.pending_partials || [];
+    var maxTurn = turns.length - 1;
 
-    var segMinTurns = params.segMinTurns !== undefined ? params.segMinTurns : 2;
-    var segMaxTurns = params.segMaxTurns !== undefined ? params.segMaxTurns : 6;
-    if (segMinTurns > segMaxTurns) segMinTurns = segMaxTurns;
-    var fixedChunk = segMinTurns === segMaxTurns;
-
-    // Phase B: Build segmentation prompt (only for semantic mode)
-    var segPrompt = fixedChunk ? null : buildSegmentationPrompt(turns, pendingPartials, vault, segMinTurns, segMaxTurns);
-
-    var stmEntries = [];
-    var allMsgIds = [];
-    var deferredTurns = [];
-    var turnIndexToEventIdx = {};
-    var totalAdded = 0;
-    var newPendingPartials = pendingPartials.slice();
-
-    if (fixedChunk) {
-        // === Fixed-size chunking (min==max, skip semantic segmentation) ===
-        var chunkSize = segMaxTurns;
-        for (var ci = 0; ci < turns.length; ci += chunkSize) {
-            var chunkEnd = Math.min(ci + chunkSize, turns.length);
-            var chunkIndices = [];
-            for (var tci = ci; tci < chunkEnd; tci++) chunkIndices.push(tci);
-
-            var chunkHint = chunkIndices.length + ' turns';
-            var subPrompt = buildSubAgentPrompt(turns, chunkIndices, chunkHint, vault);
-            var subResponseText = '';
-            try {
-                subResponseText = await callMemoryPipeline([
-                    { role: 'system', content: subPrompt.system },
-                    { role: 'user', content: subPrompt.user }
-                ]);
-            } catch (e) {}
-
-            var fields = extractEntryFields(subResponseText);
-            var eventText = fields.event;
-            if (!eventText || eventText.length < 3) eventText = chunkHint;
-
-            var msgIds = collectMsgIdsFromTurns(turns, chunkIndices);
-            stmEntries.push({
-                event: eventText,
-                status: 'closed',
-                entity: '',
-                turns: [ci, chunkEnd - 1],
-                msg_ids: msgIds,
-                period: fields.period || '',
-                scene: fields.scene || '',
-                timestamp: new Date().toISOString()
-            });
-        }
-    } else {
-        // === Semantic segmentation via LLM text output (no tool calling) ===
-        var segMessages = [
-            { role: 'system', content: segPrompt.system },
-            { role: 'user', content: segPrompt.user }
-        ];
-        var segResponseText = '';
-        try {
-            segResponseText = await callMemoryPipeline(segMessages);
-        } catch (e) {
-            console.warn('[NE] Segmentation LLM failed:', e.message);
-        }
-
-        var segResult = parseSegmentation(segResponseText, turns.length - 1);
-        deferredTurns = segResult.deferred.slice();
-
-        for (var si = 0; si < segResult.segments.length; si++) {
-            var seg = segResult.segments[si];
-            var turnIndices = [];
-            for (var ti = seg.start; ti <= seg.end; ti++) turnIndices.push(ti);
-
-            var subPrompt = buildSubAgentPrompt(turns, turnIndices, seg.summary, vault);
-            var subResponse = '';
-            try {
-                subResponse = await callMemoryPipeline([
-                    { role: 'system', content: subPrompt.system },
-                    { role: 'user', content: subPrompt.user }
-                ]);
-            } catch (e) {}
-
-            var fields = extractEntryFields(subResponse);
-            var eventText = fields.event;
-            if (!eventText || eventText.length < 3) {
-                eventText = seg.summary || ('Turns ' + seg.start + '-' + seg.end);
-            }
-
-            var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
-            stmEntries.push({
-                event: eventText,
-                status: 'closed',
-                entity: '',
-                turns: [seg.start, seg.end],
-                msg_ids: msgIds,
-                period: fields.period || '',
-                scene: fields.scene || '',
-                timestamp: new Date().toISOString()
-            });
-        }
+    // ── 单次 LLM 调用：整批一次性提取所有 event ──
+    var batchPrompt = buildBatchPrompt(turns, vault);
+    var responseText = '';
+    try {
+        responseText = await callLLM([
+            { role: 'system', content: batchPrompt.system },
+            { role: 'user', content: batchPrompt.user }
+        ]);
+    } catch (e) {
+        console.warn('[NE] Batch LLM failed:', e.message);
     }
 
-    // Phase C: Code-fill metadata and collect all msg_ids
+    // ── 按 event 块解析响应 ──
+    var rawEvents = parseBatchResponse(responseText, maxTurn);
+    var stmEntries = [];
+
+    for (var i = 0; i < rawEvents.length; i++) {
+        var r = rawEvents[i];
+        var msgIds = collectMsgIdsFromTurns(turns, r.turnIndices);
+        stmEntries.push({
+            event: r.event,
+            status: 'closed',
+            entity: '',
+            turns: [r.start, r.end],
+            msg_ids: msgIds,
+            period: r.period || '',
+            scene: r.scene || '',
+            timestamp: new Date().toISOString()
+        });
+    }
+
+    console.log('[NE] Batch extraction done — events=' + rawEvents.length);
+
+    // Phase C: Global index mapping + metadata
     var processedEntries = [];
 
     for (var ei = 0; ei < stmEntries.length; ei++) {
-        var entry = stmEntries[ei];
-
-        var turnRange;
-        if (entry.turns && Array.isArray(entry.turns) && entry.turns.length >= 2
-            && typeof entry.turns[0] === 'number' && typeof entry.turns[1] === 'number') {
-            turnRange = entry.turns;
-        } else if (entry.msgRange && Array.isArray(entry.msgRange) && entry.msgRange.length >= 2
-            && typeof entry.msgRange[0] === 'number' && typeof entry.msgRange[1] === 'number') {
-            // parseSTMResponse 产生的 entry 只有 msgRange（message 索引范围），
-            // 这里将其映射到 batch 内的 turn 索引
-            var rawStart = Math.max(0, Math.min(turns.length - 1, entry.msgRange[0]));
-            var rawEnd = Math.max(0, Math.min(turns.length - 1, entry.msgRange[1]));
-            turnRange = [rawStart, rawEnd];
-        } else {
-            turnRange = [0, turns.length - 1];
-        }
-
-        // 钳制到有效范围
-        var rStart = Math.max(0, Math.min(turns.length - 1, turnRange[0]));
-        var rEnd = Math.max(rStart, Math.min(turns.length - 1, turnRange[1]));
-        turnRange = [rStart, rEnd];
-
-        var turnIndices = [];
-        for (var ti = turnRange[0]; ti <= turnRange[1]; ti++) turnIndices.push(ti);
-        var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
-
-        for (var ti2 = 0; ti2 < turnIndices.length; ti2++) {
-            turnIndexToEventIdx[turnIndices[ti2]] = ei;
-        }
-
-        entry.msg_ids = msgIds;
-        // 将 turns 映射为全局索引
+        var entry = Object.assign({}, stmEntries[ei]);
+        var turnRange = entry.turns || [0, 0];
         var localStart = turnRange[0];
         var localEnd = turnRange[1];
         var mappedStart = (globalIndexMap && globalIndexMap[localStart] !== undefined) ? globalIndexMap[localStart] : localStart;
         var mappedEnd = (globalIndexMap && globalIndexMap[localEnd] !== undefined) ? globalIndexMap[localEnd] : localEnd;
         entry.turns = [mappedStart, mappedEnd];
         entry.msgRange = [mappedStart, mappedEnd];
+
         if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
         if (!entry.period) entry.period = '';
         if (!entry.scene) entry.scene = '';
 
-        msgIds.forEach(function(id) {
-            if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
-        });
-
         processedEntries.push(entry);
     }
 
-    // Phase D: Handle deferred turns (only at the end) — skipped for fixed chunk
-    if (!fixedChunk) {
-        var coveredTurns = {};
-        for (var key in turnIndexToEventIdx) coveredTurns[Number(key)] = true;
-
-    // ── Code-level tail deferred detection ──
-    // Find the last covered turn; everything after it is tail-uncovered.
-    var maxCoveredTurn = -1;
-    for (var ti4 = 0; ti4 < turns.length; ti4++) {
-        if (coveredTurns[ti4]) maxCoveredTurn = ti4;
-    }
-
-    var tailDeferred = [];
-    for (var ti5 = maxCoveredTurn + 1; ti5 < turns.length; ti5++) {
-        if (deferredTurns.indexOf(ti5) === -1) {
-            tailDeferred.push(ti5);
-        }
-    }
-
-    // Merge LLM-marked deferred with code-detected tail deferred
-    deferredTurns = deferredTurns.concat(tailDeferred.filter(function(t) {
-        return deferredTurns.indexOf(t) === -1;
-    }));
-
-    // Middle turns not covered (between two covered turns) → force extraction
-    var uncoveredMiddleTurns = [];
-    var lastCoveredTurn = -1;
-    for (var ti3 = 0; ti3 < turns.length; ti3++) {
-        if (coveredTurns[ti3]) {
-            lastCoveredTurn = ti3;
-        } else if (lastCoveredTurn >= 0 && deferredTurns.indexOf(ti3) === -1) {
-            uncoveredMiddleTurns.push(ti3);
-        }
-    }
-
-    if (uncoveredMiddleTurns.length > 0) {
-        var forceSummary = '中间未录入对话轮次';
-        var subPrompt2 = buildSubAgentPrompt(turns, uncoveredMiddleTurns, forceSummary, vault);
-        var forceResponse = '';
-        try {
-            forceResponse = await callMemoryPipeline([
-                { role: 'system', content: subPrompt2.system },
-                { role: 'user', content: subPrompt2.user }
-            ]);
-        } catch (e) {}
-
-        if (forceResponse) {
-            var forceFields = extractEntryFields(forceResponse);
-            var forceEventText = forceFields.event;
-            if (!forceEventText || forceEventText.length < 3) forceEventText = 'Force-extracted dialog';
-
-            var forceMsgIds = collectMsgIdsFromTurns(turns, uncoveredMiddleTurns);
-            var forceLocalRange = [uncoveredMiddleTurns[0], uncoveredMiddleTurns[uncoveredMiddleTurns.length - 1]];
-            var forceMappedStart = (globalIndexMap && globalIndexMap[forceLocalRange[0]] !== undefined) ? globalIndexMap[forceLocalRange[0]] : forceLocalRange[0];
-            var forceMappedEnd = (globalIndexMap && globalIndexMap[forceLocalRange[1]] !== undefined) ? globalIndexMap[forceLocalRange[1]] : forceLocalRange[1];
-            var forceEntry = {
-                event: forceEventText,
-                status: 'closed',
-                entity: '',
-                turns: [forceMappedStart, forceMappedEnd],
-                msg_ids: forceMsgIds,
-                msgRange: [forceMappedStart, forceMappedEnd],
-                timestamp: new Date().toISOString(),
-                period: forceFields.period || '',
-                scene: forceFields.scene || ''
-            };
-            forceMsgIds.forEach(function(id) {
-                if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
-            });
-            processedEntries.push(forceEntry);
-
-            // ── 关键：将 force entry 的 turns 注册到 turnIndexToEventIdx
-            // 防止 Phase E 将其误判为未覆盖 → tailDeferred → carryForward → 下一批重复提取
-            for (var fti = forceLocalRange[0]; fti <= forceLocalRange[1]; fti++) {
-                turnIndexToEventIdx[fti] = processedEntries.length - 1;
-            }
-        }
-    }
-
-    // Phase E: Deferred handling
-    newPendingPartials = pendingPartials.slice();
-    if (deferredTurns.length > 0) {
-        // Convert batch-relative deferred turn indices to global
-        var globalDeferredTurns = [];
-        if (globalIndexMap) {
-            for (var dti = 0; dti < deferredTurns.length; dti++) {
-                var gIdx = globalIndexMap[deferredTurns[dti]];
-                if (gIdx !== undefined) globalDeferredTurns.push(gIdx);
-            }
-        } else {
-            globalDeferredTurns = deferredTurns.slice();
-        }
-
-        // Track deferred as pending partials for carry-forward
-        var deferredPartial = {
-            event: 'Deferred turns ' + deferredTurns[0] + '-' + deferredTurns[deferredTurns.length - 1],
-            turns: globalDeferredTurns,
-            _partial_generation: 1
-        };
-        newPendingPartials.push(deferredPartial);
-
-        // Don't mark deferred turns as processed
-        deferredTurns.forEach(function(dt) {
-            var dtMsgIds = collectMsgIdsFromTurns(turns, [dt]);
-            dtMsgIds.forEach(function(id) {
-                var idx2 = allMsgIds.indexOf(id);
-                if (idx2 !== -1) allMsgIds.splice(idx2, 1);
-            });
-        });
-    }
-    } // end if (!fixedChunk) — Phase D/E
-
-    // Phase F: Validate entries — 仅在有 event 时才拒绝（不强制 msgRange 字段）
+    // Phase F: Validate entries
     var validEntries = [];
     for (var ei2 = 0; ei2 < processedEntries.length; ei2++) {
         var e = processedEntries[ei2];
         try {
             postFill({ stmEntries: [e], _checkpoints: null }, vault);
-            // 宽松验证：仅检查 event 必填；不因为缺少 msgRange/_checkpoints 而拒绝 entry
-            var errors = [];
-            if (!e.event || !String(e.event).trim()) {
-                errors.push('stm_entries[' + ei2 + '].event is REQUIRED');
+            if (!e.event || e.event.length < 3) {
+                console.warn('[NE] Entry rejected — event too short:', e.event);
+                continue;
             }
-            if (!errors.length) {
-                validEntries.push(e);
-            } else {
-                console.warn('[NE] Validation failed for entry:', errors);
-                var danglingIds = e.msg_ids || [];
-                danglingIds.forEach(function(id) {
-                    var idx3 = allMsgIds.indexOf(id);
-                    if (idx3 !== -1) allMsgIds.splice(idx3, 1);
-                });
-            }
-        } catch (eErr) {
-            console.warn('[NE] Validate threw:', eErr.message);
+            validEntries.push(e);
+        } catch (f) {
+            console.warn('[NE] Entry failed validation:', f);
         }
     }
 
-    // Phase G: Append entries
+    // Phase G: Append valid entries
+    var totalAdded = 0;
     if (validEntries.length > 0) {
         appendEntries(vault, validEntries);
         totalAdded = validEntries.length;
     }
 
-    // Phase H: Mark processed & save cursor state
-    if (allMsgIds.length > 0) {
-        markProcessed(vault, allMsgIds);
-    }
+    // Phase H: Mark msg_ids as processed
+    var allMsgIds = [];
+    validEntries.forEach(function (e) {
+        (e.msg_ids || []).forEach(function (id) { allMsgIds.push(id); });
+    });
+    markProcessed(vault, allMsgIds);
 
-    var finalState = {
-        completedTurns: turns.length,
-        pending_partials: newPendingPartials
-    };
-    updateCursorState(vault, 'stm', finalState);
-
-    console.log('[NE] Extractor done — entries=' + totalAdded + ', msg_ids=' + allMsgIds.length + ', deferred=' + deferredTurns.length);
-
-    // Convert tailDeferred to global indices for batch carry-forward
-    var globalTailDeferred = [];
-    if (globalIndexMap) {
-        for (var tdi = 0; tdi < deferredTurns.length; tdi++) {
-            var gi = globalIndexMap[deferredTurns[tdi]];
-            if (gi !== undefined && globalTailDeferred.indexOf(gi) === -1) {
-                globalTailDeferred.push(gi);
-            }
-        }
-    } else {
-        globalTailDeferred = deferredTurns.slice();
-    }
+    var cursorState = getCursorState(vault, 'stm');
+    var processedCount = (cursorState.processed_count || 0) + totalAdded;
+    var finalState = updateCursorState(vault, 'stm', { processed_count: processedCount, pending_partials: [] });
 
     return {
         vault: vault,
         cursorState: finalState,
         totalAdded: totalAdded,
-        tailDeferred: globalTailDeferred
+        tailDeferred: []
     };
 }
 
-// ── 批量分治入口 ──
+// ── 批量处理（对外接口）──
 
 export async function processTurnsInBatches(vault, messages, buildParams, onProgress) {
     var allTurns = groupMessagesIntoTurns(messages);
@@ -471,22 +230,9 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
 
     var maxTurns = buildParams.maxTurns || DEFAULT_MAX_TURNS;
     var totalTurns = allTurns.length;
-    var cursorState = buildParams.getCursorState(vault, 'stm');
-    var pendingPartials = cursorState.pending_partials || [];
 
-    // 从 pending_partials 提取 deferred turns（carry-forward）
-    var carryForwardTurns = [];
-    if (pendingPartials.length > 0) {
-        pendingPartials.forEach(function(p) {
-            if (p.turns && Array.isArray(p.turns)) {
-                p.turns.forEach(function(ti) { carryForwardTurns.push(ti); });
-            }
-        });
-        carryForwardTurns.sort(function(a, b) { return a - b; });
-    }
-
-    // 短路径：如果所有 turns 在 maxTurns 内且无 carry-forward，直接单次调用
-    if (allTurns.length <= maxTurns && carryForwardTurns.length === 0) {
+    // 短路径：如果所有 turns 在 maxTurns 内，直接单次调用
+    if (allTurns.length <= maxTurns) {
         var result = await runStmExtractorCore(allTurns, buildParams);
         if (onProgress) onProgress({ processedTurns: allTurns.length, totalTurns: allTurns.length });
         return result;
@@ -495,59 +241,27 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
     var totalAdded = 0;
     var turnIdx = 0;
 
-    while (turnIdx < allTurns.length || carryForwardTurns.length > 0) {
+    while (turnIdx < allTurns.length) {
         var batchTurns = [];
         var globalIndexMap = [];
 
-        // Step 1: 先加入 carry-forward turns（已是全局索引）
-        if (carryForwardTurns.length > 0) {
-            for (var ci = 0; ci < carryForwardTurns.length; ci++) {
-                var t = allTurns[carryForwardTurns[ci]];
-                if (t) {
-                    batchTurns.push(t);
-                    globalIndexMap.push(carryForwardTurns[ci]);
-                }
-            }
-        }
-
-        // Step 2: 从 allTurns 补充新 turns 到满 maxTurns
-        // 关键：先确保 turnIdx 不会重新处理已被 carry-forward 覆盖的 turn
-        if (carryForwardTurns.length > 0) {
-            var maxCF = carryForwardTurns[carryForwardTurns.length - 1];
-            if (turnIdx <= maxCF) turnIdx = maxCF + 1;
-        }
-        var newTurnGlobalStart = turnIdx;
         while (batchTurns.length < maxTurns && turnIdx < allTurns.length) {
             batchTurns.push(allTurns[turnIdx]);
             globalIndexMap.push(turnIdx);
             turnIdx++;
         }
 
-        if (batchTurns.length === 0) break;
-
-        var carryCount = carryForwardTurns.length;
-
-        var batchResult = await runStmExtractorCore(batchTurns, Object.assign({}, buildParams, {
-            vault: vault,
-            carryForwardCount: carryCount,
-            maxTurns: maxTurns,
-            globalIndexMap: globalIndexMap
-        }));
-
+        var batchParams = Object.assign({}, buildParams, { globalIndexMap: globalIndexMap });
+        var batchResult = await runStmExtractorCore(batchTurns, batchParams);
         totalAdded += batchResult.totalAdded;
         vault = batchResult.vault;
 
-        // 下一批的 carry-forward = 本批的 tailDeferred（已转为全局索引）
-        carryForwardTurns = batchResult.tailDeferred || [];
-
-        console.log('[NE] Batch processed — entries=' + batchResult.totalAdded + ', tailDeferred=' + carryForwardTurns.length);
+        console.log('[NE] Batch processed — entries=' + batchResult.totalAdded);
 
         if (onProgress) {
             var processedSoFar = Math.min(turnIdx, totalTurns);
             onProgress({ processedTurns: processedSoFar, totalTurns: totalTurns });
         }
-
-        if (batchTurns.length < maxTurns && carryForwardTurns.length === 0) break;
     }
 
     return { vault: vault, totalAdded: totalAdded };

@@ -10,7 +10,7 @@ import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
-import { runStmExtractor, processTurnsInBatches } from './stm-extractor.js';
+import { processTurnsInBatches } from './stm-extractor.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
 
@@ -682,64 +682,16 @@ function buildStateSnapshot(content) {
     return snapshot;
 }
 
-export function buildSegmentationPrompt(turns, pendingPartials, vault, segMinTurns, segMaxTurns) {
+export function buildBatchPrompt(turns, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
 
-    var partialCtx = '';
-    if (pendingPartials && pendingPartials.length > 0) {
-        partialCtx = '\n## 未完成的 partial 事件：\n';
-        pendingPartials.forEach(function(p, i) {
-            partialCtx += '  ' + (i + 1) + '. ' + (p.event || '') + ' (第' + (p._partial_generation || 1) + '代)\n';
-        });
-        partialCtx += '可在对应条目中设置 parent_partial 来闭合这些事件。\n';
-    }
-
     var turnsText = [];
-    for (var i = 0; i < turns.length; i++) {
-        var t = turns[i];
-        turnsText.push('[Turn ' + i + ']');
-        if (t.user) {
-            var uname = t.user.name ? t.user.name + ': ' : '';
-            turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
-        }
-        if (t.assistant) {
-            var aname = t.assistant.name ? t.assistant.name + ': ' : '';
-            turnsText.push('  assistant: ' + aname + (t.assistant.content || t.assistant.mes || ''));
-        }
-        turnsText.push('');
-    }
-
-    var segRange = segMinTurns === segMaxTurns
-        ? '每个事件覆盖恰好 ' + segMaxTurns + ' 轮对话（硬限制）。'
-        : '每个事件覆盖 ' + segMinTurns + '~' + segMaxTurns + ' 轮对话。优先按语义边界切分，但每个事件不得少于 ' + segMinTurns + ' 轮、不得超过 ' + segMaxTurns + ' 轮。';
-    var segRangeEn = segMinTurns === segMaxTurns
-        ? 'Each event covers exactly ' + segMaxTurns + ' turns (hard limit).'
-        : 'Each event covers ' + segMinTurns + '~' + segMaxTurns + ' turns. Prefer semantic boundaries, but each event must have at least ' + segMinTurns + ' turns and at most ' + segMaxTurns + ' turns.';
-
-    var system = lang === 'en' ?
-        (retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nOutput format (one event per line):\nN-M event summary\nIf trailing turns are still forming an event, output:\ndeferred:N-M\n\nExample:\n0-2 Alice arrives at the morgue\n3-5 Bob discusses the night shift with Alice\n6-7 Charlie unexpectedly appears\ndeferred:8-9\n\nRules:\n- Each event must have contiguous turns, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in summaries, NEVER pronouns.\n- ' + segRangeEn + '\n- Every turn must be covered (no gaps).') :
-        (retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n输出格式（每行一个事件）：\nN-M 事件摘要\n如果末尾若干轮尚未形成完整事件，输出：\ndeferred:N-M\n\n示例：\n0-2 角色A抵达殡仪馆\n3-5 角色B与角色A讨论夜间值守\n6-7 角色C意外出现\ndeferred:8-9\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- 摘要必须使用角色全名，禁止代词。\n- ' + segRange + '\n- 每一轮对话都必须被覆盖（不能有空缺）。');
-
-    var user = lang === 'en' ?
-        'Turns:\n\n' + turnsText.join('\n') + '\nOutput one line per event: startTurn-endTurn summary. No JSON, no tool calls.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n每行输出一个事件范围及摘要，格式：起始轮次-结束轮次 事件描述。不要 JSON、不要工具调用。';
-
-    return { system: system, user: user };
-}
-
-export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
-    var content = vault.content || {};
-    var lang = content.language === 'en' ? 'en' : 'zh';
-    var retrospectiveCtx = buildRetrospectiveContext(content);
-    var stateSnapshot = buildStateSnapshot(content);
-
-    var turnsText = [];
-    for (var ti = 0; ti < turnIndices.length; ti++) {
-        var t = turns[turnIndices[ti]];
+    for (var ti = 0; ti < turns.length; ti++) {
+        var t = turns[ti];
         if (!t) continue;
-        turnsText.push('[Turn ' + turnIndices[ti] + ']');
+        turnsText.push('[Turn ' + ti + ']');
         if (t.user) {
             var uname = t.user.name ? t.user.name + ': ' : '';
             turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
@@ -752,12 +704,12 @@ export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
     }
 
     var system = lang === 'en' ?
-        (retrospectiveCtx + '\nYou are a story memory extractor. Describe ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format (plain text, one field per line):\nevent: one-sentence description (20-80 chars). Do NOT repeat events already described in prior events above.\nperiod: inferred time. Use the SAME format as prior events. If no prior events, use the story\'s timeline system.\n  Time range (if event spans): "Day 1·深夜→凌晨"\n  If unsure, output EXACTLY "period: -" — never use vague substitutes like "某日" or "sometime".\nscene: inferred scene. Reference prior events\' scenes for consistency.\n  If unsure, output "scene: -"\n\nIMPORTANT: Use character proper names. Do NOT use pronouns.') :
-        (retrospectiveCtx + '\n你是故事记忆提取器。用一句话描述下列对话中发生的一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式（纯文本，每行一个字段）：\nevent: 一句话事件描述（20-80字）。不要重复往期事件中已描述过的内容。\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无往期事件，按作品定义的时间体系推断。\n  时间段（若事件跨越时段）：Day 1·深夜→凌晨\n  若无法判断，严格输出「period: -」。禁止用「某日」「某天」「某时」等模糊替代。\nscene: 推断的场景。参考往期事件的场景写法保持一致。\n  若无法判断，输出「scene: -」\n\n重要：使用角色全名，禁止代词。');
+        (retrospectiveCtx + '\nYou are a story memory extractor. Describe ALL significant events from the dialog below.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5"\n\nRules:\n- Cover ALL turns. No gaps.\n- Each event covers contiguous turns.\n- Use character proper names only. No pronouns.\n- Do NOT repeat events already described in prior events above.') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。描述下列对话中所有重要事件。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」\n\n规则：\n- 必须覆盖所有 turns，不能留空。\n- 每个事件使用连续的 turns。\n- 使用角色全名，禁止代词。\n- 不要重复往期事件中已描述过的内容。');
 
     var user = lang === 'en' ?
-        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput event, period, scene — one per line, no JSON.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n输出 event、period、scene，每行一个字段，不要 JSON 格式。';
+        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput all events, one per block, no JSON.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n输出所有事件，每个事件块用空行分隔，不要 JSON。';
 
     return { system: system, user: user };
 }
@@ -939,19 +891,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
-    // ── 语义切分上下限 ──
-    var segMinTurns = 2;
-    var segMaxTurns = 6;
-    try {
-        var neSettingsRaw = localStorage.getItem('ne_settings');
-        if (neSettingsRaw) {
-            var neSettings = JSON.parse(neSettingsRaw);
-            if (neSettings.segMinTurns !== undefined) segMinTurns = Math.max(1, Number(neSettings.segMinTurns) || 2);
-            if (neSettings.segMaxTurns !== undefined) segMaxTurns = Math.max(1, Number(neSettings.segMaxTurns) || 6);
-        }
-    } catch (e) {}
-    if (segMinTurns > segMaxTurns) segMinTurns = segMaxTurns;
-
     var processedIds = new Set();
     if (!force) {
         processedIds = collectProcessedMsgIds(vault);
@@ -1100,17 +1039,12 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     try {
         var buildParams = {
             callLLM: callMemoryPipeline,
-            parseResponse: parseSTMResponse,
-            validateOutput: validateSTMOutput,
             postFill: function(parsed, v) { postFillSTM(parsed, v); },
             appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
             getCursorState: getCursorState,
             updateCursorState: updateCursorState,
             markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
-            buildSegmentationPrompt: buildSegmentationPrompt,
-            buildSubAgentPrompt: buildSubAgentPrompt,
-            segMinTurns: segMinTurns,
-            segMaxTurns: segMaxTurns
+            buildBatchPrompt: buildBatchPrompt
         };
         cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
 
