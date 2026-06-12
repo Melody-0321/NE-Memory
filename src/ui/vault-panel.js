@@ -105,6 +105,15 @@ function injectBottomDrawerCSS() {
         '.ne-accordion-body .ne-accordion-header{background:transparent;font-weight:normal;font-size:0.9em;padding:6px 8px;border-left:3px solid transparent;border-radius:0;}' +
         '.ne-accordion-body .ne-accordion.open>.ne-accordion-header{border-left-color:var(--SmartThemeBorderColor);}' +
         '.ne-accordion-highlight{box-shadow:0 0 0 2px var(--SmartThemeBorderColor)!important;}' +
+        '.narrative_ltm_toggle{display:inline-block;transition:transform .2s;font-size:0.7em;color:var(--grey-50);cursor:pointer;}' +
+        '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
+        '.narrative_ltm_detail{display:none;}' +
+        '.narrative_ltm_detail.expanded{display:table-row;}' +
+        '.narrative_ltm_detail .narrative_ltm_detail_container{border-left:3px solid transparent;padding-left:8px;transition:border-color .2s;}' +
+        '.narrative_ltm_detail.expanded .narrative_ltm_detail_container{border-left-color:var(--SmartThemeBorderColor);}' +
+        '.narrative_ltm_sub_table{width:100%;border-collapse:collapse;font-size:0.85em;margin:4px 0;}' +
+        '.narrative_ltm_sub_table tr:nth-child(even){background:var(--black10a);}' +
+        '.narrative_ltm_sub_table td{padding:2px 6px;}' +
         '.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}' +
         '.ne-inline-edit-btn:hover{opacity:1;}' +
         '.ne-inline-row td{padding:2px 4px!important;}' +
@@ -1080,15 +1089,19 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                     detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }
             });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" style="display:none;"><td colspan="6"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
+            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="6"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
         }
     });
     if (type === 'ltm') {
-        qsa('.narrative_ltm_toggle').forEach(function (el) {
+        var tbodyEl = tbody;
+        tbodyEl.querySelectorAll('.narrative_ltm_toggle').forEach(function (el) {
             el.onclick = function () {
                 var ltmId = el.getAttribute('data-ltm-id');
-                var detailRow = qs('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
-                if (detailRow) { var h = detailRow.style.display === 'none'; detailRow.style.display = h ? '' : 'none'; el.textContent = h ? '\u25BC' : '\u25B6'; }
+                var detailRow = tbodyEl.querySelector('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
+                if (detailRow) {
+                    var isExpanded = detailRow.classList.toggle('expanded');
+                    el.classList.toggle('expanded', isExpanded);
+                }
             };
         });
     }
