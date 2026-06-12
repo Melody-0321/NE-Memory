@@ -115,32 +115,67 @@ function parseBatchResponse(raw, maxTurn) {
     }
     // 按 start 排序
     events.sort(function (a, b) { return a.start - b.start; });
-    // 归一化：只处理重叠，不填补间隙（间隙交给 retry 反馈机制）
-    var normalized = [];
+    return normalizeEvents(events);
+}
+
+// ── 归一化：重叠消解 + 合并。supplement 优先覆盖原始 ──
+
+function normalizeEvents(events) {
+    if (!events || events.length === 0) return events;
+    events.sort(function (a, b) { return a.start - b.start; });
+    var result = [];
     for (var ei = 0; ei < events.length; ei++) {
-        var ev = events[ei];
-        if (normalized.length === 0) {
-            normalized.push(ev);
+        var ev = Object.assign({}, events[ei]);
+        if (result.length === 0) {
+            result.push(ev);
             continue;
         }
-        var prev = normalized[normalized.length - 1];
-        // 重合或重叠：将当前事件的 start 推到 prev.end + 1
-        if (ev.start <= prev.end) {
-            ev.start = prev.end + 1;
+        var prev = result[result.length - 1];
+        // 无重叠：直接推入
+        if (ev.start > prev.end) {
+            result.push(ev);
+            continue;
         }
-        // 修正后 start > end → 合并到前一个事件
-        if (ev.start > ev.end) {
-            prev.end = Math.max(prev.end, ev.end);
-            prev.event = prev.event + '; ' + ev.event;
-            for (var ti = ev.start; ti <= ev.end; ti++) {
-                if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
+        // 有重叠：按间隔大小决定谁赢（间隔小 = 更精细 = supplement 事件）
+        var prevLen = prev.end - prev.start;
+        var evLen = ev.end - ev.start;
+        if (evLen <= prevLen) {
+            // 当前事件更精细（或等大），裁掉前置事件的尾部
+            prev.end = ev.start - 1;
+            if (prev.start > prev.end) {
+                // 前置事件被完全吞掉，替换
+                result[result.length - 1] = ev;
+            } else {
+                // 为前置事件重新计算 turnIndices
+                prev.turnIndices = [];
+                for (var ti = prev.start; ti <= prev.end; ti++) prev.turnIndices.push(ti);
+                result.push(ev);
             }
-            prev.turnIndices.sort(function (a, b) { return a - b; });
-            continue;
+        } else {
+            // 前置事件更精细，当前事件的 start 推到 prev.end + 1
+            ev.start = prev.end + 1;
+            if (ev.start > ev.end) {
+                // 完全重叠到前置事件，合并
+                prev.end = Math.max(prev.end, ev.end);
+                var parts = prev.event.split('; ');
+                if (parts.length >= 3 && evLen > 0) {
+                    prev.event = parts.slice(0, 2).join('; ') + '; ...';
+                } else {
+                    prev.event = prev.event + '; ' + ev.event;
+                }
+                for (var ti = ev.start; ti <= ev.end; ti++) {
+                    if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
+                }
+                prev.turnIndices.sort(function (a, b) { return a - b; });
+                continue;
+            }
+            // 更新 turnIndices
+            ev.turnIndices = [];
+            for (var ti = ev.start; ti <= ev.end; ti++) ev.turnIndices.push(ti);
+            result.push(ev);
         }
-        normalized.push(ev);
     }
-    return normalized;
+    return result;
 }
 
 // ── 内层（直接接收 turns）──
@@ -230,7 +265,7 @@ export async function runStmExtractorCore(turns, params) {
                 }
                 var supplementEvents = parseBatchResponse(responseText, maxTurn);
                 if (supplementEvents.length > 0) {
-                    rawEvents = rawEvents.concat(supplementEvents);
+                    rawEvents = normalizeEvents(rawEvents.concat(supplementEvents));
                 }
                 break;
             }

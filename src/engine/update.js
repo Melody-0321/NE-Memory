@@ -722,8 +722,8 @@ export function buildBatchPrompt(turns, vault, retryAttempt, missingTurnRanges) 
     if (missingTurnRanges && missingTurnRanges.length > 0) {
         var rangeList = missingTurnRanges.join(', ');
         userText = lang === 'en'
-            ? 'WARNING: You missed turns ' + rangeList + '. ONLY output events for these missing turns:\n\n' + turnsText.join('\n')
-            : '警告：你遗漏了 Turn ' + rangeList + '。只输出这些缺失 turn 的事件：\n\n' + turnsText.join('\n');
+            ? 'WARNING: You missed turns ' + rangeList + '. ONLY output events for these missing turns. Include period and scene:\n\n' + turnsText.join('\n')
+            : '警告：你遗漏了 Turn ' + rangeList + '。只输出这些缺失 turn 的事件，必须包含 period 和 scene：\n\n' + turnsText.join('\n');
     }
 
     return { system: system, user: userText };
