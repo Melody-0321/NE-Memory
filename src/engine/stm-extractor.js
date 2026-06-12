@@ -233,7 +233,8 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
 
     // 短路径：如果所有 turns 在 maxTurns 内，直接单次调用
     if (allTurns.length <= maxTurns) {
-        var result = await runStmExtractorCore(allTurns, buildParams);
+        var shortParams = Object.assign({}, buildParams, { vault: vault });
+        var result = await runStmExtractorCore(allTurns, shortParams);
         if (onProgress) onProgress({ processedTurns: allTurns.length, totalTurns: allTurns.length });
         return result;
     }
@@ -251,7 +252,7 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
             turnIdx++;
         }
 
-        var batchParams = Object.assign({}, buildParams, { globalIndexMap: globalIndexMap });
+        var batchParams = Object.assign({}, buildParams, { vault: vault, globalIndexMap: globalIndexMap });
         var batchResult = await runStmExtractorCore(batchTurns, batchParams);
         totalAdded += batchResult.totalAdded;
         vault = batchResult.vault;
