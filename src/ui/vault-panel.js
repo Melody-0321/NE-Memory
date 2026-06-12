@@ -2217,6 +2217,9 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Min STM per LTM') + '</span><span class="range-val" id="nes_stm_min_ltm_merge_val">' + (settings.stmMinLtmMerge || 3) + '</span></div>' +
+        '<input type="range" id="nes_stm_min_ltm_merge" min="3" max="8" step="1" value="' + (settings.stmMinLtmMerge || 3) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
         '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
@@ -2282,6 +2285,8 @@ function renderSettingsTab() {
     if (sbEl) { sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
     var suEl = byId('nes_stm_max_unconsolidated');
     if (suEl) { suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
+    var smEl = byId('nes_stm_min_ltm_merge');
+    if (smEl) { smEl.oninput = function () { var v = byId('nes_stm_min_ltm_merge_val'); if (v) v.textContent = smEl.value; saveSettingsTab(); }; }
     // Checkboxes — save on change
     var chkState = byId('nes_enable_state_schema');
     if (chkState) chkState.onchange = function () { saveSettingsTab(); };
@@ -2352,6 +2357,7 @@ function saveSettingsTab() {
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
+        stmMinLtmMerge: Number(byId('nes_stm_min_ltm_merge').value),
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
