@@ -15,14 +15,16 @@ import { pruneSnapshotsForChat } from '../vault/versions.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     const { writeWithSnapshot } = await import('../vault/store.js');
-    vault.version = (vault.version || 0) + 1;
-    vault.updated_at = new Date().toISOString();
+    const newVersion = (vault.version || 0) + 1;
+    const updatedAt = new Date().toISOString();
+    vault.version = newVersion;
+    vault.updated_at = updatedAt;
     try {
         var snapshotEntry = {
-            id: chatId + '_v' + vault.version,
+            id: chatId + '_v' + newVersion,
             chat_id: chatId,
-            version: vault.version,
-            updated_at: vault.updated_at,
+            version: newVersion,
+            updated_at: updatedAt,
             data: JSON.parse(JSON.stringify(vault))
         };
         await writeWithSnapshot(chatId, vault, snapshotEntry);

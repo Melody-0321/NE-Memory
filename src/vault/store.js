@@ -221,19 +221,21 @@ function collectAllMsgIds(vault) {
 }
 
 export function appendSTMEntries(vault, stmEntries) {
-    const content = vault.content;
+    const content = vault.content || {};
     const existingIds = new Set();
-    content.unconsolidated_stm.forEach(e => existingIds.add(e.id));
-    content.stm_entries.forEach(e => existingIds.add(e.id));
+    (content.unconsolidated_stm || []).forEach(e => existingIds.add(e.id));
+    (content.stm_entries || []).forEach(e => existingIds.add(e.id));
     let maxId = 0;
-    content.unconsolidated_stm.forEach(e => {
+    (content.unconsolidated_stm || []).forEach(e => {
         const num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
-    content.stm_entries.forEach(e => {
+    (content.stm_entries || []).forEach(e => {
         const num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
+
+    if (!content.unconsolidated_stm) content.unconsolidated_stm = [];
 
     let addedCount = 0;
     stmEntries.forEach(entry => {

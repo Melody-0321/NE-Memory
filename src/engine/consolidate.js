@@ -131,7 +131,6 @@ export function applyConsolidation(vault, consolidationResult) {
 
         var sourceSTM;
         if (ltm.stmRange && ltm.stmRange.length === 2) {
-            // stmRange 按 1-based 索引引用（对应提示中的列表编号）
             var uncons = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
             sourceSTM = uncons.slice(ltm.stmRange[0] - 1, ltm.stmRange[1]);
         } else {
@@ -141,7 +140,6 @@ export function applyConsolidation(vault, consolidationResult) {
         }
         ltm.time_range = deriveTimeRange(sourceSTM);
 
-        // 从源 STM 继承 entities（去重）
         var ltmEntities = sourceSTM.reduce(function(acc, s) {
             (s.entities || []).forEach(function(e) {
                 if (!acc.find(function(a) { return a.name === e.name; })) {
@@ -152,14 +150,21 @@ export function applyConsolidation(vault, consolidationResult) {
         }, []);
         ltm.entities = ltmEntities;
 
+        content.ltm_entries = content.ltm_entries || [];
         content.ltm_entries.push(ltm);
+        
+        var validStmRefs = [];
         (ltm.stm_refs || []).forEach(function(stmId) {
             if (vault.stm_index && vault.stm_index[stmId]) {
                 vault.stm_index[stmId].ltm_id = ltm.id;
             }
             var found = allSTM.find(function(s) { return s.id === stmId; });
-            if (found) found.parent_ltm = ltm.id;
+            if (found) {
+                found.parent_ltm = ltm.id;
+                validStmRefs.push(stmId);
+            }
         });
+        ltm.stm_refs = validStmRefs;
     });
     var unconsolidated = content.unconsolidated_stm || [];
     var consolidated = unconsolidated.filter(function (s) { return s.parent_ltm; });

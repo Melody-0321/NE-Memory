@@ -23,6 +23,27 @@ export async function saveSnapshot(chatId, vault) {
         const store = tx.objectStore(SNAPSHOT_STORE);
         store.put(snapshot);
         tx.oncomplete = () => {
+            pruneOldSnapshotsStandalone(chatId).then(() => resolve()).catch(() => resolve());
+        };
+        tx.onerror = () => reject(tx.error);
+    });
+}
+
+export async function saveSnapshotWithVersion(chatId, vault, targetVersion) {
+    const db = await openDB();
+    const version = targetVersion || vault.version || 0;
+    const snapshot = {
+        id: chatId + '_v' + version,
+        chat_id: chatId,
+        version: version,
+        updated_at: vault.updated_at || new Date().toISOString(),
+        data: JSON.parse(JSON.stringify(vault))
+    };
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+        const store = tx.objectStore(SNAPSHOT_STORE);
+        store.put(snapshot);
+        tx.oncomplete = () => {
             pruneOldSnapshots(db, chatId).then(() => resolve());
         };
         tx.onerror = () => reject(tx.error);
@@ -37,6 +58,20 @@ async function pruneOldSnapshots(db, chatId) {
     const store = tx.objectStore(SNAPSHOT_STORE);
     toDelete.forEach(s => store.delete(s.id));
     return new Promise((resolve) => { tx.oncomplete = () => resolve(); });
+}
+
+async function pruneOldSnapshotsStandalone(chatId) {
+    const db = await openDB();
+    const all = await listSnapshots(chatId);
+    if (all.length <= 30) return;
+    const toDelete = all.slice(30);
+    return new Promise((resolve, reject) => {
+        const tx = db.transaction(SNAPSHOT_STORE, 'readwrite');
+        const store = tx.objectStore(SNAPSHOT_STORE);
+        toDelete.forEach(s => store.delete(s.id));
+        tx.oncomplete = () => resolve();
+        tx.onerror = () => reject(tx.error);
+    });
 }
 
 export async function pruneSnapshotsForChat(chatId) {
