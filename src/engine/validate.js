@@ -96,6 +96,9 @@ export function validateLTMOutput(result) {
         if (!e.stm_refs || e.stm_refs.length === 0) {
             errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
         }
+        if (e.stm_refs && e.stm_refs.length < 2) {
+            errors.push('ltm_entries[' + i + '] must have at least 2 stm_refs (1:1 mapping forbidden)');
+        }
     }
 
     return errors;
