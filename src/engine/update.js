@@ -899,6 +899,7 @@ function autoDecayStaleCharacters(state, messages) {
 }
 
 export async function executeIncrementalUpdate(chatId, newMessages, force) {
+    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
     // ── 语义切分上下限 ──
@@ -919,7 +920,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         processedIds = collectProcessedMsgIds(vault);
     }
     var filteredMessages = force ? newMessages : filterNewMessages(newMessages, processedIds);
-    if (filteredMessages.length === 0) return { vault: vault, added: 0 };
+    console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');
+    if (filteredMessages.length === 0) { console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process'); return { vault: vault, added: 0 }; }
 
     // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
     if (isDynamicStateMode() && !vault.content.dynamic_state) {
@@ -1074,11 +1076,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
             segMaxTurns: segMaxTurns
         });
 
-        newEntries = (vault.content.stm_entries || []).slice(-Math.max(1, cursorResult.totalAdded));
-        if (cursorResult.totalAdded === 0) newEntries = [];
+        var totalAdded = cursorResult.totalAdded || 0;
+        newEntries = totalAdded > 0 ? (vault.content.unconsolidated_stm || []).slice(-totalAdded) : [];
 
         // Post-fill STM entries with _checkpoints
-        if (newEntries.length > 0) {
+        if (totalAdded > 0) {
             if (stateParsed && stateParsed._checkpoints) {
                 postFillSTM({ stmEntries: newEntries, _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
             } else {
@@ -1104,6 +1106,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force) {
         console.warn('[NE] Cursor pipeline failed:', e);
     }
 
+    console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
     return { vault: vault, added: newEntries.length };
 }
 

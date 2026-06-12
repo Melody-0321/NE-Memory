@@ -97,6 +97,7 @@ export async function runStmExtractor(params) {
 
 export async function runStmExtractorCore(turns, params) {
     var vault = params.vault;
+    console.log('[NE-DIAG] runStmExtractorCore ENTER — turns=' + turns.length + ', carryForward=' + (params.carryForwardCount || 0));
     var callLLM = params.callLLM;
     var parseResponse = params.parseResponse;
     var validateOutput = params.validateOutput;

@@ -247,6 +247,7 @@ export function appendSTMEntries(vault, stmEntries) {
         };
         addedCount++;
     });
+    console.log('[NE-DIAG] appendSTMEntries — added=' + addedCount + ', total unconsolidated_stm=' + content.unconsolidated_stm.length);
     return addedCount;
 }
 
