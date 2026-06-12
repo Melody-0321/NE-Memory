@@ -108,7 +108,7 @@ function injectBottomDrawerCSS() {
         '.narrative_ltm_toggle{display:inline-block;transition:transform .2s;font-size:0.7em;color:var(--grey-50);cursor:pointer;}' +
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
         '.narrative_ltm_detail{display:none;}' +
-        '.narrative_ltm_detail.expanded{display:table-row;}' +
+        '.narrative_ltm_detail.expanded{display:table-row!important;}' +
         '.narrative_ltm_detail .narrative_ltm_detail_container{border-left:3px solid transparent;padding-left:8px;transition:border-color .2s;}' +
         '.narrative_ltm_detail.expanded .narrative_ltm_detail_container{border-left-color:var(--SmartThemeBorderColor);}' +
         '.narrative_ltm_sub_table{width:100%;border-collapse:collapse;font-size:0.85em;margin:4px 0;}' +
@@ -1093,14 +1093,19 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         }
     });
     if (type === 'ltm') {
-        var tbodyEl = tbody;
-        tbodyEl.querySelectorAll('.narrative_ltm_toggle').forEach(function (el) {
+        tbody.querySelectorAll('.narrative_ltm_toggle').forEach(function (el) {
             el.onclick = function () {
-                var ltmId = el.getAttribute('data-ltm-id');
-                var detailRow = tbodyEl.querySelector('tr.narrative_ltm_detail[data-ltm-parent="' + ltmId + '"]');
-                if (detailRow) {
-                    var isExpanded = detailRow.classList.toggle('expanded');
-                    el.classList.toggle('expanded', isExpanded);
+                var mainRow = el.closest('tr');
+                if (!mainRow) return;
+                var detailRow = mainRow.nextElementSibling;
+                if (!detailRow || !detailRow.classList.contains('narrative_ltm_detail')) return;
+                var expanded = detailRow.classList.contains('expanded');
+                if (expanded) {
+                    detailRow.classList.remove('expanded');
+                    el.classList.remove('expanded');
+                } else {
+                    detailRow.classList.add('expanded');
+                    el.classList.add('expanded');
                 }
             };
         });
