@@ -654,11 +654,17 @@ function buildRetrospectiveContext(content) {
     var sortedSTM = allSTM.filter(function(s) { return s.event && s.msgRange && s.msgRange.length === 2; })
         .sort(function(a, b) { return b.msgRange[0] - a.msgRange[0]; });
     if (sortedSTM.length > 0) {
-        retrospectiveCtx = '\n\n## 往期事件（供角色身份参考）\n';
+        retrospectiveCtx = '\n\n## 往期事件（供时间、场景、角色参考）\n';
         for (var li = 0; li < Math.min(sortedSTM.length, 3); li++) {
-            retrospectiveCtx += '- [msg ' + sortedSTM[li].msgRange.join('-') + '] ' + (sortedSTM[li].event || '') + '\n';
+            var stm = sortedSTM[li];
+            var label = '\u2500 [msg ' + stm.msgRange.join('-') + ']';
+            if (stm.period) label += ' \u00b7 ' + stm.period;
+            if (stm.scene) label += ' \u00b7 ' + stm.scene;
+            retrospectiveCtx += label + ': ' + (stm.event || '') + '\n';
         }
-        retrospectiveCtx += '\n请使用角色全名，参考往期事件确定人物身份。';
+        retrospectiveCtx += '\n请使用角色全名。参考往期事件推断当前对话的时间和场景。';
+    } else {
+        retrospectiveCtx = '\n\n## 时间锚点\n这是故事起始部分，无往期事件可参考。从对话内容和角色卡/世界书中推断时间格式和起始值。';
     }
     return retrospectiveCtx;
 }
@@ -680,7 +686,6 @@ export function buildSegmentationPrompt(turns, pendingPartials, vault, segMinTur
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
-    var stateSnapshot = buildStateSnapshot(content);
 
     var partialCtx = '';
     if (pendingPartials && pendingPartials.length > 0) {
@@ -747,12 +752,12 @@ export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
     }
 
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Describe ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput a single plain sentence (20-80 chars). No JSON, no numbers, no extra text.\nIf nothing significant happened, output "(chat / no event)".\n\nIMPORTANT: Use character proper names. Do NOT use pronouns (I/he/she).') :
-        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。用一句话描述下列对话中发生的一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：直接输出一句话事件描述（20-80字），不要 JSON、不要编号、不要额外文字。\n如果这段对话没有实质内容，输出「（闲聊/无事件）」。\n\n重要：使用角色全名，禁止代词。');
+        (retrospectiveCtx + '\nYou are a story memory extractor. Describe ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format (plain text, one field per line):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the timeline system defined by the story.\n  Examples: "Day 2·深夜", "天启九年·辰时", "2026/6/12 13:00", "奥法历223年 灾厄月 23日"\n  Time range (if event spans): "Day 1·深夜→凌晨", "Day 1·黄昏→Day 2·上午"\n  If unsure, output "period: -"\nscene: inferred scene (e.g. "值班室"). Reference prior events.\n  If unsure, output "scene: -"\n\nIMPORTANT: Use character proper names. Do NOT use pronouns.') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。用一句话描述下列对话中发生的一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式（纯文本，每行一个字段）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。使用作品定义的时间体系。\n  示例：Day 2·深夜、天启九年·辰时、2026/6/12 13:00、奥法历223年 灾厄月 23日\n  时间段（若事件跨越时段）：Day 1·深夜→凌晨、Day 1·黄昏→Day 2·上午\n  若无法判断，输出「period: -」\nscene: 推断的场景（如「值班室」）。参考往期事件。\n  若无法判断，输出「scene: -」\n\n重要：使用角色全名，禁止代词。');
 
     var user = lang === 'en' ?
-        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput just one sentence, no JSON.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n只输出一句话，不要 JSON 格式。';
+        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput event, period, scene — one per line, no JSON.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n输出 event、period、scene，每行一个字段，不要 JSON 格式。';
 
     return { system: system, user: user };
 }

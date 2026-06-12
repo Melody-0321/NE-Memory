@@ -16,14 +16,20 @@ var DEFAULT_MAX_TURNS = 10;
 
 // ── 纯文本 event 提取（不再依赖 JSON.parse）──
 
-function extractEventText(raw) {
-    if (!raw) return '';
+function extractEntryFields(raw) {
+    var result = { event: '', period: '', scene: '' };
+    if (!raw) return result;
     var text = String(raw).trim();
     text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
     text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
     try {
         var parsed = JSON.parse(text);
-        if (parsed && parsed.event) return String(parsed.event).substring(0, 200);
+        if (parsed && parsed.event) {
+            result.event = String(parsed.event).substring(0, 200);
+            result.period = String(parsed.period || '').substring(0, 30);
+            result.scene = String(parsed.scene || '').substring(0, 30);
+            return result;
+        }
     } catch (_) {}
     var lines = text.split('\n');
     var eventLines = [];
@@ -31,9 +37,16 @@ function extractEventText(raw) {
         var line = lines[i].trim();
         if (!line) continue;
         if (/^(Output|输入|以下是|请|Note|Rule|Output format|IMPORTANT)/i.test(line)) continue;
+        var m = line.match(/^period\s*[:：]\s*(.+)/i);
+        if (m) { var pv = m[1].trim(); if (pv !== '-' && pv !== '—' && pv !== '无' && pv !== 'N/A') result.period = pv.substring(0, 30); continue; }
+        m = line.match(/^scene\s*[:：]\s*(.+)/i);
+        if (m) { var sv = m[1].trim(); if (sv !== '-' && sv !== '—' && sv !== '无') result.scene = sv.substring(0, 30); continue; }
+        m = line.match(/^event\s*[:：]\s*(.+)/i);
+        if (m) { result.event = m[1].trim().substring(0, 200); continue; }
         eventLines.push(line);
     }
-    return eventLines.join(' ').substring(0, 200).trim();
+    if (!result.event) result.event = eventLines.join(' ').substring(0, 200).trim();
+    return result;
 }
 
 // ── 从 LLM 纯文本切分中提取 turn 范围 ──
@@ -152,7 +165,8 @@ export async function runStmExtractorCore(turns, params) {
                 ]);
             } catch (e) {}
 
-            var eventText = extractEventText(subResponseText);
+            var fields = extractEntryFields(subResponseText);
+            var eventText = fields.event;
             if (!eventText || eventText.length < 3) eventText = chunkHint;
 
             var msgIds = collectMsgIdsFromTurns(turns, chunkIndices);
@@ -162,6 +176,8 @@ export async function runStmExtractorCore(turns, params) {
                 entity: '',
                 turns: [ci, chunkEnd - 1],
                 msg_ids: msgIds,
+                period: fields.period || '',
+                scene: fields.scene || '',
                 timestamp: new Date().toISOString()
             });
         }
@@ -195,7 +211,8 @@ export async function runStmExtractorCore(turns, params) {
                 ]);
             } catch (e) {}
 
-            var eventText = extractEventText(subResponse);
+            var fields = extractEntryFields(subResponse);
+            var eventText = fields.event;
             if (!eventText || eventText.length < 3) {
                 eventText = seg.summary || ('Turns ' + seg.start + '-' + seg.end);
             }
@@ -207,6 +224,8 @@ export async function runStmExtractorCore(turns, params) {
                 entity: '',
                 turns: [seg.start, seg.end],
                 msg_ids: msgIds,
+                period: fields.period || '',
+                scene: fields.scene || '',
                 timestamp: new Date().toISOString()
             });
         }
@@ -214,9 +233,6 @@ export async function runStmExtractorCore(turns, params) {
 
     // Phase C: Code-fill metadata and collect all msg_ids
     var processedEntries = [];
-    var content = vault.content || {};
-    var period = content.story_time || '';
-    var scene = content.story_scene || '';
 
     for (var ei = 0; ei < stmEntries.length; ei++) {
         var entry = stmEntries[ei];
@@ -259,8 +275,8 @@ export async function runStmExtractorCore(turns, params) {
         entry.msgRange = [mappedStart, mappedEnd];
         if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
-        entry.period = period;
-        entry.scene = scene;
+        if (!entry.period) entry.period = '';
+        if (!entry.scene) entry.scene = '';
 
         msgIds.forEach(function(id) {
             if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
@@ -316,7 +332,8 @@ export async function runStmExtractorCore(turns, params) {
         } catch (e) {}
 
         if (forceResponse) {
-            var forceEventText = extractEventText(forceResponse);
+            var forceFields = extractEntryFields(forceResponse);
+            var forceEventText = forceFields.event;
             if (!forceEventText || forceEventText.length < 3) forceEventText = 'Force-extracted dialog';
 
             var forceMsgIds = collectMsgIdsFromTurns(turns, uncoveredMiddleTurns);
@@ -331,8 +348,8 @@ export async function runStmExtractorCore(turns, params) {
                 msg_ids: forceMsgIds,
                 msgRange: [forceMappedStart, forceMappedEnd],
                 timestamp: new Date().toISOString(),
-                period: period,
-                scene: scene
+                period: forceFields.period || '',
+                scene: forceFields.scene || ''
             };
             forceMsgIds.forEach(function(id) {
                 if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
