@@ -1,4 +1,5 @@
 import { CORE_STATE_FIELDS } from '../vault/schema.js';
+import { getStmMinLtmMerge } from '../settings.js';
 
 export function validateSTMOutput(parsed, vault, messageCount) {
     var errors = [];
@@ -96,8 +97,8 @@ export function validateLTMOutput(result) {
         if (!e.stm_refs || e.stm_refs.length === 0) {
             errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
         }
-        if (e.stm_refs && e.stm_refs.length < 2) {
-            errors.push('ltm_entries[' + i + '] must have at least 2 stm_refs (1:1 mapping forbidden)');
+        if (e.stm_refs && e.stm_refs.length < getStmMinLtmMerge()) {
+            errors.push('ltm_entries[' + i + '] must have at least ' + getStmMinLtmMerge() + ' stm_refs');
         }
     }
 

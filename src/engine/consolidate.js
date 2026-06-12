@@ -7,6 +7,7 @@
  */
 import { callMemoryLLM, callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { validateLTMOutput, postFillLTM } from './validate.js';
+import { getStmMinLtmMerge } from '../settings.js';
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -57,7 +58,7 @@ STM to consolidate (detail events describing continuous story segments):
 ${stmText}
 
 Requirements:
-1. Merge 3-8 consecutive STM entries into ONE LTM. NEVER do 1:1 mapping.
+1. Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
 2. The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
 3. event length: max 50 chars.
 
@@ -87,7 +88,7 @@ ${ltmText || '(无)'}
 ${stmText}
 
 要求：
-1. 将 3~8 条时间或场景连续的 STM 合并为一条 LTM。禁止 1:1 映射。
+1. 将内容连续的 STM 按剧情弧合并为 LTM。禁止 1:1 映射。
 2. LTM 的 event 是对合并内容的高层抽象概要，不是 STM 原文拼句。去掉具体步骤、手术名称、植入件名。
 3. event 长度不超过 50 字。
 
@@ -181,6 +182,87 @@ export function parseConsolidateResponse(llmResponse, stmIds) {
     }
 }
 
+function normalizeConsolidation(ltmEntries, allStmIds) {
+    if (!ltmEntries || ltmEntries.length === 0) return;
+    if (!allStmIds || allStmIds.length === 0) return;
+
+    var covered = {};
+    ltmEntries.forEach(function(ltm) {
+        (ltm.stm_refs || []).forEach(function(id) { covered[id] = true; });
+    });
+
+    var uncovered = allStmIds.filter(function(id) { return !covered[id]; });
+    if (uncovered.length === 0) return;
+
+    var stmPos = {};
+    allStmIds.forEach(function(id, i) { stmPos[id] = i; });
+
+    ltmEntries.sort(function(a, b) {
+        var pa = stmPos[(a.stm_refs || [])[0]];
+        var pb = stmPos[(b.stm_refs || [])[0]];
+        if (pa === undefined) pa = 999;
+        if (pb === undefined) pb = 999;
+        return pa - pb;
+    });
+
+    var ltmRanges = ltmEntries.map(function(ltm) {
+        var ids = ltm.stm_refs || [];
+        var positions = ids.map(function(id) { return stmPos[id]; }).filter(function(p) { return p !== undefined; });
+        return {
+            ltm: ltm,
+            firstPos: positions.length > 0 ? Math.min.apply(null, positions) : Infinity,
+            lastPos: positions.length > 0 ? Math.max.apply(null, positions) : -Infinity
+        };
+    });
+
+    if (ltmRanges.length > 0) {
+        var firstLtmRange = ltmRanges[0];
+        var prefixOrphans = uncovered.filter(function(id) {
+            return stmPos[id] !== undefined && stmPos[id] < firstLtmRange.firstPos;
+        });
+        if (prefixOrphans.length > 0) {
+            firstLtmRange.ltm.stm_refs = prefixOrphans.concat(firstLtmRange.ltm.stm_refs || []);
+            prefixOrphans.forEach(function(id) { covered[id] = true; });
+        }
+    }
+
+    for (var li = 0; li < ltmRanges.length; li++) {
+        var range = ltmRanges[li];
+        var nextPos = (li + 1 < ltmRanges.length) ? ltmRanges[li + 1].firstPos : allStmIds.length;
+        var gapOrphans = uncovered.filter(function(id) {
+            var pos = stmPos[id];
+            return pos !== undefined && pos > range.lastPos && pos < nextPos && !covered[id];
+        });
+        if (gapOrphans.length > 0) {
+            range.ltm.stm_refs = (range.ltm.stm_refs || []).concat(gapOrphans);
+            gapOrphans.forEach(function(id) { covered[id] = true; });
+        }
+    }
+
+    if (ltmRanges.length > 0) {
+        var lastLtmRange = ltmRanges[ltmRanges.length - 1];
+        var suffixOrphans = uncovered.filter(function(id) {
+            return stmPos[id] !== undefined && stmPos[id] > lastLtmRange.lastPos && !covered[id];
+        });
+        var minMerge = getStmMinLtmMerge();
+        if (suffixOrphans.length >= minMerge) {
+            lastLtmRange.ltm.stm_refs = (lastLtmRange.ltm.stm_refs || []).concat(suffixOrphans);
+            suffixOrphans.forEach(function(id) { covered[id] = true; });
+        }
+    }
+
+    ltmEntries.forEach(function(ltm) {
+        ltm.stm_refs = (ltm.stm_refs || []).sort(function(a, b) {
+            return (stmPos[a] || 0) - (stmPos[b] || 0);
+        });
+    });
+
+    var coveredCount = uncovered.filter(function(id) { return covered[id]; }).length;
+    if (coveredCount > 0) {
+        console.log('[NE] normalizeConsolidation: covered ' + coveredCount + ' of ' + uncovered.length + ' uncovered STMs');
+    }
+}
+
 export function applyConsolidation(vault, consolidationResult) {
     const content = vault.content || {};
     content.stm_entries = content.stm_entries || [];
@@ -260,11 +342,11 @@ function deriveTimeRange(sourceSTMEntries) {
     return fmt(first) + ' → ' + fmt(last);
 }
 
-export async function executeConsolidation(chatId) {
+export async function executeConsolidation(chatId, force) {
     const { read } = await import('../vault/store.js');
     const { saveVaultWithSnapshot } = await import('./update.js');
     const vault = await read(chatId);
-    if (!checkConsolidateThreshold(vault)) return { vault, merged: 0 };
+    if (!force && !checkConsolidateThreshold(vault)) return { vault, merged: 0 };
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
@@ -286,6 +368,7 @@ export async function executeConsolidation(chatId) {
     }
 
     postFillLTM(result, unconsolidated);
+    normalizeConsolidation(result.ltm_entries, stmIds);
     const merged = applyConsolidation(vault, result);
     if (merged > 0) {
         vault._meta = vault._meta || {};

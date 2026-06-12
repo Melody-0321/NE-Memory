@@ -1747,7 +1747,7 @@ export async function renderVaultPanel(getChatId) {
                 consolidateBtn.disabled = true;
                 consolidateBtn.textContent = t('Processing...');
                 try {
-                    await executeConsolidation(getChatId());
+                    await executeConsolidation(getChatId(), true);
                     await updateVaultViewerPopout(getChatId);
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
@@ -1845,6 +1845,12 @@ export async function renderVaultPanel(getChatId) {
                         } catch (e2) {}
                     }
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
+                    try {
+                        processHistoryBtn.textContent = t('Consolidating...');
+                        await executeConsolidation(getChatId(), true);
+                    } catch (consErr) {
+                        console.warn('[NE] Process History consolidate failed:', consErr);
+                    }
                     processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + '\u8f6e' + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
