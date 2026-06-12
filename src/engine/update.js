@@ -682,7 +682,8 @@ function buildStateSnapshot(content) {
     return snapshot;
 }
 
-export function buildBatchPrompt(turns, vault) {
+export function buildBatchPrompt(turns, vault, retryAttempt) {
+    retryAttempt = retryAttempt || 0;
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
@@ -703,17 +704,22 @@ export function buildBatchPrompt(turns, vault) {
         turnsText.push('');
     }
 
+    var userText = turnsText.join('\n');
     var maxTurnLabel = turns.length - 1;
 
-    var system = lang === 'en' ?
-        (retrospectiveCtx + '\nYou are a story memory extractor. Describe ALL significant events from the dialog below.\n\nOutput ONLY event blocks — no reasoning, analysis, or extra text.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5". Maximum turn is ' + maxTurnLabel + '.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Each event covers contiguous turns.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Use character proper names only. No pronouns.\n- Do NOT repeat events already described in prior events above.') :
-        (retrospectiveCtx + '\n你是故事记忆提取器。描述下列对话中所有重要事件。\n\n只输出事件块，不要推理、分析或任何额外文字。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」。最大 turn 为 ' + maxTurnLabel + '。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 每个事件使用连续的 turns。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 使用角色全名，禁止代词。\n- 不要重复往期事件中已描述过的内容。');
+    if (retryAttempt === 0) {
+        var system = lang === 'en' ?
+            (retrospectiveCtx + '\nYou are a story memory extractor. Describe ALL significant events from the dialog below.\n\nOutput ONLY event blocks — no reasoning, analysis, or extra text.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5". Maximum turn is ' + maxTurnLabel + '.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Each event covers contiguous turns.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Use character proper names only. No pronouns.\n- Do NOT repeat events already described in prior events above.') :
+            (retrospectiveCtx + '\n你是故事记忆提取器。描述下列对话中所有重要事件。\n\n只输出事件块，不要推理、分析或任何额外文字。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」。最大 turn 为 ' + maxTurnLabel + '。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 每个事件使用连续的 turns。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 使用角色全名，禁止代词。\n- 不要重复往期事件中已描述过的内容。');
+    } else {
+        // 重试：极简 prompt，减少 flash 模型回显概率
+        if (retrospectiveCtx) retrospectiveCtx = retrospectiveCtx.replace(/## [^\n]+/g, '').trim();
+        var system = lang === 'en' ?
+            (retrospectiveCtx + '\nExtract all events from turns 0-' + maxTurnLabel + ' below.\nOutput format:\nevent: <description>\nperiod: <time or ->\nscene: <location or ->\nturns: N-M\n\nSeparate each event with a blank line. No other text.') :
+            (retrospectiveCtx + '\n提取 0~' + maxTurnLabel + ' 轮对话中的所有事件。\n输出格式：\nevent: <描述>\nperiod: <时间或->\nscene: <场景或->\nturns: N-M\n\n每个事件用空行分隔。不要其他任何文字。');
+    }
 
-    var user = lang === 'en' ?
-        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput all events, one per block, no JSON.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n输出所有事件，每个事件块用空行分隔，不要 JSON。';
-
-    return { system: system, user: user };
+    return { system: system, user: userText };
 }
 
 // ── State prompt builders（每种模式专用 prompt）──

@@ -49,6 +49,18 @@ function extractEntryFields(raw) {
 
 // ── 从整批 LLM 响应中解析多个 event 块 ──
 
+// 检测 LLM 是否在回显 prompt（如 flash 模型常见的 echo 行为）
+function isResponseEcho(responseText, promptText) {
+    if (!responseText || !promptText) return false;
+    var cleaned = responseText.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
+    var promptPrefix = promptText.substring(0, 100).trim();
+    if (!promptPrefix) return false;
+    // 取 prompt 前 100 字中不含换行和标点的纯文字段做指纹
+    var fingerprint = promptPrefix.replace(/[\n\r\s]+/g, ' ').substring(0, 40).trim();
+    if (fingerprint.length < 10) return false;
+    return cleaned.indexOf(fingerprint) === 0;
+}
+
 function parseBatchResponse(raw, maxTurn) {
     var events = [];
     if (!raw) return events;
@@ -91,19 +103,6 @@ function parseBatchResponse(raw, maxTurn) {
             turnIndices: turnIndices
         });
     }
-    // 如果 LLM 一个 event 都没输出，退化为全批一个 entry
-    if (events.length === 0) {
-        var fullIndices = [];
-        for (var ti = 0; ti < maxTurn; ti++) fullIndices.push(ti);
-        events.push({
-            event: 'Batch turns 0-' + (maxTurn - 1),
-            period: '',
-            scene: '',
-            start: 0,
-            end: maxTurn - 1,
-            turnIndices: fullIndices
-        });
-    }
     // 去重：按 turn range 合并重复的 event 块
     var seenTurns = {};
     var deduped = [];
@@ -137,20 +136,58 @@ export async function runStmExtractorCore(turns, params) {
 
     var maxTurn = turns.length - 1;
 
-    // ── 单次 LLM 调用：整批一次性提取所有 event ──
-    var batchPrompt = buildBatchPrompt(turns, vault);
-    var responseText = '';
-    try {
-        responseText = await callLLM([
-            { role: 'system', content: batchPrompt.system },
-            { role: 'user', content: batchPrompt.user }
-        ]);
-    } catch (e) {
-        console.warn('[NE] Batch LLM failed:', e.message);
+    // ── LLM 调用 + 解析 + 重试 ──
+    var rawEvents = [];
+    var maxRetries = 2;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        var batchPrompt = buildBatchPrompt(turns, vault, attempt);
+        var responseText = '';
+        try {
+            responseText = await callLLM([
+                { role: 'system', content: batchPrompt.system },
+                { role: 'user', content: batchPrompt.user }
+            ]);
+        } catch (e) {
+            console.warn('[NE] Batch LLM failed (attempt ' + (attempt + 1) + '):', e.message);
+            if (attempt < maxRetries) continue;
+            break;
+        }
+
+        if (isResponseEcho(responseText, batchPrompt.system)) {
+            console.warn('[NE] Batch LLM response is prompt echo (attempt ' + (attempt + 1) + '), retrying...');
+            continue;
+        }
+
+        rawEvents = parseBatchResponse(responseText, maxTurn);
+        if (rawEvents.length === 0) {
+            console.warn('[NE] Batch LLM returned 0 valid events (attempt ' + (attempt + 1) + '), retrying...');
+            continue;
+        }
+
+        // 回显检测 2：event 文本中含 prompt 原句
+        var suspiciousCount = 0;
+        for (var ei = 0; ei < rawEvents.length; ei++) {
+            if (rawEvents[ei].event.indexOf('被问到') >= 0 || rawEvents[ei].event.indexOf('asked to') >= 0 ||
+                rawEvents[ei].event.indexOf('输出格式') >= 0 || rawEvents[ei].event.indexOf('Output format') >= 0) {
+                suspiciousCount++;
+            }
+        }
+        if (suspiciousCount >= rawEvents.length) {
+            console.warn('[NE] All events appear to be prompt echo (attempt ' + (attempt + 1) + '), retrying...');
+            rawEvents = [];
+            continue;
+        }
+
+        break;
     }
 
-    // ── 按 event 块解析响应 ──
-    var rawEvents = parseBatchResponse(responseText, maxTurn);
+    if (rawEvents.length === 0) {
+        console.warn('[NE] All LLM attempts failed, falling back to single-entry batch');
+        var fallbackIndices = [];
+        for (var fi = 0; fi <= maxTurn; fi++) fallbackIndices.push(fi);
+        rawEvents = [{ event: 'Batch turns 0-' + maxTurn, period: '', scene: '', start: 0, end: maxTurn, turnIndices: fallbackIndices }];
+    }
     var stmEntries = [];
 
     for (var i = 0; i < rawEvents.length; i++) {
