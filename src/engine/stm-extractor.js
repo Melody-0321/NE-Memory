@@ -9,11 +9,81 @@
  * maxTurns-sized batches with deferred carry-forward between batches.
  */
 
-import { callMemoryLLMWithTools, callMemoryPipeline, loadSecondaryApiConfig } from '../api/llm.js';
-import { EXTRACT_STM_TOOL_SCHEMA } from '../tools.js';
+import { callMemoryPipeline } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
 var DEFAULT_MAX_TURNS = 10;
+
+// ── 纯文本 event 提取（不再依赖 JSON.parse）──
+
+function extractEventText(raw) {
+    if (!raw) return '';
+    var text = String(raw).trim();
+    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
+    text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
+    try {
+        var parsed = JSON.parse(text);
+        if (parsed && parsed.event) return String(parsed.event).substring(0, 200);
+    } catch (_) {}
+    var lines = text.split('\n');
+    var eventLines = [];
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        if (/^(Output|输入|以下是|请|Note|Rule|Output format|IMPORTANT)/i.test(line)) continue;
+        eventLines.push(line);
+    }
+    return eventLines.join(' ').substring(0, 200).trim();
+}
+
+// ── 从 LLM 纯文本切分中提取 turn 范围 ──
+
+function parseSegmentation(text, maxTurn) {
+    var segments = [];
+    var deferred = [];
+    var seenTurns = {};
+    var lines = String(text || '').split('\n');
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
+        var dm = line.match(/deferred[\s:：]*(\d+)\s*[-–至到]\s*(\d+)/i);
+        if (dm) {
+            var ds = Math.max(0, Math.min(maxTurn, parseInt(dm[1], 10)));
+            var de = Math.max(ds, Math.min(maxTurn, parseInt(dm[2], 10)));
+            for (var ti = ds; ti <= de; ti++) {
+                if (deferred.indexOf(ti) === -1) deferred.push(ti);
+            }
+            continue;
+        }
+        var m = line.match(/^(\d+)\s*[-–~至到]\s*(\d+)/);
+        if (m) {
+            var s = Math.max(0, Math.min(maxTurn, parseInt(m[1], 10)));
+            var e = Math.max(s, Math.min(maxTurn, parseInt(m[2], 10)));
+            var conflict = false;
+            for (var ti = s; ti <= e; ti++) {
+                if (seenTurns[ti]) { conflict = true; break; }
+            }
+            if (conflict) continue;
+            for (var ti = s; ti <= e; ti++) seenTurns[ti] = true;
+            segments.push({
+                start: s, end: e,
+                summary: line.replace(/^\d+\s*[-–~至到]\s*\d+/, '').trim()
+            });
+        }
+    }
+    var uncovered = [];
+    for (var ti = 0; ti <= maxTurn; ti++) {
+        if (!seenTurns[ti] && deferred.indexOf(ti) === -1) uncovered.push(ti);
+    }
+    for (var i = 0; i < uncovered.length; ) {
+        var j = i;
+        while (j + 1 < uncovered.length && uncovered[j + 1] === uncovered[j] + 1) j++;
+        segments.push({ start: uncovered[i], end: uncovered[j], summary: '' });
+        i = j + 1;
+    }
+    segments.sort(function (a, b) { return a.start - b.start; });
+    return { segments: segments, deferred: deferred };
+}
 
 // ── 外层入口（向后兼容）──
 
@@ -56,10 +126,6 @@ export async function runStmExtractorCore(turns, params) {
     // Phase B: Build segmentation prompt (only for semantic mode)
     var segPrompt = fixedChunk ? null : buildSegmentationPrompt(turns, pendingPartials, vault, segMinTurns, segMaxTurns);
 
-    // Phase B1: Determine if tool calling is available
-    var secCfg = loadSecondaryApiConfig();
-    var hasTools = !fixedChunk && secCfg && secCfg.url && secCfg.model;
-
     var stmEntries = [];
     var allMsgIds = [];
     var deferredTurns = [];
@@ -85,178 +151,64 @@ export async function runStmExtractorCore(turns, params) {
                 ]);
             } catch (e) {}
 
-            var parsed = {};
-            try {
-                var rawText = String(subResponseText || '').replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-                var cleaned = rawText.replace(/```json\s*/g, '').replace(/```/g, '').trim();
-                var idx = cleaned.indexOf('{');
-                if (idx !== -1) cleaned = cleaned.substring(idx);
-                var endIdx = cleaned.lastIndexOf('}');
-                if (endIdx !== -1) cleaned = cleaned.substring(0, endIdx + 1);
-                parsed = JSON.parse(cleaned);
-            } catch (e) {
-                parsed = { event: chunkHint, status: 'closed' };
-            }
+            var eventText = extractEventText(subResponseText);
+            if (!eventText || eventText.length < 3) eventText = chunkHint;
 
             var msgIds = collectMsgIdsFromTurns(turns, chunkIndices);
             stmEntries.push({
-                event: parsed.event || chunkHint,
-                status: parsed.status || 'closed',
-                entity: parsed.entity || '',
+                event: eventText,
+                status: 'closed',
+                entity: '',
                 turns: [ci, chunkEnd - 1],
                 msg_ids: msgIds,
                 timestamp: new Date().toISOString()
             });
         }
-    } else if (hasTools) {
-        // Accumulators for sub-agent tool results (populated from within executor closure,
-    // NOT from segMessages which callMemoryLLMWithTools never mutates back).
-    var toolResultEntries = [];
-    var toolResultDeferred = [];
-
-    if (hasTools) {
-        // === Hub-Spoke path (multi-event with parallel sub-agents) ===
-        var subAgentExecutor = async function(args) {
-            // 从 args.turns 提取 turn 范围；如果 args 不完整则回退到当前 batch 的全部 turns
-            var turnIndices = [];
-            var start = 0;
-            var end = turns.length - 1;
-            if (args && args.turns && Array.isArray(args.turns) && args.turns.length >= 2
-                && typeof args.turns[0] === 'number' && typeof args.turns[1] === 'number') {
-                start = Math.max(0, args.turns[0]);
-                end = Math.min(turns.length - 1, args.turns[1]);
-                if (end < start) end = start;
-            }
-            for (var ti = start; ti <= end; ti++) turnIndices.push(ti);
-
-            var summary = (args && args.event_summary) || '';
-            var subPrompt = buildSubAgentPrompt(turns, turnIndices, summary, vault);
-
-            var subResponse = await callMemoryPipeline([
-                { role: 'system', content: subPrompt.system },
-                { role: 'user', content: subPrompt.user }
-            ]);
-
-            var parsed = {};
-            try {
-                var rawText2 = String(subResponse || '').replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-                var cleaned = rawText2.replace(/```json\s*/g, '').replace(/```/g, '').trim();
-                var idx = cleaned.indexOf('{');
-                if (idx !== -1) cleaned = cleaned.substring(idx);
-                var endIdx = cleaned.lastIndexOf('}');
-                if (endIdx !== -1) cleaned = cleaned.substring(0, endIdx + 1);
-                parsed = JSON.parse(cleaned);
-            } catch (e) {
-                parsed = { event: (summary || String(subResponse).substring(0, 80)), status: 'closed' };
-            }
-
-            var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
-            var isDeferred = parsed.status === 'deferred' || (args && args.status === 'deferred');
-
-            var resultEntry = {
-                event: parsed.event || summary,
-                status: isDeferred ? 'deferred' : (parsed.status || (args && args.status) || 'closed'),
-                entity: parsed.entity || '',
-                turns: [start, end],
-                msgRange: [start, end],
-                msg_ids: msgIds,
-                deferred: isDeferred
-            };
-
-            if (resultEntry.deferred) {
-                toolResultDeferred.push(resultEntry);
-            } else {
-                toolResultEntries.push(resultEntry);
-            }
-
-            return JSON.stringify(resultEntry);
-        };
-
-        var toolExecs = {
-            extract_stm: subAgentExecutor
-        };
-
+    } else {
+        // === Semantic segmentation via LLM text output (no tool calling) ===
         var segMessages = [
             { role: 'system', content: segPrompt.system },
             { role: 'user', content: segPrompt.user }
         ];
-
-        var mainLLMResponse = '';
+        var segResponseText = '';
         try {
-            mainLLMResponse = await callMemoryLLMWithTools(segMessages, [EXTRACT_STM_TOOL_SCHEMA], toolExecs);
+            segResponseText = await callMemoryPipeline(segMessages);
         } catch (e) {
-            console.warn('[NE] Hub-Spoke main LLM failed:', e.message);
+            console.warn('[NE] Segmentation LLM failed:', e.message);
         }
 
-        // Derive deferred turn indices from sub-agent results
-        for (var di2 = 0; di2 < toolResultDeferred.length; di2++) {
-            var dr = toolResultDeferred[di2];
-            if (dr.turns && dr.turns.length >= 2) {
-                for (var ti0 = dr.turns[0]; ti0 <= dr.turns[1]; ti0++) {
-                    if (deferredTurns.indexOf(ti0) === -1) deferredTurns.push(ti0);
-                }
-            }
-        }
+        var segResult = parseSegmentation(segResponseText, turns.length - 1);
+        deferredTurns = segResult.deferred.slice();
 
-        // Parse main LLM final response
-        var finalText = String(mainLLMResponse || '').trim();
+        for (var si = 0; si < segResult.segments.length; si++) {
+            var seg = segResult.segments[si];
+            var turnIndices = [];
+            for (var ti = seg.start; ti <= seg.end; ti++) turnIndices.push(ti);
 
-        if (finalText) {
+            var subPrompt = buildSubAgentPrompt(turns, turnIndices, seg.summary, vault);
+            var subResponse = '';
             try {
-                // Check for deferred list in text output (fallback for single-event path)
-                var deferredMatch = finalText.match(/\{"deferred"\s*:\s*\[([^\]]+)\]\}/);
-                if (deferredMatch) {
-                    try {
-                        var txtDeferred = JSON.parse('[' + deferredMatch[1] + ']');
-                        txtDeferred.forEach(function(dt) { if (deferredTurns.indexOf(dt) === -1) deferredTurns.push(dt); });
-                    } catch (e2) {}
-                    finalText = finalText.replace(/\{"deferred"\s*:\s*\[([^\]]*)\]\}/g, '').trim();
-                }
+                subResponse = await callMemoryPipeline([
+                    { role: 'system', content: subPrompt.system },
+                    { role: 'user', content: subPrompt.user }
+                ]);
+            } catch (e) {}
 
-                var parsed = parseResponse(finalText);
-                if (parsed && parsed.stmEntries) {
-                    stmEntries = parsed.stmEntries;
-                }
-            } catch (e) {
-                console.warn('[NE] Failed to parse main LLM response:', e.message);
+            var eventText = extractEventText(subResponse);
+            if (!eventText || eventText.length < 3) {
+                eventText = seg.summary || ('Turns ' + seg.start + '-' + seg.end);
             }
+
+            var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
+            stmEntries.push({
+                event: eventText,
+                status: 'closed',
+                entity: '',
+                turns: [seg.start, seg.end],
+                msg_ids: msgIds,
+                timestamp: new Date().toISOString()
+            });
         }
-
-        // If stmEntries is empty, use tool result entries
-        if (stmEntries.length === 0 && toolResultEntries.length > 0) {
-            stmEntries = toolResultEntries;
-        }
-
-    } else {
-        // === Fallback path (single-turn, no tools) ===
-        var allTurnsText = formatTurnsText(turns);
-        var allIndices = [];
-        for (var i = 0; i < turns.length; i++) allIndices.push(i);
-
-        var subPrompt = buildSubAgentPrompt(turns, allIndices, '', vault);
-        var responseText = await callMemoryPipeline([
-            { role: 'system', content: subPrompt.system },
-            { role: 'user', content: allTurnsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "status": "closed"|"partial"|"deferred", "entity": "..." },\n  ...\n]\nIf nothing significant, return [].' }
-        ]);
-
-        var parsed = parseResponse(responseText);
-        if (parsed && parsed.stmEntries) {
-            // Separate deferred entries
-            var nonDeferred = [];
-            for (var ei3 = 0; ei3 < parsed.stmEntries.length; ei3++) {
-                var pe = parsed.stmEntries[ei3];
-                if (pe.status === 'deferred') {
-                    deferredTurns.push(0); // Fallback path doesn't have turn-level granularity for deferred
-                } else {
-                    nonDeferred.push(pe);
-                }
-            }
-            stmEntries = nonDeferred;
-            if (stmEntries.length === 1) {
-                stmEntries[0].turns = [0, turns.length - 1];
-            }
-        }
-    }
     }
 
     // Phase C: Code-fill metadata and collect all msg_ids
@@ -363,26 +315,17 @@ export async function runStmExtractorCore(turns, params) {
         } catch (e) {}
 
         if (forceResponse) {
-            var forceParsed = {};
-            try {
-                var fc = String(forceResponse || '').replace(/```json\s*/g, '').replace(/```/g, '').trim();
-                var fi = fc.indexOf('{');
-                if (fi !== -1) fc = fc.substring(fi);
-                var fe = fc.lastIndexOf('}');
-                if (fe !== -1) fc = fc.substring(0, fe + 1);
-                forceParsed = JSON.parse(fc);
-            } catch (e2) {
-                forceParsed = { event: 'force-extracted dialog', status: 'closed' };
-            }
+            var forceEventText = extractEventText(forceResponse);
+            if (!forceEventText || forceEventText.length < 3) forceEventText = 'Force-extracted dialog';
 
             var forceMsgIds = collectMsgIdsFromTurns(turns, uncoveredMiddleTurns);
             var forceLocalRange = [uncoveredMiddleTurns[0], uncoveredMiddleTurns[uncoveredMiddleTurns.length - 1]];
             var forceMappedStart = (globalIndexMap && globalIndexMap[forceLocalRange[0]] !== undefined) ? globalIndexMap[forceLocalRange[0]] : forceLocalRange[0];
             var forceMappedEnd = (globalIndexMap && globalIndexMap[forceLocalRange[1]] !== undefined) ? globalIndexMap[forceLocalRange[1]] : forceLocalRange[1];
             var forceEntry = {
-                event: forceParsed.event || 'Force-extracted dialog',
-                status: forceParsed.status || 'closed',
-                entity: forceParsed.entity || '',
+                event: forceEventText,
+                status: 'closed',
+                entity: '',
                 turns: forceLocalRange,
                 msg_ids: forceMsgIds,
                 msgRange: [forceMappedStart, forceMappedEnd],

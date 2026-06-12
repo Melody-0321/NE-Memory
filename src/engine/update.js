@@ -682,12 +682,12 @@ export function buildSegmentationPrompt(turns, pendingPartials, vault, segMinTur
         : 'Each event covers ' + segMinTurns + '~' + segMaxTurns + ' turns. Prefer semantic boundaries, but each event must have at least ' + segMinTurns + ' turns and at most ' + segMaxTurns + ' turns.';
 
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nFor each semantic event, call extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred").\n\nRules:\n- Turns must be contiguous within an event, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in event_summary, NEVER pronouns.\n- ' + segRangeEn + '\n- For turns at the END that are still ongoing → status:"partial".\n- For turns at the END that have not yet formed any event (opening not reached) → call extract_stm with status:"deferred" so the system can postpone them.\n- For single events with all turns → output JSON array directly (no tool calls).\n- Turns between already-processed events must be covered (cannot skip).') :
-        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n对每个语义事件调用 extract_stm(turns=[startTurn,endTurn], event_summary="...", status="closed"|"partial"|"deferred")。\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- event_summary 必须使用角色全名，禁止代词。\n- ' + segRange + '\n- 末尾尚未完成的事件 → status:"partial"。\n- 末尾尚不构成任何事件的 turns（仅剩开篇、未到主体） → 仍调用 extract_stm 并传入 status:"deferred"，系统会将其推迟到下一批处理。\n- 如果所有 turns 属于同一个事件，直接输出 JSON 数组（无需工具调用）。\n- 已处理事件之间的 turns 必须被覆盖（不能跳过）。');
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\nYou are a dialog event segmenter. Group the following ' + turns.length + ' turns into semantic events.\n\nOutput format (one event per line):\nN-M event summary\nIf trailing turns are still forming an event, output:\ndeferred:N-M\n\nExample:\n0-2 Alice arrives at the morgue\n3-5 Bob discusses the night shift with Alice\n6-7 Charlie unexpectedly appears\ndeferred:8-9\n\nRules:\n- Each event must have contiguous turns, no skipping.\n- Each event should cover a complete semantic unit.\n- Use character proper names in summaries, NEVER pronouns.\n- ' + segRangeEn + '\n- Every turn must be covered (no gaps).') :
+        (stateSnapshot + retrospectiveCtx + partialCtx + '\n你是对话事件切分器。将以下 ' + turns.length + ' 轮对话按语义分组为事件。\n\n输出格式（每行一个事件）：\nN-M 事件摘要\n如果末尾若干轮尚未形成完整事件，输出：\ndeferred:N-M\n\n示例：\n0-2 角色A抵达殡仪馆\n3-5 角色B与角色A讨论夜间值守\n6-7 角色C意外出现\ndeferred:8-9\n\n规则：\n- 事件内的 turns 必须连续，不能跳过。\n- 每个事件应覆盖完整的语义单元。\n- 摘要必须使用角色全名，禁止代词。\n- ' + segRange + '\n- 每一轮对话都必须被覆盖（不能有空缺）。');
 
     var user = lang === 'en' ?
-        'Turns:\n\n' + turnsText.join('\n') + '\nOutput format (multi-event): call extract_stm for each event, including deferred turns with status:"deferred".\nOutput format (single-event): JSON array of STM entries.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n多事件时：为每个事件调用 extract_stm，被推迟的事件传 status:"deferred"。\n单事件时：直接输出 JSON 数组。';
+        'Turns:\n\n' + turnsText.join('\n') + '\nOutput one line per event: startTurn-endTurn summary. No JSON, no tool calls.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n每行输出一个事件范围及摘要，格式：起始轮次-结束轮次 事件描述。不要 JSON、不要工具调用。';
 
     return { system: system, user: user };
 }
@@ -715,12 +715,12 @@ export function buildSubAgentPrompt(turns, turnIndices, eventSummary, vault) {
     }
 
     var system = lang === 'en' ?
-        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Extract ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput format:\n{\n  "event": "event description (20-80 chars)",\n  "status": "closed" | "partial" | "deferred",\n  "entity": "optional entity name"\n}\n\n- "closed" = complete event.\n- "partial" = event continues beyond these turns.\n- "deferred" = turns are insufficient to form any event yet (open-ended start, main body not reached).\n\nIMPORTANT: Use character proper names in event descriptions. Do NOT use pronouns (I/he/she).') :
-        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。从下列对话中提取一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：\n{\n  "event": "事件描述（20-80字）",\n  "status": "closed" | "partial" | "deferred",\n  "entity": "可选实体名"\n}\n\n- "closed" = 完整事件。\n- "partial" = 事件延续到这些回合之后。\n- "deferred" = 这些对话轮次尚不构成完整事件（仅剩开篇、未到主体），推迟处理。\n\n重要：event 中使用角色全名，禁止代词。');
+        (stateSnapshot + retrospectiveCtx + '\nYou are a story memory extractor. Describe ONE event from the dialog below.\n\nThe event belongs to: "' + eventSummary + '"\n\nOutput a single plain sentence (20-80 chars). No JSON, no numbers, no extra text.\nIf nothing significant happened, output "(chat / no event)".\n\nIMPORTANT: Use character proper names. Do NOT use pronouns (I/he/she).') :
+        (stateSnapshot + retrospectiveCtx + '\n你是故事记忆提取器。用一句话描述下列对话中发生的一个事件。\n\n该事件属于：\n"' + eventSummary + '"\n\n输出格式：直接输出一句话事件描述（20-80字），不要 JSON、不要编号、不要额外文字。\n如果这段对话没有实质内容，输出「（闲聊/无事件）」。\n\n重要：使用角色全名，禁止代词。');
 
     var user = lang === 'en' ?
-        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput ONLY the JSON object above. No extra text.' :
-        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n仅输出上述 JSON 对象，不要多余文字。';
+        'Dialog turns:\n\n' + turnsText.join('\n') + '\n\nOutput just one sentence, no JSON.' :
+        '对话轮次：\n\n' + turnsText.join('\n') + '\n\n只输出一句话，不要 JSON 格式。';
 
     return { system: system, user: user };
 }
