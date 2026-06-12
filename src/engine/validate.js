@@ -40,14 +40,9 @@ export function postFillSTM(parsed, vault) {
     var state = content.state || {};
     var stmEntries = parsed.stmEntries || [];
 
-    var defaultPeriod = mergeStoryPeriod(checkpoints.time || state.time || content.story_time, content.story_date);
-    var defaultScene = checkpoints.scene || state.scene || content.story_scene || '';
-
-    for (var i = 0; i < stmEntries.length; i++) {
-        var e = stmEntries[i];
-        if (!e.period) e.period = defaultPeriod;
-        if (!e.scene) e.scene = defaultScene;
-    }
+    // 不再从 vault state 填充 entry 的 period/scene。
+    // 这些值由 LLM sub-agent 输出（extractEntryFields 正则提取），
+    // vault state 的值在批处理历史时会错（全贴同一个当前时间）。
 
     if (checkpoints.time && checkpoints.time !== 'same') {
         content.story_time = String(checkpoints.time);
