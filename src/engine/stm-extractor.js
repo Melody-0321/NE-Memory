@@ -113,17 +113,44 @@ function parseBatchResponse(raw, maxTurn) {
             turnIndices: turnIndices
         });
     }
-    // 去重：按 turn range 合并重复的 event 块
-    var seenTurns = {};
-    var deduped = [];
+    // 按 start 排序
+    events.sort(function (a, b) { return a.start - b.start; });
+    // 去重 + 归一化：事件之间不能共享 turn
+    var normalized = [];
     for (var ei = 0; ei < events.length; ei++) {
         var ev = events[ei];
-        var key = ev.start + '-' + ev.end;
-        if (seenTurns[key]) continue;
-        seenTurns[key] = true;
-        deduped.push(ev);
+        if (normalized.length === 0) {
+            // 首个事件 start 必须为 0（如果 > 0，推导为 0）
+            if (ev.start > 0) ev.start = 0;
+            normalized.push(ev);
+            continue;
+        }
+        var prev = normalized[normalized.length - 1];
+        // 重合或重叠：将当前事件的 start 推到 prev.end + 1
+        if (ev.start <= prev.end) {
+            ev.start = prev.end + 1;
+        }
+        // 修正后 start > end → 合并到前一个事件
+        if (ev.start > ev.end) {
+            prev.end = Math.max(prev.end, ev.end);
+            prev.event = prev.event + '; ' + ev.event;
+            for (var ti = ev.start; ti <= ev.end; ti++) {
+                if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
+            }
+            prev.turnIndices.sort(function (a, b) { return a - b; });
+            continue;
+        }
+        // 间隙填补：当前 start > prev.end + 1 时扩展前事件
+        if (ev.start > prev.end + 1) {
+            prev.end = ev.start - 1;
+            for (var ti = prev.start; ti <= prev.end; ti++) {
+                if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
+            }
+            prev.turnIndices.sort(function (a, b) { return a - b; });
+        }
+        normalized.push(ev);
     }
-    return deduped;
+    return normalized;
 }
 
 // ── 内层（直接接收 turns）──
