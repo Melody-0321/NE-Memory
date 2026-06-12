@@ -115,13 +115,11 @@ function parseBatchResponse(raw, maxTurn) {
     }
     // 按 start 排序
     events.sort(function (a, b) { return a.start - b.start; });
-    // 去重 + 归一化：事件之间不能共享 turn
+    // 归一化：只处理重叠，不填补间隙（间隙交给 retry 反馈机制）
     var normalized = [];
     for (var ei = 0; ei < events.length; ei++) {
         var ev = events[ei];
         if (normalized.length === 0) {
-            // 首个事件 start 必须为 0（如果 > 0，推导为 0）
-            if (ev.start > 0) ev.start = 0;
             normalized.push(ev);
             continue;
         }
@@ -139,14 +137,6 @@ function parseBatchResponse(raw, maxTurn) {
             }
             prev.turnIndices.sort(function (a, b) { return a - b; });
             continue;
-        }
-        // 间隙填补：当前 start > prev.end + 1 时扩展前事件
-        if (ev.start > prev.end + 1) {
-            prev.end = ev.start - 1;
-            for (var ti = prev.start; ti <= prev.end; ti++) {
-                if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
-            }
-            prev.turnIndices.sort(function (a, b) { return a - b; });
         }
         normalized.push(ev);
     }
