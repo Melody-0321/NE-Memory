@@ -1759,11 +1759,11 @@ export async function renderVaultPanel(getChatId) {
 
                 // Filter to messages with actual content
                 var toProcess = [];
-                chatMessages.forEach(function (msg) {
+                chatMessages.forEach(function (msg, idx) {
                     var content = msg.mes || '';
                     if (content.trim().length > 0) {
                         toProcess.push({
-                            id: msg.id || msg.mes_id,
+                            id: idx,
                             is_user: !!msg.is_user,
                             mes: content,
                             name: msg.name || ''
