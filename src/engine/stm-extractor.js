@@ -60,8 +60,10 @@ function parseBatchResponse(raw, maxTurn) {
     for (var bi = 0; bi < blocks.length; bi++) {
         var block = blocks[bi].trim();
         if (!block) continue;
-        var fields = extractEntryFields(block);
-        if (!fields.event || fields.event.length < 3) continue;
+        // 只接受包含 event: 字段的块，丢弃推理/分析文本
+        if (!/^event\s*[:：]/im.test(block)) continue;
+        // 优先从 event/turns 行提取，找不到再兜底
+        var hasTurnLine = /^turns?\s*[:：]/im.test(block);
         var turnStart = -1, turnEnd = -1;
         var blockLines = block.split('\n');
         for (var li = 0; li < blockLines.length; li++) {
@@ -73,14 +75,13 @@ function parseBatchResponse(raw, maxTurn) {
                 break;
             }
         }
-        if (turnStart < 0) {
-            var prevEnd = events.length > 0 ? events[events.length - 1].end : -1;
-            turnStart = prevEnd + 1;
-            turnEnd = Math.min(turnStart + 1, maxTurn - 1);
-            if (turnStart > maxTurn) turnStart = maxTurn;
-        }
+        // 没有 turns 行的块跳过（无法定位到具体 turn）
+        if (!hasTurnLine) continue;
+        if (turnStart < 0) continue;
         var turnIndices = [];
         for (var ti = turnStart; ti <= turnEnd; ti++) turnIndices.push(ti);
+        var fields = extractEntryFields(block);
+        if (!fields.event || fields.event.length < 3) continue;
         events.push({
             event: fields.event,
             period: fields.period,
@@ -103,7 +104,17 @@ function parseBatchResponse(raw, maxTurn) {
             turnIndices: fullIndices
         });
     }
-    return events;
+    // 去重：按 turn range 合并重复的 event 块
+    var seenTurns = {};
+    var deduped = [];
+    for (var ei = 0; ei < events.length; ei++) {
+        var ev = events[ei];
+        var key = ev.start + '-' + ev.end;
+        if (seenTurns[key]) continue;
+        seenTurns[key] = true;
+        deduped.push(ev);
+    }
+    return deduped;
 }
 
 // ── 内层（直接接收 turns）──
