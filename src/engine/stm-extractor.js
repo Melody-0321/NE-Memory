@@ -265,13 +265,13 @@ export async function runStmExtractorCore(turns, params) {
             turnIndexToEventIdx[turnIndices[ti2]] = ei;
         }
 
-        entry.turns = turnRange;
         entry.msg_ids = msgIds;
-        // 将 turns 映射为全局消息索引范围
+        // 将 turns 映射为全局索引
         var localStart = turnRange[0];
         var localEnd = turnRange[1];
         var mappedStart = (globalIndexMap && globalIndexMap[localStart] !== undefined) ? globalIndexMap[localStart] : localStart;
         var mappedEnd = (globalIndexMap && globalIndexMap[localEnd] !== undefined) ? globalIndexMap[localEnd] : localEnd;
+        entry.turns = [mappedStart, mappedEnd];
         entry.msgRange = [mappedStart, mappedEnd];
         if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
@@ -344,7 +344,7 @@ export async function runStmExtractorCore(turns, params) {
                 event: forceEventText,
                 status: 'closed',
                 entity: '',
-                turns: forceLocalRange,
+                turns: [forceMappedStart, forceMappedEnd],
                 msg_ids: forceMsgIds,
                 msgRange: [forceMappedStart, forceMappedEnd],
                 timestamp: new Date().toISOString(),
@@ -355,6 +355,12 @@ export async function runStmExtractorCore(turns, params) {
                 if (allMsgIds.indexOf(id) === -1) allMsgIds.push(id);
             });
             processedEntries.push(forceEntry);
+
+            // ── 关键：将 force entry 的 turns 注册到 turnIndexToEventIdx
+            // 防止 Phase E 将其误判为未覆盖 → tailDeferred → carryForward → 下一批重复提取
+            for (var fti = forceLocalRange[0]; fti <= forceLocalRange[1]; fti++) {
+                turnIndexToEventIdx[fti] = processedEntries.length - 1;
+            }
         }
     }
 
