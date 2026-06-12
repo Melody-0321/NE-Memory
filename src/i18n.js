@@ -78,7 +78,11 @@ export const NARRATIVE_I18N = {
         'Extraction Temperature (rec. 0.2)': 'Extraction Temperature (rec. 0.2)', 'Retrieval Temperature (rec. 0.3)': 'Retrieval Temperature (rec. 0.3)',
         'Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.': 'Number of messages to buffer before triggering the memory pipeline. Lower = more responsive, higher = fewer API calls.',
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': 'Number of messages to buffer before triggering the memory pipeline. Lower = more responsive, higher = fewer API calls.',
-        'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': 'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.',
+        'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.':
+            'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.',
+        'Min STM per LTM': 'Min STM per LTM',
+        'Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.':
+            'Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.',
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': 'STM/State/LTM memory extraction. Lower = more consistent summaries.',
         'Smart retrieval and tool queries. Higher = more creative answers.': 'Smart retrieval and tool queries. Higher = more creative answers.',
         'All messages have already been processed.': 'All messages have already been processed.',
@@ -342,6 +346,8 @@ export const CONFIG_I18N = {
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': '累积多少条消息后启动一次记忆提取流水线。越小响应越快，越大 API 调用越少。',
         'Max Unconsolidated STM': 'LTM 整合阈值',
         'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 达到此数量时触发长期记忆合并。较小值使 LTM 更新更频繁。',
+        'Min STM per LTM': '每条 LTM 最少合并条数',
+        'Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.': '每条长期记忆至少合并这么多条 STM 条目。禁止 1:1 映射。',
         'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
             '存储被阻止：记忆无法保存。请在浏览器设置中为此站点禁用追踪防护。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':
@@ -398,6 +404,8 @@ export const CONFIG_I18N = {
         'Collect this many messages before extracting STM entries. Lower = faster updates, higher = fewer LLM calls.': '累積多少條訊息後啟動一次記憶提取管線。越小響應越快，越大 API 調用越少。',
         'Max Unconsolidated STM': 'LTM 整合閾值',
         'Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.': '未整合 STM 達到此數量時觸發長期記憶合併。較小值使 LTM 更新更頻繁。',
+        'Min STM per LTM': '每條 LTM 最少合併條數',
+        'Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.': '每條長期記憶至少合併這麼多條 STM 條目。禁止 1:1 映射。',
         'Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.':
             '存儲被阻止：記憶無法儲存。請在瀏覽器設定中為此網站停用追蹤防護。',
         'When enabled, the State Schema system tracks characters, factions, quests/power_slots with structured validation. Disable to use pure memory optimization without state management. State Schema depends on Memory System being enabled.':

@@ -46,6 +46,9 @@ export function renderConfigDialog(getChatId) {
         '<div style="margin:6px 0 2px;"><span>' + t_config('Max Unconsolidated STM') + ': <span id="ne_stm_max_unconsolidated_val">5</span></span>' +
         '<input type="range" id="ne_stm_max_unconsolidated" min="2" max="30" step="1" value="5" style="width:100%;margin-top:2px;"></div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div style="margin:6px 0 2px;"><span>' + t_config('Min STM per LTM') + ': <span id="ne_stm_min_ltm_merge_val">3</span></span>' +
+        '<input type="range" id="ne_stm_min_ltm_merge" min="3" max="8" step="1" value="3" style="width:100%;margin-top:2px;"></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin-bottom:6px;">' + t_config('Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.') + '</div>' +
         '<div id="ne_engine_status" style="margin-top:4px;font-size:0.85em;">' + t_narrative('Checking...') + '</div>' +
         '<hr style="border-color:var(--black30a);margin:8px 0;">' +
         '<div class="narrative-toggle"><label class="checkbox_label"><input type="checkbox" id="ne_enable_telemetry"> <span>' + t_config('narrative_label_enable_telemetry') + '</span></label></div>' +
@@ -125,6 +128,9 @@ function bindConfigEvents(getChatId) {
     });
     $pd('#ne_stm_max_unconsolidated').on('input', function () {
         $pd('#ne_stm_max_unconsolidated_val').text($pd('#ne_stm_max_unconsolidated').val());
+    });
+    $pd('#ne_stm_min_ltm_merge').on('input', function () {
+        $pd('#ne_stm_min_ltm_merge_val').text($pd('#ne_stm_min_ltm_merge').val());
     });
     // Tab switching
     $pd('.ne-tab').on('click', function () {
@@ -318,6 +324,8 @@ function loadConfigUI() {
         $pd('#ne_stm_batch_val').text(s.stmBatch || 10);
         $pd('#ne_stm_max_unconsolidated').val(s.stmMaxUnconsolidated || 5);
         $pd('#ne_stm_max_unconsolidated_val').text(s.stmMaxUnconsolidated || 5);
+        $pd('#ne_stm_min_ltm_merge').val(s.stmMinLtmMerge || 3);
+        $pd('#ne_stm_min_ltm_merge_val').text(s.stmMinLtmMerge || 3);
         var mc = s.memoryConfig || defaultMemoryConfig;
         $pd('#ne_extraction_temperature').val(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature);
         $pd('#ne_extraction_temperature_val').text(Number(mc.extraction_temperature || mc.temperature || defaultMemoryConfig.extraction_temperature).toFixed(1));
@@ -361,6 +369,7 @@ function saveConfigUI() {
         memoryBudget: Number($pd('#ne_memory_budget').val()),
         stmBatch: Number($pd('#ne_stm_batch').val()),
         stmMaxUnconsolidated: Number($pd('#ne_stm_max_unconsolidated').val()),
+        stmMinLtmMerge: Number($pd('#ne_stm_min_ltm_merge').val()),
         memoryConfig: {
             extraction_temperature: Number($pd('#ne_extraction_temperature').val()),
             retrieval_temperature: Number($pd('#ne_retrieval_temperature').val()),
