@@ -83,12 +83,25 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
     if (content.story_date) timeParts.push(content.story_date);
     var currentTime = timeParts.join(' ─ ');
 
-    var candidatesText = candidates.map(function(e, i) {
+    var bm25Candidates = candidates.filter(function(e) { return !e.__isDirectory; });
+    var dirCandidates = candidates.filter(function(e) { return e.__isDirectory; });
+    
+    var candidatesText = bm25Candidates.map(function(e, i) {
         var timePart = (e.time_range || e.period || '');
         if (e.time_label) timePart = timePart + '·' + e.time_label;
         var idRef = e.id || '';
         return (i + 1) + '. [' + timePart + '] ' + (e.scene || '') + ': ' + (e.event || e.summary || '') + (idRef ? ' [id:' + idRef + ']' : '');
     }).join('\n');
+    
+    var dirBlock = '';
+    if (dirCandidates.length > 0) {
+        dirBlock = '\n## Archived Memory Catalog (LTM — view-only, not ranked by relevance)\n';
+        dirCandidates.forEach(function(e, idx) {
+            var timePart = (e.time_range || e.period || '');
+            if (e.time_label) timePart = timePart + '·' + e.time_label;
+            dirBlock += (idx + 1) + '. [' + timePart + '] ' + (e.event || e.summary || '') + (e.id ? ' [id:' + e.id + ']' : '') + '\n';
+        });
+    }
 
     var stmCount = content.stm_entries ? content.stm_entries.length : 0;
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
@@ -161,7 +174,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
             toolGuidanceEn +
             chainsBlock +
-            'Query: ' + query + '\n\nCandidates:\n' + candidatesText;
+            'Query: ' + query + '\n\nCandidates:\n' + candidatesText + dirBlock;
 
         return {
             system: system,
@@ -185,7 +198,7 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
         toolGuidanceZh +
         chainsBlock +
-        '查询：' + query + '\n\n候选记忆：\n' + candidatesText;
+        '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
 
     return {
         system: systemZh,

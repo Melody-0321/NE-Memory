@@ -1543,9 +1543,6 @@ function buildFullDumpInjection(vault, allSTM, allLTM) {
         return formatMinimalState(vault);
     }
 
-    parts.push('---');
-    parts.push('If you need more historical details, use recall_memory. To inspect specific characters, factions, or quests, use access.');
-
     return parts.join('\n\n');
 }
 

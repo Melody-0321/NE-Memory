@@ -1,0 +1,17 @@
+{
+  "type": "script",
+  "enabled": false,
+  "name": "NE Memory Engine",
+  "id": "ne_memory_engine",
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test3.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test3.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "纯前端记忆管理引擎 test3.0 — 批量STM提取 | LTM代码归一化整合 | 智能检索 | 状态Schema | 副API自动连接 | 界面完全重构",
+  "button": {
+    "enabled": false,
+    "buttons": []
+  },
+  "data": {},
+  "export_with": {
+    "data": true,
+    "button": true
+  }
+}

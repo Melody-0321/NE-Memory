@@ -232,12 +232,9 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
     allLTM = allLTM || [];
 
     var entries = [];
-    var STM_COUNT_FOR_LTM = 500;
-    var useLTM = allSTM.length >= STM_COUNT_FOR_LTM;
 
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
-        if (useLTM && stm.parent_ltm) continue;
         var text = buildSearchableText(stm);
         entries.push({
             _tokens: tokenize(text),
@@ -247,21 +244,9 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
         });
     }
 
-    if (useLTM) {
-        for (var i = 0; i < allLTM.length; i++) {
-            var ltm = allLTM[i];
-            var text = buildSearchableText(ltm);
-            entries.push({
-                _tokens: tokenize(text),
-                _entry: ltm,
-                _type: 'ltm',
-                _id: ltm.id
-            });
-        }
-    }
-
     var totalDocs = entries.length;
-    if (totalDocs === 0) return [];
+
+    if (totalDocs === 0 && allLTM.length === 0) return [];
 
     var docFreq = {};
     var totalTokens = 0;
@@ -299,7 +284,6 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
             var nextScore = Math.max(entries[idx + 1]._score, 1e-8);
             var ratio = curScore / nextScore;
             var pctOfTop = nextScore / Math.max(entries[0]._score, 1e-8);
-            // 相邻分数比 > 3x 且下一项低于首项 15% → 截断
             if (ratio > CUTOFF_RATIO && pctOfTop < CUTOFF_FLOOR && (idx + 1) >= minResults) {
                 resultCount = idx + 1;
                 break;
@@ -311,13 +295,32 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
     for (var i = 0; i < resultCount; i++) {
         var e = entries[i];
         if (e._score <= 0) {
-            if (results.length >= minResults) break;  // Enough positive results, stop
-            // Fall through: include score-0 to reach minResults
+            if (results.length >= minResults) break;
         }
         var result = JSON.parse(JSON.stringify(e._entry));
         result.__type = e._type;
         result.__id = e._id;
         results.push(result);
+    }
+
+    // ── LTM directory: append recent LTM entries as view-only catalog (not BM25 scored) ──
+    if (allLTM.length > 0) {
+        var ltmSorted = allLTM.slice().sort(function(a, b) {
+            return (b.timestamp || '').localeCompare(a.timestamp || '');
+        });
+        var ltmDirCount = Math.min(ltmSorted.length, 20);
+        for (var i = 0; i < ltmDirCount; i++) {
+            var ltm = JSON.parse(JSON.stringify(ltmSorted[i]));
+            ltm.__type = 'ltm';
+            ltm.__id = ltm.id;
+            ltm.__isDirectory = true;
+            // Deduplicate: skip if same id already in results
+            var alreadyInResults = false;
+            for (var r = 0; r < results.length; r++) {
+                if (results[r].__id === ltm.__id) { alreadyInResults = true; break; }
+            }
+            if (!alreadyInResults) results.push(ltm);
+        }
     }
 
     return results;
