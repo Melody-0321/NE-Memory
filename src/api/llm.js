@@ -130,19 +130,24 @@ function robustParseJson(raw) {
         var prefix = text.substring(firstBrace, sliceEnd);
         // 去掉尾部可能残留的逗号或冒号
         prefix = prefix.replace(/[,:\s]+$/, '');
-        // 补全未闭合的括号/数组
+        // 补全未闭合的字符串引号和括号/数组
         var depth = 0;
         var stack = [];
+        var inString = false;
         for (var ci = 0; ci < prefix.length; ci++) {
             var c = prefix[ci];
-            if (c === '"') {
-                ci = skipString(prefix, ci);
-                if (ci >= prefix.length) break;
+            if (inString) {
+                if (c === '\\') { ci++; continue; }
+                if (c === '"') inString = false;
                 continue;
             }
+            if (c === '"') { inString = true; continue; }
             if (c === '{' || c === '[') { stack.push(c === '{' ? '}' : ']'); depth++; }
             else if (c === '}' || c === ']') { stack.pop(); depth--; }
         }
+        // 如果还在字符串内，先补上闭合引号
+        if (inString) prefix += '"';
+        // 然后补全未闭合的括号
         while (stack.length > 0) prefix += stack.pop();
         try { return JSON.parse(prefix); } catch (_) {}
     }
