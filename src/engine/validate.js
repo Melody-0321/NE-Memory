@@ -45,8 +45,8 @@ export function postFillSTM(parsed, vault) {
 
     for (var i = 0; i < stmEntries.length; i++) {
         var e = stmEntries[i];
-        e.period = defaultPeriod;
-        e.scene = defaultScene;
+        if (!e.period) e.period = defaultPeriod;
+        if (!e.scene) e.scene = defaultScene;
     }
 
     if (checkpoints.time && checkpoints.time !== 'same') {
