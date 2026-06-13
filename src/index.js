@@ -286,15 +286,16 @@ function _buildDebugApi(host) {
                     if (btn) btn.click();
                 }, 100);
                 await new Promise(function(resolve) {
-                    var es = null;
-                    try { if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) es = SillyTavern.getContext().eventSource; } catch(e) {}
-                    var done = false;
-                    if (!es || typeof es.on !== 'function') {
-                        setTimeout(function() { if (!done) { done = true; resolve(); } }, count === 1 ? 60000 : 90000);
-                        return;
+                    var start = Date.now(), wasDisabled = false;
+                    function poll() {
+                        var btn = hostDoc.getElementById('send_but');
+                        var disabled = btn ? btn.disabled : false;
+                        if (disabled) wasDisabled = true;
+                        if (wasDisabled && !disabled) { resolve(); return; }
+                        if (Date.now() - start > 180000) { resolve(); return; }
+                        setTimeout(poll, 300);
                     }
-                    var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Seed ' + (i+1) + ' gen timed out'); }, 120000);
-                    es.on('GENERATION_ENDED', function handler() { if (done) return; done = true; clearTimeout(timer); resolve(); });
+                    setTimeout(poll, 2000);
                 });
                 await new Promise(function(r) { setTimeout(r, 10000); });
                 var summary = await globalThis.__ne_debug.getVaultSummary();
@@ -310,12 +311,16 @@ function _buildDebugApi(host) {
             ta.dispatchEvent(new Event('input', { bubbles: true }));
             setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) btn.click(); }, 100);
             await new Promise(function(resolve) {
-                var es = null;
-                try { if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) es = SillyTavern.getContext().eventSource; } catch(e) {}
-                var done = false;
-                if (!es || typeof es.on !== 'function') { setTimeout(function() { if (!done) { done = true; resolve(); } }, 120000); return; }
-                var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Query gen timed out'); }, 120000);
-                es.on('GENERATION_ENDED', function handler() { if (done) return; done = true; clearTimeout(timer); resolve(); });
+                var start = Date.now(), wasDisabled = false;
+                function poll() {
+                    var btn = hostDoc.getElementById('send_but');
+                    var disabled = btn ? btn.disabled : false;
+                    if (disabled) wasDisabled = true;
+                    if (wasDisabled && !disabled) { resolve(); return; }
+                    if (Date.now() - start > 180000) { resolve(); return; }
+                    setTimeout(poll, 300);
+                }
+                setTimeout(poll, 2000);
             });
             await new Promise(function(r) { setTimeout(r, 8000); });
             var data = {
