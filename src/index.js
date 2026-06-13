@@ -286,16 +286,10 @@ function _buildDebugApi(host) {
                     if (btn) btn.click();
                 }, 100);
                 await new Promise(function(resolve) {
-                    var start = Date.now(), wasDisabled = false;
-                    function poll() {
-                        var btn = hostDoc.getElementById('send_but');
-                        var disabled = btn ? btn.disabled : false;
-                        if (disabled) wasDisabled = true;
-                        if (wasDisabled && !disabled) { resolve(); return; }
-                        if (Date.now() - start > 180000) { resolve(); return; }
-                        setTimeout(poll, 300);
-                    }
-                    setTimeout(poll, 2000);
+                    var es = SillyTavern.getContext().eventSource;
+                    var done = false;
+                    var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Seed ' + (i+1) + ' gen timed out'); }, 120000);
+                    es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
                 });
                 await new Promise(function(r) { setTimeout(r, 10000); });
                 var summary = await globalThis.__ne_debug.getVaultSummary();
@@ -311,16 +305,10 @@ function _buildDebugApi(host) {
             ta.dispatchEvent(new Event('input', { bubbles: true }));
             setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) btn.click(); }, 100);
             await new Promise(function(resolve) {
-                var start = Date.now(), wasDisabled = false;
-                function poll() {
-                    var btn = hostDoc.getElementById('send_but');
-                    var disabled = btn ? btn.disabled : false;
-                    if (disabled) wasDisabled = true;
-                    if (wasDisabled && !disabled) { resolve(); return; }
-                    if (Date.now() - start > 180000) { resolve(); return; }
-                    setTimeout(poll, 300);
-                }
-                setTimeout(poll, 2000);
+                var es = SillyTavern.getContext().eventSource;
+                var done = false;
+                var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Query gen timed out'); }, 120000);
+                es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
             });
             await new Promise(function(r) { setTimeout(r, 8000); });
             var data = {
