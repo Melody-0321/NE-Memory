@@ -236,6 +236,7 @@ function bootNE(retries) {
 
 function _buildDebugApi(host) {
     var hostDoc = host ? host.document : document;
+    var host$ = host ? (host.$ || host.jQuery || $) : $;
     return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
@@ -294,11 +295,12 @@ function _buildDebugApi(host) {
                 console.log('[' + (i + 1) + '/' + count + '] ' + text);
                 var ta = hostDoc.getElementById('send_textarea');
                 if (!ta) { console.error('[NEM-HARNESS] No textarea'); return; }
-                $(ta).val(text).trigger('input');
+                ta.value = text;
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
                 setTimeout(function() {
                     var btn = hostDoc.getElementById('send_but');
-                    if (btn) $(btn).trigger('click');
-                }, 200);
+                    if (btn) host$(btn).trigger('click');
+                }, 100);
                 await this._waitUntilReply(120000);
                 var summary = await globalThis.__ne_debug.getVaultSummary();
                 console.log('  -> VAULT: ' + (summary ? 'STM=' + summary.stmCount + ' LTM=' + summary.ltmCount + ' Unc=' + summary.unconsolidatedCount : 'n/a'));
@@ -309,8 +311,9 @@ function _buildDebugApi(host) {
             console.log('[NEM-HARNESS] === RUN: ' + query + ' ===');
             var ta = hostDoc.getElementById('send_textarea');
             if (!ta) { console.error('[NEM-HARNESS] No textarea'); return null; }
-            $(ta).val(query).trigger('input');
-            setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) $(btn).trigger('click'); }, 200);
+            ta.value = query;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+            setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) host$(btn).trigger('click'); }, 100);
             await this._waitUntilReply(180000);
             var data = {
                 injection: globalThis.__ne_debug_last_injection || null,
