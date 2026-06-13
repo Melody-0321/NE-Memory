@@ -260,15 +260,22 @@ function _buildDebugApi(host) {
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
 
         _waitUntilReply: function(maxMs) {
+            var doc = hostDoc;
             return new Promise(function(resolve) {
                 var es = SillyTavern.getContext().eventSource;
-                var done = false;
-                var timer = setTimeout(function() {
-                    if (done) return; done = true; resolve();
-                }, maxMs || 120000);
+                var msgReceived = false;
+                var totalTimer = setTimeout(function() { resolve(); }, maxMs || 120000);
+                function pollDone() {
+                    if (!doc.body.dataset.generating) {
+                        clearTimeout(totalTimer);
+                        resolve();
+                        return;
+                    }
+                    setTimeout(pollDone, 150);
+                }
                 es.once('message_received', function() {
-                    if (done) return; done = true; clearTimeout(timer);
-                    resolve();
+                    msgReceived = true;
+                    pollDone();
                 });
             });
         },
