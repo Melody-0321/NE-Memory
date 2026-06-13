@@ -350,6 +350,13 @@ export async function executeConsolidation(chatId, force) {
     postFillLTM(result, unconsolidated);
     normalizeConsolidation(result.ltm_entries, stmIds);
     const merged = applyConsolidation(vault, result);
+
+    globalThis.__ne_debug_last_consolidation = {
+        merged: merged,
+        merged_ids: result.ltm_entries ? result.ltm_entries.map(function(e) { return e.id || ''; }).filter(Boolean) : [],
+        time: new Date().toISOString()
+    };
+
     if (merged > 0) {
         vault._meta = vault._meta || {};
         vault._meta.last_pipeline_task = 'consolidation';

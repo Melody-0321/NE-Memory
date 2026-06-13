@@ -14,6 +14,7 @@ import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
+import { runTest } from './test-runner/index.js';
 
 var _retryTimer = null;
 
@@ -258,6 +259,16 @@ function _buildDebugApi(host) {
         getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; },
         getLastMerge: function() { return globalThis.__ne_debug_last_merge || null; },
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
+        getStmEvents: function() { return globalThis.__ne_debug_last_stm_events || null; },
+        getConsolidation: function() { return globalThis.__ne_debug_last_consolidation || null; },
+        getCursor: function() { return globalThis.__ne_debug_last_cursor || null; },
+        dumpVault: async function() {
+            try {
+                var v = await read(getChatId());
+                if (!v || !v.content) return null;
+                return JSON.parse(JSON.stringify(v.content));
+            } catch (e) { return null; }
+        },
 
         _waitUntilReply: function(maxMs) {
             // ST clears body.dataset.generating BEFORE emitting MESSAGE_RECEIVED
@@ -347,7 +358,15 @@ function _buildDebugApi(host) {
             console.log(L.join('\n'));
             return data;
         },
-        getLastReport: function() { return globalThis.__ne_debug._lastTestReport; }
+        getLastReport: function() { return globalThis.__ne_debug._lastTestReport; },
+        runTest: async function(config) {
+             try {
+                 return await runTest(config, hostDoc);
+             } catch (e) {
+                 console.error('[NE] runTest failed:', e);
+                 return { error: e.message };
+             }
+         }
     };
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }

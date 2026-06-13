@@ -1086,11 +1086,27 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 parse_error: null
             }, chatId);
         }
+
+        globalThis.__ne_debug_last_stm_events = {
+            events: newEntries.map(function(e) { return { id: e.id, content: (e.content || '').substring(0, 200), tags: e.tags || [] }; }),
+            count: newEntries.length,
+            time: new Date().toISOString()
+        };
     } catch (e) {
         console.warn('[NE] Cursor pipeline failed:', e);
     }
 
     console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
+
+    try {
+        var processedIds = collectProcessedMsgIds(vault);
+        globalThis.__ne_debug_last_cursor = {
+            processedIds: processedIds || [],
+            size: processedIds ? processedIds.length : 0,
+            time: new Date().toISOString()
+        };
+    } catch (e) {}
+
     return { vault: vault, added: newEntries.length };
 }
 

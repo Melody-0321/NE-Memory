@@ -224,7 +224,7 @@ async function flushPendingMessages() {
 }
 
 function triggerPerRoundExtraction(assistantMsg) {
-    if (statePipelineRunning) return;
+    if (statePipelineRunning || pipelineRunning) return;
     statePipelineRunning = true;
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
