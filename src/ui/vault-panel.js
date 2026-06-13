@@ -11,12 +11,13 @@ import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
-import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig } from '../api/llm.js';
+import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
-import { extractEntityNames, lookupEntityChains } from '../engine/retrieval.js';
+import { extractEntityNames, lookupEntityChains, mergePipelines } from '../engine/retrieval.js';
 import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
 import { executeAccess } from '../tools.js';
+import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
 
 /* ──────── 工具 ──────── */
@@ -1317,9 +1318,19 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var smartPushStart = Date.now();
     var bm25Start = Date.now();
 
+    // ── 提取 entity aliases 用于 BM25 搜索 ──
+    var aliasesMap = {};
+    var characters = state.characters || {};
+    Object.keys(characters).forEach(function(name) {
+        var aliases = characters[name].aliases;
+        if (aliases && Array.isArray(aliases) && aliases.length > 0) {
+            aliasesMap[name] = aliases;
+        }
+    });
+
     var topCandidates;
     try {
-        topCandidates = filterCandidates(query, allSTM, allLTM, 40);
+        topCandidates = filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
     } catch (e) {
         console.warn('[NE] BM25 filter failed, falling back to full dump injection:', e);
         return buildFullDumpInjection(vault, allSTM, allLTM);
@@ -1330,11 +1341,30 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 
+    // ── 合并管线: BM25 + 实体链 + LTM 分组 → unified Map ──
+    var pipelineMerged;
+    try {
+        pipelineMerged = mergePipelines(topCandidates, entityChains, allLTM, state, allSTM);
+    } catch (e) {
+        console.warn('[NE] mergePipelines failed, using BM25-only:', e);
+        pipelineMerged = mergePipelines(topCandidates, {}, [], state, allSTM);
+    }
+
+    // ── 构建笔记本 ──
+    var notebook = new RetrievalNotebook();
+    if (pipelineMerged && pipelineMerged.map) {
+        notebook.map = pipelineMerged.map;
+    }
+    if (pipelineMerged && pipelineMerged.threadIndex) {
+        notebook.threadIndex = pipelineMerged.threadIndex;
+    }
+    notebook._availableChains = pipelineMerged ? (pipelineMerged.availableChains || []) : [];
+
     var retrievalApiStart = Date.now();
     var synthesized;
     var smPushMethod;
     try {
-        var messages = buildRetrievalMessages(query, topCandidates, vault, budget);
+        var messages = buildRetrievalMessages(notebook, query, vault, budget);
         var accessTool = {
             type: 'function',
             function: {
@@ -1343,14 +1373,63 @@ export async function formatSmartContext(vault, chatMessages, budget) {
                 parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] }
             }
         };
+        var noteThreadTool = {
+            type: 'function',
+            function: {
+                name: 'note_thread',
+                description: 'Register a cross-entity narrative thread (time-discontiguous but thematically linked events).',
+                parameters: {
+                    type: 'object',
+                    properties: {
+                        label: { type: 'string', description: 'Short descriptive label for the thread' },
+                        stm_ids: { type: 'array', items: { type: 'string' }, description: 'Ordered list of stm_ids in this thread' }
+                    },
+                    required: ['label', 'stm_ids']
+                }
+            }
+        };
         var accessExecutor = function(args) {
             var ref = args.ref || '';
-            for (var ci = 0; ci < topCandidates.length; ci++) {
-                if (topCandidates[ci].id === ref || topCandidates[ci].__id === ref) return JSON.stringify(topCandidates[ci]);
+            // Check notebook Map first
+            var nbEntry = notebook.getEntry(ref);
+            if (nbEntry) {
+                notebook.expand(ref);
+                return JSON.stringify(nbEntry.entry);
             }
+            // Check topCandidates (fallback)
+            for (var ci = 0; ci < topCandidates.length; ci++) {
+                if (topCandidates[ci].id === ref || topCandidates[ci].__id === ref) {
+                    notebook.expand(ref);
+                    return JSON.stringify(topCandidates[ci]);
+                }
+            }
+            // Chain access
+            if (ref.indexOf('chain.') === 0 || ref.indexOf('chain:') === 0) {
+                var chainEntity = ref.replace(/^(chain\.|chain:)/, '');
+                var chainResult = executeAccess(ref, null, getChatId, getChatMessages);
+                try {
+                    var chainData = JSON.parse(chainResult);
+                    if (chainData && chainData.entries && Array.isArray(chainData.entries)) {
+                        notebook.addChain(chainEntity, chainData.entries);
+                    }
+                    return chainData.text || chainResult;
+                } catch (e) {
+                    return chainResult;
+                }
+            }
+            // Direct access (stm_id, ltm_id, msg_id)
             return executeAccess(ref, null, getChatId, getChatMessages);
         };
-        var result = await callMemoryRetrievalWithTools(messages, [accessTool], { access: accessExecutor }, { timeout: 8, maxTokens: 2048 });
+        var noteThreadExecutor = function(args) {
+            var label = args.label || '';
+            var stmIds = args.stm_ids || [];
+            if (label && stmIds.length > 0) {
+                notebook.addDispersedThread(label, stmIds);
+                return 'Registered dispersed thread: ' + label + ' (' + stmIds.length + ' events)';
+            }
+            return 'No valid thread to register';
+        };
+        var result = await callMemoryRetrievalWithTools(messages, [accessTool, noteThreadTool], { access: accessExecutor, note_thread: noteThreadExecutor }, { timeout: 8, maxTokens: 2048 });
         synthesized = result;
         smPushMethod = 'llm_synthesis';
     } catch (e) {
@@ -2194,6 +2273,11 @@ function renderSettingsTab() {
     var mc = settings.memoryConfig || {};
     var secApi = {};
     try { var rawApi = localStorage.getItem('ne_secondary_api'); if (rawApi) secApi = JSON.parse(rawApi); } catch (e) {}
+    var apiSplitMode = isApiSplitMode();
+    var retApi = {};
+    if (apiSplitMode) {
+        try { var rawRet = localStorage.getItem('ne_retrieval_api'); if (rawRet) retApi = JSON.parse(rawRet); } catch (e) {}
+    }
     var statusDot = '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>';
 
     // === Common Settings ===
@@ -2227,27 +2311,79 @@ function renderSettingsTab() {
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<div class="ne-settings-grid">' +
-        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
-        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
+        '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
+        '<label><input type="checkbox" id="nes_api_split" ' + (apiSplitMode ? 'checked' : '') + '> <span>' + t('Separate API for Retrieval') + '</span></label>' +
         '</div>' +
-        '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
-        '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 12px;">' + t('Split retrieval from maintenance API. Maintenance handles STM/State/LTM extraction; retrieval handles Smart Push / recall.') + '</div>' +
+        (apiSplitMode ?
+            // ── Split mode ──
+            '<div style="margin-bottom:12px;padding:8px;border:1px solid var(--grey20);border-radius:6px;">' +
+            '<div style="font-weight:600;margin-bottom:6px;">\u25C8 ' + t('Maintenance API (Pipeline)') + '</div>' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">STM / State / LTM extraction. Needs faithful structured output, no tool calling required.</div>' +
+            '<div class="ne-settings-grid">' +
+            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_pipeline_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
+            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_pipeline_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
+            '<div><label>' + t('Model') + '</label><input type="text" id="nes_pipeline_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
+            '</div>' +
+            '<div><button class="ne-api-btn" id="nes_pipeline_connect">' + t('Connect') + '</button></div>' +
+            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_pipeline_dot"></span><span id="nes_pipeline_status_text">' + t('Not connected') + '</span></div>' +
+            '</div>' +
+            '<div style="padding:8px;border:1px solid var(--grey20);border-radius:6px;">' +
+            '<div style="font-weight:600;margin-bottom:6px;">\u25C8 ' + t('Retrieval API (Smart Push)') + '</div>' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">Smart Push / recall_memory. Needs long context + function calling.</div>' +
+            '<div class="ne-settings-grid">' +
+            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_retrieval_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(retApi.url || '') + '"></div>' +
+            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_retrieval_key" placeholder="sk-..." value="' + escapeHtml(retApi.key || '') + '"></div>' +
+            '<div><label>' + t('Model') + '</label><input type="text" id="nes_retrieval_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(retApi.model || '') + '"></div>' +
+            '</div>' +
+            '<div><button class="ne-api-btn" id="nes_retrieval_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_retrieval_test">' + t('Test Message') + '</button></div>' +
+            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_retrieval_dot"></span><span id="nes_retrieval_status_text">' + t('Not connected') + '</span></div>' +
+            '</div>'
+            :
+            // ── Unified mode ──
+            '<div class="ne-settings-grid">' +
+            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
+            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
+            '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
+            '</div>' +
+            '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
+            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>'
+        ) +
         '</div></div>';
     container.innerHTML = commonHtml;
 
     // Auto-initialize API status if config exists (from auto-connect on page load)
-    if (secApi.url && secApi.model) {
-        setTimeout(function () {
-            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
-            testSecondaryApiConnection(secApi).then(function (r) {
-                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                var hdr = byId('narrative_secondary_api_status');
-                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
-            });
-        }, 100);
+    if (apiSplitMode) {
+        if (retApi.url && retApi.model) {
+            setTimeout(function () {
+                var dot = byId('nes_retrieval_dot'), text = byId('nes_retrieval_status_text');
+                testSecondaryApiConnection(retApi).then(function (r) {
+                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + retApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                });
+            }, 100);
+        }
+        if (secApi.url && secApi.model) {
+            setTimeout(function () {
+                var dot = byId('nes_pipeline_dot'), text = byId('nes_pipeline_status_text');
+                testSecondaryApiConnection(secApi).then(function (r) {
+                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                });
+            }, 100);
+        }
+    } else {
+        if (secApi.url && secApi.model) {
+            setTimeout(function () {
+                var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+                testSecondaryApiConnection(secApi).then(function (r) {
+                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                    var hdr = byId('narrative_secondary_api_status');
+                    if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
+                });
+            }, 100);
+        }
     }
 
     // === Advanced Settings ===
@@ -2300,42 +2436,112 @@ function renderSettingsTab() {
     var ta2 = byId('nes_character_schema');
     if (ta2) ta2.onblur = function () { saveSettingsTab(); };
     // Secondary API inputs — save on blur
-    var urlEl = byId('nes_secondary_url');
-    if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
-    var keyEl = byId('nes_secondary_key');
-    if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
-    var modelEl = byId('nes_secondary_model');
-    if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
-    // Secondary API connect / test
-    var connBtn = byId('nes_api_connect');
-    if (connBtn) connBtn.onclick = function () {
-        var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
-        saveSecondaryApiConfig(cfg);
-        var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
-        if (dot) dot.className = 'ne-api-dot';
-        if (text) text.textContent = t('Connecting...');
-        if (connBtn) connBtn.disabled = true;
-        testSecondaryApiConnection(cfg).then(function (r) {
-            if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-            if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
-            if (connBtn) connBtn.disabled = false;
-            var hdr = byId('narrative_secondary_api_status');
-            if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
-        });
-    };
-    var testBtn = byId('nes_api_test');
-    if (testBtn) testBtn.onclick = function () {
-        var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
-        if (!cfg.url) { alert('Please enter an API URL first.'); return; }
-        if (testBtn) testBtn.disabled = true;
-        sendSecondaryTestMessage(cfg).then(function () {
-            typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
-            if (testBtn) testBtn.disabled = false;
-        }).catch(function (e) {
-            typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
-            if (testBtn) testBtn.disabled = false;
-        });
-    };
+    // ── API split toggle ──
+    var splitToggle = byId('nes_api_split');
+    if (splitToggle) {
+        splitToggle.onchange = function () {
+            setApiSplitMode(splitToggle.checked);
+            renderSettingsTab(); // 重渲染以切换表单
+        };
+    }
+
+    var apiSplitModeNow = isApiSplitMode();
+    if (apiSplitModeNow) {
+        // ── Split mode handlers ──
+        // Pipeline auto-save
+        var pUrlEl = byId('nes_pipeline_url');
+        if (pUrlEl) pUrlEl.onchange = function () { saveSecApiOnly(); };
+        var pKeyEl = byId('nes_pipeline_key');
+        if (pKeyEl) pKeyEl.onchange = function () { saveSecApiOnly(); };
+        var pModelEl = byId('nes_pipeline_model');
+        if (pModelEl) pModelEl.onchange = function () { saveSecApiOnly(); };
+        var pConnBtn = byId('nes_pipeline_connect');
+        if (pConnBtn) pConnBtn.onclick = function () {
+            var cfg = { url: byId('nes_pipeline_url').value.trim(), key: byId('nes_pipeline_key').value.trim(), model: byId('nes_pipeline_model').value.trim() };
+            saveSecondaryApiConfig(cfg);
+            var dot = byId('nes_pipeline_dot'), text = byId('nes_pipeline_status_text');
+            if (dot) dot.className = 'ne-api-dot';
+            if (text) text.textContent = t('Connecting...');
+            if (pConnBtn) pConnBtn.disabled = true;
+            testSecondaryApiConnection(cfg).then(function (r) {
+                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                if (pConnBtn) pConnBtn.disabled = false;
+            });
+        };
+
+        // Retrieval auto-save
+        var rUrlEl = byId('nes_retrieval_url');
+        if (rUrlEl) rUrlEl.onchange = function () { saveRetApiOnly(); };
+        var rKeyEl = byId('nes_retrieval_key');
+        if (rKeyEl) rKeyEl.onchange = function () { saveRetApiOnly(); };
+        var rModelEl = byId('nes_retrieval_model');
+        if (rModelEl) rModelEl.onchange = function () { saveRetApiOnly(); };
+        var rConnBtn = byId('nes_retrieval_connect');
+        if (rConnBtn) rConnBtn.onclick = function () {
+            var cfg = { url: byId('nes_retrieval_url').value.trim(), key: byId('nes_retrieval_key').value.trim(), model: byId('nes_retrieval_model').value.trim() };
+            saveRetrievalApiConfig(cfg);
+            var dot = byId('nes_retrieval_dot'), text = byId('nes_retrieval_status_text');
+            if (dot) dot.className = 'ne-api-dot';
+            if (text) text.textContent = t('Connecting...');
+            if (rConnBtn) rConnBtn.disabled = true;
+            testSecondaryApiConnection(cfg).then(function (r) {
+                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                if (rConnBtn) rConnBtn.disabled = false;
+            });
+        };
+        var rTestBtn = byId('nes_retrieval_test');
+        if (rTestBtn) rTestBtn.onclick = function () {
+            var cfg = { url: byId('nes_retrieval_url').value.trim(), key: byId('nes_retrieval_key').value.trim(), model: byId('nes_retrieval_model').value.trim() };
+            if (!cfg.url) { alert('Please enter an API URL first.'); return; }
+            if (rTestBtn) rTestBtn.disabled = true;
+            sendSecondaryTestMessage(cfg).then(function () {
+                typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
+                if (rTestBtn) rTestBtn.disabled = false;
+            }).catch(function (e) {
+                typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
+                if (rTestBtn) rTestBtn.disabled = false;
+            });
+        };
+    } else {
+        // ── Unified mode handlers ──
+        var urlEl = byId('nes_secondary_url');
+        if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
+        var keyEl = byId('nes_secondary_key');
+        if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
+        var modelEl = byId('nes_secondary_model');
+        if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
+        var connBtn = byId('nes_api_connect');
+        if (connBtn) connBtn.onclick = function () {
+            var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+            saveSecondaryApiConfig(cfg);
+            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+            if (dot) dot.className = 'ne-api-dot';
+            if (text) text.textContent = t('Connecting...');
+            if (connBtn) connBtn.disabled = true;
+            testSecondaryApiConnection(cfg).then(function (r) {
+                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                if (connBtn) connBtn.disabled = false;
+                var hdr = byId('narrative_secondary_api_status');
+                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
+            });
+        };
+        var testBtn = byId('nes_api_test');
+        if (testBtn) testBtn.onclick = function () {
+            var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+            if (!cfg.url) { alert('Please enter an API URL first.'); return; }
+            if (testBtn) testBtn.disabled = true;
+            sendSecondaryTestMessage(cfg).then(function () {
+                typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
+                if (testBtn) testBtn.disabled = false;
+            }).catch(function (e) {
+                typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
+                if (testBtn) testBtn.disabled = false;
+            });
+        };
+    }
 }
 
 function saveSettingsTab() {
@@ -2390,9 +2596,18 @@ function saveSettingsTab() {
 
 function saveSecApiOnly() {
     var secApi = {
-        url: byId('nes_secondary_url').value.trim(),
-        key: byId('nes_secondary_key').value.trim(),
-        model: byId('nes_secondary_model').value.trim()
+        url: byId('nes_secondary_url') ? byId('nes_secondary_url').value.trim() : '',
+        key: byId('nes_secondary_key') ? byId('nes_secondary_key').value.trim() : '',
+        model: byId('nes_secondary_model') ? byId('nes_secondary_model').value.trim() : ''
     };
     saveSecondaryApiConfig(secApi);
+}
+
+function saveRetApiOnly() {
+    var retApi = {
+        url: byId('nes_retrieval_url') ? byId('nes_retrieval_url').value.trim() : '',
+        key: byId('nes_retrieval_key') ? byId('nes_retrieval_key').value.trim() : '',
+        model: byId('nes_retrieval_model') ? byId('nes_retrieval_model').value.trim() : ''
+    };
+    saveRetrievalApiConfig(retApi);
 }

@@ -52,7 +52,7 @@ function tokenize(text) {
     return tokens;
 }
 
-function buildSearchableText(entry) {
+function buildSearchableText(entry, aliasesMap) {
     var parts = [];
     if (entry.period) parts.push(entry.period);
     if (entry.time_range) parts.push(entry.time_range);
@@ -62,7 +62,13 @@ function buildSearchableText(entry) {
     if (entry.translation) parts.push(entry.translation);
     if (entry.entities && Array.isArray(entry.entities)) {
         entry.entities.forEach(function(en) {
-            if (en.name) parts.push(en.name);
+            if (en.name) {
+                parts.push(en.name);
+                var aliases = aliasesMap ? aliasesMap[en.name] : null;
+                if (aliases && Array.isArray(aliases)) {
+                    aliases.forEach(function(a) { if (a) parts.push(a); });
+                }
+            }
         });
     }
     return parts.join(' ');
@@ -285,7 +291,7 @@ function denoiseResults(results, minResults) {
     return merged.slice(0, 40);
 }
 
-export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
+export function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap) {
     topK = topK || 40;
     minResults = minResults || 3;
     allSTM = allSTM || [];
@@ -295,7 +301,7 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
 
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
-        var text = buildSearchableText(stm);
+        var text = buildSearchableText(stm, aliasesMap);
         entries.push({
             _tokens: tokenize(text),
             _entry: stm,

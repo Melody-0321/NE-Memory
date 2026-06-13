@@ -132,9 +132,367 @@ export function classifyQuery(query, state, content) {
     return { type: 'open' };
 }
 
-// ─── Main prompt builder ───
+// ─── Helper: derive thread time range ───
 
-export function buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode) {
+function deriveThreadTimeRange(entries) {
+    if (!entries || entries.length === 0) return '';
+    var first = entries[0];
+    var last = entries[entries.length - 1];
+    var firstTime = first.period || first.time_label || '';
+    var lastTime = last.period || last.time_label || '';
+    if (firstTime && lastTime && firstTime !== lastTime) {
+        return firstTime + ' → ' + lastTime;
+    } else if (firstTime) {
+        return firstTime;
+    }
+    return '';
+}
+
+// ─── Implicit entity discovery ───
+
+function discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM) {
+    var availableNames = [];
+    var seen = {};
+    if (!prefetchedNames) prefetchedNames = [];
+    allSTM = allSTM || [];
+    allLTM = allLTM || [];
+
+    // Mark prefetched names as already covered
+    prefetchedNames.forEach(function(n) { seen[n.toLowerCase()] = true; });
+
+    // Scan all Map entries for entity names not yet prefetched
+    map.forEach(function(entry) {
+        var entities = entry.entry && entry.entry.entities;
+        if (!entities || !Array.isArray(entities)) return;
+        entities.forEach(function(en) {
+            if (!en.name) return;
+            var key = en.name.toLowerCase();
+            if (seen[key]) return;
+            seen[key] = true;
+            availableNames.push(en.name);
+        });
+    });
+
+    // Sort by occurrence frequency in map
+    var freq = {};
+    availableNames.forEach(function(n) { freq[n] = 0; });
+    map.forEach(function(entry) {
+        var entities = entry.entry && entry.entry.entities;
+        if (!entities || !Array.isArray(entities)) return;
+        entities.forEach(function(en) {
+            if (en.name && freq[en.name] !== undefined) freq[en.name]++;
+        });
+    });
+    availableNames.sort(function(a, b) { return (freq[b] || 0) - (freq[a] || 0); });
+
+    // Count total vault entries for each available entity
+    var allEntries = allSTM.concat(allLTM);
+    var result = [];
+    availableNames.slice(0, 5).forEach(function(name) {
+        var total = 0;
+        for (var i = 0; i < allEntries.length; i++) {
+            var entities = allEntries[i].entities;
+            if (entities && Array.isArray(entities)) {
+                if (entities.some(function(en) { return en.name === name; })) total++;
+            }
+        }
+        result.push({ name: name, count: total });
+    });
+
+    return result;
+}
+
+// ─── Pipeline merge (v2) ───
+
+/**
+ * Merge BM25 results, entity chains, and LTM groups into a unified Map + ThreadIndex.
+ */
+export function mergePipelines(bm25Results, entityChains, allLTM, state, allSTM) {
+    var map = new Map();
+    var threadIndex = {};
+
+    // ── Step 1: BM25 results into Map ──
+    bm25Results.forEach(function(c) {
+        var id = c.__id || c.id;
+        if (!id) return;
+        if (c.__isDirectory) {
+            map.set(id, {
+                entry: c,
+                type: 'ltm',
+                bm25Score: 0,
+                threads: [],
+                sources: ['ltm_dir'],
+                _expanded: false,
+                _lastDescribedVersion: 0
+            });
+            return;
+        }
+        map.set(id, {
+            entry: c,
+            type: c.__type || 'stm',
+            bm25Score: c.__score || 0,
+            threads: [],
+            sources: ['bm25'],
+            _expanded: false,
+            _lastDescribedVersion: 0
+        });
+    });
+
+    // ── Step 2: Entity chains into Map (code pre-fetch — explicit entity names) ──
+    var prefetchedNames = [];
+    Object.keys(entityChains).forEach(function(entityName) {
+        prefetchedNames.push(entityName);
+        var entries = entityChains[entityName];
+        if (!entries || entries.length === 0) return;
+
+        var threadId = 'chain:' + entityName;
+        var stmIds = [];
+
+        entries.forEach(function(e, idx) {
+            var id = e.id;
+            if (!id) return;
+            stmIds.push(id);
+
+            var existing = map.get(id);
+            if (existing) {
+                var hasThread = false;
+                for (var i = 0; i < existing.threads.length; i++) {
+                    if (existing.threads[i].threadId === threadId) {
+                        hasThread = true;
+                        break;
+                    }
+                }
+                if (!hasThread) {
+                    existing.threads.push({ threadId: threadId, position: idx + 1, total: entries.length });
+                }
+                if (existing.sources.indexOf('chain:' + entityName) === -1) {
+                    existing.sources.push('chain:' + entityName);
+                }
+            } else {
+                map.set(id, {
+                    entry: e,
+                    type: 'stm',
+                    bm25Score: 0,
+                    threads: [{ threadId: threadId, position: idx + 1, total: entries.length }],
+                    sources: ['chain:' + entityName],
+                    _expanded: false,
+                    _lastDescribedVersion: 0
+                });
+            }
+        });
+
+        threadIndex[threadId] = {
+            type: 'entity_chain',
+            label: entityName,
+            stmIds: stmIds,
+            timeRange: deriveThreadTimeRange(entries),
+            dagLayer: 1,
+            parentThreadId: null
+        };
+    });
+
+    // ── Step 3: LTM groups into Map ──
+    allLTM.forEach(function(ltm) {
+        var refs = ltm.stm_refs || [];
+        if (refs.length === 0) return;
+
+        var threadId = 'ltm:' + ltm.id;
+        var stmIds = [];
+
+        refs.forEach(function(stmId, idx) {
+            stmIds.push(stmId);
+            var existing = map.get(stmId);
+            if (existing) {
+                existing.threads.push({ threadId: threadId, position: idx + 1, total: refs.length });
+                if (existing.sources.indexOf('ltm:' + ltm.id) === -1) {
+                    existing.sources.push('ltm:' + ltm.id);
+                }
+            }
+        });
+
+        threadIndex[threadId] = {
+            type: 'ltm_group',
+            label: ltm.event || ltm.summary || '',
+            stmIds: stmIds,
+            ltmId: ltm.id,
+            timeRange: ltm.time_range || '',
+            dagLayer: 1,
+            parentThreadId: null
+        };
+    });
+
+    // ── Step 4: Implicit entity discovery → mark available chains ──
+    var availableChains = discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM);
+
+    return { map: map, threadIndex: threadIndex, availableChains: availableChains };
+}
+
+// ─── Prompt builder (v2 — accepts notebook) ───
+
+export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode) {
+    budget = budget || 1200;
+    isSummaryMode = isSummaryMode || false;
+    var content = vault.content || {};
+    var lang = (content.language === 'en') ? 'en' : 'zh';
+    var state = content.state || {};
+    var timeParts = [];
+    if (state.time || content.story_time) timeParts.push(state.time || content.story_time);
+    if (content.story_date) timeParts.push(content.story_date);
+    var currentTime = timeParts.join(' ─ ');
+
+    var entries = notebook.toPromptEntries();
+    var bm25Entries = entries.filter(function(e) { return e.bm25Score > 0; });
+    var dirEntries = entries.filter(function(e) { return e.type === 'ltm' && e.sources && e.sources.indexOf('ltm_dir') !== -1; });
+
+    // Build candidates text with thread context
+    var candidatesText = entries.filter(function(e) { return !(e.type === 'ltm' && e.sources && e.sources.indexOf('ltm_dir') !== -1); }).map(function(e, i) {
+        var event = e.entry.event || e.entry.summary || '';
+        var timePart = (e.entry.time_range || e.entry.period || '');
+        if (e.entry.time_label) timePart = timePart + '·' + e.entry.time_label;
+        var idRef = e.entry.id || '';
+
+        // Build thread annotation
+        var threadTags = [];
+        e.threads.forEach(function(t) {
+            var prefix = '';
+            if (t.threadId.indexOf('chain:') === 0) prefix = 'L:' + t.threadId.substring(6);
+            else if (t.threadId.indexOf('ltm:') === 0) prefix = 'G:' + t.threadId.substring(4);
+            else if (t.threadId.indexOf('dispersed:') === 0) prefix = 'D:' + t.threadId.substring(10);
+            threadTags.push(prefix + '#' + t.position + '/' + t.total);
+        });
+        var threadAnno = threadTags.length > 0 ? ' {' + threadTags.join(', ') + '}' : '';
+
+        // BM25 score
+        var scoreAnno = e.bm25Score > 0 ? ' [BM25:' + e.bm25Score.toFixed(2) + ']' : '';
+
+        return (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
+    }).join('\n');
+
+    var dirBlock = '';
+    if (dirEntries.length > 0) {
+        dirBlock = '\n## Archived Memory Catalog (LTM — view-only, not ranked by relevance)\n';
+        dirEntries.forEach(function(e, idx) {
+            var timePart = (e.entry.time_range || e.entry.period || '');
+            if (e.entry.time_label) timePart = timePart + '·' + e.entry.time_label;
+            dirBlock += (idx + 1) + '. [' + timePart + '] ' + (e.entry.event || e.entry.summary || '') + (e.entry.id ? ' [id:' + e.entry.id + ']' : '') + '\n';
+        });
+    }
+
+    // Notebook overview
+    var overview = notebook.describe();
+
+    // Available chains hint
+    var availableChains = notebook._availableChains || [];
+    var availChainHint = '';
+    if (availableChains.length > 0) {
+        var chainItems = availableChains.map(function(c) {
+            return c.name + ' [' + c.count + ' entries]';
+        }).join(', ');
+        availChainHint = '\n## Available Chains (not yet expanded)\n' + chainItems + '\n' +
+            'Long chains (high count) = this entity appears globally throughout the story. Their timeline overlaps with story chronology. Useful when the query takes this entity\'s perspective.\n' +
+            'Short chains (low count) = this entity appears sporadically. High information density per entry, more likely to reveal narrative turning points that BM25 missed.\n' +
+            'Use access(chain.X) to fetch a chain.\n';
+    }
+
+    var stmCount = content.stm_entries ? content.stm_entries.length : 0;
+    var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
+
+    if (isSummaryMode) {
+        var summaryBlock = '\n\nRelevant memories (time-ordered):\n' + candidatesText;
+        if (lang === 'en') {
+            return {
+                system: 'You are a memory archivist. Return all memory entries as a chronological timeline. Do NOT synthesize, group, or omit any entry.\n\nCurrent story time: ' + currentTime,
+                user: 'List all entries below in chronological order. Include every entry.' + summaryBlock
+            };
+        }
+        return {
+            system: '你是记忆档案员。按时间顺序列出所有记忆条目。不要合成、分组或省略。\n\n当前故事时间：' + currentTime,
+            user: '按时间顺序列出所有条目，不要省略。' + summaryBlock
+        };
+    }
+
+    var toolGuidanceEn = '## Context Overview\n' + overview + '\n\n' +
+        '## Thread Notation\n' +
+        'Each candidate is annotated with thread tags: {L:entityName#pos/total} = entity chain position, {G:ltm_id#pos/total} = LTM group position, {D:label#pos/total} = dispersed narrative thread.\n' +
+        '[BM25:X.XX] = relevance score. Higher = more relevant to the query.\n\n' +
+        '## Search Tools\n' +
+        'You have access to:\n' +
+        '- access(stm_id): get full original text of an STM entry\n' +
+        '- access(ltm_id): get full content of an LTM entry\n' +
+        '- access(msg_id): view the original chat message\n' +
+        '- access(chain.X): get full timeline of entity X\n' +
+        '- note_thread(label, stm_ids): register a cross-entity narrative thread if you identify events spanning multiple entities and time gaps that share an underlying narrative line\n\n' +
+        'The candidate list is only the first round. If you find entity names or event references with incomplete info, use access to dig deeper. Search until you have sufficient context before synthesizing. At most 3 search rounds.\n\n';
+
+    var toolGuidanceZh = '## 上下文总览\n' + overview + '\n\n' +
+        '## 线程标注\n' +
+        '每条候选带有线程标签：{L:实体名#位置/总数} = 实体链位置, {G:ltm_id#位置/总数} = LTM 分组位置, {D:标签#位置/总数} = 散列叙事线。\n' +
+        '[BM25:X.XX] = 相关性评分。越高越相关。\n\n' +
+        '## 搜索工具\n' +
+        '你可以使用：\n' +
+        '- access(stm_id): 获取 STM 条目完整原文\n' +
+        '- access(ltm_id): 获取 LTM 归档完整内容\n' +
+        '- access(msg_id): 查看原始对话消息\n' +
+        '- access(chain.X): 获取实体 X 的完整事件时间线\n' +
+        '- note_thread(label, stm_ids): 如果发现多条跨实体但属于同一隐约叙事线的事件（即使时间不连续），使用此工具注册。label 为简短摘要（如"矿洞异常线索追踪"）\n\n' +
+        '候选列表仅是第一轮线索。若发现候选中有实体名或事件引用但信息不完整，使用 access 获取更多上下文。搜索直到信息充足后再合成。最多搜索 3 轮。\n\n';
+
+    if (lang === 'en') {
+        var systemEn = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
+            'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a detailed synthesized answer.\n\n' +
+            'Rules:\n' +
+            '1. RELEVANCE: remove entries unrelated to the query. If relevance is uncertain, keep.\n' +
+            '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
+            '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
+            '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
+            '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>".\n' +
+            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n' +
+            '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
+            'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
+            'Output format:\n' +
+            '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n\n' +
+            'Keep the total response under ' + budget + ' tokens.\n\n' +
+            'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
+            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
+            toolGuidanceEn +
+            availChainHint +
+            'Query: ' + query + '\n\nCandidates:\n' + candidatesText + dirBlock;
+
+        return {
+            system: systemEn,
+            user: 'Synthesize the relevant memories. Return only the formatted answer, no preamble.'
+        };
+    }
+
+    var systemZh = '你是这个角色扮演的记忆中枢。当前故事时间：' + currentTime + '。你已追踪 ' + stmCount + ' 条 STM 条目和 ' + ltmCount + ' 条 LTM 条目。\n\n' +
+        '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回详细展开的叙事合成答案。\n\n' +
+        '规则：\n' +
+        '1. 相关性：剔除与查询无关的条目。不确定时保留。\n' +
+        '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
+        '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
+        '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
+        '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。\n' +
+        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n' +
+        '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
+        '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
+        '输出格式：\n' +
+        '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n\n' +
+        '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
+        '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
+        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
+        toolGuidanceZh +
+        availChainHint +
+        '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
+
+    return {
+        system: systemZh,
+        user: '合成相关记忆。仅返回格式化答案，无前缀。'
+    };
+}
+
+// ─── Main prompt builder (v1 — legacy) ───
+
+function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode) {
     budget = budget || 1200;
     isSummaryMode = isSummaryMode || false;
     var content = vault.content || {};
@@ -272,8 +630,21 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
     };
 }
 
-export function buildRetrievalMessages(query, candidates, vault, budget, isSummaryMode) {
-    var prompt = buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode);
+export function buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode) {
+    try {
+        var prompt = buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode);
+        return [
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user }
+        ];
+    } catch (e) {
+        console.warn('[NE] buildRetrievalPrompt failed, trying legacy:', e);
+        return buildRetrievalMessagesLegacy(query, notebook.toPromptEntries ? notebook.toPromptEntries() : [], vault, budget, isSummaryMode);
+    }
+}
+
+export function buildRetrievalMessagesLegacy(query, candidates, vault, budget, isSummaryMode) {
+    var prompt = buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode);
     return [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user }

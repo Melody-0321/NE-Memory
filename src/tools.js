@@ -4,7 +4,7 @@
 import { read } from './vault/store.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
-import { buildRetrievalMessages } from './engine/retrieval.js';
+import { buildRetrievalMessagesLegacy } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
 import { addToolCall } from './engine/telemetry.js';
 import { recordChatStat } from './engine/chat-telemetry.js';
@@ -93,7 +93,10 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                             var refs = (e.msg_ids || []).map(function(id) { return '→' + id; }).join(', ');
                             chainLines.push((i + 1) + '. ' + (label ? '[' + label + '] ' : '') + (e.event || '') + (refs ? ' [' + refs + ']' : ''));
                         });
-                        result = chainLines.join('\n');
+                        result = JSON.stringify({
+                            text: chainLines.join('\n'),
+                            entries: chainEntries.map(function(e) { return e; })
+                        });
                     }
                 }
 
@@ -341,7 +344,7 @@ function registerRecallMemory(getChatId) {
                     });
                 }
 
-                var messages = buildRetrievalMessages(args.query, topCandidates, vault, 800, isSummaryMode);
+                var messages = buildRetrievalMessagesLegacy(args.query, topCandidates, vault, 800, isSummaryMode);
 
                 if (lastRecallMsgIds && lastRecallMsgIds.length > 0) {
                     var dedupNote = '\n\n[DEDUP: Some candidates draw from source messages already used in a previous recall this turn.]\n';

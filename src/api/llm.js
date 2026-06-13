@@ -36,7 +36,12 @@ async function loadMemoryConfig() {
 }
 
 export async function callMemoryLLM(messages, options = {}) {
-    const secondaryConfig = loadSecondaryApiConfig();
+    var secondaryConfig;
+    if (options._forcePipelineApi) {
+        secondaryConfig = loadSecondaryApiConfig();
+    } else {
+        secondaryConfig = loadRetrievalApiConfig();
+    }
     const startTime = Date.now();
     let response = null;
     let apiSource = 'tavern';
@@ -91,8 +96,8 @@ export async function callMemoryLLM(messages, options = {}) {
 }
 
 export async function callMemoryPipeline(messages, options = {}, chatId = null) {
-    var mc = loadMemoryConfig();
-    return callMemoryLLM(messages, Object.assign({}, options, { temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens, chatId: chatId }));
+    var mc = await loadMemoryConfig();
+    return callMemoryLLM(messages, Object.assign({}, options, { _forcePipelineApi: true, temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: mc.stm_max_tokens, chatId: chatId }));
 }
 
 function robustParseJson(raw) {
@@ -191,7 +196,7 @@ function findValidJsonPrefixEnd(text, startIdx) {
 }
 
 export async function callMemoryLLMWithTools(messages, tools, toolExecutors, options, chatId) {
-    var secondaryConfig = loadSecondaryApiConfig();
+    var secondaryConfig = options._apiConfig || loadRetrievalApiConfig();
     if (!secondaryConfig || !secondaryConfig.url || !secondaryConfig.model) {
         throw new Error('Tool calling requires secondary API configured');
     }
@@ -302,12 +307,12 @@ async function callCustomAPITools(config, messages, options, tools) {
 }
 
 export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
-    var mc = loadMemoryConfig();
+    var mc = await loadMemoryConfig();
     return callMemoryLLM(messages, Object.assign({ temperature: mc.retrieval_temperature || mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
 }
 
 export async function callMemoryRetrievalWithTools(messages, tools, toolExecutors, options = {}) {
-    var secCfg = loadSecondaryApiConfig();
+    var secCfg = loadRetrievalApiConfig();
     if (secCfg && secCfg.url && secCfg.model) {
         return callMemoryLLMWithTools(messages, tools, toolExecutors, options, options.chatId);
     }
@@ -325,6 +330,59 @@ export function loadSecondaryApiConfig() {
 export function saveSecondaryApiConfig(config) {
     if (config && config.url) config.url = normalizeApiUrl(config.url);
     localStorage.setItem('ne_secondary_api', JSON.stringify(config));
+}
+
+// ── 检索专用 API（分离模式）──
+
+export function loadRetrievalApiConfig() {
+    try {
+        var raw = localStorage.getItem('ne_retrieval_api');
+        if (raw) {
+            var cfg = JSON.parse(raw);
+            if (cfg && cfg.url) return cfg;
+        }
+    } catch (e) {}
+    // Fallback to unified API (backward compat / unified mode)
+    return loadSecondaryApiConfig();
+}
+
+export function saveRetrievalApiConfig(config) {
+    if (config && config.url) config.url = normalizeApiUrl(config.url);
+    localStorage.setItem('ne_retrieval_api', JSON.stringify(config));
+}
+
+export function isApiSplitMode() {
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) return !!JSON.parse(raw).apiSplitMode;
+    } catch (e) {}
+    return false;
+}
+
+/**
+ * Toggle API split mode. Handles data transition:
+ *   0→1 (unified→split): copy unified → retrieval; pipeline cleared
+ *   1→0 (split→unified): copy retrieval → unified; retrieval preserved in localStorage
+ */
+export function setApiSplitMode(enabled) {
+    var settings = {};
+    try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
+    var wasSplit = settings.apiSplitMode;
+
+    if (enabled && !wasSplit) {
+        // 0→1: unified → split
+        var unified = loadSecondaryApiConfig() || {};
+        saveRetrievalApiConfig({ url: unified.url || '', key: unified.key || '', model: unified.model || '' });
+        saveSecondaryApiConfig({ url: '', key: '', model: '' });
+    } else if (!enabled && wasSplit) {
+        // 1→0: split → unified
+        var retrieval = loadRetrievalApiConfig() || {};
+        saveSecondaryApiConfig({ url: retrieval.url || '', key: retrieval.key || '', model: retrieval.model || '' });
+        // ne_retrieval_api 保留不删（用户可能在 1→0→1 后恢复）
+    }
+
+    settings.apiSplitMode = enabled;
+    localStorage.setItem('ne_settings', JSON.stringify(settings));
 }
 
 function normalizeApiUrl(url) {
