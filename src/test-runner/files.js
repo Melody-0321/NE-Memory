@@ -55,13 +55,11 @@ export function appendTraceRound(trace, roundData) {
     lines.push('> ' + (roundData.aiReply || '').substring(0, 300));
     lines.push('');
     lines.push('### 管线数据');
-    if (roundData.pipeline) {
-        lines.push('- SmartPush injection: ' + (roundData.pipeline.injectionLength || 0) + ' chars');
-        if (roundData.pipeline.injectionPreview) {
-            lines.push('  ```');
-            lines.push('  ' + roundData.pipeline.injectionPreview.substring(0, 200));
-            lines.push('  ```');
-        }
+    lines.push('- SmartPush injection: ' + (roundData.injectionLength || 0) + ' chars');
+    if (roundData.injectionPreview) {
+        lines.push('  ```');
+        lines.push('  ' + roundData.injectionPreview.substring(0, 200));
+        lines.push('  ```');
     }
     if (roundData.stmEvents) {
         lines.push('- STM events added: ' + roundData.stmEvents.count);

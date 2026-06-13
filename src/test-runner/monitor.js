@@ -4,14 +4,6 @@
 
 export function collectRoundData() {
     var injection = globalThis.__ne_debug_last_injection || null;
-    var vaultSummary = null;
-    try {
-        vaultSummary = {
-            stmCount: typeof globalThis.__ne_debug_last_stm_events !== 'undefined' && globalThis.__ne_debug_last_stm_events ? globalThis.__ne_debug_last_stm_events.count : -1,
-            ltmCount: -1,
-            unconsolidatedCount: -1
-        };
-    } catch (e) {}
 
     return {
         injection: injection,
@@ -23,7 +15,7 @@ export function collectRoundData() {
         stmEvents: globalThis.__ne_debug_last_stm_events || null,
         consolidation: globalThis.__ne_debug_last_consolidation || null,
         cursor: globalThis.__ne_debug_last_cursor || null,
-        vault: vaultSummary,
+        vault: null,
         timestamp: new Date().toISOString()
     };
 }

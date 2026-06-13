@@ -74,7 +74,7 @@ export async function evaluateSemantic(injection, questions, callLLM) {
     if (!injection || injection.length === 0) {
         return questions.map(function(q) { return { question: q, passed: false, evaluation: '无注入内容可评估。' }; });
     }
-    var systemPrompt = '你是 NE Memory 的测试评估器。给定 SmartPush 注入内容和测试问题，判断注入是否满足要求。回答 JSON: {"passed": true/false, "evaluation": "评估说明"}';
+    var systemPrompt = '你是 NE Memory 的测试评估器。给定 SmartPush 注入内容和测试问题列表，对每个问题判断注入是否满足要求。回答 JSON 数组: [{"question_index": 1, "passed": true/false, "evaluation": "简短评估说明"}]';
     var userPrompt = '## 注入内容\n```\n' + injection.substring(0, 2000) + '\n```\n\n## 测试问题\n' + questions.map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n\n请对每个问题给出评估。回答 JSON 数组: [{"question_index": 1, "passed": true/false, "evaluation": "..."}]';
 
     try {

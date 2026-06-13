@@ -4,8 +4,8 @@
  * 工作流：读 testCase → 驱动对话 → 收集管线数据 → 断言评估 → 生成报告
  *
  * 设计原则：
- * - Driver 是"模拟玩家"——只看到 AI 回复消息，不读角色卡/世界书内部数据
- * - 角色设定通过 AI 回复自然呈现（就像真实玩家通过对话认知故事世界）
+ * - Driver 是"故事参与者"——只看到 AI 回复消息，不读角色卡/世界书内部数据
+ * - 角色设定通过 AI 回复自然呈现（就像真实参与者通过对话认知故事世界）
  * - 测试用例的 conversationGuide 提供足够的方向指导
  */
 import { collectRoundData, collectVaultSummary } from './monitor.js';
@@ -71,7 +71,7 @@ export async function runTestLoop(testCase, hostDoc) {
         lastAiReply = getLastAiReply();
         lastInjection = roundData.injection || '';
 
-        if (!roundData.vault || roundData.vault.stmCount === -1) {
+        if (!roundData.vault) {
             roundData.vault = await collectVaultSummary();
         }
 
@@ -200,7 +200,7 @@ function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, rou
 function extractUserMessage(llmResponse) {
     if (!llmResponse) return null;
 
-    if (llmResponse.indexOf('DONE:') !== -1 || llmResponse.indexOf('DONE') === 0) {
+    if (/^DONE/i.test(llmResponse.trim())) {
         return '__TEST_DONE__';
     }
 
@@ -257,7 +257,8 @@ function __ne_waitUntilReply(maxMs, doc) {
 async function callMainApi(systemPrompt, userPrompt) {
     var ctx = SillyTavern.getContext();
     if (ctx.generateQuietPrompt) {
-        var resp = await ctx.generateQuietPrompt(userPrompt, systemPrompt);
+        var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
+        var resp = await ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true });
         return resp || '';
     }
     throw new Error('generateQuietPrompt not available');
@@ -267,7 +268,8 @@ async function callMemoryApiForEval(systemPrompt, userPrompt) {
     try {
         var ctx = SillyTavern.getContext();
         if (ctx.generateQuietPrompt) {
-            return await ctx.generateQuietPrompt(userPrompt, systemPrompt);
+            var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
+            return await ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true });
         }
     } catch (e) {}
     return '';
