@@ -214,6 +214,7 @@ function bootNE(retries) {
         return;
     }
     host.__NE_MEMORY_LOADED__ = true;
+    globalThis.__ne_debug_pipeline_idle = true;
     console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
 
     try {
@@ -264,6 +265,7 @@ function _buildDebugApi(host) {
         _waitForPipelineIdle: function(maxMs) {
             var self = this;
             return new Promise(function(resolve) {
+                if (globalThis.__ne_debug_pipeline_idle) { resolve(); return; }
                 var done = false;
                 var timer = setTimeout(function() { if (done) return; done = true; resolve(); }, maxMs || 30000);
                 self._onPipelineIdle = function() {

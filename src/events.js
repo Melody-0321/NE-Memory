@@ -25,6 +25,15 @@ var onBeforeGenerateRunning = false; // 重入守卫：斩断 generateRaw → Ge
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
 }
+
+function signalPipelineIdle() {
+    globalThis.__ne_debug_pipeline_idle = true;
+    var dbg = globalThis.__ne_debug;
+    if (dbg && typeof dbg._onPipelineIdle === 'function') {
+        dbg._onPipelineIdle();
+    }
+}
+
 export function restorePending() {
     try {
         var raw = localStorage.getItem('ne_pending');
@@ -80,6 +89,7 @@ export function neSyncChatId(chatId) {
         persistPending();
         pipelineRunning = false;
         statePipelineRunning = false;
+        signalPipelineIdle();
         consecutiveFailures = 0;
         retroCapturedChatId = null;
     }
@@ -181,6 +191,7 @@ async function flushPendingMessages() {
     if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) {
         if (pendingMessages.length < 3 || totalWords < 100) {
             console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
+            signalPipelineIdle();
             return;
         }
     }
@@ -192,6 +203,7 @@ async function flushPendingMessages() {
     var pipelineStart = Date.now();
     incrementChatTurn(chatId);
     pipelineRunning = true;
+    globalThis.__ne_debug_pipeline_idle = false;
     try {
         try {
             const consResult = await executeConsolidation(chatId);
@@ -230,10 +242,7 @@ async function flushPendingMessages() {
         console.log('[NE] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
-        // Notify test harness
-        if (globalThis.__ne_debug && typeof globalThis.__ne_debug._onPipelineIdle === 'function') {
-            globalThis.__ne_debug._onPipelineIdle();
-        }
+        signalPipelineIdle();
     }
 }
 
