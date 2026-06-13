@@ -152,20 +152,9 @@ export async function onMessageReceived(messageIndex) {
                 || (pendingMessages.length >= 3 && totalWords >= 100);
 
             if (shouldRunPipeline) {
-                await flushPendingMessages();
+                flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
             } else {
-                if (statePipelineRunning) return;
-                statePipelineRunning = true;
-                try {
-                    var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
-                    var chatId = getChatIdFn ? getChatIdFn() : 'default';
-                    var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
-                    if (onVaultUpdateCallback && stateResult.vault) onVaultUpdateCallback(stateResult.vault);
-                } catch (e) {
-                    console.warn('[NE] Per-round state pipeline failed:', e);
-                } finally {
-                    statePipelineRunning = false;
-                }
+                triggerPerRoundExtraction(assistantMsg);
             }
         } else {
             console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
@@ -232,6 +221,20 @@ async function flushPendingMessages() {
         pipelineRunning = false;
         persistPending();
     }
+}
+
+function triggerPerRoundExtraction(assistantMsg) {
+    if (statePipelineRunning) return;
+    statePipelineRunning = true;
+    var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
+    var chatId = getChatIdFn ? getChatIdFn() : 'default';
+    extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
+        if (onVaultUpdateCallback && stateResult && stateResult.vault) onVaultUpdateCallback(stateResult.vault);
+    }).catch(function(e) {
+        console.warn('[NE] Per-round state pipeline failed:', e);
+    }).finally(function() {
+        statePipelineRunning = false;
+    });
 }
 
 export async function onBeforeGenerate(type, _options, dryRun) {
