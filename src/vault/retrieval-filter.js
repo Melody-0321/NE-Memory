@@ -225,6 +225,66 @@ export function isTimeOnlyQuery(query, timeConstraint) {
     return nonTimeWords.length <= 2;
 }
 
+// ─── Noise filtering ───
+
+function eventTextSimilarity(a, b) {
+    if (!a || !b) return 0;
+    var len = Math.max(a.length, b.length);
+    if (len === 0) return 1;
+    var matches = 0;
+    for (var i = 0; i < a.length && i < b.length; i++) {
+        if (a[i] === b[i]) matches++;
+    }
+    return matches / len;
+}
+
+function denoiseResults(results, minResults) {
+    if (results.length <= minResults) return results;
+
+    // Rule 1: deduplicate near-duplicate events (similarity > 0.85)
+    var deduped = [];
+    for (var i = 0; i < results.length; i++) {
+        var isDuplicate = false;
+        for (var j = 0; j < deduped.length; j++) {
+            var sim = eventTextSimilarity(
+                results[i].event || results[i].summary || '',
+                deduped[j].event || deduped[j].summary || ''
+            );
+            if (sim > 0.85) {
+                isDuplicate = true;
+                break;
+            }
+        }
+        if (!isDuplicate) deduped.push(results[i]);
+    }
+
+    // Rule 2: push transition-only events (single entity, no narrative content) to tail
+    var heavy = [];
+    var light = [];
+    for (var i = 0; i < deduped.length; i++) {
+        var e = deduped[i];
+        var entities = e.entities || [];
+        // Transition event: only 0-1 entities and event text is short / generic
+        var isTransition = entities.length <= 1;
+        if (e.event) {
+            var ev = e.event;
+            // Short events with just movement/action are transitions
+            if (isTransition && ev.length <= 20) {
+                light.push(e);
+                continue;
+            }
+        }
+        heavy.push(e);
+    }
+    // Keep at least minResults in heavy group
+    while (heavy.length < minResults && light.length > 0) {
+        heavy.push(light.shift());
+    }
+    var merged = heavy.concat(light);
+
+    return merged.slice(0, 40);
+}
+
 export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
     topK = topK || 40;
     minResults = minResults || 3;
@@ -302,6 +362,9 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults) {
         result.__id = e._id;
         results.push(result);
     }
+
+    // ── Noise filtering ──
+    results = denoiseResults(results, minResults);
 
     // ── LTM directory: append recent LTM entries as view-only catalog (not BM25 scored) ──
     if (allLTM.length > 0) {

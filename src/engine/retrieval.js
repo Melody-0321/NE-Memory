@@ -70,6 +70,68 @@ export function extractEntityNames(query, content) {
     return matched.slice(0, 5);
 }
 
+// ─── Query classification ───
+
+export function classifyQuery(query, state, content) {
+    if (!query || typeof query !== 'string') return { type: 'open' };
+
+    var q = query.toLowerCase().trim();
+    var entities = [];
+    var stateChars = (state && state.characters) ? state.characters : {};
+    var stateFactions = (state && state.factions) ? state.factions : {};
+
+    // Collect entity names from state
+    var allNames = Object.keys(stateChars).concat(Object.keys(stateFactions));
+    // Add entities from STM annotations
+    var allSTM = (content && content.unconsolidated_stm || []).concat(content && content.stm_entries || []);
+    for (var i = 0; i < allSTM.length; i++) {
+        var ents = allSTM[i].entities;
+        if (ents && Array.isArray(ents)) {
+            for (var j = 0; j < ents.length; j++) {
+                if (ents[j].name) allNames.push(ents[j].name);
+            }
+        }
+    }
+
+    // Deduplicate and find matching entities
+    var seen = {};
+    var matched = [];
+    for (var i = 0; i < allNames.length; i++) {
+        var name = allNames[i];
+        var key = name.toLowerCase();
+        if (seen[key]) continue;
+        seen[key] = true;
+        if (q.indexOf(key) !== -1 && key.length >= 1) {
+            matched.push(name);
+        }
+    }
+    matched.sort(function(a, b) { return b.length - a.length; });
+
+    // Entity query: query contains specific entity name + follow-up pattern
+    if (matched.length >= 1) {
+        var isFollowUp = /在哪|怎么样|后来|之后|现在|呢|吗|怎么|认识|还有|记得/.test(query);
+        var isShortEntity = matched.length === 1 && q.length < 20;
+        if (isFollowUp || isShortEntity) {
+            return { type: 'entity', entities: matched.slice(0, 3) };
+        }
+    }
+
+    // Scene query: query contains current scene name
+    if (state && state.scene) {
+        var sceneKey = state.scene.toLowerCase().substring(0, 4);
+        if (q.indexOf(sceneKey) !== -1) {
+            return { type: 'scene', scene: state.scene };
+        }
+    }
+
+    // Temporal query: query contains time words
+    if (/昨天|今天|刚才|刚刚|之前|上次|那天|那时候|几点|什么时候|何时|几时|hour|day|week|month|yesterday|today|last time|before|earlier/.test(q)) {
+        return { type: 'temporal' };
+    }
+
+    return { type: 'open' };
+}
+
 // ─── Main prompt builder ───
 
 export function buildRetrievalPrompt(query, candidates, vault, budget, isSummaryMode) {
@@ -166,7 +228,9 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
             '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
             '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
             '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>".\n' +
-            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n\n' +
+            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n' +
+            '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
+            'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
             'Output format:\n' +
             '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n\n' +
             'Keep the total response under ' + budget + ' tokens.\n\n' +
@@ -190,7 +254,9 @@ export function buildRetrievalPrompt(query, candidates, vault, budget, isSummary
         '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
         '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
         '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。\n' +
-        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n\n' +
+        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n' +
+        '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
+        '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
         '输出格式：\n' +
         '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n\n' +
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
