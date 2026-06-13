@@ -127,7 +127,7 @@ function getLastAiReply() {
             if (!chat[i].is_user && chat[i].mes) {
                 var reasoning = chat[i].extra ? chat[i].extra.reasoning : '';
                 if (reasoning && reasoning.length > 0) {
-                    return chat[i].mes + '\n\n[思考过程]\n' + reasoning.substring(0, 500);
+                    return chat[i].mes + '\n\n[思考过程]\n' + reasoning;
                 }
                 return chat[i].mes;
             }
