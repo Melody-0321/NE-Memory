@@ -214,7 +214,6 @@ function bootNE(retries) {
         return;
     }
     host.__NE_MEMORY_LOADED__ = true;
-    globalThis.__ne_debug_pipeline_idle = true;
     console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
 
     try {

@@ -26,10 +26,6 @@ function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
 }
 
-function signalPipelineIdle() {
-    globalThis.__ne_debug_pipeline_idle = true;
-}
-
 export function restorePending() {
     try {
         var raw = localStorage.getItem('ne_pending');
@@ -85,7 +81,6 @@ export function neSyncChatId(chatId) {
         persistPending();
         pipelineRunning = false;
         statePipelineRunning = false;
-        signalPipelineIdle();
         consecutiveFailures = 0;
         retroCapturedChatId = null;
     }
@@ -187,7 +182,6 @@ async function flushPendingMessages() {
     if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) {
         if (pendingMessages.length < 3 || totalWords < 100) {
             console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
-            signalPipelineIdle();
             return;
         }
     }
@@ -199,7 +193,6 @@ async function flushPendingMessages() {
     var pipelineStart = Date.now();
     incrementChatTurn(chatId);
     pipelineRunning = true;
-    globalThis.__ne_debug_pipeline_idle = false;
     try {
         try {
             const consResult = await executeConsolidation(chatId);
@@ -238,7 +231,6 @@ async function flushPendingMessages() {
         console.log('[NE] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
-        signalPipelineIdle();
     }
 }
 
