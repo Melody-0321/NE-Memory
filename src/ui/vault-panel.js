@@ -1360,6 +1360,21 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     }
     notebook._availableChains = pipelineMerged ? (pipelineMerged.availableChains || []) : [];
 
+    // ── Debug: stash for test hooks ──
+    globalThis.__ne_debug_last_merge = pipelineMerged ? {
+        mapSize: pipelineMerged.map ? pipelineMerged.map.size : 0,
+        threadCount: pipelineMerged.threadIndex ? Object.keys(pipelineMerged.threadIndex).length : 0,
+        threadKeys: pipelineMerged.threadIndex ? Object.keys(pipelineMerged.threadIndex) : [],
+        availableChains: pipelineMerged.availableChains || [],
+        time: new Date().toISOString()
+    } : null;
+    globalThis.__ne_debug_last_notebook = {
+        version: notebook.version,
+        mapSize: notebook.map.size,
+        threadCount: Object.keys(notebook.threadIndex).length,
+        threadKeys: Object.keys(notebook.threadIndex)
+    };
+
     var retrievalApiStart = Date.now();
     var synthesized;
     var smPushMethod;
@@ -1437,6 +1452,13 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
         smPushMethod = 'bm25_fallback';
     }
+    // Update notebook snapshot post-synthesis
+    globalThis.__ne_debug_last_notebook = {
+        version: notebook.version,
+        mapSize: notebook.map.size,
+        threadCount: Object.keys(notebook.threadIndex).length,
+        threadKeys: Object.keys(notebook.threadIndex)
+    };
     var retrievalApiMs = Date.now() - retrievalApiStart;
     var smartPushTotalMs = Date.now() - smartPushStart;
 

@@ -81,7 +81,20 @@ async function init() {
                 return v && v.content ? v.content.state : null;
             } catch (e) { return null; }
         },
-        getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; }
+        getVaultSummary: async function() {
+            try {
+                var v = await read(getChatId());
+                if (!v || !v.content) return null;
+                return {
+                    stmCount: (v.content.unconsolidated_stm || []).length + (v.content.stm_entries || []).length,
+                    ltmCount: (v.content.ltm_entries || []).length,
+                    unconsolidatedCount: (v.content.unconsolidated_stm || []).length
+                };
+            } catch (e) { return null; }
+        },
+        getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; },
+        getLastMerge: function() { return globalThis.__ne_debug_last_merge || null; },
+        getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; }
     };
 }
 
