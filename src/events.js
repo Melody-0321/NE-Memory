@@ -230,6 +230,10 @@ async function flushPendingMessages() {
         console.log('[NE] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
+        // Notify test harness
+        if (globalThis.__ne_debug && typeof globalThis.__ne_debug._onPipelineIdle === 'function') {
+            globalThis.__ne_debug._onPipelineIdle();
+        }
     }
 }
 

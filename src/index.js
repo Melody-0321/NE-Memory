@@ -258,6 +258,20 @@ function _buildDebugApi(host) {
         getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; },
         getLastMerge: function() { return globalThis.__ne_debug_last_merge || null; },
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
+
+        // Pipeline idle hook — set by the pipeline itself when it finishes
+        _onPipelineIdle: null,
+        _waitForPipelineIdle: function(maxMs) {
+            var self = this;
+            return new Promise(function(resolve) {
+                var done = false;
+                var timer = setTimeout(function() { if (done) return; done = true; resolve(); }, maxMs || 30000);
+                self._onPipelineIdle = function() {
+                    if (done) return; done = true; clearTimeout(timer); resolve();
+                };
+            });
+        },
+
         _testSeeds: [
             '你好，我叫阿明，是一名矿工。',
             '北山矿洞最近有些异常，频繁有小规模塌方。',
@@ -291,7 +305,7 @@ function _buildDebugApi(host) {
                     var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Seed ' + (i+1) + ' gen timed out'); }, 120000);
                     es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
                 });
-                await new Promise(function(r) { setTimeout(r, 10000); });
+                await this._waitForPipelineIdle(30000);
                 var summary = await globalThis.__ne_debug.getVaultSummary();
                 console.log('  -> VAULT: ' + (summary ? 'STM=' + summary.stmCount + ' LTM=' + summary.ltmCount + ' Unc=' + summary.unconsolidatedCount : 'n/a'));
             }
@@ -310,7 +324,7 @@ function _buildDebugApi(host) {
                 var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Query gen timed out'); }, 120000);
                 es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
             });
-            await new Promise(function(r) { setTimeout(r, 8000); });
+            await this._waitForPipelineIdle(45000);
             var data = {
                 injection: globalThis.__ne_debug_last_injection || null,
                 merge: globalThis.__ne_debug_last_merge || null,
