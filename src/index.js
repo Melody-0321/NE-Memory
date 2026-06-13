@@ -194,16 +194,49 @@ function setupEventListeners(retryCount) {
     _retryTimer = setTimeout(function () { _retryTimer = null; setupEventListeners(retryCount + 1); }, delay);
 }
 
+function getHostWindow() {
+    // TH scripts may run inside an iframe. Expose debug API on the parent window
+    // so the user's F12 console (attached to the main window) can access it.
+    try {
+        if (window.parent && window.parent !== window && window.parent.document) {
+            return window.parent;
+        }
+    } catch (e) {}
+    return window;
+}
+
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    if (typeof window.__NE_MEMORY_LOADED__ !== 'undefined') {
+    var host = getHostWindow();
+    if (typeof host.__NE_MEMORY_LOADED__ !== 'undefined') {
         console.log('[NE] Already booted, skipping (__NE_MEMORY_LOADED__ exists)');
         return;
     }
-    window.__NE_MEMORY_LOADED__ = true;
+    host.__NE_MEMORY_LOADED__ = true;
     console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
-    globalThis.__ne_debug = {
+
+    try {
+        host.__ne_debug = _buildDebugApi(host);
+        // Also alias on iframe's own window — internal code uses this
+        window.__ne_debug = host.__ne_debug;
+        console.log('[NE] __ne_debug installed. Methods:', Object.keys(host.__ne_debug).filter(function(k) { return k[0] !== '_' }).join(', '));
+    } catch (e) {
+        console.error('[NE] __ne_debug install failed:', e);
+        host.__ne_debug = {};
+        window.__ne_debug = host.__ne_debug;
+    }
+
+    $(async function () {
+        try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
+    });
+}
+
+// ── Debug API factory (moved out of bootNE for cleanliness) ──
+
+function _buildDebugApi(host) {
+    var hostDoc = host ? host.document : document;
+    return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
             try {
@@ -244,12 +277,12 @@ function bootNE(retries) {
             for (var i = 0; i < count; i++) {
                 var text = globalThis.__ne_debug._testSeeds[i];
                 console.log('[' + (i + 1) + '/' + count + '] ' + text);
-                var ta = document.getElementById('send_textarea');
+                var ta = hostDoc.getElementById('send_textarea');
                 if (!ta) { console.error('[NEM-HARNESS] No textarea'); return; }
                 ta.value = text;
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 setTimeout(function() {
-                    var btn = document.getElementById('send_but');
+                    var btn = hostDoc.getElementById('send_but');
                     if (btn) btn.click();
                 }, 100);
                 await new Promise(function(resolve) {
@@ -271,11 +304,11 @@ function bootNE(retries) {
         },
         runQuery: async function(query) {
             console.log('[NEM-HARNESS] === RUN: ' + query + ' ===');
-            var ta = document.getElementById('send_textarea');
+            var ta = hostDoc.getElementById('send_textarea');
             if (!ta) { console.error('[NEM-HARNESS] No textarea'); return null; }
             ta.value = query;
             ta.dispatchEvent(new Event('input', { bubbles: true }));
-            setTimeout(function() { var btn = document.getElementById('send_but'); if (btn) btn.click(); }, 100);
+            setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) btn.click(); }, 100);
             await new Promise(function(resolve) {
                 var es = null;
                 try { if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) es = SillyTavern.getContext().eventSource; } catch(e) {}
