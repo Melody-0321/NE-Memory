@@ -125,6 +125,10 @@ function getLastAiReply() {
         var chat = SillyTavern.getContext().chat || [];
         for (var i = chat.length - 1; i >= 0; i--) {
             if (!chat[i].is_user && chat[i].mes) {
+                var reasoning = chat[i].extra ? chat[i].extra.reasoning : '';
+                if (reasoning && reasoning.length > 0) {
+                    return chat[i].mes + '\n\n[思考过程]\n' + reasoning.substring(0, 500);
+                }
                 return chat[i].mes;
             }
         }
@@ -134,7 +138,13 @@ function getLastAiReply() {
 
 function buildDriverSystem(testCase) {
     var lines = [
-        '你是模拟玩家，通过与 AI 角色自然对话来测试 NE Memory 记忆系统。',
+        '你是故事参与者，通过与 AI 协作推进故事来测试 NE Memory 记忆系统。',
+        '',
+        '你可以自由选择交互方式：',
+        '- 纯角色对话（"角色名: 内容"）',
+        '- 故事叙事（旁白 + 环境描写 + 动作 + 多角色对话）',
+        '- 混合模式（在叙事中穿插角色对话）',
+        '根据当前故事的自然风格决定。你需要引入角色、事件来推动测试目标。',
         '',
         '## 测试目标',
         testCase.objective,
@@ -143,8 +153,8 @@ function buildDriverSystem(testCase) {
         testCase.conversationGuide,
         '',
         '## 回答格式',
-        '每轮生成一条自然对话消息:',
-        'USER_MSG: <消息文本>',
+        '每轮输出你的故事内容:',
+        'USER_MSG: <文本>',
         '',
         '测试目标达成时:',
         'DONE:',
