@@ -260,21 +260,23 @@ function _buildDebugApi(host) {
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
 
         _waitUntilReply: function(maxMs) {
+            // ST clears body.dataset.generating BEFORE emitting MESSAGE_RECEIVED
+            // (StreamingProcessor.finalizeIntermediaryMessage → markUIGenStopped first,
+            //  then eventSource.emit). So the flag is already gone when we check.
+            // We add 500ms padding for Generate() to fully return and release the mutex.
             var doc = hostDoc;
             return new Promise(function(resolve) {
                 var es = SillyTavern.getContext().eventSource;
-                var msgReceived = false;
                 var totalTimer = setTimeout(function() { resolve(); }, maxMs || 120000);
                 function pollDone() {
                     if (!doc.body.dataset.generating) {
                         clearTimeout(totalTimer);
-                        resolve();
+                        setTimeout(resolve, 500);
                         return;
                     }
                     setTimeout(pollDone, 150);
                 }
                 es.once('message_received', function() {
-                    msgReceived = true;
                     pollDone();
                 });
             });
