@@ -94,7 +94,146 @@ async function init() {
         },
         getLastPipelineOutput: function() { return globalThis.__ne_debug_last_pipeline || null; },
         getLastMerge: function() { return globalThis.__ne_debug_last_merge || null; },
-        getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; }
+        getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
+
+        // ── Test harness (console-driven, no extension needed) ──
+
+        _testSeeds: [
+            '你好，我叫阿明，是一名矿工。',
+            '北山矿洞最近有些异常，频繁有小规模塌方。',
+            '我的朋友老张是铁匠，他今天也来矿洞了。',
+            '老张脸色很差，他说昨天在矿洞深处看到了奇怪的光。',
+            '我觉得应该向工头报告这个情况。不过工头这几天不在。',
+            '老张说他认识一个地质师，也许可以请她来看看。',
+            '对了，那个地质师叫什么来着？许瑶，对，许瑶。',
+            '许瑶以前在这片矿区工作过，后来调走了。不过她应该还住在本镇。',
+            '老张说他会去找许瑶。希望她能帮忙。',
+            '矿洞入口处的水位也在上升。这很不正常。'
+        ],
+        _lastTestReport: null,
+
+        seedAndWait: async function(count) {
+            count = Math.min(count || 5, 10);
+            console.log('[NEM-HARNESS] Seeding ' + count + ' messages...');
+            for (var i = 0; i < count; i++) {
+                var text = globalThis.__ne_debug._testSeeds[i];
+                console.log('[' + (i + 1) + '/' + count + '] ' + text);
+                // Fill textarea + click send
+                var ta = document.getElementById('send_textarea');
+                if (!ta) { console.error('[NEM-HARNESS] No textarea'); return; }
+                ta.value = text;
+                ta.dispatchEvent(new Event('input', { bubbles: true }));
+                setTimeout(function() {
+                    var btn = document.getElementById('send_but');
+                    if (btn) btn.click();
+                }, 100);
+
+                // Wait for generation
+                await new Promise(function(resolve) {
+                    var es = null;
+                    try {
+                        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                            es = SillyTavern.getContext().eventSource;
+                        }
+                    } catch(e) {}
+                    var done = false;
+                    if (!es || typeof es.on !== 'function') {
+                        // Fallback: fixed wait
+                        var wait = count === 1 ? 60000 : 90000;
+                        setTimeout(function() { if (!done) { done = true; resolve(); } }, wait);
+                        return;
+                    }
+                    var timer = setTimeout(function() {
+                        if (done) return; done = true; resolve();
+                        console.warn('[NEM-HARNESS] Seed ' + (i + 1) + ' gen timed out');
+                    }, 120000);
+                    es.on('GENERATION_ENDED', function handler() {
+                        if (done) return; done = true; clearTimeout(timer);
+                        resolve();
+                    });
+                });
+
+                // Wait for NE pipeline (state + STM + consolidate)
+                await new Promise(function(r) { setTimeout(r, 10000); });
+                var summary = await globalThis.__ne_debug.getVaultSummary();
+                console.log('  -> VAULT: ' + (summary ? 'STM=' + summary.stmCount + ' LTM=' + summary.ltmCount + ' Unc=' + summary.unconsolidatedCount : 'n/a'));
+            }
+            console.log('[NEM-HARNESS] Seed done.');
+        },
+
+        runQuery: async function(query) {
+            console.log('[NEM-HARNESS] === RUN: ' + query + ' ===');
+            var ta = document.getElementById('send_textarea');
+            if (!ta) { console.error('[NEM-HARNESS] No textarea'); return null; }
+            ta.value = query;
+            ta.dispatchEvent(new Event('input', { bubbles: true }));
+            setTimeout(function() {
+                var btn = document.getElementById('send_but');
+                if (btn) btn.click();
+            }, 100);
+
+            // Wait for generation
+            await new Promise(function(resolve) {
+                var es = null;
+                try {
+                    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                        es = SillyTavern.getContext().eventSource;
+                    }
+                } catch(e) {}
+                var done = false;
+                if (!es || typeof es.on !== 'function') {
+                    setTimeout(function() { if (!done) { done = true; resolve(); } }, 120000);
+                    return;
+                }
+                var timer = setTimeout(function() {
+                    if (done) return; done = true; resolve();
+                    console.warn('[NEM-HARNESS] Query gen timed out');
+                }, 120000);
+                es.on('GENERATION_ENDED', function handler() {
+                    if (done) return; done = true; clearTimeout(timer);
+                    resolve();
+                });
+            });
+
+            // Wait for SmartPush pipeline
+            await new Promise(function(r) { setTimeout(r, 8000); });
+
+            var data = {
+                injection: globalThis.__ne_debug_last_injection || null,
+                merge: globalThis.__ne_debug_last_merge || null,
+                notebook: globalThis.__ne_debug_last_notebook || null,
+                target: query,
+                time: new Date().toISOString()
+            };
+            try { data.vault = await globalThis.__ne_debug.getVaultSummary(); } catch(e) {}
+
+            globalThis.__ne_debug._lastTestReport = data;
+
+            var L = ['=== REPORT ===', 'Target: ' + query];
+            if (data.vault) L.push('VAULT: STM=' + data.vault.stmCount + ' LTM=' + data.vault.ltmCount + ' Unc=' + data.vault.unconsolidatedCount);
+            if (data.merge) {
+                L.push('MERGE: map=' + data.merge.mapSize + ' threads=' + data.merge.threadCount);
+                if (data.merge.threadKeys && data.merge.threadKeys.length > 0) L.push('  threadKeys: ' + data.merge.threadKeys.join(', '));
+                if (data.merge.availableChains && data.merge.availableChains.length > 0) {
+                    L.push('  availableChains: ' + JSON.stringify(data.merge.availableChains));
+                }
+            }
+            if (data.notebook) L.push('NOTEBOOK: v=' + data.notebook.version + ' map=' + data.notebook.mapSize + ' threads=' + data.notebook.threadCount);
+            if (data.injection) {
+                L.push('INJECTION (' + data.injection.length + ' chars):');
+                L.push(data.injection.substring(0, 600));
+                if (data.injection.length > 600) L.push('...');
+                // Quick checks
+                if (data.injection.indexOf('{L:') !== -1) L.push('  CHECK: has thread annotations {L:...}  YES');
+                else L.push('  CHECK: has thread annotations {L:...}  NO');
+            } else {
+                L.push('NO INJECTION (SmartPush may not have fired — need >=5 consolidated STM)');
+            }
+            console.log(L.join('\n'));
+            return data;
+        },
+
+        getLastReport: function() { return globalThis.__ne_debug._lastTestReport; }
     };
 }
 
