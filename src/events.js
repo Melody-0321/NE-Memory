@@ -161,7 +161,6 @@ export async function onMessageReceived(messageIndex) {
             } else {
                 if (statePipelineRunning) return;
                 statePipelineRunning = true;
-                globalThis.__ne_debug_pipeline_idle = false;
                 try {
                     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
                     var chatId = getChatIdFn ? getChatIdFn() : 'default';
@@ -171,7 +170,6 @@ export async function onMessageReceived(messageIndex) {
                     console.warn('[NE] Per-round state pipeline failed:', e);
                 } finally {
                     statePipelineRunning = false;
-                    signalPipelineIdle();
                 }
             }
         } else {

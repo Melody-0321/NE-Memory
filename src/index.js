@@ -261,6 +261,8 @@ function _buildDebugApi(host) {
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
 
         _waitUntilSafeToSend: function(maxMs, hostDoc) {
+            // Poll send_but.disabled only. NE's per-round extraction uses raw fetch()
+            // and does NOT affect send_but state, so we don't need to wait for it.
             var doc = hostDoc || document;
             return new Promise(function(resolve) {
                 var start = Date.now();
@@ -268,8 +270,7 @@ function _buildDebugApi(host) {
                 function check() {
                     var btn = doc.getElementById('send_but');
                     var btnEnabled = btn && !btn.disabled;
-                    var pipelineIdle = !!globalThis.__ne_debug_pipeline_idle;
-                    if (btnEnabled && pipelineIdle) {
+                    if (btnEnabled) {
                         if (stableSince === 0) stableSince = Date.now();
                         if (Date.now() - stableSince >= 1500) { resolve(); return; }
                     } else {
