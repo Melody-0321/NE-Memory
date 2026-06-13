@@ -236,7 +236,6 @@ function bootNE(retries) {
 
 function _buildDebugApi(host) {
     var hostDoc = host ? host.document : document;
-    var host$ = host ? (host.$ || host.jQuery || $) : $;
     return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
@@ -299,11 +298,10 @@ function _buildDebugApi(host) {
                 ta.dispatchEvent(new Event('input', { bubbles: true }));
                 setTimeout(function() {
                     var btn = hostDoc.getElementById('send_but');
-                    if (btn) host$(btn).trigger('click');
+                    if (btn) btn.click();
                 }, 100);
                 await this._waitUntilReply(120000);
-                var summary = await globalThis.__ne_debug.getVaultSummary();
-                console.log('  -> VAULT: ' + (summary ? 'STM=' + summary.stmCount + ' LTM=' + summary.ltmCount + ' Unc=' + summary.unconsolidatedCount : 'n/a'));
+                console.log('  -> OK');
             }
             console.log('[NEM-HARNESS] Seed done.');
         },
@@ -313,7 +311,7 @@ function _buildDebugApi(host) {
             if (!ta) { console.error('[NEM-HARNESS] No textarea'); return null; }
             ta.value = query;
             ta.dispatchEvent(new Event('input', { bubbles: true }));
-            setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) host$(btn).trigger('click'); }, 100);
+            setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) btn.click(); }, 100);
             await this._waitUntilReply(180000);
             var data = {
                 injection: globalThis.__ne_debug_last_injection || null,
