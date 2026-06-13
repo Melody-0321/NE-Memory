@@ -28,10 +28,6 @@ function persistPending() {
 
 function signalPipelineIdle() {
     globalThis.__ne_debug_pipeline_idle = true;
-    var dbg = globalThis.__ne_debug;
-    if (dbg && typeof dbg._onPipelineIdle === 'function') {
-        dbg._onPipelineIdle();
-    }
 }
 
 export function restorePending() {

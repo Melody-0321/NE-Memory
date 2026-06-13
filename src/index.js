@@ -260,17 +260,25 @@ function _buildDebugApi(host) {
         getLastMerge: function() { return globalThis.__ne_debug_last_merge || null; },
         getLastNotebook: function() { return globalThis.__ne_debug_last_notebook || null; },
 
-        // Pipeline idle hook — set by the pipeline itself when it finishes
-        _onPipelineIdle: null,
-        _waitForPipelineIdle: function(maxMs) {
-            var self = this;
+        _waitUntilSafeToSend: function(maxMs, hostDoc) {
+            var doc = hostDoc || document;
             return new Promise(function(resolve) {
-                if (globalThis.__ne_debug_pipeline_idle) { resolve(); return; }
-                var done = false;
-                var timer = setTimeout(function() { if (done) return; done = true; resolve(); }, maxMs || 30000);
-                self._onPipelineIdle = function() {
-                    if (done) return; done = true; clearTimeout(timer); resolve();
-                };
+                var start = Date.now();
+                var stableSince = 0;
+                function check() {
+                    var btn = doc.getElementById('send_but');
+                    var btnEnabled = btn && !btn.disabled;
+                    var pipelineIdle = !!globalThis.__ne_debug_pipeline_idle;
+                    if (btnEnabled && pipelineIdle) {
+                        if (stableSince === 0) stableSince = Date.now();
+                        if (Date.now() - stableSince >= 1500) { resolve(); return; }
+                    } else {
+                        stableSince = 0;
+                    }
+                    if (Date.now() - start > (maxMs || 120000)) { resolve(); return; }
+                    setTimeout(check, 200);
+                }
+                check();
             });
         },
 
@@ -301,13 +309,7 @@ function _buildDebugApi(host) {
                     var btn = hostDoc.getElementById('send_but');
                     if (btn) btn.click();
                 }, 100);
-                await new Promise(function(resolve) {
-                    var es = SillyTavern.getContext().eventSource;
-                    var done = false;
-                    var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Seed ' + (i+1) + ' gen timed out'); }, 120000);
-                    es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
-                });
-                await this._waitForPipelineIdle(30000);
+                await this._waitUntilSafeToSend(120000, hostDoc);
                 var summary = await globalThis.__ne_debug.getVaultSummary();
                 console.log('  -> VAULT: ' + (summary ? 'STM=' + summary.stmCount + ' LTM=' + summary.ltmCount + ' Unc=' + summary.unconsolidatedCount : 'n/a'));
             }
@@ -320,13 +322,7 @@ function _buildDebugApi(host) {
             ta.value = query;
             ta.dispatchEvent(new Event('input', { bubbles: true }));
             setTimeout(function() { var btn = hostDoc.getElementById('send_but'); if (btn) btn.click(); }, 100);
-            await new Promise(function(resolve) {
-                var es = SillyTavern.getContext().eventSource;
-                var done = false;
-                var timer = setTimeout(function() { if (done) return; done = true; resolve(); console.warn('[NEM-HARNESS] Query gen timed out'); }, 120000);
-                es.once('message_received', function() { if (done) return; done = true; clearTimeout(timer); resolve(); });
-            });
-            await this._waitForPipelineIdle(45000);
+            await this._waitUntilSafeToSend(180000, hostDoc);
             var data = {
                 injection: globalThis.__ne_debug_last_injection || null,
                 merge: globalThis.__ne_debug_last_merge || null,
