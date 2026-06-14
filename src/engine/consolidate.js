@@ -33,7 +33,7 @@ function getMaxUnconsolidated() {
 export function checkConsolidateThreshold(vault) {
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    return unconsolidated.length >= getMaxUnconsolidated();
+    return unconsolidated.length > getMaxUnconsolidated();
 }
 
 export function buildConsolidatePrompt(vault) {
@@ -364,8 +364,8 @@ export async function executeConsolidation(chatId, force) {
     postFillLTM(result, unconsolidated);
     normalizeConsolidation(result.ltm_entries, stmIds);
 
-    // 代码级守卫：整合后至少保留 threshold 条未整合 STM
-    // 先按 stm_refs 的最大索引排序（早→晚），确保 pop 去掉的是最晚的剧情弧
+    // 代码级守卫：从早到晚逐条应用 LTM，不消耗全部 STM（至少保留 1 条未整合）
+    // 先按 stm_refs 的最大索引排序（早→晚），确保保留的是最早的剧情弧
     var stmPos = {};
     stmIds.forEach(function(id, i) { stmPos[id] = i; });
     result.ltm_entries.sort(function(a, b) {
@@ -374,12 +374,17 @@ export async function executeConsolidation(chatId, force) {
         return maxA - maxB;
     });
     var threshold = getMaxUnconsolidated();
-    while (result.ltm_entries.length > 0) {
-        var consumed = 0;
-        result.ltm_entries.forEach(function(ltm) { consumed += (ltm.stm_refs || []).length; });
-        if (stmIds.length - consumed >= threshold) break;
-        var popped = result.ltm_entries.pop();
-        console.log('[NE] Consolidation guard: popped LTM entry (' + (popped.stm_refs || []).length + ' refs), remaining unconsolidated would be ' + (stmIds.length - consumed + (popped.stm_refs || []).length));
+    var consumed = 0;
+    var keepCount = 0;
+    for (var k = 0; k < result.ltm_entries.length; k++) {
+        var refCount = (result.ltm_entries[k].stm_refs || []).length;
+        if (stmIds.length - (consumed + refCount) < 1) break;
+        consumed += refCount;
+        keepCount++;
+    }
+    if (keepCount < result.ltm_entries.length) {
+        console.log('[NE] Consolidation guard: keeping ' + keepCount + '/' + result.ltm_entries.length + ' LTM entries, consumed=' + consumed + ', threshold=' + threshold);
+        result.ltm_entries = result.ltm_entries.slice(0, keepCount);
     }
     if (result.ltm_entries.length === 0) {
         console.log('[NE] Consolidation guard: all LTM entries discarded, leaving ' + stmIds.length + ' unconsolidated STM');
