@@ -51,7 +51,8 @@ export async function callMemoryLLM(messages, options = {}) {
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
             console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
-            var customResult = await callCustomAPI(secondaryConfig, messages, options);
+            var callOpts = Object.assign({}, options, { responseFormat: { type: "json_object" }, thinking: false });
+            var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
             usage = customResult.usage;
             apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
@@ -514,8 +515,8 @@ async function callCustomAPI(config, messages, options) {
         messages: messages,
         temperature: options.temperature || 0.3,
         max_tokens: options.max_tokens || 2048,
-        response_format: { type: "json_object" },
-        thinking: { type: "disabled" }
+        ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
+        ...(options.thinking !== undefined ? { thinking: { type: options.thinking ? 'enabled' : 'disabled' } } : {})
     });
     const timeoutSec = options.timeout || 120;
 
