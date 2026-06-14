@@ -8,7 +8,7 @@
  * - 角色设定通过 AI 回复自然呈现（就像真实参与者通过对话认知故事世界）
  * - 测试用例的 conversationGuide 提供足够的方向指导
  */
-import { collectRoundData, collectVaultSummary } from './monitor.js';
+import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls } from './monitor.js';
 import { evaluateAllStructural, evaluateSemantic } from './assertions.js';
 import { createTrace, appendTraceRound, createReport } from './files.js';
 
@@ -31,6 +31,7 @@ export async function runTestLoop(testCase, hostDoc) {
     var lastAiReply = getLastAiReply();
     var lastInjection = '';
     var gatedResult = null;
+    startCollectingPipelineCalls();
     for (var round = 1; round <= testCase.maxRounds; round++) {
         console.log('[NE-TEST] === Round ' + round + '/' + testCase.maxRounds + ' ===');
 
@@ -54,17 +55,17 @@ export async function runTestLoop(testCase, hostDoc) {
 
         var userMessage = extractUserMessage(driverResponse);
         if (!userMessage) {
-            console.warn('[NE-TEST] Driver response not in expected format. Raw:', driverResponse.substring(0, 300));
+            console.warn('[NE-TEST] Driver response not in expected format. Raw:', driverResponse);
             var fallback = fallbackUserMessage(driverResponse);
             if (fallback) {
                 userMessage = fallback;
-                console.log('[NE-TEST] Using fallback message: ' + userMessage.substring(0, 200));
+                console.log('[NE-TEST] Using fallback message: ' + userMessage);
             } else {
                 console.warn('[NE-TEST] No message could be extracted, trying next round...');
                 roundDataList.push({
                     round: round, driverSystem: driverSystem, driverResponse: driverResponse,
                     message: '', aiReply: '', injection: '',
-                    vault: null, progressNote: 'EXTRACTION FAILED — raw: ' + driverResponse.substring(0, 500)
+                    vault: null, progressNote: 'EXTRACTION FAILED — raw: ' + driverResponse
                 });
                 trace = appendTraceRound(trace, roundDataList[roundDataList.length - 1]);
                 continue;
@@ -75,7 +76,7 @@ export async function runTestLoop(testCase, hostDoc) {
             gatedResult = tryParseGated(driverResponse);
             break;
         }
-        console.log('[NE-TEST] Driver says: ' + userMessage.substring(0, 200));
+        console.log('[NE-TEST] Driver says: ' + userMessage);
 
         await sendMessageAndWait(userMessage, doc, testCase.timeoutPerRound);
 
@@ -103,6 +104,8 @@ export async function runTestLoop(testCase, hostDoc) {
             console.log('[NE-TEST] Target likely achieved.');
         }
     }
+
+    stopCollectingPipelineCalls();
 
     var lastRound = roundDataList.length > 0 ? roundDataList[roundDataList.length - 1] : collectRoundData();
     var structuralResults = evaluateAllStructural(lastRound, testCase.structural);

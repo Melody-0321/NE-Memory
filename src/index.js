@@ -12,7 +12,7 @@ import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
 import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
-import { testSecondaryApiConnection } from './api/llm.js';
+import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
 import { runTest, setReportsDir } from './test-runner/index.js';
 
@@ -219,7 +219,6 @@ function bootNE(retries) {
 
     try {
         host.__ne_debug = _buildDebugApi(host);
-        // Also alias on iframe's own window — internal code uses this
         window.__ne_debug = host.__ne_debug;
         console.log('[NE] __ne_debug installed. Methods:', Object.keys(host.__ne_debug).filter(function(k) { return k[0] !== '_' }).join(', '));
     } catch (e) {
@@ -227,6 +226,13 @@ function bootNE(retries) {
         host.__ne_debug = {};
         window.__ne_debug = host.__ne_debug;
     }
+
+    // Pipeline LLM hook — exposes raw response callbacks for test-runner
+    globalThis.__ne_llm_hook = {
+        onPipelineLLMCall: onPipelineLLMCall,
+        offPipelineLLMCall: offPipelineLLMCall
+    };
+    host.__ne_llm_hook = globalThis.__ne_llm_hook;
 
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }

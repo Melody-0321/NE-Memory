@@ -42,24 +42,55 @@ export function appendTraceRound(trace, roundData) {
     lines.push('### 上下文');
     lines.push('- STM: ' + (roundData.vault ? roundData.vault.stmCount : '?') + ', LTM: ' + (roundData.vault ? roundData.vault.ltmCount : '?'));
     lines.push('');
-    lines.push('### Driver 思维链');
+    lines.push('### Driver System Prompt');
     lines.push('```');
-    lines.push('System: ' + (roundData.driverSystem || '').substring(0, 500));
-    lines.push('---');
-    lines.push('Response: ' + (roundData.driverResponse || '').substring(0, 1000));
+    lines.push(roundData.driverSystem || '');
+    lines.push('```');
+    lines.push('');
+    lines.push('### Driver Response (完整)');
+    lines.push('```');
+    lines.push(roundData.driverResponse || '');
     lines.push('```');
     lines.push('');
     lines.push('### 发送消息');
     lines.push('> ' + (roundData.message || ''));
     lines.push('');
-    lines.push('### AI 回复');
-    lines.push('> ' + (roundData.aiReply || '').substring(0, 300));
+    lines.push('### AI 回复 (完整)');
+    lines.push('> ' + (roundData.aiReply || ''));
+    lines.push('');
+    lines.push('### NE 管线 LLM 调用');
+    if (roundData.pipelineCalls && roundData.pipelineCalls.length > 0) {
+        for (var pci = 0; pci < roundData.pipelineCalls.length; pci++) {
+            var pc = roundData.pipelineCalls[pci];
+            lines.push('');
+            lines.push('#### 管线调用 #' + (pci + 1) + ' — ' + pc.operation + ' (' + pc.source + ', ' + pc.durationMs + 'ms)');
+            lines.push('');
+            lines.push('**System Prompt:**');
+            var sysMsg = pc.messages ? pc.messages.find(function(m) { return m.role === 'system'; }) : null;
+            lines.push('```');
+            lines.push(sysMsg ? sysMsg.content : '(none)');
+            lines.push('```');
+            lines.push('');
+            lines.push('**User Prompt:**');
+            var userMsg = pc.messages ? pc.messages.find(function(m) { return m.role === 'user'; }) : null;
+            lines.push('```');
+            lines.push(userMsg ? userMsg.content : '(none)');
+            lines.push('```');
+            lines.push('');
+            lines.push('**LLM Response (完整):**');
+            lines.push('```');
+            lines.push(pc.response || '');
+            lines.push('```');
+        }
+    } else {
+        lines.push('(本轮无 NE 管线 LLM 调用)');
+    }
     lines.push('');
     lines.push('### 管线数据');
     lines.push('- SmartPush injection: ' + (roundData.injectionLength || 0) + ' chars');
     if (roundData.injectionPreview) {
         lines.push('  ```');
-        lines.push('  ' + roundData.injectionPreview.substring(0, 200));
+        lines.push('  ' + roundData.injectionPreview);
         lines.push('  ```');
     }
     if (roundData.stmEvents) {

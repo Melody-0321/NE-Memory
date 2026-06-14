@@ -942,7 +942,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
             // 始终打印 raw response 前 600 字符用于诊断
             if (stateResponse && stateResponse.length > 0) {
-                console.log('[NE-DEBUG] State LLM raw response (first 600):', stateResponse.substring(0, 600));
+                console.log('[NE-DEBUG] State LLM raw response:\n' + stateResponse);
             }
             if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
                 console.log('[NE] State LLM — NO state_changes extracted. Tag found in raw:', /<state_changes>/i.test(stateResponse));

@@ -67,20 +67,20 @@ export async function callMemoryLLM(messages, options = {}) {
         apiSource = 'tavern';
     }
 
-    console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + (Date.now() - startTime) + 'ms, len=' + (response ? response.length : 0));
+    var durationMs = Date.now() - startTime;
+
+    console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + durationMs + 'ms, len=' + (response ? response.length : 0));
 
     var chatId = options.chatId || null;
     var promptStr = JSON.stringify(messages, null, 2);
-    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), response || '', Date.now() - startTime, apiSource, chatId);
+    addLLMLog(options.operation || 'memory', promptStr.substring(0, 500), response || '', durationMs, apiSource, chatId);
 
-    // Per-chat counters
     if (chatId) {
         recordChatStat(chatId, 'llm', 1);
         var totalTokens = usage ? (usage.total_tokens || 0) : (options.operation !== 'init_power_slots' ? 0 : 0);
         if (totalTokens > 0) recordChatStat(chatId, 'tok', totalTokens);
     }
 
-    const durationMs = Date.now() - startTime;
     if (isTelemetryEnabled()) {
         recordTelemetry({
             operation: options.operation || 'memory',
@@ -92,7 +92,35 @@ export async function callMemoryLLM(messages, options = {}) {
             total_tokens: usage ? usage.total_tokens : undefined
         }, chatId);
     }
+
+    firePipelineCallbacks({
+        operation: options.operation || 'memory',
+        messages: messages,
+        response: response || '',
+        usage: usage,
+        source: apiSource,
+        durationMs: durationMs,
+        ts: new Date().toISOString()
+    });
+
     return response;
+}
+
+var _pipelineCallbacks = [];
+
+export function onPipelineLLMCall(fn) {
+    _pipelineCallbacks.push(fn);
+}
+
+export function offPipelineLLMCall(fn) {
+    var idx = _pipelineCallbacks.indexOf(fn);
+    if (idx !== -1) _pipelineCallbacks.splice(idx, 1);
+}
+
+function firePipelineCallbacks(data) {
+    for (var i = 0; i < _pipelineCallbacks.length; i++) {
+        try { _pipelineCallbacks[i](data); } catch (e) {}
+    }
 }
 
 export async function callMemoryPipeline(messages, options = {}, chatId = null) {
