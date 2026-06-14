@@ -6,7 +6,7 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, neSyncChatId, restorePending } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending } from './events.js';
 import { t, setFieldLocale } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
@@ -47,6 +47,14 @@ function getLocale() {
     } catch (e) {}
     try { return localStorage.getItem('language') || 'en'; } catch (e) { return 'en'; }
 }
+function getContextBudget() {
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            return SillyTavern.getContext().maxContext || 4096;
+        }
+    } catch (e) {}
+    return 4096;
+}
 
 async function init() {
     const locale = getLocale();
@@ -65,6 +73,7 @@ async function init() {
         await write(chatId, vault);
     }
     setContextFns(getChatId, getChatMessages);
+    setGetContextBudgetFn(getContextBudget);
     restorePending();
     await renderVaultPanel(getChatId);
     autoConnectSecondaryApi();

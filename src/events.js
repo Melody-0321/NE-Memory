@@ -14,6 +14,8 @@ let getChatMessagesFn = null;
 let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
 let pendingMessages = [];
+let getContextBudgetFn = null;
+let lastMemoryInjectionTokens = 0;
 var pipelineRunning = false;
 var statePipelineRunning = false;
 var consecutiveFailures = 0;
@@ -47,9 +49,9 @@ export function restorePending() {
 }
 
 async function getStmBatchSize() {
-    var { isAuto, computeStmBatch, getTelemetryStats, getSTContextSize } = await import('./params.js');
+    var { isAuto, computeStmBatch, getTelemetryStats } = await import('./params.js');
     if (isAuto('stmBatch')) {
-        return computeStmBatch(getTelemetryStats().turnsPerEvent, getSTContextSize());
+        return computeStmBatch(getTelemetryStats().turnsPerEvent);
     }
     try {
         var raw = localStorage.getItem('ne_settings');
@@ -76,6 +78,20 @@ export function setContextFns(getChatId, getChatMessages) {
     getChatIdFn = getChatId;
     getChatMessagesFn = getChatMessages;
     lastKnownChatId = getChatId();
+}
+export function setGetContextBudgetFn(fn) {
+    getContextBudgetFn = fn;
+}
+export function trackMemoryInjection(tokenCount) {
+    lastMemoryInjectionTokens = tokenCount;
+}
+function computeContextPressure(pendingTokenCount) {
+    if (!getContextBudgetFn) return -1;
+    var maxCtx = getContextBudgetFn();
+    if (!maxCtx || maxCtx <= 0) return -1;
+    var usable = maxCtx - 1500 - lastMemoryInjectionTokens;
+    if (usable <= 0) return 1;
+    return pendingTokenCount / usable;
 }
 export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
 
@@ -151,9 +167,12 @@ export async function onMessageReceived(messageIndex) {
             if (pipelineRunning) return;
 
             const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
+            var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+            var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || totalWords >= getStmWordsThreshold()
-                || (pendingMessages.length >= 3 && totalWords >= 100);
+                || (pendingMessages.length >= 3 && totalWords >= 100)
+                || (pressureVal >= 0.50 && pressureVal > 0);
 
             if (shouldRunPipeline) {
                 flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
@@ -172,9 +191,11 @@ async function flushPendingMessages() {
     if (pipelineRunning) return;
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-    if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold()) {
+    var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+    var pressureVal = computeContextPressure(pendingTokenCount);
+    if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {
         if (pendingMessages.length < 3 || totalWords < 100) {
-            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
+            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
             return;
         }
     }
@@ -310,6 +331,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
+            trackMemoryInjection(charEstimate);
             addLLMLog(injectType,
                 'Injected ~' + charEstimate + 't to chat ' + chatId,
                 formatted || '',
