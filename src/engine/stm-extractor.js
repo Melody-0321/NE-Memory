@@ -1,8 +1,8 @@
 /**
  * engine/stm-extractor.js — Batch-level STM extraction engine
  *
- * Each batch makes ONE LLM call. LLM outputs all events for the batch
- * as plain-text blocks (separated by blank lines), code parses them.
+ * Each batch makes ONE LLM call with response_format: json_object.
+ * LLM outputs JSON, code extracts .events array.
  *
  * processTurnsInBatches() splits large turn sets into maxTurns-sized batches
  * with simple cursor advancement — no carry-forward / deferred.
@@ -11,172 +11,6 @@
 import { groupMessagesIntoTurns, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
 var DEFAULT_MAX_TURNS = 10;
-
-// ── 纯文本 event 提取（不再依赖 JSON.parse）──
-
-function extractEntryFields(raw) {
-    var result = { event: '', period: '', scene: '' };
-    if (!raw) return result;
-    var text = String(raw).trim();
-    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-    text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-    try {
-        var parsed = JSON.parse(text);
-        if (parsed && parsed.event) {
-            result.event = String(parsed.event).substring(0, 200);
-            result.period = String(parsed.period || '').substring(0, 30);
-            result.scene = String(parsed.scene || '').substring(0, 30);
-            return result;
-        }
-    } catch (_) {}
-    var lines = text.split('\n');
-    var eventLines = [];
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (!line) continue;
-        if (/^(Output|输入|以下是|请|Note|Rule|Output format|IMPORTANT)/i.test(line)) continue;
-        var m = line.match(/^period\s*[:：]\s*(.+)/i);
-        if (m) { var pv = m[1].trim(); if (pv !== '-' && pv !== '—' && pv !== '无' && pv !== 'N/A') result.period = pv.substring(0, 30); continue; }
-        m = line.match(/^scene\s*[:：]\s*(.+)/i);
-        if (m) { var sv = m[1].trim(); if (sv !== '-' && sv !== '—' && sv !== '无') result.scene = sv.substring(0, 30); continue; }
-        m = line.match(/^event\s*[:：]\s*(.+)/i);
-        if (m) { result.event = m[1].trim().substring(0, 200); continue; }
-        eventLines.push(line);
-    }
-    if (!result.event) result.event = eventLines.join(' ').substring(0, 200).trim();
-    return result;
-}
-
-// ── 从整批 LLM 响应中解析多个 event 块 ──
-
-// 检测 LLM 是否在回显 prompt（如 flash 模型常见的 echo 行为）
-function isResponseEcho(responseText, promptText) {
-    if (!responseText || !promptText) return false;
-    var cleaned = responseText.replace(/<thought>[\s\S]*?<\/thought>/gi, '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
-    var promptPrefix = promptText.substring(0, 100).trim();
-    if (!promptPrefix) return false;
-    // 取 prompt 前 100 字中不含换行和标点的纯文字段做指纹
-    var fingerprint = promptPrefix.replace(/[\n\r\s]+/g, ' ').substring(0, 40).trim();
-    if (fingerprint.length < 10) return false;
-    return cleaned.indexOf(fingerprint) === 0;
-}
-
-function parseBatchResponse(raw, maxTurn) {
-    var events = [];
-    if (!raw) return events;
-    var text = String(raw).trim();
-    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();
-    text = text.replace(/```json\s*/gi, '').replace(/```/g, '').trim();
-    // 按连续空行分割为 event 块
-    var blocks = text.split(/\n\s*\n/);
-    for (var bi = 0; bi < blocks.length; bi++) {
-        var block = blocks[bi].trim();
-        if (!block) continue;
-        // 接受 event: 字段 或 Turn N-M: 开头的块
-        var hasEventLine = /^event\s*[:：]/im.test(block);
-        var turnPrefixMatch = block.match(/^Turn\s+(\d+)\s*[-–~至到]\s*(\d+)\s*[:：]/im);
-        if (!hasEventLine && !turnPrefixMatch) continue;
-        var hasTurnLine = /^turns?\s*[:：]/im.test(block) || !!turnPrefixMatch;
-        var turnStart = -1, turnEnd = -1;
-        var blockLines = block.split('\n');
-        for (var li = 0; li < blockLines.length; li++) {
-            var line = blockLines[li].trim();
-            var tm = line.match(/^turns?\s*[:：]\s*(\d+)\s*[-–~至到]\s*(\d+)/i);
-            if (tm) {
-                turnStart = Math.max(0, Math.min(maxTurn, parseInt(tm[1], 10)));
-                turnEnd = Math.max(turnStart, Math.min(maxTurn, parseInt(tm[2], 10)));
-                break;
-            }
-            // Fallback: Turn N-M: ... 格式
-            var tpm = line.match(/^Turn\s+(\d+)\s*[-–~至到]\s*(\d+)\s*[:：]/i);
-            if (tpm) {
-                turnStart = Math.max(0, Math.min(maxTurn, parseInt(tpm[1], 10)));
-                turnEnd = Math.max(turnStart, Math.min(maxTurn, parseInt(tpm[2], 10)));
-                break;
-            }
-        }
-        if (turnStart < 0 && !hasTurnLine) continue;
-        if (turnStart < 0) {
-            turnStart = 0;
-            turnEnd = maxTurn - 1;
-        }
-        var turnIndices = [];
-        for (var ti = turnStart; ti <= turnEnd; ti++) turnIndices.push(ti);
-        var fields = extractEntryFields(block);
-        if (!fields.event || fields.event.length < 3) continue;
-        events.push({
-            event: fields.event,
-            period: fields.period,
-            scene: fields.scene,
-            start: turnStart,
-            end: turnEnd,
-            turnIndices: turnIndices
-        });
-    }
-    // 按 start 排序
-    events.sort(function (a, b) { return a.start - b.start; });
-    return normalizeEvents(events);
-}
-
-// ── 归一化：重叠消解 + 合并。supplement 优先覆盖原始 ──
-
-function normalizeEvents(events) {
-    if (!events || events.length === 0) return events;
-    events.sort(function (a, b) { return a.start - b.start; });
-    var result = [];
-    for (var ei = 0; ei < events.length; ei++) {
-        var ev = Object.assign({}, events[ei]);
-        if (result.length === 0) {
-            result.push(ev);
-            continue;
-        }
-        var prev = result[result.length - 1];
-        // 无重叠：直接推入
-        if (ev.start > prev.end) {
-            result.push(ev);
-            continue;
-        }
-        // 有重叠：按间隔大小决定谁赢（间隔小 = 更精细 = supplement 事件）
-        var prevLen = prev.end - prev.start;
-        var evLen = ev.end - ev.start;
-        if (evLen <= prevLen) {
-            // 当前事件更精细（或等大），裁掉前置事件的尾部
-            prev.end = ev.start - 1;
-            if (prev.start > prev.end) {
-                // 前置事件被完全吞掉，替换
-                result[result.length - 1] = ev;
-            } else {
-                // 为前置事件重新计算 turnIndices
-                prev.turnIndices = [];
-                for (var ti = prev.start; ti <= prev.end; ti++) prev.turnIndices.push(ti);
-                result.push(ev);
-            }
-        } else {
-            // 前置事件更精细，当前事件的 start 推到 prev.end + 1
-            ev.start = prev.end + 1;
-            if (ev.start > ev.end) {
-                // 完全重叠到前置事件，合并
-                prev.end = Math.max(prev.end, ev.end);
-                var parts = prev.event.split('; ');
-                if (parts.length >= 3 && evLen > 0) {
-                    prev.event = parts.slice(0, 2).join('; ') + '; ...';
-                } else {
-                    prev.event = prev.event + '; ' + ev.event;
-                }
-                for (var ti = ev.start; ti <= ev.end; ti++) {
-                    if (prev.turnIndices.indexOf(ti) === -1) prev.turnIndices.push(ti);
-                }
-                prev.turnIndices.sort(function (a, b) { return a - b; });
-                continue;
-            }
-            // 更新 turnIndices
-            ev.turnIndices = [];
-            for (var ti = ev.start; ti <= ev.end; ti++) ev.turnIndices.push(ti);
-            result.push(ev);
-        }
-    }
-    return result;
-}
 
 // ── 内层（直接接收 turns）──
 
@@ -198,105 +32,72 @@ export async function runStmExtractorCore(turns, params) {
 
     var maxTurn = turns.length - 1;
 
-    // ── LLM 调用 + 解析 + 重试 ──
+    // ── 单次 LLM 调用 + JSON 解析 ──
     var rawEvents = [];
-    var maxRetries = 2;
-
-    for (var attempt = 0; attempt <= maxRetries; attempt++) {
-        var batchPrompt = buildBatchPrompt(turns, vault, attempt);
-        var responseText = '';
-        try {
-            responseText = await callLLM([
-                { role: 'system', content: batchPrompt.system },
-                { role: 'user', content: batchPrompt.user }
-            ]);
-        } catch (e) {
-            console.warn('[NE] Batch LLM failed (attempt ' + (attempt + 1) + '):', e.message);
-            if (attempt < maxRetries) continue;
-            break;
-        }
-
-        if (isResponseEcho(responseText, batchPrompt.system)) {
-            console.warn('[NE] Batch LLM response is prompt echo (attempt ' + (attempt + 1) + '), retrying...');
-            continue;
-        }
-
-        rawEvents = parseBatchResponse(responseText, maxTurn);
-        if (rawEvents.length === 0) {
-            console.warn('[NE] Batch LLM returned 0 valid events (attempt ' + (attempt + 1) + '), retrying...');
-            continue;
-        }
-
-        // 检查缺失的 turn 范围
-        if (attempt < maxRetries) {
-            var coveredSet = {};
-            for (var ei = 0; ei < rawEvents.length; ei++) {
-                for (var ti = rawEvents[ei].start; ti <= rawEvents[ei].end; ti++) {
-                    coveredSet[ti] = true;
-                }
-            }
-            var missing = [];
-            for (var ti = 0; ti <= maxTurn; ti++) {
-                if (!coveredSet[ti]) missing.push(ti);
-            }
-            if (missing.length > 0) {
-                var missingRanges = [];
-                var ms = missing[0], me = missing[0];
-                for (var mi = 1; mi < missing.length; mi++) {
-                    if (missing[mi] === me + 1) { me = missing[mi]; }
-                    else { missingRanges.push(ms === me ? '' + ms : ms + '-' + me); ms = missing[mi]; me = missing[mi]; }
-                }
-                missingRanges.push(ms === me ? '' + ms : ms + '-' + me);
-                console.warn('[NE] Batch LLM missed turns ' + missingRanges.join(',') + ' (attempt ' + (attempt + 1) + '), retrying with feedback...');
-
-                var feedbackPrompt = buildBatchPrompt(turns, vault, -1, missingRanges);
-                try {
-                    responseText = await callLLM([
-                        { role: 'system', content: feedbackPrompt.system },
-                        { role: 'user', content: feedbackPrompt.user }
-                    ]);
-                } catch (e) {
-                    console.warn('[NE] Batch LLM feedback retry failed:', e.message);
-                    continue;
-                }
-                if (isResponseEcho(responseText, feedbackPrompt.system)) {
-                    console.warn('[NE] Feedback retry response is prompt echo, giving up');
-                    continue;
-                }
-                var supplementEvents = parseBatchResponse(responseText, maxTurn);
-                if (supplementEvents.length > 0) {
-                    rawEvents = normalizeEvents(rawEvents.concat(supplementEvents));
-                }
-                break;
-            }
-        }
-
-        // 回显检测 2：event 文本中含 prompt 原句
-        var suspiciousCount = 0;
-        for (var ei = 0; ei < rawEvents.length; ei++) {
-            if (rawEvents[ei].event.indexOf('被问到') >= 0 || rawEvents[ei].event.indexOf('asked to') >= 0 ||
-                rawEvents[ei].event.indexOf('输出格式') >= 0 || rawEvents[ei].event.indexOf('Output format') >= 0) {
-                suspiciousCount++;
-            }
-        }
-        if (suspiciousCount >= rawEvents.length) {
-            console.warn('[NE] All events appear to be prompt echo (attempt ' + (attempt + 1) + '), retrying...');
-            rawEvents = [];
-            continue;
-        }
-
-        break;
-    }
-
-    if (rawEvents.length === 0) {
-        console.warn('[NE] All LLM attempts failed, no events produced for this batch');
+    var batchPrompt = buildBatchPrompt(turns, vault);
+    var responseText = '';
+    try {
+        responseText = await callLLM([
+            { role: 'system', content: batchPrompt.system },
+            { role: 'user', content: batchPrompt.user }
+        ]);
+    } catch (e) {
+        console.warn('[NE] Batch LLM failed:', e.message);
         return [];
     }
-    var stmEntries = [];
 
-    for (var i = 0; i < rawEvents.length; i++) {
-        var r = rawEvents[i];
+    if (!responseText || !responseText.trim()) {
+        console.warn('[NE] Batch LLM returned empty response, no events');
+        return [];
+    }
+
+    try {
+        var parsed = JSON.parse(responseText);
+        rawEvents = parsed.events || [];
+        if (!Array.isArray(rawEvents)) {
+            console.warn('[NE] Batch LLM returned non-array events field');
+            rawEvents = [];
+        }
+    } catch (e) {
+        console.warn('[NE] Batch LLM returned non-JSON response, no events');
+        console.warn('[NE] Raw response (first 300):', responseText.substring(0, 300));
+        return [];
+    }
+
+    // 过滤无效事件
+    var validEvents = [];
+    for (var ei = 0; ei < rawEvents.length; ei++) {
+        var ev = rawEvents[ei];
+        if (!ev.event || String(ev.event).trim().length < 3) continue;
+        var turnsStr = String(ev.turns || '').trim();
+        var tm = turnsStr.match(/(\d+)\s*[-–~至到]\s*(\d+)/);
+        if (!tm) continue;
+        var start = Math.max(0, Math.min(maxTurn, parseInt(tm[1], 10)));
+        var end = Math.max(start, Math.min(maxTurn, parseInt(tm[2], 10)));
+        if (start > end) continue;
+        var turnIndices = [];
+        for (var ti = start; ti <= end; ti++) turnIndices.push(ti);
+        validEvents.push({
+            event: String(ev.event).substring(0, 200),
+            period: String(ev.period || '').substring(0, 30),
+            scene: String(ev.scene || '').substring(0, 30),
+            start: start,
+            end: end,
+            turnIndices: turnIndices
+        });
+    }
+
+    if (validEvents.length === 0) {
+        console.warn('[NE] No valid events found in JSON response');
+        return [];
+    }
+
+    // 构建 STM 条目
+    var stmEntries = [];
+    for (var i = 0; i < validEvents.length; i++) {
+        var r = validEvents[i];
         var msgIds = collectMsgIdsFromTurns(turns, r.turnIndices);
+        if (msgIds.length === 0) continue;
         stmEntries.push({
             event: r.event,
             status: 'closed',
@@ -309,11 +110,15 @@ export async function runStmExtractorCore(turns, params) {
         });
     }
 
-    console.log('[NE] Batch extraction done — events=' + rawEvents.length);
+    console.log('[NE] Batch extraction done — events=' + validEvents.length);
+
+    if (stmEntries.length === 0) {
+        console.warn('[NE] No STM entries could be built from events (all had empty msgIds)');
+        return [];
+    }
 
     // Phase C: Global index mapping + metadata
     var processedEntries = [];
-
     for (var ei = 0; ei < stmEntries.length; ei++) {
         var entry = Object.assign({}, stmEntries[ei]);
         var turnRange = entry.turns || [0, 0];
@@ -383,7 +188,6 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
     var maxTurns = buildParams.maxTurns || DEFAULT_MAX_TURNS;
     var totalTurns = allTurns.length;
 
-    // 短路径：如果所有 turns 在 maxTurns 内，直接单次调用
     if (allTurns.length <= maxTurns) {
         var shortParams = Object.assign({}, buildParams, { vault: vault });
         var result = await runStmExtractorCore(allTurns, shortParams);
@@ -393,7 +197,6 @@ export async function processTurnsInBatches(vault, messages, buildParams, onProg
 
     var totalAdded = 0;
     var turnIdx = 0;
-
     var numBatches = Math.ceil(totalTurns / maxTurns);
     var batchSize = Math.ceil(totalTurns / numBatches);
 

@@ -501,7 +501,8 @@ async function callCustomAPI(config, messages, options) {
         model: config.model,
         messages: messages,
         temperature: options.temperature || 0.3,
-        max_tokens: options.max_tokens || 2048
+        max_tokens: options.max_tokens || 2048,
+        response_format: { type: "json_object" }
     });
     const timeoutSec = options.timeout || 120;
 

@@ -386,86 +386,35 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
     };
 }
 
-function parseStateChangesText(text) {
-    var changes = {};
-    var lines = String(text || '').split('\n');
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (!line) continue;
-        var m = line.match(/"path"\s*:\s*"([^"]+)"\s*,\s*"value"\s*:\s*(.+)/);
-        if (m) {
-            var p = m[1];
-            var v = m[2].replace(/^"|"$/g, '').replace(/,$/, '').trim();
-            try { v = JSON.parse(v); } catch (_) { v = v.replace(/^"|"$/g, ''); }
-            changes[p] = v;
-            continue;
-        }
-        m = line.match(/"path"\s*:\s*"([^"]+)"/);
-        if (!m) m = line.match(/"(\S+)"\s*:\s*(.+)/);
-        if (m) {
-            var p2 = m[1].replace(/^"|"$/g, '');
-            var v2 = m[2].replace(/^"|"$/g, '').replace(/,$/, '').trim();
-            try { v2 = JSON.parse(v2); } catch (_) {}
-            changes[p2] = v2;
-        }
-    }
-    return changes;
-}
-
 export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
-    // 剥离 <thought> 推理缓冲区
-    text = text.replace(/<thought>[\s\S]*?<\/thought>/g, '').trim();
-
-    var stateChangesText = null;
-    var stateMatch = text.match(/<state_changes>([\s\S]*?)<\/state_changes>/);
-    if (stateMatch) {
-        stateChangesText = stateMatch[1].trim();
-        text = text.replace(/<state_changes>[\s\S]*?<\/state_changes>/, '').trim();
+    if (!text) {
+        return { stmEntries: [], stateChanges: {}, _checkpoints: null };
     }
-
-    var codeMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
-    if (codeMatch) text = codeMatch[1].trim();
 
     var stmEntries = [];
     var checkpoints = null;
+    var stateChanges = {};
+
     try {
-        var trimmed = text.trim();
-        // Array-first: cursor responses start with [...] — parse them before greedy {.*} match
-        if (trimmed.startsWith('[')) {
-            try {
-                var arrayMatch = text.match(/\[[\s\S]*\]/);
-                if (arrayMatch) {
-                    stmEntries = JSON.parse(arrayMatch[0]);
-                    if (!Array.isArray(stmEntries)) stmEntries = [];
+        var parsed = JSON.parse(text);
+        checkpoints = parsed._checkpoints || null;
+        stmEntries = parsed.stm_entries || [];
+
+        if (parsed.state_changes && Array.isArray(parsed.state_changes)) {
+            var flat = {};
+            parsed.state_changes.forEach(function(item) {
+                if (item && item.path !== undefined) {
+                    flat[item.path] = item.value;
                 }
-            } catch (e2) {}
-        } else {
-            var jsonMatch = text.match(/\{[\s\S]*\}/);
-            if (jsonMatch) {
-                var parsed = JSON.parse(jsonMatch[0]);
-                if (parsed.stm_entries || parsed._checkpoints) {
-                    checkpoints = parsed._checkpoints || null;
-                    stmEntries = parsed.stm_entries || [];
-                } else if (Array.isArray(parsed)) {
-                    stmEntries = parsed;
-                }
-            }
+            });
+            stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
         }
-        // Fallback: if still empty and text starts with {, try again
-        if (stmEntries.length === 0 && checkpoints === null && trimmed.startsWith('{')) {
-            try {
-                var arrayMatch2 = text.match(/\[[\s\S]*\]/);
-                if (arrayMatch2) {
-                    stmEntries = JSON.parse(arrayMatch2[0]);
-                    if (!Array.isArray(stmEntries)) stmEntries = [];
-                }
-            } catch (e3) {}
-        }
-        if (stmEntries.length === 0 && text.length > 5) {
-            stmEntries = [{ event: text.substring(0, 120), scene: '', period: '', time_label: '' }];
-        }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[NE] State LLM response is not valid JSON:', e.message);
+        console.warn('[NE] Raw response (first 300):', text.substring(0, 300));
+        return { stmEntries: [], stateChanges: {}, _checkpoints: null };
+    }
 
     // 确保每条 entry 有 msgRange、status 和 entities 默认值
     for (var i = 0; i < stmEntries.length; i++) {
@@ -474,7 +423,6 @@ export function parseSTMResponse(llmResponse) {
         if (!e.msgRange || e.msgRange.length !== 2) {
             e.msgRange = [i, i];
         }
-        // 规范化 entities：字符串数组 → [{name, type}]
         if (e.entities && Array.isArray(e.entities)) {
             e.entities = e.entities.map(function(en) {
                 if (typeof en === 'string') return { name: en, type: 'character' };
@@ -487,36 +435,6 @@ export function parseSTMResponse(llmResponse) {
             delete e.entity;
         } else if (!e.entities) {
             e.entities = [];
-        }
-    }
-
-    var stateChanges = {};
-    if (stateChangesText) {
-        try {
-            var parsedState = JSON.parse(stateChangesText);
-            // LLM 输出格式为 [{path, value}] 数组，转换为内部使用的 {path: value} 扁平对象
-            if (Array.isArray(parsedState)) {
-                var flat = {};
-                parsedState.forEach(function (item) {
-                    if (item && item.path !== undefined) {
-                        flat[item.path] = item.value;
-                    }
-                });
-                parsedState = flat;
-            }
-            if (typeof parsedState === 'object' && parsedState !== null && !Array.isArray(parsedState)) {
-                if (!isStateSchemaEnabled()) {
-                    stateChanges = whitelistStateChanges(parsedState);
-                } else {
-                    stateChanges = parsedState;
-                }
-            }
-        } catch (e) {
-            console.warn('[NE] State changes JSON parse failed, trying text fallback');
-            var fallback = parseStateChangesText(stateChangesText);
-            if (Object.keys(fallback).length > 0) {
-                stateChanges = isStateSchemaEnabled() ? fallback : whitelistStateChanges(fallback);
-            }
         }
     }
 
@@ -682,8 +600,7 @@ function buildStateSnapshot(content) {
     return snapshot;
 }
 
-export function buildBatchPrompt(turns, vault, retryAttempt, missingTurnRanges) {
-    retryAttempt = retryAttempt || 0;
+export function buildBatchPrompt(turns, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
@@ -707,24 +624,9 @@ export function buildBatchPrompt(turns, vault, retryAttempt, missingTurnRanges) 
     var userText = turnsText.join('\n');
     var maxTurnLabel = turns.length - 1;
 
-    if (retryAttempt === 0) {
-        var system = lang === 'en' ?
-            (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput ONLY event blocks — no reasoning, analysis, or extra text.\n\nOutput format (plain text, one event block separated by blank lines):\nevent: one-sentence description (20-80 chars)\nperiod: inferred time. Use the SAME format as prior events. If unsure, output "period: -". Never use vague substitutes like "sometime".\nscene: inferred scene. If unsure, output "scene: -"\nturns: turn range like "0-3", "4-5". Maximum turn is ' + maxTurnLabel + '.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones. Prior events are for time format reference only.\n- Use character proper names only. No pronouns.') :
-            (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n只输出事件块，不要推理、分析或任何额外文字。\n\n输出格式（纯文本，空行分隔每个事件块）：\nevent: 一句话事件描述（20-80字）\nperiod: 推断的时间。必须使用与往期事件相同的格式。若无法判断，输出「period: -」。禁止「某日」「某时」等模糊替代。\nscene: 推断的场景。若无法判断，输出「scene: -」\nturns: turn 范围如「0-3」「4-5」。最大 turn 为 ' + maxTurnLabel + '。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。');
-    } else {
-        // 重试：极简 prompt，减少 flash 模型回显概率
-        if (retrospectiveCtx) retrospectiveCtx = retrospectiveCtx.replace(/## [^\n]+/g, '').trim();
-        var system = lang === 'en' ?
-            (retrospectiveCtx + '\nExtract all events from turns 0-' + maxTurnLabel + ' below.\nOutput format:\nevent: <description>\nperiod: <time or ->\nscene: <location or ->\nturns: N-M\n\nSeparate each event with a blank line. No other text.') :
-            (retrospectiveCtx + '\n提取 0~' + maxTurnLabel + ' 轮对话中的所有事件。\n输出格式：\nevent: <描述>\nperiod: <时间或->\nscene: <场景或->\nturns: N-M\n\n每个事件用空行分隔。不要其他任何文字。');
-    }
-
-    if (missingTurnRanges && missingTurnRanges.length > 0) {
-        var rangeList = missingTurnRanges.join(', ');
-        userText = lang === 'en'
-            ? 'WARNING: You missed turns ' + rangeList + '. ONLY output events for these missing turns. Include period and scene:\n\n' + turnsText.join('\n')
-            : '警告：你遗漏了 Turn ' + rangeList + '。只输出这些缺失 turn 的事件，必须包含 period 和 scene：\n\n' + turnsText.join('\n');
-    }
+    var system = lang === 'en' ?
+        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (20-80 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. If unsure: \\"-\\"",\n      "scene": "inferred scene. If unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- If no valid events can be extracted, set events to empty array [].') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（20-80字，使用角色全名，禁止代词）",\n      "period": "推断的时间。必须使用与往期事件相同的格式。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 如果无法提取有效事件，将 events 设为空数组 []。');
 
     return { system: system, user: userText };
 }
@@ -770,30 +672,22 @@ function buildStatePrompt_Preset(messages, vault) {
         '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
         '任务: state.quests.* — tasks/goals/events，name+status注入prompt，详情通过quest_lookup获取\n';
 
-    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes></state_changes>\n- Miss characters in conversation\n- Include present_characters in any path\n- Omit npc_names or label all characters as protagonist\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分（不输出 <state_changes>）\n- 输出空的 <state_changes></state_changes>\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n- 遗漏 npc_names 或将所有角色都标为主控\n============================================================\n';
+    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Omit "state_changes" from the JSON output\n- Output "state_changes": [] (empty array) when nothing changed\n- Miss characters in conversation\n- Include present_characters in any path\n- Omit npc_names or label all characters as protagonist\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 在 JSON 输出中省略 "state_changes" 字段\n- 当无变化时输出 "state_changes": []（空数组）\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n- 遗漏 npc_names 或将所有角色都标为主控\n============================================================\n';
 
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker. Track character state changes, quest progress, faction relations.\n\n' +
-                'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
-                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify NPCs (all characters EXCEPT the single protagonist; if no clear protagonist, ALL are NPCs)\n3. Each character\'s state changes\n4. Quest/event/goal progress\n5. Faction relation changes\n6. List each change for state_changes (including npc_names)\n</thought>\n' +
-                '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"npc_names","value":["Bob"]},{"path":"characters.Alice.status","value":"活跃"},{"path":"characters.Alice.personality","value":"..."}]\n' +
-                '</state_changes>\n\n' +
-                stateChangesEn + hardGateEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
+                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.status", "value": "活跃"},\n    {"path": "characters.Alice.personality", "value": "..."}\n  ]\n}\n\nAlways include: checkpoints with time/scene/story_date, state_changes for time/scene/story_date/main_event/npc_names and all character changes.\nIf no changes detected, set state_changes to empty array [].\n\n' +
+                stateChangesEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Output JSON with checkpoints and state_changes as shown above.'
         };
     }
     return {
         system: currentStateSnapshot + '你是故事状态追踪器。追踪角色状态变化、任务进展、势力关系变化。\n\n' +
-            '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
-            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 识别NPC（除单一主控角色外的所有角色；无明确主控则全部为NPC）\n3. 每个角色的状态变化\n4. 任务/事件/目标进展\n5. 势力关系变化\n6. 逐条列出需写入state_changes的变更（包括npc_names）\n</thought>\n' +
-            '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"npc_names","value":["紫瞳女孩"]},{"path":"characters.江岚.status","value":"活跃"},{"path":"characters.江岚.personality","value":"..."}]\n' +
-            '</state_changes>\n\n' +
-            stateChangesZh + hardGateZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
+            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.status", "value": "活跃"},\n    {"path": "characters.江岚.personality", "value": "..."}\n  ]\n}\n\n始终包含：checkpoints（time/scene/story_date）、state_changes（time/scene/story_date/main_event/npc_names 和所有角色变化）。\n如果无变化，state_changes 设为空数组 []。\n\n' +
+            stateChangesZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。输出包含 checkpoints 和 state_changes 的 JSON。'
     };
 }
 
@@ -851,30 +745,22 @@ function buildStatePrompt_Dynamic(messages, vault) {
         '\n势力(预设schema): state.factions.<名称>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
         '任务(预设schema): state.quests.* — tasks/goals/events，name+status注入prompt，详情quest_lookup\n';
 
-    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Skip Part 2 (no <state_changes>)\n- Empty <state_changes>\n- Use preset fields instead of discovered fields\n- Include present_characters in any path\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 跳过第二部分\n- 输出空的 <state_changes>\n- 使用预设字段而非动态发现字段\n- 在任何路径中包含 present_characters\n============================================================\n';
+    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Omit "state_changes" from the JSON output\n- Output "state_changes": [] (empty array) when nothing changed\n- Use preset fields instead of discovered fields\n- Include present_characters in any path\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 在 JSON 输出中省略 "state_changes" 字段\n- 当无变化时输出 "state_changes": []（空数组）\n- 使用预设字段而非动态发现字段\n- 在任何路径中包含 present_characters\n============================================================\n';
 
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Track character state changes using discovered fields from character cards/world books.\n\n' +
-                'IMPORTANT: You MUST output ALL three parts below in ONE continuous response. Do NOT stop after <thought>.\n\n' +
-                '<thought>\nAnalyze step by step:\n1. Time & scene changes\n2. Identify NPCs (all characters EXCEPT the single protagonist; if no clear protagonist, ALL are NPCs)\n3. Identify characters present\n4. Check each character for changes in discovered fields: ' + (dynamicFieldSummary || 'discovered fields') + '\n5. List each change for state_changes (including npc_names)\n</thought>\n' +
-                '{"_checkpoints":{"time":"Evening","scene":"Mansion Living Room","story_date":"Day 1"}}\n' +
-                '<state_changes>\n[{"path":"time","value":"Evening"},{"path":"scene","value":"Mansion Living Room"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"Arriving at the mansion"},{"path":"npc_names","value":["Bob"]},{"path":"characters.Alice.{field}","value":"..."}]\n' +
-                '</state_changes>\n\n' +
-                stateChangesEn + hardGateEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Output <thought> → _checkpoints → <state_changes> in ONE response. DO NOT stop after <thought>.'
+                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.{field}", "value": "..."}\n  ]\n}\n\nAlways include: checkpoints with time/scene/story_date, state_changes for time/scene/story_date/main_event/npc_names and all character changes.\nUse ONLY discovered fields (not preset card fields) for character state changes.\nIf no changes detected, set state_changes to empty array [].\n\n' +
+                stateChangesEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Output JSON with checkpoints and state_changes as shown above.'
         };
     }
     return {
         system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用从角色卡/世界书动态发现的字段追踪角色状态变化。\n\n' +
-            '重要：你必须一次性输出以下全部内容，不可在 <thought> 之后就停止！\n\n' +
-            '<thought>\n逐步分析：\n1. 时间和场景变化\n2. 识别NPC（除单一主控角色外的所有角色；无明确主控则全部为NPC）\n3. 找出所有角色\n4. 检查每个角色的动态发现字段变化: ' + (dynamicFieldSummary || '发现的字段') + '\n5. 逐条列出需写入state_changes的变更（包括npc_names）\n</thought>\n' +
-            '{"_checkpoints":{"time":"傍晚","scene":"洋馆客厅","story_date":"Day 1"}}\n' +
-            '<state_changes>\n[{"path":"time","value":"傍晚"},{"path":"scene","value":"洋馆客厅"},{"path":"story_date","value":"Day 1"},{"path":"main_event","value":"抵达洋馆"},{"path":"npc_names","value":["紫瞳女孩"]},{"path":"characters.江岚.{字段}","value":"..."}]\n' +
-            '</state_changes>\n\n' +
-            stateChangesZh + hardGateZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。一次性输出 <thought> → _checkpoints → <state_changes>，不可在 thought 后停止！'
+            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.{字段}", "value": "..."}\n  ]\n}\n\n始终包含：checkpoints（time/scene/story_date）、state_changes（time/scene/story_date/main_event/npc_names 和所有角色变化）。\n仅使用动态发现字段（而非预设角色卡字段）进行角色状态变更。\n如果无变化，state_changes 设为空数组 []。\n\n' +
+            stateChangesZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。输出包含 checkpoints 和 state_changes 的 JSON。'
     };
 }
 
@@ -945,7 +831,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 console.log('[NE-DEBUG] State LLM raw response:\n' + stateResponse);
             }
             if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
-                console.log('[NE] State LLM — NO state_changes extracted. Tag found in raw:', /<state_changes>/i.test(stateResponse));
+                console.log('[NE] State LLM — NO state_changes extracted. Has state_changes key in JSON:', /"state_changes"\s*:/i.test(stateResponse));
             }
             if (!stateResponse || stateResponse.length < 10) {
                 console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
