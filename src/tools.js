@@ -61,6 +61,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                         lines.push('=== ' + ref + ' ===');
                         if (entry.time_range || entry.period) lines.push('Period: ' + (entry.time_range || entry.period));
                         if (entry.scene) lines.push('Scene: ' + entry.scene);
+                        if (entry.title) lines.push('Title: ' + entry.title);
                         if (entry.event) lines.push('Event: ' + entry.event);
                         if (entry.entities && entry.entities.length > 0) {
                             var prefixMap = {character:'@', item:'$', faction:'&', concept:'#', location:'~', event:'!'};

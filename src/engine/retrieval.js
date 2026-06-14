@@ -312,7 +312,7 @@ export function mergePipelines(bm25Results, entityChains, allLTM, state, allSTM)
 
         threadIndex[threadId] = {
             type: 'ltm_group',
-            label: ltm.event || ltm.summary || '',
+            label: ltm.title || ltm.event || ltm.summary || '',
             stmIds: stmIds,
             ltmId: ltm.id,
             timeRange: ltm.time_range || '',
@@ -374,7 +374,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         dirEntries.forEach(function(e, idx) {
             var timePart = (e.entry.time_range || e.entry.period || '');
             if (e.entry.time_label) timePart = timePart + '·' + e.entry.time_label;
-            dirBlock += (idx + 1) + '. [' + timePart + '] ' + (e.entry.event || e.entry.summary || '') + (e.entry.id ? ' [id:' + e.entry.id + ']' : '') + '\n';
+            dirBlock += (idx + 1) + '. [' + timePart + '] ' + (e.entry.title || e.entry.event || e.entry.summary || '').substring(0, 60) + (e.entry.id ? ' [id:' + e.entry.id + ']' : '') + '\n';
         });
     }
 

@@ -229,7 +229,7 @@ RetrievalNotebook.prototype.diff = function() {
     newExpanded.forEach(function(id) {
         var entry = this.map.get(id);
         if (entry) {
-            var text = (entry.entry && entry.entry.event) ? entry.entry.event.substring(0, 60) : '';
+            var text = (entry.entry && (entry.entry.title || entry.entry.event)) ? (entry.entry.title || entry.entry.event).substring(0, 60) : '';
             lines.push(id + ' 已展开' + (text ? ' (' + text + '...)' : ''));
         }
     }, this);

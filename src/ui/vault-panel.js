@@ -1095,7 +1095,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + (entry.event || entry.summary || '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="font-weight:bold;">' + (entry.title || entry.event || entry.summary || '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -1222,7 +1222,7 @@ export function formatVaultForPrompt(vault, chatMessages) {
     }
 
     if (showLtm.length > 0) {
-        var ltmLines = showLtm.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.time_range || e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
+        var ltmLines = showLtm.map(function (e, i) { return '| ' + (i + 1) + ' | ' + (e.time_range || e.period || '') + ' | ' + (e.scene || '') + ' | ' + (e.title || e.event || '') + ' [\u2192' + (e.stm_refs || []).join(',') + '] |'; });
         parts.push('## ' + t('Long-term Memory (LTM) \u2014 Direct') + '\n| ' + t('No.') + ' | ' + t('Period') + ' | ' + t('Scene') + ' | ' + t('Event (Summary)') + ' |\n|' + '---|'.repeat(4) + '\n' + ltmLines.join('\n'));
     }
     if (showStm.length > 0) {
@@ -1596,7 +1596,7 @@ function compileRetrievalBudget(content, query, entityNames, entityChains, budge
 
         result += '**' + se.name + '**: '
         var summaries = selectedEntries.map(function(e) {
-            return (e.event || e.summary || '').substring(0, 35)
+            return (e.title || e.event || e.summary || '').substring(0, 35)
         })
         result += summaries.join(' | ') + '\n'
         usedTokens += 20 + summaries.length * tokenPerEntry
@@ -1620,7 +1620,7 @@ function formatFullDump(allSTM, allLTM) {
         } else if (c.stm_refs && c.stm_refs.length > 0) {
             refs = ' [→' + c.stm_refs.join(',') + ']';
         }
-        lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || '') + refs);
+        lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.title || c.event || c.summary || '') + refs);
     });
 
     if (allLTM && allLTM.length > 0) {
@@ -1629,7 +1629,7 @@ function formatFullDump(allSTM, allLTM) {
         allLTM.forEach(function(c) {
             var timePart = (c.time_range || c.period || '');
             if (c.time_label) timePart = timePart + '·' + c.time_label;
-            lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || ''));
+            lines.push('- [' + timePart + '] ' + (c.scene || '') + ': ' + (c.title || c.event || c.summary || ''));
         });
     }
 

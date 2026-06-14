@@ -88,6 +88,9 @@ export function validateLTMOutput(result) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('ltm_entries[' + i + '].event is REQUIRED');
         }
+        if (e.title !== undefined && !String(e.title).trim()) {
+            errors.push('ltm_entries[' + i + '].title is empty — omit the field if not set');
+        }
         if (!e.stm_refs || e.stm_refs.length === 0) {
             errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
         }
@@ -139,6 +142,10 @@ export function postFillLTM(result, sourceSTMList) {
 
         if (!e.id) {
             e.id = 'ltm_' + (Math.floor(Date.now() / 1000));
+        }
+
+        if (!e.title && e.event) {
+            e.title = e.event.substring(0, 40);
         }
     }
 

@@ -139,7 +139,7 @@ async function verifyClaim(claim, candidates) {
     var candidatesText = candidates.map(function(c, i) {
         var timePart = (c.time_range || c.period || '')
         if (c.time_label) timePart = timePart + '·' + c.time_label
-        return (i + 1) + '. [' + timePart + '] ' + (c.scene || '') + ': ' + (c.event || c.summary || '')
+        return (i + 1) + '. [' + timePart + '] ' + (c.scene || '') + ': ' + (c.title || c.event || c.summary || '')
     }).join('\n')
 
     var prompt = [

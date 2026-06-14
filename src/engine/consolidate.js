@@ -43,7 +43,7 @@ export function buildConsolidatePrompt(vault) {
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const ltmText = ltmEntries.map((e, i) => {
         const refs = (e.stm_refs || []).join(', ');
-        return `${i + 1}. [${e.period || ''}] ${e.scene || ''}: ${e.event || ''} [→${refs}]`;
+        return `${i + 1}. [${e.period || ''}] ${e.title || e.event || ''} [→${refs}]`;
     }).join('\n');
     const stmText = unconsolidated.map((e, i) => {
         const refs = (e.msg_ids || []).join(', ');
@@ -62,21 +62,23 @@ ${stmText}
 
 Requirements:
 - Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
-- The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
-- event length: max 160 chars.
+- The LTM "title" is a short scene:label (15-40 chars), NOT a full sentence. e.g. '酒馆:苏蔓失踪·报警'
+- The LTM "event" is a complete sentence describing the arc content (80-140 chars).
+- "title" MUST be a short label (15-40 chars), NOT a full sentence.
 
 Output JSON with this schema:
 {
   "ltm_entries": [
     {
       "stm_refs": ["stm_X", "stm_Y", ...],
-      "event": "abstract summary (max 50 chars)"
+      "title": "scene: concise label (15-40 chars)",
+      "event": "a complete sentence describing the arc content (80-140 chars)"
     }
   ]
 }
 
 IMPORTANT: Use character proper names.`,
-            user: 'Elevate these STM entries into high-level LTM. Output JSON with ltm_entries array.'
+            user: 'Elevate these STM entries into high-level LTM. Output JSON with ltm_entries array (title + event per entry).'
         };
     }
     return {
@@ -90,21 +92,23 @@ ${stmText}
 
 要求：
 - 将内容连续的 STM 按剧情弧合并为 LTM。禁止 1:1 映射。
-- LTM 的 event 是对合并内容的高层抽象概要，不是 STM 原文拼句。去掉具体步骤、手术名称、植入件名。
-- event 长度不超过 50 字。
+- LTM 的 "title" 是简短的情景标签（15-40 字），不是完整句子。例如'酒馆:苏蔓失踪·报警'
+- LTM 的 "event" 是描述弧内容的完整句子（80-140 字）。
+- "title" 必须是简短的标签（15-40 字），不是完整句子。
 
 输出 JSON，schema 如下：
 {
   "ltm_entries": [
     {
       "stm_refs": ["stm_X", "stm_Y", ...],
-      "event": "抽象概要（最多160字）"
+      "title": "scene: 简练标签（15-40 字）",
+      "event": "描述弧内容的完整句子（80-140 字）"
     }
   ]
 }
 
 重要：使用角色全名，禁止代词。`,
-        user: '将以下 STM 条目提升为高层 LTM。输出包含 ltm_entries 数组的 JSON。'
+        user: '将以下 STM 条目提升为高层 LTM。输出包含 ltm_entries 数组的 JSON（每条含 title + event）。'
     };
 }
 
@@ -270,6 +274,9 @@ export function applyConsolidation(vault, consolidationResult) {
             return (ltm.stm_refs || []).indexOf(s.id) !== -1;
         });
         ltm.time_range = deriveTimeRange(sourceSTM);
+        var maxTs = 0;
+        sourceSTM.forEach(function(s) { if (s.timestamp && s.timestamp > maxTs) maxTs = s.timestamp; });
+        ltm.timestamp = maxTs || Date.now();
 
         // 从源 STM 继承 entities（去重）
         var ltmEntities = sourceSTM.reduce(function(acc, s) {
