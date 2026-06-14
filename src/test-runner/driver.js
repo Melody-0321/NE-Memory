@@ -54,9 +54,21 @@ export async function runTestLoop(testCase, hostDoc) {
 
         var userMessage = extractUserMessage(driverResponse);
         if (!userMessage) {
-            console.warn('[NE-TEST] Driver did not produce a valid user message.');
-            gatedResult = tryParseGated(driverResponse);
-            break;
+            console.warn('[NE-TEST] Driver response not in expected format. Raw:', driverResponse.substring(0, 300));
+            var fallback = fallbackUserMessage(driverResponse);
+            if (fallback) {
+                userMessage = fallback;
+                console.log('[NE-TEST] Using fallback message: ' + userMessage.substring(0, 200));
+            } else {
+                console.warn('[NE-TEST] No message could be extracted, trying next round...');
+                roundDataList.push({
+                    round: round, driverSystem: driverSystem, driverResponse: driverResponse,
+                    message: '', aiReply: '', injection: '',
+                    vault: null, progressNote: 'EXTRACTION FAILED — raw: ' + driverResponse.substring(0, 500)
+                });
+                trace = appendTraceRound(trace, roundDataList[roundDataList.length - 1]);
+                continue;
+            }
         }
         if (userMessage === '__TEST_DONE__') {
             console.log('[NE-TEST] Driver signaled test completion.');
@@ -186,16 +198,13 @@ function buildPlayerPrompt() {
         '5. 如果场景中有多个角色，与最活跃、最有趣的那个互动。',
         '   不要忽略眼前的互动对象去讨论不在场的角色。',
         '',
-        '重要：你只发出一轮内容——对话、动作、或内心描写。',
-        '你不是在写小说或旁白。你不要写多个段落的大段文字。',
-        '保持简洁——30~200 字左右，和真实玩家在聊天框里打出来的内容一样。',
+        '你**不是**在写小说或旁观叙述。你就是这个故事的参与者。',
+        '你以第一人称发出对话和行动——"我..."，"我们..."。',
         '',
-        '回答格式：',
-        'USER_MSG: <你的下一句对话或行动>',
+        '直接输出你的下一句对话或行动。不需要加任何前缀。',
         '',
-        '如果感觉本轮已经是自然的结束（测试目标已间接达成），可以输出：',
-        'DONE:',
-        'REASON: <解释>'
+        '当你认为测试目标已经自然达成时，在消息末尾附加：',
+        '[DONE] 原因',
     ];
     return lines.filter(function(s) { return s !== ''; }).join('\n');
 }
@@ -251,24 +260,26 @@ function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, rou
     return lines.join('\n');
 }
 
+function fallbackUserMessage(llmResponse) {
+    if (!llmResponse) return null;
+    var trimmed = llmResponse.trim();
+    if (trimmed.length < 2) return null;
+    return trimmed.substring(0, 600);
+}
+
 function extractUserMessage(llmResponse) {
     if (!llmResponse) return null;
-
     var trimmed = llmResponse.trim();
 
-    if (/^DONE/i.test(trimmed)) {
-        return '__TEST_DONE__';
+    if (trimmed.length < 2) return null;
+
+    var doneIdx = trimmed.indexOf('[DONE]');
+    if (doneIdx !== -1) {
+        if (doneIdx === 0) return '__TEST_DONE__';
+        return trimmed.substring(0, doneIdx).trim() || '__TEST_DONE__';
     }
 
-    var match = trimmed.match(/USER_MSG:\s*([\s\S]*?)(?:\n\n|\nDONE|\nREASON|\nDATA|$)/);
-    if (match) return match[1].trim();
-
-    if (!trimmed) return null;
-
-    var firstParagraph = trimmed.split(/\n\n/)[0].trim();
-    if (firstParagraph.length > 5 && firstParagraph.indexOf('USER_MSG') === -1) return firstParagraph;
-
-    return trimmed.substring(0, 500).trim();
+    return trimmed.substring(0, 600);
 }
 
 function tryParseGated(driverResponse) {
