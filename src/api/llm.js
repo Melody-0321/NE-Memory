@@ -502,7 +502,8 @@ async function callCustomAPI(config, messages, options) {
         messages: messages,
         temperature: options.temperature || 0.3,
         max_tokens: options.max_tokens || 2048,
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
+        thinking: { type: "disabled" }
     });
     const timeoutSec = options.timeout || 120;
 

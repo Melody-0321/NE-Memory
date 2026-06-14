@@ -411,9 +411,31 @@ export function parseSTMResponse(llmResponse) {
             stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
         }
     } catch (e) {
-        console.warn('[NE] State LLM response is not valid JSON:', e.message);
-        console.warn('[NE] Raw response (first 300):', text.substring(0, 300));
-        return { stmEntries: [], stateChanges: {}, _checkpoints: null };
+        var jsonMatch = text.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+            try {
+                var parsed = JSON.parse(jsonMatch[0]);
+                checkpoints = parsed._checkpoints || null;
+                stmEntries = parsed.stm_entries || [];
+                if (parsed.state_changes && Array.isArray(parsed.state_changes)) {
+                    var flat = {};
+                    parsed.state_changes.forEach(function(item) {
+                        if (item && item.path !== undefined) {
+                            flat[item.path] = item.value;
+                        }
+                    });
+                    stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+                }
+                if (stmEntries.length > 0 || Object.keys(stateChanges).length > 0) {
+                    console.log('[NE] State fallback: extracted JSON from mixed output');
+                }
+             } catch (e2) {}
+         }
+         if (stmEntries.length === 0 && Object.keys(stateChanges).length === 0 && !checkpoints) {
+            console.warn('[NE] State LLM response is not valid JSON:', e.message);
+            console.warn('[NE] Raw response:', text);
+            return { stmEntries: [], stateChanges: {}, _checkpoints: null };
+        }
     }
 
     // 确保每条 entry 有 msgRange、status 和 entities 默认值

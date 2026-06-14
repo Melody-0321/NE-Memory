@@ -55,13 +55,29 @@ export async function runStmExtractorCore(turns, params) {
         var parsed = JSON.parse(responseText);
         rawEvents = parsed.events || [];
         if (!Array.isArray(rawEvents)) {
-            console.warn('[NE] Batch LLM returned non-array events field');
             rawEvents = [];
         }
     } catch (e) {
-        console.warn('[NE] Batch LLM returned non-JSON response, no events');
-        console.warn('[NE] Raw response:', responseText);
-        return [];
+        // Fallback: try to extract JSON from mixed output
+        var jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+            try {
+                parsed = JSON.parse(jsonMatch[0]);
+                rawEvents = parsed.events || [];
+                if (Array.isArray(rawEvents)) {
+                    console.log('[NE] Batch fallback: extracted JSON from mixed output');
+                } else {
+                    rawEvents = [];
+                }
+            } catch (e2) {
+                rawEvents = [];
+            }
+        }
+        if (rawEvents.length === 0) {
+            console.warn('[NE] Batch LLM returned non-JSON response, no events');
+            console.warn('[NE] Raw response:', responseText);
+            return [];
+        }
     }
 
     // 过滤无效事件
