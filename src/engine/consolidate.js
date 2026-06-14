@@ -62,16 +62,18 @@ Requirements:
 - The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
 - event length: max 50 chars.
 
-Output format (plain text, one LTM block separated by blank lines):
-stm_refs: stm_X, stm_Y
-event: abstract summary (max 50 chars)
+Output JSON with this schema:
+{
+  "ltm_entries": [
+    {
+      "stm_refs": ["stm_X", "stm_Y", ...],
+      "event": "abstract summary (max 50 chars)"
+    }
+  ]
+}
 
-Example:
-stm_refs: stm_1, stm_2, stm_3, stm_4, stm_5
-event: Alice and Bob treat Carol's injury at the hospital
-
-IMPORTANT: Use character proper names. Do NOT output JSON. No other fields besides stm_refs and event.`,
-            user: 'Elevate these STM entries into high-level LTM. Output plain text, not JSON.'
+IMPORTANT: Use character proper names.`,
+            user: 'Elevate these STM entries into high-level LTM. Output JSON with ltm_entries array.'
         };
     }
     return {
@@ -88,24 +90,27 @@ ${stmText}
 - LTM 的 event 是对合并内容的高层抽象概要，不是 STM 原文拼句。去掉具体步骤、手术名称、植入件名。
 - event 长度不超过 50 字。
 
-输出格式（纯文本，空行分隔每个 LTM 块）：
-stm_refs: stm_X, stm_Y
-event: 抽象概要（最多50字）
+输出 JSON，schema 如下：
+{
+  "ltm_entries": [
+    {
+      "stm_refs": ["stm_X", "stm_Y", ...],
+      "event": "抽象概要（最多50字）"
+    }
+  ]
+}
 
-示例：
-stm_refs: stm_1, stm_2, stm_3, stm_4, stm_5
-event: 江岚接收并处理了前女友苏蔓和邻居许瑶的遗体
-
-重要：只输出 stm_refs 和 event 两个字段，不要输出其他内容。使用角色全名，禁止代词。不要输出 JSON。`,
-        user: '将以下 STM 条目提升为高层 LTM。输出纯文本，不要 JSON。'
+重要：使用角色全名，禁止代词。`,
+        user: '将以下 STM 条目提升为高层 LTM。输出包含 ltm_entries 数组的 JSON。'
     };
 }
 
 function parseConsolidateText(text, stmIds) {
-    // Strip reasoning segments: <thought>...</thought> blocks and lines that look like inner monologue
-    var clean = String(text || '').replace(/<thought[^>]*>[\s\S]*?<\/thought>/gi, '');
+    var clean = String(text || '');
+    try { return JSON.parse(clean); } catch (_) {}
+    var jsonMatch = clean.match(/\{[\s\S]*\}/);
+    if (jsonMatch) { try { return JSON.parse(jsonMatch[0]); } catch (_) {} }
     var lines = clean.split('\n');
-
     var ltmEntries = [];
     var currentEntry = null;
     for (var i = 0; i < lines.length; i++) {
@@ -153,8 +158,6 @@ function parseConsolidateText(text, stmIds) {
 export function parseConsolidateResponse(llmResponse, stmIds) {
     try {
         const text = String(llmResponse || '').trim();
-        const jsonMatch = text.match(/\{[\s\S]*\}/);
-        if (jsonMatch) return JSON.parse(jsonMatch[0]);
         return JSON.parse(text);
     } catch (e) {
         console.warn('[NE] Consolidate JSON parse failed, using text fallback');
@@ -337,7 +340,7 @@ export async function executeConsolidation(chatId, force) {
     var validateErrors = validateLTMOutput(result);
     if (validateErrors.length > 0) {
         console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
-        var retryMsg = validateErrors.join('; ') + '\n\nFix your output accordingly. Re-output ALL LTM entries. Plain text, not JSON.';
+        var retryMsg = validateErrors.join('; ') + '\n\nFix your output accordingly. Re-output ALL LTM entries as JSON with ltm_entries array.';
         var retryResponse = await callMemoryPipeline([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user },
