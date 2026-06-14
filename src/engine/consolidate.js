@@ -19,18 +19,21 @@ function findNextId(vault) {
     return 'ltm_' + (max + 1);
 }
 
-export function checkConsolidateThreshold(vault) {
-    const content = vault.content || {};
-    var maxUnconsolidated = 5;
+function getMaxUnconsolidated() {
     try {
         var raw = localStorage.getItem('ne_settings');
         if (raw) {
             var s = JSON.parse(raw);
-            maxUnconsolidated = Number(s.stmMaxUnconsolidated) || 5;
+            return Number(s.stmMaxUnconsolidated) || 5;
         }
     } catch (e) {}
+    return 5;
+}
+
+export function checkConsolidateThreshold(vault) {
+    const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    return unconsolidated.length >= maxUnconsolidated;
+    return unconsolidated.length >= getMaxUnconsolidated();
 }
 
 export function buildConsolidatePrompt(vault) {
@@ -333,6 +336,7 @@ export async function executeConsolidation(chatId, force) {
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
+    if (stmIds.length === 0) { console.log('[NE] Consolidation: no unconsolidated STM, skipping'); return { vault, merged: 0 }; }
     const prompt = buildConsolidatePrompt(vault);
     var response = await callMemoryPipeline([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
     var result = parseConsolidateResponse(response, stmIds);
@@ -352,6 +356,20 @@ export async function executeConsolidation(chatId, force) {
 
     postFillLTM(result, unconsolidated);
     normalizeConsolidation(result.ltm_entries, stmIds);
+
+    // 代码级守卫：整合后至少保留 threshold 条未整合 STM
+    var threshold = getMaxUnconsolidated();
+    while (result.ltm_entries.length > 0) {
+        var consumed = 0;
+        result.ltm_entries.forEach(function(ltm) { consumed += (ltm.stm_refs || []).length; });
+        if (stmIds.length - consumed >= threshold) break;
+        var popped = result.ltm_entries.pop();
+        console.log('[NE] Consolidation guard: popped LTM entry (' + (popped.stm_refs || []).length + ' refs), remaining unconsolidated would be ' + (stmIds.length - consumed + (popped.stm_refs || []).length));
+    }
+    if (result.ltm_entries.length === 0) {
+        console.log('[NE] Consolidation guard: all LTM entries discarded, leaving ' + stmIds.length + ' unconsolidated STM');
+    }
+
     const merged = applyConsolidation(vault, result);
 
     globalThis.__ne_debug_last_consolidation = {
