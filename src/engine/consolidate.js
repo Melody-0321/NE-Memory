@@ -181,9 +181,6 @@ function normalizeConsolidation(ltmEntries, allStmIds) {
         (ltm.stm_refs || []).forEach(function(id) { covered[id] = true; });
     });
 
-    var uncovered = allStmIds.filter(function(id) { return !covered[id]; });
-    if (uncovered.length === 0) return;
-
     var stmPos = {};
     allStmIds.forEach(function(id, i) { stmPos[id] = i; });
 
@@ -194,6 +191,33 @@ function normalizeConsolidation(ltmEntries, allStmIds) {
         if (pb === undefined) pb = 999;
         return pa - pb;
     });
+
+    // 填补 LTM 内部 gap：连续剧情弧不应该跳过中间 STM
+    ltmEntries.forEach(function(ltm) {
+        var ids = (ltm.stm_refs || []).filter(function(id) { return stmPos[id] !== undefined; });
+        ids.sort(function(a, b) { return stmPos[a] - stmPos[b]; });
+        var gapFilled = false;
+        for (var gi = 0; gi < ids.length - 1; gi++) {
+            var currentPos = stmPos[ids[gi]];
+            var nextPos = stmPos[ids[gi + 1]];
+            if (nextPos - currentPos > 1) {
+                for (var gj = currentPos + 1; gj < nextPos; gj++) {
+                    var gapId = allStmIds[gj];
+                    if (gapId && !covered[gapId]) {
+                        ltm.stm_refs.push(gapId);
+                        covered[gapId] = true;
+                    }
+                }
+                gapFilled = true;
+            }
+        }
+        if (gapFilled) {
+            ltm.stm_refs.sort(function(a, b) { return (stmPos[a] || 0) - (stmPos[b] || 0); });
+        }
+    });
+
+    var uncovered = allStmIds.filter(function(id) { return !covered[id]; });
+    if (uncovered.length === 0) return;
 
     var ltmRanges = ltmEntries.map(function(ltm) {
         var ids = ltm.stm_refs || [];
