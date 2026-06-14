@@ -358,6 +358,14 @@ export async function executeConsolidation(chatId, force) {
     normalizeConsolidation(result.ltm_entries, stmIds);
 
     // 代码级守卫：整合后至少保留 threshold 条未整合 STM
+    // 先按 stm_refs 的最大索引排序（早→晚），确保 pop 去掉的是最晚的剧情弧
+    var stmPos = {};
+    stmIds.forEach(function(id, i) { stmPos[id] = i; });
+    result.ltm_entries.sort(function(a, b) {
+        var maxA = (a.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
+        var maxB = (b.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
+        return maxA - maxB;
+    });
     var threshold = getMaxUnconsolidated();
     while (result.ltm_entries.length > 0) {
         var consumed = 0;
