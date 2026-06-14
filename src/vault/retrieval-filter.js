@@ -9,6 +9,8 @@
 //   import { filterCandidates } from './vault/retrieval-filter.js';
 //   var results = filterCandidates('query text', allSTM, allLTM, 40);
 
+import { isAuto, computeTopK, computeMinResults, computeLtmDirCount } from '../params.js';
+
 function isCJK(ch) {
     var code = ch.charCodeAt(0);
     return (code >= 0x4E00 && code <= 0x9FFF)
@@ -294,7 +296,6 @@ function denoiseResults(results, minResults) {
 export async function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap) {
     var totalSTM = (allSTM || []).length;
     var totalLTM = (allLTM || []).length;
-    var { isAuto, computeTopK, computeMinResults, computeLtmDirCount } = await import('../params.js');
     topK = isAuto('topK') ? computeTopK(totalSTM) : (topK || 40);
     minResults = isAuto('minResults') ? computeMinResults(totalSTM) : (minResults || 3);
     allSTM = allSTM || [];

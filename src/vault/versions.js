@@ -4,7 +4,7 @@
  * 替代 Python vault_store.py 中的历史快照逻辑。
  * IndexedDB 独立 store 存储快照，上限 30。
  */
-import { openDB } from './store.js';
+import { openDB, write } from './store.js';
 
 const SNAPSHOT_STORE = 'snapshots';
 
@@ -68,11 +68,10 @@ export async function restoreSnapshot(chatId, version) {
         const store = tx.objectStore(SNAPSHOT_STORE);
         const req = store.get(snapshotId);
         req.onsuccess = async () => {
-            if (!req.result) { resolve(null); return; }
-            const vault = req.result.data;
-            const { write } = await import('./store.js');
-            await write(chatId, vault);
-            resolve(vault);
+                if (!req.result) { resolve(null); return; }
+                const vault = req.result.data;
+                await write(chatId, vault);
+                resolve(vault);
         };
         req.onerror = () => reject(req.error);
     });

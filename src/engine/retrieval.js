@@ -6,6 +6,8 @@
  * them as "Known Entity Timelines" into the retrieval synthesis prompt.
  */
 
+import { isAuto, computeChainDepth, computeChainRecentWindow, computeChainHeadCount } from '../params.js';
+
 // ─── Entity chain lookup ───
 
 export async function lookupEntityChains(content, entityNames) {
@@ -30,7 +32,6 @@ export async function lookupEntityChains(content, entityNames) {
             chainEntries.sort(function(a, b) {
                 return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
             });
-            var { isAuto, computeChainDepth, computeChainRecentWindow, computeChainHeadCount } = await import('../params.js');
             var chainLen = chainEntries.length;
             if (isAuto('chainDepth') && chainLen > (computeChainHeadCount() + 2)) {
                 var depth = computeChainDepth(chainLen);

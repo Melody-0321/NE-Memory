@@ -13,9 +13,9 @@ import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSumma
 import { processTurnsInBatches } from './stm-extractor.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
+import { writeWithSnapshot } from '../vault/store.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
-    const { writeWithSnapshot } = await import('../vault/store.js');
     vault.version = (vault.version || 0) + 1;
     vault.updated_at = new Date().toISOString();
     try {

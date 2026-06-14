@@ -6,7 +6,8 @@ import { executeConsolidation } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
 import { detectContradictions } from './engine/contradiction.js';
-import { closeVaultOverlay } from './ui/vault-panel.js';
+import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './ui/vault-panel.js';
+import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -48,7 +49,6 @@ export function restorePending() {
 }
 
 async function getStmBatchSize() {
-    var { isAuto, computeStmBatch, getTelemetryStats } = await import('./params.js');
     if (isAuto('stmBatch')) {
         return computeStmBatch(getTelemetryStats().turnsPerEvent);
     }
@@ -218,7 +218,6 @@ async function flushPendingMessages() {
         latestVault = result.vault;
         console.log('[NE] Incremental update done, added=' + result.added);
         if (result.added > 0 && batch.length > 0) {
-            var { recordTelemetry } = await import('./params.js');
             recordTelemetry({ turns: batch.length, events: result.added });
         }
 
@@ -306,7 +305,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
         try {
-            const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
             var formatted;
             try {
                 formatted = await formatSmartContext(vault, chatMessages);

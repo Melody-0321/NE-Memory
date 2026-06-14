@@ -8,6 +8,8 @@
 import { callMemoryLLM, callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { validateLTMOutput, postFillLTM } from './validate.js';
 import { getStmMinLtmMerge } from '../settings.js';
+import { read } from '../vault/store.js';
+import { saveVaultWithSnapshot } from './update.js';
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -360,8 +362,6 @@ function deriveTimeRange(sourceSTMEntries) {
 }
 
 export async function executeConsolidation(chatId, force) {
-    const { read } = await import('../vault/store.js');
-    const { saveVaultWithSnapshot } = await import('./update.js');
     const vault = await read(chatId);
     if (!force && !checkConsolidateThreshold(vault)) return { vault, merged: 0 };
     const content = vault.content || {};

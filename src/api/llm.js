@@ -126,11 +126,6 @@ function firePipelineCallbacks(data) {
 export async function callMemoryPipeline(messages, options = {}, chatId = null) {
     var mc = await loadMemoryConfig();
     var maxTokens = mc.stm_max_tokens;
-    var { isAuto, computeStmMaxTokens } = await import('../params.js');
-    if (isAuto('stmMaxTokens')) {
-        var { getStmBatchSize } = await import('../events.js');
-        maxTokens = computeStmMaxTokens(await getStmBatchSize());
-    }
     return callMemoryLLM(messages, Object.assign({}, options, { _forcePipelineApi: true, temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: maxTokens, chatId: chatId }));
 }
 
@@ -237,11 +232,6 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
     }
     var mc = loadMemoryConfig();
     var maxTokens = mc.stm_max_tokens || 2048;
-    var { isAuto, computeStmMaxTokens } = await import('../params.js');
-    if (isAuto('stmMaxTokens')) {
-        var { getStmBatchSize } = await import('../events.js');
-        maxTokens = computeStmMaxTokens(await getStmBatchSize());
-    }
     var opts = Object.assign({ temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: maxTokens, chatId: chatId }, options || {});
     var msgs = messages.slice();
     var finalContent = '';
