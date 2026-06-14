@@ -254,20 +254,21 @@ function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, rou
 function extractUserMessage(llmResponse) {
     if (!llmResponse) return null;
 
-    if (/^DONE/i.test(llmResponse.trim())) {
+    var trimmed = llmResponse.trim();
+
+    if (/^DONE/i.test(trimmed)) {
         return '__TEST_DONE__';
     }
 
-    var match = llmResponse.match(/USER_MSG:\s*([\s\S]*?)(?:\n\n|\nDONE|\nREASON|\nDATA|$)/);
+    var match = trimmed.match(/USER_MSG:\s*([\s\S]*?)(?:\n\n|\nDONE|\nREASON|\nDATA|$)/);
     if (match) return match[1].trim();
 
-    var trimmed = llmResponse.trim();
-    if (trimmed.length > 2 && trimmed.indexOf('\n') === -1) return trimmed;
+    if (!trimmed) return null;
 
-    var firstLine = trimmed.split('\n')[0].trim();
-    if (firstLine.length > 5 && firstLine.indexOf('DONE') === -1 && firstLine.indexOf('Round') === -1) return firstLine;
+    var firstParagraph = trimmed.split(/\n\n/)[0].trim();
+    if (firstParagraph.length > 5 && firstParagraph.indexOf('USER_MSG') === -1) return firstParagraph;
 
-    return null;
+    return trimmed.substring(0, 500).trim();
 }
 
 function tryParseGated(driverResponse) {
