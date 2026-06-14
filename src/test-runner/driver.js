@@ -148,6 +148,30 @@ async function saveReport(folder, name, trace, report) {
 
     if (!_reportsDirHandle) {
         _reportsDirHandle = await loadDirHandleFromDB();
+        if (_reportsDirHandle) {
+            try {
+                var perm = await _reportsDirHandle.requestPermission({ mode: 'readwrite' });
+                if (perm !== 'granted') {
+                    console.warn('[NE-TEST] Stored directory permission revoked, clearing handle');
+                    _reportsDirHandle = null;
+                    try {
+                        await new Promise(function(resolve) {
+                            var req = indexedDB.open('ne_test_runner', 1);
+                            req.onsuccess = function() {
+                                var tx = req.result.transaction('files', 'readwrite');
+                                tx.objectStore('files').delete('reportsDir');
+                                tx.oncomplete = resolve;
+                                tx.onerror = resolve;
+                            };
+                            req.onerror = resolve;
+                        });
+                    } catch (e) {}
+                }
+            } catch (e) {
+                console.warn('[NE-TEST] Permission request failed:', e.message);
+                _reportsDirHandle = null;
+            }
+        }
     }
 
     if (_reportsDirHandle) {
