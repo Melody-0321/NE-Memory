@@ -14,7 +14,7 @@ import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
-import { runTest } from './test-runner/index.js';
+import { runTest, setReportsDir } from './test-runner/index.js';
 
 var _retryTimer = null;
 
@@ -367,6 +367,13 @@ function _buildDebugApi(host) {
                  return { error: e.message };
              }
          },
+        setReportsDir: async function() {
+            try {
+                return await setReportsDir();
+            } catch (e) {
+                return 'Error: ' + e.message;
+            }
+        },
         _testPresets: {
             smartpush01: {
                 name: 'smartpush-01', title: 'SmartPush 注入非空',

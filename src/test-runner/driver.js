@@ -132,22 +132,110 @@ export async function runTestLoop(testCase, hostDoc) {
     };
 }
 
-function saveReport(name, trace, report) {
-    var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    downloadText(name + '-' + ts + '-trace.md', trace);
-    downloadText(name + '-' + ts + '-report.md', report);
-    console.log('[NE-TEST] Reports saved: ' + name + '-' + ts + '-trace.md, ' + name + '-' + ts + '-report.md');
+var _reportsDirHandle = null;
+
+function setReportsDirHandle(handle) {
+    _reportsDirHandle = handle;
 }
 
-function downloadText(filename, text) {
-    var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-    var url = URL.createObjectURL(blob);
+async function saveReport(name, trace, report) {
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    var traceName = name + '-' + ts + '-trace.md';
+    var reportName = name + '-' + ts + '-report.md';
+
+    if (!_reportsDirHandle) {
+        _reportsDirHandle = await loadDirHandleFromDB();
+    }
+
+    if (_reportsDirHandle) {
+        try {
+            var subDir = await getOrCreateSubDir(name);
+            await writeToDirHandle(subDir, traceName, trace);
+            await writeToDirHandle(subDir, reportName, report);
+            console.log('[NE-TEST] Reports written to: test-cases/' + name + '/' + traceName);
+            return;
+        } catch (e) {
+            console.warn('[NE-TEST] Direct write failed, falling back to download:', e.message);
+        }
+    }
+
+    downloadFallback(name, trace, report);
+    console.log('[NE-TEST] Reports downloaded via browser (use __ne_debug.setReportsDir() for auto-save).');
+}
+
+function downloadFallback(name, trace, report) {
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     var a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    a.href = URL.createObjectURL(new Blob([trace], { type: 'text/markdown;charset=utf-8' }));
+    a.download = name + '-' + ts + '-trace.md';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+
+    a.href = URL.createObjectURL(new Blob([report], { type: 'text/markdown;charset=utf-8' }));
+    a.download = name + '-' + ts + '-report.md';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+}
+
+async function getOrCreateSubDir(name) {
+    try {
+        return await _reportsDirHandle.getDirectoryHandle(name, { create: true });
+    } catch (e) {
+        return _reportsDirHandle;
+    }
+}
+
+async function writeToDirHandle(dirHandle, filename, content) {
+    var fileHandle = await dirHandle.getFileHandle(filename, { create: true });
+    var writable = await fileHandle.createWritable();
+    await writable.write(content);
+    await writable.close();
+}
+
+async function loadDirHandleFromDB() {
+    try {
+        return await new Promise(function(resolve) {
+            var req = indexedDB.open('ne_test_runner', 1);
+            req.onupgradeneeded = function() { req.result.createObjectStore('files'); };
+            req.onsuccess = function() {
+                try {
+                    var tx = req.result.transaction('files', 'readonly');
+                    var getReq = tx.objectStore('files').get('reportsDir');
+                    getReq.onsuccess = function() { resolve(getReq.result || null); };
+                    getReq.onerror = function() { resolve(null); };
+                } catch (e) { resolve(null); }
+            };
+            req.onerror = function() { resolve(null); };
+        });
+    } catch (e) { return null; }
+}
+
+async function saveDirHandleToDB(handle) {
+    try {
+        return await new Promise(function(resolve) {
+            var req = indexedDB.open('ne_test_runner', 1);
+            req.onupgradeneeded = function() { req.result.createObjectStore('files'); };
+            req.onsuccess = function() {
+                try {
+                    var tx = req.result.transaction('files', 'readwrite');
+                    tx.objectStore('files').put(handle, 'reportsDir');
+                    tx.oncomplete = function() { resolve(); };
+                    tx.onerror = function() { resolve(); };
+                } catch (e) { resolve(); }
+            };
+            req.onerror = function() { resolve(); };
+        });
+    } catch (e) {}
+}
+
+export async function setReportsDir() {
+    try {
+        var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+        setReportsDirHandle(handle);
+        await saveDirHandleToDB(handle);
+        return 'OK — reports will auto-save to the selected directory.';
+    } catch (e) {
+        if (e.name === 'AbortError') return 'Cancelled.';
+        return 'Not supported — use browser download instead. Error: ' + e.message;
+    }
 }
 
 // ── Helpers ──

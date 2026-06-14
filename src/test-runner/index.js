@@ -15,7 +15,9 @@
  *   }
  */
 import { parseTestCase } from './files.js';
-import { runTestLoop } from './driver.js';
+import { runTestLoop, setReportsDir } from './driver.js';
+
+export { setReportsDir };
 
 export async function runTest(config, hostDoc) {
     var testCase = parseTestCase(config);
