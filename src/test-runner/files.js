@@ -5,6 +5,7 @@
 export function parseTestCase(raw) {
     var tc = {};
     tc.name = raw.name || 'unnamed';
+    tc.folder = raw.folder || tc.name;
     tc.title = raw.title || raw.name || '';
     tc.objective = raw.objective || '';
     tc.preconditions = raw.preconditions || [];

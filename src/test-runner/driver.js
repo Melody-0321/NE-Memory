@@ -120,7 +120,7 @@ export async function runTestLoop(testCase, hostDoc) {
         report += '\n\n## LLM 分派结果\n```json\n' + JSON.stringify(gatedResult, null, 2) + '\n```\n';
     }
 
-    saveReport(testCase.name, trace, report);
+    saveReport(testCase.folder || testCase.name, testCase.name, trace, report);
 
     return {
         trace: trace,
@@ -138,7 +138,7 @@ function setReportsDirHandle(handle) {
     _reportsDirHandle = handle;
 }
 
-async function saveReport(name, trace, report) {
+async function saveReport(folder, name, trace, report) {
     var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
     var traceName = name + '-' + ts + '-trace.md';
     var reportName = name + '-' + ts + '-report.md';
@@ -149,10 +149,10 @@ async function saveReport(name, trace, report) {
 
     if (_reportsDirHandle) {
         try {
-            var subDir = await getOrCreateSubDir(name);
+            var subDir = await getOrCreateSubDir(folder);
             await writeToDirHandle(subDir, traceName, trace);
             await writeToDirHandle(subDir, reportName, report);
-            console.log('[NE-TEST] Reports written to: test-cases/' + name + '/' + traceName);
+            console.log('[NE-TEST] Reports written to: ' + folder + '/' + traceName);
             return;
         } catch (e) {
             console.warn('[NE-TEST] Direct write failed, falling back to download:', e.message);
