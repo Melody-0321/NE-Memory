@@ -36,7 +36,7 @@ export async function runTestLoop(testCase, hostDoc) {
 
         var vaultSummary = await collectVaultSummary();
 
-        var driverSystem = buildDriverSystem(testCase);
+        var driverSystem = buildPlayerPrompt();
         var driverUser = buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, round);
 
         console.log('[NE-TEST] Calling LLM Driver (main API)...');
@@ -156,69 +156,97 @@ function getLastAiReply() {
     return '';
 }
 
-function buildDriverSystem(testCase) {
+// ── Layer 1: 玩家角色 Prompt（纯身份 + 驱动力，不含测试目标）──
+function buildPlayerPrompt() {
     var lines = [
-        '你是一个故事的参与者。你正在与 AI 协作推进当前的故事。',
+        '你是一个真实玩家。你正在与 AI 进行互动。',
         '',
-        'AI 的回复代表故事中的一个角色（从 AI 的开场白中可以看出他/她是谁）。',
-        '你需要像真实玩家一样，主动与这个角色互动、发展关系、推进故事。',
+        '从 AI 的回复中，你可以了解当前故事中有哪些角色、他们是谁。',
+        'AI 可能同时扮演一个或多个角色（旁白、主角、配角）。',
+        '找出那些可互动的关键角色——他们是你关注的中心。',
         '',
-        '行为准则：',
-        '- 关注 AI 扮演的角色——通过对话发展你与这个角色之间的关系',
-        '- 你的每次回复都应该推动故事前进——新的事件、新的互动、新的发展',
-        '- 如果 AI 的角色是异性或潜在恋爱对象，自然地发展暧昧或亲密关系',
-        '- 不要忽略主要角色转而去关注边缘情节',
-        '- 玩家是体验驱动的，不是旁观者',
+        '你的驱动力（内在动机，不需要思考，按感觉行动）：',
         '',
-        '你的任务是在自然互动中达成以下测试目标：',
+        '1. 你对故事中的关键角色有好奇心和兴趣。',
+        '   你想了解他们——他们的过去、想法、情感。',
+        '   如果某个角色对你有吸引力，你会自然靠近。',
         '',
-        '## 测试目标',
-        testCase.objective,
+        '2. 你在这个世界中有真实的欲望和目标。',
+        '   你不是旁观者——你想参与、想改变、想获得。',
+        '   这个欲望可能暧昧、可能对抗、可能合作——跟随场景走。',
         '',
-        '## 引导策略（不是故事设定，而是测试技巧）',
-        testCase.conversationGuide || '无特殊策略。自然地与 AI 互动，积累足够的对话轮次后询问与之前对话相关的问题。',
+        '3. 每轮你的回复都在推动你和角色的关系向前。',
+        '   可以是对话、动作、情感流露、身体接触、环境互动。',
+        '   不要让对话原地踏步——每次回复都应该有新内容。',
         '',
-        '## 回答格式',
-        '每轮输出你的内容:',
-        'USER_MSG: <文本>',
+        '4. 你跟随感受而非计划。',
+        '   上一轮 AI 说了什么触动了你，你就沿那个方向走。',
+        '   如果她生气了，你安抚或对抗；如果场景变了，你适应。',
         '',
-        '当测试目标已明显达成时:',
+        '5. 如果场景中有多个角色，与最活跃、最有趣的那个互动。',
+        '   不要忽略眼前的互动对象去讨论不在场的角色。',
+        '',
+        '你**不是**在写小说。你是这个故事的参与者——你在这个世界里，',
+        '你对 AI 的角色有真实的兴趣，你会主动推进。',
+        '',
+        '回答格式：',
+        'USER_MSG: <你的下一句对话或行动>',
+        '',
+        '如果感觉本轮已经是自然的结束（测试目标已间接达成），可以输出：',
         'DONE:',
-        'REASON: <为什么认为目标达成了>'
+        'REASON: <解释>'
     ];
     return lines.filter(function(s) { return s !== ''; }).join('\n');
 }
 
-function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, round) {
+// ── Layer 2: 测试元认知附录（附加在 User prompt 末尾，不影响角色身份）──
+function buildTestStateBlock(testCase, vaultSummary, lastInjection, round) {
     var lines = [];
-    lines.push('## Round ' + round);
+    lines.push('---');
+    lines.push('[测试状态 — 仅供参考，不影响你的角色行为]');
 
     if (vaultSummary) {
-        lines.push('记忆系统: STM=' + vaultSummary.stmCount + ' LTM=' + vaultSummary.ltmCount);
+        lines.push('本轮记忆: STM=' + vaultSummary.stmCount + ' LTM=' + vaultSummary.ltmCount + ' 未合并=' + vaultSummary.unconsolidatedCount);
     }
 
-    if (lastInjection.length > 0) {
-        lines.push('');
-        lines.push('上一轮 SmartPush 注入 (前200字):');
-        lines.push('```');
-        lines.push(lastInjection.substring(0, 200));
-        lines.push('```');
+    if (lastInjection && lastInjection.length > 0) {
+        var preview = lastInjection.substring(0, 180);
+        lines.push('上轮注入预览: ' + preview.replace(/\n/g, ' '));
     }
+
+    var hint = buildStrategyHint(testCase, vaultSummary, round);
+    if (hint) {
+        lines.push('');
+        lines.push('策略提示: ' + hint);
+    }
+
+    return lines.join('\n');
+}
+
+function buildStrategyHint(testCase, vaultSummary, round) {
+    var stm = vaultSummary ? vaultSummary.stmCount : 0;
+    var maxR = testCase.maxRounds || 7;
+    if (stm === 0 && round === 1) return '这是第一轮。自然开场即可。';
+    if (stm >= 4 && round >= 3) return 'STM 已积累 ' + stm + ' 条。这是自然的时机，可以在对话中提出一个与早期已建立的信息相关的具体问题。';
+    if (round >= maxR) return '最后一轮。如果测试目标还未达成，现在自然引入一个与之前对话相关的问题。';
+    return '';
+}
+
+function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, round) {
+    var lines = [];
 
     if (lastAiReply.length > 0) {
-        lines.push('');
-        lines.push('AI 刚刚的回复 (前200字):');
+        lines.push('AI 刚刚说:');
         lines.push('```');
-        lines.push(lastAiReply.substring(0, 200));
+        lines.push(lastAiReply.substring(0, 600));
         lines.push('```');
+    } else {
+        lines.push('（第一轮，等待 AI 开场白或直接开始）');
     }
 
     lines.push('');
-    if (round === 1) {
-        lines.push('这是第一轮。请根据对话指导发送第一条消息。');
-    } else {
-        lines.push('检查测试目标是否已达成。如已达成输出 DONE，否则发送下一条消息。');
-    }
+    lines.push(buildTestStateBlock(testCase, vaultSummary, lastInjection, round));
+
     return lines.join('\n');
 }
 
