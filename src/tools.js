@@ -6,7 +6,6 @@ import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessagesLegacy } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
-import { addToolCall } from './engine/telemetry.js';
 import { recordChatStat } from './engine/chat-telemetry.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
@@ -121,7 +120,6 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     access_success: result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1,
                     access_latency_ms: Date.now() - t0
                 }, chatId);
-                addToolCall('access', { ref: ref }, result.indexOf('not found') === -1 && result.indexOf('Unknown ref') === -1, Date.now() - t0, result, undefined, chatId);
                 recordChatStat(chatId, 'tool', 1);
                 return result;
             } catch (e) {
@@ -133,7 +131,6 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     access_latency_ms: Date.now() - t0,
                     access_error: e.message
                 }, chatId);
-                addToolCall('access', { ref: ref }, false, Date.now() - t0, '', e.message, chatId);
                 recordChatStat(chatId, 'tool', 1);
                 return 'Error: ' + e.message;
             }
@@ -387,7 +384,6 @@ function registerRecallMemory(getChatId) {
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 }, chatId);
 
-                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, !!result, Date.now() - startTime, (answer || '').substring(0, 200), undefined, chatId);
                 recordChatStat(chatId, 'tool', 1);
 
                 return answer;
@@ -400,7 +396,6 @@ function registerRecallMemory(getChatId) {
                     recall_time_filter: !!timeConstraint,
                     recall_total_entries: (allSTM ? allSTM.length : 0) + (allLTM ? allLTM.length : 0)
                 }, chatId);
-                addToolCall('recall_memory', { query: args.query, timeOnly: args.timeOnly || false }, false, Date.now() - startTime, '', e.message, chatId);
                 recordChatStat(chatId, 'tool', 1);
                 // Fallback to BM25 raw list
                 return formatBM25Fallback(topCandidates || [], vault.content);

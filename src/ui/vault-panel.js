@@ -11,15 +11,14 @@ import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
 import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
-import { telemetryBuffer, recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../api/llm.js';
+import { recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../api/llm.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../engine/retrieval.js';
 import { extractEntityNames, lookupEntityChains, mergePipelines } from '../engine/retrieval.js';
 import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
-import { getAllChatStats } from '../engine/chat-telemetry.js';
-import { isAuto, computeStmBatch, getTelemetryStats, getSTContextSize, setAuto } from '../params.js';
+import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../params.js';
 
 /* ──────── 工具 ──────── */
 
@@ -161,8 +160,6 @@ function injectBottomDrawerCSS() {
         '.ne-tool-card-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;}' +
         '.ne-btn-warning{background:rgba(255,152,0,.12)!important;border-color:rgba(255,152,0,.3)!important;color:#ff9800!important;}' +
         '.ne-btn-danger{background:rgba(244,67,54,.12)!important;border-color:rgba(244,67,54,.3)!important;color:#f44336!important;}' +
-        '.ne-injection-preview{font-size:0.82em;color:var(--text);white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black30a);padding:6px 8px;border-radius:4px;font-family:monospace;line-height:1.4;}' +
-        '.ne-injection-meta{font-size:0.75em;color:var(--grey-50);margin-bottom:4px;}' +
         '.ne-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}' +
         '.ne-settings-grid>.ne-settings-full{grid-column:1/-1;}' +
         '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
@@ -237,9 +234,7 @@ function setupAccordionHandlers(chatId) {
         if (acc.closest('#tab-memory')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
-            if (acc.id === 'ne-tool-llm-log') renderLLMLog();
-            else if (acc.id === 'ne-tool-tool-log') renderToolCallLog();
-            else if (acc.id === 'ne-tool-history') renderHistory(_currentGetChatId);
+            if (acc.id === 'ne-tool-history') renderHistory(_currentGetChatId);
         }
     });
 }
@@ -370,7 +365,6 @@ function createVaultPopout(getChatId) {
         if (chat) chat.style.display = 'none';
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
-        renderInjectionPreview();
         renderSettingsTab();
     } else {
         overlay.classList.remove('open');
@@ -1806,23 +1800,12 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '<div class="ne-tool-card">' +
             '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
-            '<div class="ne-accordion open" id="ne-tool-injection">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Injection Preview') + '</div>' +
-            '<div class="ne-accordion-body"><div id="ne_injection_preview_content"></div></div></div>' +
-            '<div class="ne-accordion" id="ne-tool-llm-log">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('LLM Operation Log') + '</div>' +
-            '<div class="ne-accordion-body"><div id="narrative_vault_llm_entries" style="font-size:0.8em;"></div></div></div>' +
-            '<div class="ne-accordion" id="ne-tool-tool-log">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Tool Calling Log') + '</div>' +
-            '<div class="ne-accordion-body"><div id="narrative_vault_tool_calls" style="font-size:0.8em;"></div></div></div>' +
             '<div class="ne-accordion" id="ne-tool-history">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
             '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
             '<div class="ne-accordion" id="ne-tool-test-runner">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
             '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
-            '<div style="margin-top:8px;">' +
-            '<button id="narrative_vault_export_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export Logs') + '</button>' +
             '</div></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
@@ -2137,60 +2120,6 @@ export async function renderVaultPanel(getChatId) {
             }
         });
 
-        // Export logs
-        byId('narrative_vault_export_btn').onclick = function () {
-            var llmLog = [];
-            var toolLog = [];
-            var anomalies = [];
-            var tokenUsage = {};
-            var userSignals = {};
-            try { llmLog = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
-            try { toolLog = JSON.parse(localStorage.getItem('ne_tool_calls') || '[]'); } catch (e) {}
-            try { anomalies = JSON.parse(localStorage.getItem('ne_anomalies') || '[]'); } catch (e) {}
-            try { tokenUsage = JSON.parse(localStorage.getItem('ne_token_usage') || '{}'); } catch (e) {}
-            try { userSignals = JSON.parse(localStorage.getItem('ne_user_signals') || '{}'); } catch (e) {}
-            var chatStats = getAllChatStats();
-
-            // Compute derived metrics
-            var derived = { per_chat: {} };
-            Object.keys(chatStats).forEach(function(cid) {
-                var c = chatStats[cid];
-                var agg = c.aggregates || {};
-                var turns = agg.total_turns || 1;
-                var lastTurn = c.turns && c.turns.length > 0 ? c.turns[c.turns.length - 1] : null;
-                var firstTurn = c.turns && c.turns.length > 0 ? c.turns[0] : null;
-                derived.per_chat[cid] = {
-                    stm_per_turn: (agg.total_stm_count || 0) / turns,
-                    ltm_per_turn: (agg.total_ltm_count || 0) / turns,
-                    llm_calls_per_turn: (agg.total_llm_calls || 0) / turns,
-                    tool_calls_per_turn: (agg.total_tool_calls || 0) / turns,
-                    tokens_per_turn: (agg.total_tokens || 0) / turns,
-                    error_rate: (agg.total_errors || 0) / turns,
-                    avg_pipeline_ms: (agg.total_pipeline_duration_ms || 0) / turns
-                };
-                if (lastTurn && firstTurn && turns > 1) {
-                    derived.per_chat[cid].stm_growth_rate = ((lastTurn.stm || 0) - (firstTurn.stm || 0)) / (turns - 1);
-                    derived.per_chat[cid].ltm_growth_rate = ((lastTurn.ltm || 0) - (firstTurn.ltm || 0)) / (turns - 1);
-                }
-            });
-
-            var data = {
-                llm_log: llmLog,
-                tool_log: toolLog,
-                telemetry: telemetryBuffer,
-                anomalies: anomalies,
-                token_usage: tokenUsage,
-                user_signals: userSignals,
-                chat_stats: chatStats,
-                derived: derived
-            };
-            var blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-            var a = pdCreate('a');
-            a.href = URL.createObjectURL(blob);
-            a.download = 'ne_telemetry_' + new Date().toISOString().split('T')[0] + '.json';
-            a.click();
-        };
-
         freezeIframeHeight();
 
         // Initialize Test Runner UI
@@ -2202,66 +2131,7 @@ export async function renderVaultPanel(getChatId) {
     }
 }
 
-function renderInjectionPreview() {
-    var container = byId('ne_injection_preview_content');
-    if (!container) return;
-    var logs = [];
-    try { logs = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
-    var injection = null;
-    for (var i = logs.length - 1; i >= 0; i--) {
-        if (logs[i].type === 'smartpush_injection') { injection = logs[i]; break; }
-    }
-    if (!injection) {
-        container.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">' + t('No injection recorded yet. Send a message to trigger SmartPush.') + '</div>';
-        return;
-    }
-    var content = (injection.request || '').substring(0, 800);
-    var truncated = injection.request && injection.request.length > 800 ? ' ...(' + t('truncated') + ')' : '';
-    var charCount = content.length;
-    var tokenEst = Math.round(charCount / 3.5);
-    container.innerHTML = '<div class="ne-injection-meta">' + t('Last injection') + ' \u00b7 ' + formatLocalTime(injection.time) + ' \u00b7 ~' + tokenEst + ' tokens' + truncated + '</div>' +
-        '<div class="ne-injection-preview">' + escapeHtml(content) + (truncated ? '<div style="color:var(--grey-50);margin-top:4px;">' + t('Content truncated at 800 characters.') + '</div>' : '') + '</div>';
-}
-
 /* ──────── LLM 日志 ──────── */
-
-var narrativeToolCalls = [];
-
-function renderLLMLog() {
-    var container = byId('narrative_vault_llm_entries');
-    if (!container) return;
-    var html = '';
-    var logs = [];
-    try { logs = JSON.parse(localStorage.getItem('ne_llm_log') || '[]'); } catch (e) {}
-    if (logs.length === 0) {
-        html = '<div style="color:#888;padding:8px 0;">' + t('No operations logged') + '</div>';
-    } else {
-        logs.slice().reverse().forEach(function (entry) {
-            html += '<div class="ne_log_entry"><div class="ne_log_header" style="cursor:pointer;font-weight:bold;color:var(--grey70);font-size:0.85em;">\u25BC ' + (entry.type || '') + ' \u00b7 ' + formatLocalTime(entry.time) + (entry.duration_ms ? ' \u00b7 ' + (entry.duration_ms > 1000 ? (entry.duration_ms / 1000).toFixed(1) + 's' : entry.duration_ms + 'ms') : '') + (entry.api_source ? ' \u00b7 [' + escapeHtml(entry.api_source) + ']' : '') + '</div>' +
-                '<div class="ne_log_body"><div class="ne_log_label" style="color:#aaa;font-size:0.83em;">Request:</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:200px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.request || '') + '</pre>' +
-                '<div class="ne_log_label" style="color:#aaa;font-size:0.83em;">Response:</div><pre class="ne_log_pre" style="margin:2px 0 6px;white-space:pre-wrap;max-height:500px;overflow-y:auto;background:var(--black50a);padding:4px;border-radius:2px;font-size:0.83em;">' + escapeHtml(entry.response || '') + '</pre></div></div>';
-        });
-    }
-    container.innerHTML = html;
-}
-
-function renderToolCallLog() {
-    var container = byId('narrative_vault_tool_calls');
-    if (!container) return;
-    var html = '';
-    var calls = [];
-    try { calls = JSON.parse(localStorage.getItem('ne_tool_calls') || '[]'); } catch (e) {}
-    if (calls.length === 0) {
-        html = '<div style="color:#888;padding:8px 0;">' + t('No tool calls recorded') + '</div>';
-    } else {
-        calls.slice().reverse().forEach(function (entry) {
-            var emoji = entry.success ? '\uD83D\uDFE2' : '\uD83D\uDD34';
-            var dur = entry.duration_ms > 1000 ? (entry.duration_ms / 1000).toFixed(1) + 's' : entry.duration_ms + 'ms';
-            html += '<div class="ne_tool_entry" style="margin:3px 0;padding:3px 4px;background:var(--black30a);border-radius:3px;font-size:0.85em;">' + emoji + ' ' + escapeHtml(entry.tool) + ' \u00b7 ' + formatLocalTime(entry.ts) + ' \u00b7 ' + dur + (entry.result_summary ? ' \u00b7 ' + escapeHtml(entry.result_summary) : '') + (entry.error_info ? ' \u00b7 <span style="color:#f44336;">' + escapeHtml(entry.error_info) + '</span>' : '') + '</div>';
-        });
-    }
-    container.innerHTML = html;
-}
 
 /* ──────── 历史面板 ──────── */
 
@@ -2472,7 +2342,7 @@ function renderSettingsTab() {
 
     // === Common Settings ===
     var stmBatchAuto = isAuto('stmBatch');
-    var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent, getSTContextSize());
+    var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +

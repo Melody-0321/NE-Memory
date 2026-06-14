@@ -4,7 +4,6 @@
 import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/update.js';
 import { executeConsolidation } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
-import { addLLMLog } from './engine/telemetry.js';
 import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
 import { detectContradictions } from './engine/contradiction.js';
 import { closeVaultOverlay } from './ui/vault-panel.js';
@@ -306,8 +305,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
-        var injectStart = Date.now();
-        var injectType = 'smartpush_injection';
         try {
             const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
             var formatted;
@@ -316,7 +313,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             } catch (e) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);
-                injectType = 'smartpush_error';
             }
             if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
                 globalThis.__ne_debug_last_injection = formatted;
@@ -332,20 +328,12 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
             trackMemoryInjection(charEstimate);
-            addLLMLog(injectType,
-                'Injected ~' + charEstimate + 't to chat ' + chatId,
-                formatted || '',
-                Date.now() - injectStart,
-                'narrative',
-                chatId
-            );
             // Record per-chat token injection
             if (chatId && charEstimate > 0) {
                 recordChatStat(chatId, 'tok', charEstimate);
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);
-            addLLMLog('smartpush_error', '', e.message, Date.now() - injectStart, 'narrative', chatId);
         }
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
