@@ -300,7 +300,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
             addLLMLog(injectType,
-                'Injected ~' + charEstimate + 't to chat ' + chatId + (timedOut ? ' (timeout fallback)' : ''),
+                'Injected ~' + charEstimate + 't to chat ' + chatId,
                 formatted || '',
                 Date.now() - injectStart,
                 'narrative',
@@ -309,9 +309,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             // Record per-chat token injection
             if (chatId && charEstimate > 0) {
                 recordChatStat(chatId, 'tok', charEstimate);
-            }
-            if (timedOut) {
-                console.log('[NE] onBeforeGenerate completed with timeout fallback');
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);
