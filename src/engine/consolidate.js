@@ -63,7 +63,7 @@ ${stmText}
 Requirements:
 - Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
 - The LTM event is a high-level abstract summary — NOT a concatenation of STM details. Omit specific steps, procedure names, implant names.
-- event length: max 50 chars.
+- event length: max 160 chars.
 
 Output JSON with this schema:
 {
@@ -98,7 +98,7 @@ ${stmText}
   "ltm_entries": [
     {
       "stm_refs": ["stm_X", "stm_Y", ...],
-      "event": "抽象概要（最多50字）"
+      "event": "抽象概要（最多160字）"
     }
   ]
 }
@@ -154,7 +154,7 @@ function parseConsolidateText(text, stmIds) {
     if (ltmEntries.length === 0) {
         ltmEntries.push({ stm_refs: stmIds, event: 'Consolidated STM ' + stmIds.join(', ') });
     }
-    ltmEntries.forEach(function(e) { e.event = e.event.substring(0, 50).trim(); });
+    ltmEntries.forEach(function(e) { e.event = e.event.substring(0, 160).trim(); });
     return { ltm_entries: ltmEntries, delete_stm_ids: [] };
 }
 
