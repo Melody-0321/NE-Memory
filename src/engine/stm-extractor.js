@@ -60,7 +60,7 @@ export async function runStmExtractorCore(turns, params) {
         }
     } catch (e) {
         console.warn('[NE] Batch LLM returned non-JSON response, no events');
-        console.warn('[NE] Raw response (first 300):', responseText.substring(0, 300));
+        console.warn('[NE] Raw response:', responseText);
         return [];
     }
 

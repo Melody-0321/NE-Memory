@@ -788,8 +788,8 @@ function autoDecayStaleCharacters(state, messages) {
     return state;
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
-    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
+export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress, skipState) {
+    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force + ', skipState=' + !!skipState);
     const vault = await read(chatId);
 
     var processedIds = collectProcessedMsgIds(vault);
@@ -809,7 +809,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     ensureStateStructure(vault);
 
     var stateParsed = null;
-    if (isStateSchemaEnabled()) {
+    if (isStateSchemaEnabled() && !skipState) {
         // ═══════════════════════════════════════════
         // Pipeline 1: State（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
         // ═══════════════════════════════════════════

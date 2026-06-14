@@ -1960,7 +1960,7 @@ export async function renderVaultPanel(getChatId) {
                         var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
                             accumTurns = progress.processedTurns;
                             processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + '\u8f6e' + ')';
-                        });
+                        }, true);
                         if (result.added === 0 && batch.length > 0) {
                             console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
                         }
