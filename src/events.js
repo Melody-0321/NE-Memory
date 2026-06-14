@@ -278,37 +278,14 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         var injectType = 'smartpush_injection';
         try {
             const { formatSmartContext, buildStateOnlyInjection } = await import('./ui/vault-panel.js');
-            var smPushTimeoutMs = 5000;
-            try {
-                var neSettingsRaw = localStorage.getItem('ne_settings');
-                if (neSettingsRaw) {
-                    var neSettings = JSON.parse(neSettingsRaw);
-                    if (neSettings.smPushTimeoutMs !== undefined) smPushTimeoutMs = Number(neSettings.smPushTimeoutMs) || 0;
-                }
-            } catch (e) {}
             var formatted;
-            var timedOut = false;
             try {
-                if (smPushTimeoutMs > 0) {
-                    formatted = await Promise.race([
-                        formatSmartContext(vault, chatMessages),
-                        new Promise(function(resolve) {
-                            setTimeout(function() {
-                                timedOut = true;
-                                console.warn('[NE] formatSmartContext timed out after ' + smPushTimeoutMs + 'ms, falling back to state-only injection');
-                                resolve(buildStateOnlyInjection(vault));
-                            }, smPushTimeoutMs);
-                        })
-                    ]);
-                } else {
-                    formatted = await formatSmartContext(vault, chatMessages);
-                }
+                formatted = await formatSmartContext(vault, chatMessages);
             } catch (e) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);
                 injectType = 'smartpush_error';
             }
-            if (timedOut) injectType = 'smartpush_timeout';
             if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
                 globalThis.__ne_debug_last_injection = formatted;
                 TavernHelper.injectPrompts([{
