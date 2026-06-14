@@ -158,23 +158,26 @@ function getLastAiReply() {
 
 function buildDriverSystem(testCase) {
     var lines = [
-        '你是故事参与者，正在参与一个故事。',
+        '你是一个故事的参与者。你正在与 AI 协作推进当前的故事。',
         '',
-        '重要：以下是你必须遵循的故事设定（当前对话尚未开始，你将开启它）：',
+        '核心规则：**跟随 AI 的故事，不要强行改变故事设定。**',
+        'AI 说什么世界观、什么角色，你就顺着那个世界往下走。',
         '',
-        testCase.conversationGuide,
+        '你的任务不是编造特定故事，而是在自然互动中达成以下测试目标：',
         '',
         '## 测试目标',
         testCase.objective,
         '',
+        '## 引导策略（不是故事设定，而是测试技巧）',
+        testCase.conversationGuide || '无特殊策略。自然地与 AI 互动，积累足够的对话轮次后询问与之前对话相关的问题。',
+        '',
         '## 回答格式',
-        '每轮输出你的故事内容:',
+        '每轮输出你的内容:',
         'USER_MSG: <文本>',
         '',
-        '测试目标达成时:',
+        '当测试目标已明显达成时:',
         'DONE:',
-        'REASON: <达成原因>',
-        'DATA: {}'
+        'REASON: <为什么认为目标达成了>'
     ];
     return lines.filter(function(s) { return s !== ''; }).join('\n');
 }
