@@ -47,9 +47,9 @@ export function restorePending() {
 }
 
 async function getStmBatchSize() {
-    var { isAuto, computeStmBatch, getTelemetryStats } = await import('./params.js');
+    var { isAuto, computeStmBatch, getTelemetryStats, getSTContextSize } = await import('./params.js');
     if (isAuto('stmBatch')) {
-        return computeStmBatch(getTelemetryStats().turnsPerEvent);
+        return computeStmBatch(getTelemetryStats().turnsPerEvent, getSTContextSize());
     }
     try {
         var raw = localStorage.getItem('ne_settings');

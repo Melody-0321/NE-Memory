@@ -66,8 +66,19 @@ function logScale(value, minIn, maxIn, minOut, maxOut) {
     return Math.round(minOut + (maxOut - minOut) * ratio);
 }
 
-export function computeStmBatch(turnsPerEvent) {
-    return Math.max(5, Math.min(25, Math.round(4 * turnsPerEvent)));
+export function computeStmBatch(turnsPerEvent, contextSize) {
+    var maxByContext = contextSize ? Math.max(3, Math.floor(contextSize * 0.55 / 250)) : 25;
+    return Math.max(5, Math.min(25, Math.round(4 * turnsPerEvent), maxByContext));
+}
+
+export function getSTContextSize() {
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            return ctx.contextSize || ctx.max_context || 4096;
+        }
+    } catch (e) {}
+    return 4096;
 }
 
 export function computeStmMaxTokens(stmBatch) {
@@ -99,9 +110,10 @@ export function computeChainHeadCount() {
 }
 
 export function computeAll(stats) {
+    var ctxSize = getSTContextSize();
     return {
-        stmBatch: computeStmBatch(stats.turnsPerEvent),
-        stmMaxTokens: computeStmMaxTokens(computeStmBatch(stats.turnsPerEvent)),
+        stmBatch: computeStmBatch(stats.turnsPerEvent, ctxSize),
+        stmMaxTokens: computeStmMaxTokens(computeStmBatch(stats.turnsPerEvent, ctxSize)),
         topK: computeTopK(stats.totalSTM || 0),
         chainDepth: computeChainDepth(stats.chainLength || 0),
         chainRecentWindow: computeChainRecentWindow(stats.chainLength || 0),

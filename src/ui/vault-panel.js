@@ -19,7 +19,7 @@ import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.j
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
-import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../params.js';
+import { isAuto, computeStmBatch, getTelemetryStats, getSTContextSize, setAuto } from '../params.js';
 
 /* ──────── 工具 ──────── */
 
@@ -2472,7 +2472,7 @@ function renderSettingsTab() {
 
     // === Common Settings ===
     var stmBatchAuto = isAuto('stmBatch');
-    var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
+    var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent, getSTContextSize());
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
