@@ -19,43 +19,43 @@ export function evaluateStructural(collected, assertion) {
     switch (op) {
     case 'min_length':
         var len = typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1);
-        return { passed: len >= value, label: label, detail: '实际长度=' + len + ' (要求>=' + value + ')' };
+        return { op: op, passed: len >= value, label: label, detail: '实际长度=' + len + ' (要求>=' + value + ')' };
 
     case 'max_length':
         var len2 = typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1);
-        return { passed: len2 <= value, label: label, detail: '实际长度=' + len2 + ' (要求<=' + value + ')' };
+        return { op: op, passed: len2 <= value, label: label, detail: '实际长度=' + len2 + ' (要求<=' + value + ')' };
 
     case 'contains':
-        if (typeof target !== 'string') return { passed: false, label: label, detail: 'target 不是字符串' };
+        if (typeof target !== 'string') return { op: op, passed: false, label: label, detail: 'target 不是字符串' };
         var vals = Array.isArray(value) ? value : [value];
         var missing = vals.filter(function(v) { return target.indexOf(v) === -1; });
-        return { passed: missing.length === 0, label: label, detail: missing.length > 0 ? '缺少: ' + missing.join(', ') : '全部包含' };
+        return { op: op, passed: missing.length === 0, label: label, detail: missing.length > 0 ? '缺少: ' + missing.join(', ') : '全部包含' };
 
     case 'not_contains':
-        if (typeof target !== 'string') return { passed: false, label: label, detail: 'target 不是字符串' };
+        if (typeof target !== 'string') return { op: op, passed: false, label: label, detail: 'target 不是字符串' };
         var found = target.indexOf(value) !== -1;
-        return { passed: !found, label: label, detail: found ? '发现禁止内容: ' + value : '未发现' };
+        return { op: op, passed: !found, label: label, detail: found ? '发现禁止内容: ' + value : '未发现' };
 
     case 'equals':
         var actual = target;
-        return { passed: actual === value, label: label, detail: '实际=' + JSON.stringify(actual) + ' 期望=' + JSON.stringify(value) };
+        return { op: op, passed: actual === value, label: label, detail: '实际=' + JSON.stringify(actual) + ' 期望=' + JSON.stringify(value) };
 
     case 'exists':
         var exists = target !== null && target !== undefined && target !== '';
-        return { passed: exists === value, label: label, detail: exists ? '存在' : '不存在' };
+        return { op: op, passed: exists === value, label: label, detail: exists ? '存在' : '不存在' };
 
     case 'regex':
-        if (typeof target !== 'string') return { passed: false, label: label, detail: 'target 不是字符串' };
+        if (typeof target !== 'string') return { op: op, passed: false, label: label, detail: 'target 不是字符串' };
         try {
             var re = new RegExp(value);
-            return { passed: re.test(target), label: label, detail: re.test(target) ? '匹配' : '不匹配' };
-        } catch (e) { return { passed: false, label: label, detail: '正则错误: ' + e.message }; }
+            return { op: op, passed: re.test(target), label: label, detail: re.test(target) ? '匹配' : '不匹配' };
+        } catch (e) { return { op: op, passed: false, label: label, detail: '正则错误: ' + e.message }; }
 
     case 'type':
-        return { passed: typeof target === value, label: label, detail: '实际类型=' + typeof target };
+        return { op: op, passed: typeof target === value, label: label, detail: '实际类型=' + typeof target };
 
     default:
-        return { passed: false, label: label, detail: '未知操作: ' + op };
+        return { op: op, passed: false, label: label, detail: '未知操作: ' + op };
     }
 }
 

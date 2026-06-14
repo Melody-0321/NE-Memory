@@ -269,6 +269,21 @@ function _buildDebugApi(host) {
                 return JSON.parse(JSON.stringify(v.content));
             } catch (e) { return null; }
         },
+        setSmPushTimeout: function(ms) {
+            try {
+                var raw = localStorage.getItem('ne_settings');
+                var settings = raw ? JSON.parse(raw) : {};
+                settings.smPushTimeoutMs = ms;
+                localStorage.setItem('ne_settings', JSON.stringify(settings));
+            } catch (e) {}
+        },
+        getSmPushTimeout: function() {
+            try {
+                var raw = localStorage.getItem('ne_settings');
+                var settings = raw ? JSON.parse(raw) : {};
+                return settings.smPushTimeoutMs !== undefined ? settings.smPushTimeoutMs : 5000;
+            } catch (e) { return 5000; }
+        },
 
         _waitUntilReply: function(maxMs) {
             // ST clears body.dataset.generating BEFORE emitting MESSAGE_RECEIVED

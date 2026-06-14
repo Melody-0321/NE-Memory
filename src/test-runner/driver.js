@@ -108,6 +108,8 @@ export async function runTestLoop(testCase, hostDoc) {
         report += '\n\n## LLM 分派结果\n```json\n' + JSON.stringify(gatedResult, null, 2) + '\n```\n';
     }
 
+    saveReport(testCase.name, trace, report);
+
     return {
         trace: trace,
         report: report,
@@ -116,6 +118,24 @@ export async function runTestLoop(testCase, hostDoc) {
         roundCount: roundDataList.length,
         totalDurationMs: totalDuration
     };
+}
+
+function saveReport(name, trace, report) {
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    downloadText(name + '-' + ts + '-trace.md', trace);
+    downloadText(name + '-' + ts + '-report.md', report);
+    console.log('[NE-TEST] Reports saved: ' + name + '-' + ts + '-trace.md, ' + name + '-' + ts + '-report.md');
+}
+
+function downloadText(filename, text) {
+    var blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
 }
 
 // ── Helpers ──
@@ -138,19 +158,14 @@ function getLastAiReply() {
 
 function buildDriverSystem(testCase) {
     var lines = [
-        '你是故事参与者，通过与 AI 协作推进故事来测试 NE Memory 记忆系统。',
+        '你是故事参与者，正在参与一个故事。',
         '',
-        '你可以自由选择交互方式：',
-        '- 纯角色对话（"角色名: 内容"）',
-        '- 故事叙事（旁白 + 环境描写 + 动作 + 多角色对话）',
-        '- 混合模式（在叙事中穿插角色对话）',
-        '根据当前故事的自然风格决定。你需要引入角色、事件来推动测试目标。',
+        '重要：以下是你必须遵循的故事设定（当前对话尚未开始，你将开启它）：',
+        '',
+        testCase.conversationGuide,
         '',
         '## 测试目标',
         testCase.objective,
-        '',
-        '## 对话指导',
-        testCase.conversationGuide,
         '',
         '## 回答格式',
         '每轮输出你的故事内容:',
