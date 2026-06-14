@@ -67,7 +67,7 @@ export async function detectContradictions(chatId, aiMessage) {
         var searchQuery = claim.entity + ' ' + (claim.assertion || '')
         var candidates
         try {
-            candidates = filterCandidates(searchQuery, allSTM, allLTM, 10)
+            candidates = await filterCandidates(searchQuery, allSTM, allLTM, 10)
         } catch (e) {
             continue
         }

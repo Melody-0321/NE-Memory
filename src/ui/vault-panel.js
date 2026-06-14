@@ -19,6 +19,7 @@ import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.j
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
+import { isAuto, computeStmBatch, computeStmMaxTokens, getTelemetryStats, setAuto } from '../params.js';
 
 /* ──────── 工具 ──────── */
 
@@ -1144,7 +1145,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
 
 /* ──────── 注入格式化 ──────── */
 
-export function formatVaultForPrompt(vault, chatMessages) {
+export async function formatVaultForPrompt(vault, chatMessages) {
     var content = vault.content || {};
     var parts = [];
     if (vault.memory_system_prompt) { parts.push(vault.memory_system_prompt); parts.push('---'); }
@@ -1212,7 +1213,7 @@ export function formatVaultForPrompt(vault, chatMessages) {
             var allStm = [].concat(unconsolidated).concat(content.stm_entries || []);
             var allCandidates = [].concat(ltm).concat(allStm);
             if (allCandidates.length > 25) {
-                var topK = filterCandidates(query, allStm, ltm, 25);
+                var topK = await filterCandidates(query, allStm, ltm, 25);
                 showLtm = topK.filter(function (e) { return e.__type === 'ltm'; });
                 showStm = topK.filter(function (e) { return e.__type === 'stm'; });
             }
@@ -1330,7 +1331,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var entityChains = {};
     if (entityNames && entityNames.length > 0) {
         try {
-            entityChains = lookupEntityChains(content, entityNames);
+            entityChains = await lookupEntityChains(content, entityNames);
         } catch (e) {}
     }
 
@@ -1349,7 +1350,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     var topCandidates;
     try {
-        topCandidates = filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
+        topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
     } catch (e) {
         console.warn('[NE] BM25 filter failed, falling back to full dump injection:', e);
         return buildFullDumpInjection(vault, allSTM, allLTM);
@@ -1398,7 +1399,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var synthesized;
     var smPushMethod;
     try {
-        var messages = buildRetrievalMessages(notebook, query, vault, budget);
+        var messages = await buildRetrievalMessages(notebook, query, vault, budget);
         var accessTool = {
             type: 'function',
             function: {
@@ -2470,6 +2471,9 @@ function renderSettingsTab() {
     var statusDot = '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>';
 
     // === Common Settings ===
+    var stmBatchAuto = isAuto('stmBatch');
+    var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
+    var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
@@ -2481,8 +2485,16 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Extraction Batch') + '</span><span class="range-val" id="nes_stm_batch_val">' + (settings.stmBatch || 10) + '</span></div>' +
-        '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + (settings.stmBatch || 10) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">' +
+            '<span>' + t('STM Extraction Batch') + '</span>' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
+                    '<input type="checkbox" id="nes_stm_batch_auto" ' + (stmBatchAuto ? 'checked' : '') + '> Auto' +
+                '</label>' +
+                '<span class="range-val" id="nes_stm_batch_val">' + displayBatch + '</span>' +
+            '</div>' +
+        '</div>' +
+        '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + displayBatch + '" style="width:100%;"' + (stmBatchAuto ? ' disabled' : '') + '>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
@@ -2577,11 +2589,20 @@ function renderSettingsTab() {
 
     // === Advanced Settings ===
     if (advContainer) {
+        var stmMaxTokensAuto = isAuto('stmMaxTokens');
+        var computedMaxTokens = computeStmMaxTokens(computeStmBatch(getTelemetryStats().turnsPerEvent));
+        var displayMaxTokens = stmMaxTokensAuto ? computedMaxTokens : (mc.stm_max_tokens || 800);
         var advHtml = '<div class="ne-accordion" id="ne-set-memory">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Parameters') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-settings-grid">' +
-            '<div><label>' + t('STM Max Tokens') + '</label><input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + (mc.stm_max_tokens || 800) + '" title="' + t('Maximum tokens per single LLM call for STM extraction.') + '"></div>' +
+            '<div style="display:flex;align-items:center;gap:6px;">' +
+                '<label>' + t('STM Max Tokens') + '</label>' +
+                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;margin-left:auto;cursor:pointer;">' +
+                    '<input type="checkbox" id="nes_stm_max_tokens_auto" ' + (stmMaxTokensAuto ? 'checked' : '') + '> Auto' +
+                '</label>' +
+            '</div>' +
+            '<input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + displayMaxTokens + '" title="' + t('Maximum tokens per single LLM call for STM extraction.') + '"' + (stmMaxTokensAuto ? ' disabled' : '') + '>' +
             '<div><label>' + t('LTM Max Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '" title="' + t('Maximum tokens per single LLM call for LTM consolidation.') + '"></div>' +
             '<div><label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
             '<div><label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
@@ -2616,6 +2637,21 @@ function renderSettingsTab() {
     if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
     var chkTelemetry = byId('nes_enable_telemetry');
     if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
+    // Auto toggles — save to params auto map and re-render
+    var autoSb = byId('nes_stm_batch_auto');
+    if (autoSb) {
+        autoSb.onchange = function () {
+            setAuto('stmBatch', autoSb.checked);
+            renderSettingsTab();
+        };
+    }
+    var autoMt = byId('nes_stm_max_tokens_auto');
+    if (autoMt) {
+        autoMt.onchange = function () {
+            setAuto('stmMaxTokens', autoMt.checked);
+            renderSettingsTab();
+        };
+    }
     // Number inputs — save on change
     var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars', 'nes_seg_min_turns', 'nes_seg_max_turns'];
     for (var i = 0; i < vals.length; i++) { var el = byId(vals[i]); if (el) el.onchange = function () { saveSettingsTab(); }; }
@@ -2747,14 +2783,14 @@ function saveSettingsTab() {
         useDynamicState: false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
-        stmBatch: Number(byId('nes_stm_batch').value),
+        stmBatch: (byId('nes_stm_batch_auto') && byId('nes_stm_batch_auto').checked) ? 'auto' : Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
         stmMinLtmMerge: Number(byId('nes_stm_min_ltm_merge').value),
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
             temperature: Number(byId('nes_extraction_temperature').value),
-            stm_max_tokens: Number(byId('nes_stm_max_tokens').value),
+            stm_max_tokens: (byId('nes_stm_max_tokens_auto') && byId('nes_stm_max_tokens_auto').checked) ? 'auto' : Number(byId('nes_stm_max_tokens').value),
             stm_max_chars: Number(byId('nes_stm_max_chars').value),
             ltm_max_tokens: Number(byId('nes_ltm_max_tokens').value),
             ltm_max_chars: Number(byId('nes_ltm_max_chars').value)

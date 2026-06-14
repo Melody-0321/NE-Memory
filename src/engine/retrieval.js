@@ -8,12 +8,13 @@
 
 // ─── Entity chain lookup ───
 
-export function lookupEntityChains(content, entityNames) {
+export async function lookupEntityChains(content, entityNames) {
     var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     var allLTM = content.ltm_entries || [];
     var chains = {};
 
-    entityNames.forEach(function(name) {
+    for (var ni = 0; ni < entityNames.length; ni++) {
+        var name = entityNames[ni];
         var chainEntries = [];
         allSTM.forEach(function(e) {
             if (e.entities && e.entities.some(function(en) { return en.name === name; })) {
@@ -29,9 +30,41 @@ export function lookupEntityChains(content, entityNames) {
             chainEntries.sort(function(a, b) {
                 return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
             });
+            var { isAuto, computeChainDepth, computeChainRecentWindow, computeChainHeadCount } = await import('../params.js');
+            var chainLen = chainEntries.length;
+            if (isAuto('chainDepth') && chainLen > (computeChainHeadCount() + 2)) {
+                var depth = computeChainDepth(chainLen);
+                var recentWindow = isAuto('chainRecentWindow') ? computeChainRecentWindow(chainLen) : depth;
+                var headCount = computeChainHeadCount();
+                var sliced = [];
+                var head = chainEntries.slice(0, Math.min(headCount, depth));
+                sliced = sliced.concat(head);
+                var remaining = depth - head.length;
+                if (remaining > 0) {
+                    var recentStart = Math.max(head.length, chainLen - Math.min(remaining, recentWindow));
+                    var recent = chainEntries.slice(recentStart);
+                    sliced = sliced.concat(recent);
+                    remaining -= recent.length;
+                    if (remaining > 0 && chainLen > head.length + recent.length) {
+                        var midStart = head.length;
+                        var midEnd = chainLen - recent.length;
+                        if (midEnd > midStart) {
+                            var midCount = Math.min(remaining, midEnd - midStart);
+                            var step = Math.max(1, Math.floor((midEnd - midStart) / midCount));
+                            for (var mi = midStart, mc = 0; mi < midEnd && mc < midCount; mi += step, mc++) {
+                                sliced.push(chainEntries[mi]);
+                            }
+                        }
+                    }
+                }
+                sliced.sort(function(a, b) {
+                    return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
+                });
+                chainEntries = sliced;
+            }
             chains[name] = chainEntries;
         }
-    });
+    }
 
     return chains;
 }
@@ -492,7 +525,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
 
 // ─── Main prompt builder (v1 — legacy) ───
 
-function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode) {
+async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode) {
     budget = budget || 1200;
     isSummaryMode = isSummaryMode || false;
     var content = vault.content || {};
@@ -527,7 +560,7 @@ function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryM
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
     var entityNames = extractEntityNames(query, content);
-    var chains = lookupEntityChains(content, entityNames);
+    var chains = await lookupEntityChains(content, entityNames);
     var chainKeys = Object.keys(chains);
 
     var chainsBlock = '';
@@ -630,7 +663,7 @@ function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryM
     };
 }
 
-export function buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode) {
+export async function buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode) {
     try {
         var prompt = buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode);
         return [
@@ -639,12 +672,12 @@ export function buildRetrievalMessages(notebook, query, vault, budget, isSummary
         ];
     } catch (e) {
         console.warn('[NE] buildRetrievalPrompt failed, trying legacy:', e);
-        return buildRetrievalMessagesLegacy(query, notebook.toPromptEntries ? notebook.toPromptEntries() : [], vault, budget, isSummaryMode);
+        return await buildRetrievalMessagesLegacy(query, notebook.toPromptEntries ? notebook.toPromptEntries() : [], vault, budget, isSummaryMode);
     }
 }
 
-export function buildRetrievalMessagesLegacy(query, candidates, vault, budget, isSummaryMode) {
-    var prompt = buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode);
+export async function buildRetrievalMessagesLegacy(query, candidates, vault, budget, isSummaryMode) {
+    var prompt = await buildRetrievalPromptLegacy(query, candidates, vault, budget, isSummaryMode);
     return [
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user }

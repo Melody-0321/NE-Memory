@@ -282,10 +282,10 @@ function registerRecallMemory(getChatId) {
                         // Time-filtered BM25 on narrowed pool
                         var stmPreFiltered = preFiltered.filter(function(e) { return e.id && e.id.indexOf('stm_') === 0; });
                         var ltmPreFiltered = preFiltered.filter(function(e) { return e.id && e.id.indexOf('ltm_') === 0; });
-                        topCandidates = filterCandidates(args.query, stmPreFiltered, ltmPreFiltered, 40);
+                        topCandidates = await filterCandidates(args.query, stmPreFiltered, ltmPreFiltered, 40);
                     }
                 } else {
-                    topCandidates = filterCandidates(args.query, allSTM, allLTM, 40);
+                    topCandidates = await filterCandidates(args.query, allSTM, allLTM, 40);
                 }
 
                 if (!isSummaryMode && (!topCandidates || topCandidates.length === 0)) {
@@ -303,7 +303,7 @@ function registerRecallMemory(getChatId) {
                                { role: 'user', content: args.query }];
                         var translated = await callMemoryLLM(translateMsg, { timeout: 5, temperature: 0.0 });
                         if (translated) {
-                            var translatedTopCandidates = filterCandidates(translated, allSTM, allLTM, 40);
+                            var translatedTopCandidates = await filterCandidates(translated, allSTM, allLTM, 40);
                             if (translatedTopCandidates && translatedTopCandidates.length > 0) {
                                 // Interleave: alternate between original and translated results, dedup
                                 var seenIds = {};
@@ -345,7 +345,7 @@ function registerRecallMemory(getChatId) {
                     });
                 }
 
-                var messages = buildRetrievalMessagesLegacy(args.query, topCandidates, vault, 800, isSummaryMode);
+                var messages = await buildRetrievalMessagesLegacy(args.query, topCandidates, vault, 800, isSummaryMode);
 
                 if (lastRecallMsgIds && lastRecallMsgIds.length > 0) {
                     var dedupNote = '\n\n[DEDUP: Some candidates draw from source messages already used in a previous recall this turn.]\n';

@@ -46,7 +46,11 @@ export function restorePending() {
     } catch (e) { console.warn('[NE] restorePending error:', e); }
 }
 
-function getStmBatchSize() {
+async function getStmBatchSize() {
+    var { isAuto, computeStmBatch, getTelemetryStats } = await import('./params.js');
+    if (isAuto('stmBatch')) {
+        return computeStmBatch(getTelemetryStats().turnsPerEvent);
+    }
     try {
         var raw = localStorage.getItem('ne_settings');
         if (raw) {
@@ -147,7 +151,7 @@ export async function onMessageReceived(messageIndex) {
             if (pipelineRunning) return;
 
             const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-            var shouldRunPipeline = pendingMessages.length >= getStmBatchSize()
+            var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || totalWords >= getStmWordsThreshold()
                 || (pendingMessages.length >= 3 && totalWords >= 100);
 
@@ -168,9 +172,9 @@ async function flushPendingMessages() {
     if (pipelineRunning) return;
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
-    if (pendingMessages.length < getStmBatchSize() && totalWords < getStmWordsThreshold()) {
+    if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold()) {
         if (pendingMessages.length < 3 || totalWords < 100) {
-            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
+            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' — not enough');
             return;
         }
     }
@@ -193,6 +197,10 @@ async function flushPendingMessages() {
         const result = await executeIncrementalUpdate(chatId, batch);
         latestVault = result.vault;
         console.log('[NE] Incremental update done, added=' + result.added);
+        if (result.added > 0 && batch.length > 0) {
+            var { recordTelemetry } = await import('./params.js');
+            recordTelemetry({ turns: batch.length, events: result.added });
+        }
 
         // Record vault size snapshot
         var content = latestVault && latestVault.content ? latestVault.content : {};

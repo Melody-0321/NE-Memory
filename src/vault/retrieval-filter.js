@@ -291,9 +291,12 @@ function denoiseResults(results, minResults) {
     return merged.slice(0, 40);
 }
 
-export function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap) {
-    topK = topK || 40;
-    minResults = minResults || 3;
+export async function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap) {
+    var totalSTM = (allSTM || []).length;
+    var totalLTM = (allLTM || []).length;
+    var { isAuto, computeTopK, computeMinResults, computeLtmDirCount } = await import('../params.js');
+    topK = isAuto('topK') ? computeTopK(totalSTM) : (topK || 40);
+    minResults = isAuto('minResults') ? computeMinResults(totalSTM) : (minResults || 3);
     allSTM = allSTM || [];
     allLTM = allLTM || [];
 
@@ -377,7 +380,9 @@ export function filterCandidates(query, allSTM, allLTM, topK, minResults, aliase
         var ltmSorted = allLTM.slice().sort(function(a, b) {
             return (b.timestamp || '').localeCompare(a.timestamp || '');
         });
-        var ltmDirCount = Math.min(ltmSorted.length, 20);
+        var ltmDirCount = isAuto('ltmDirCount')
+            ? computeLtmDirCount(totalLTM)
+            : Math.min(ltmSorted.length, 20);
         for (var i = 0; i < ltmDirCount; i++) {
             var ltm = JSON.parse(JSON.stringify(ltmSorted[i]));
             ltm.__type = 'ltm';
