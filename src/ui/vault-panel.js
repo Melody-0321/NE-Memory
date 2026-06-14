@@ -18,6 +18,7 @@ import { extractEntityNames, lookupEntityChains, mergePipelines } from '../engin
 import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
+import { renderTestRunnerTab } from '../test-runner/ui.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
 
 /* ──────── 工具 ──────── */
@@ -1694,6 +1695,9 @@ export async function renderVaultPanel(getChatId) {
         injectBottomDrawerCSS();
         var vault = await read(getChatId());
         var c = vault.content || {};
+        var __settings = null;
+        try { __settings = JSON.parse(localStorage.getItem('ne_settings') || '{}'); } catch (e) {}
+        var enableTestRunner = __settings && __settings.enableTestRunner;
 
         var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
             '<div class="ne-vault-collapse-bar" title="' + t('Collapse memory panel') + '">' +
@@ -1716,6 +1720,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
+            (enableTestRunner ? '<div class="ne-vault-tab" data-tab="test"><i class="fa-solid fa-flask"></i> ' + t('Test') + '</div>' : '') +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
@@ -1811,6 +1816,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-settings-section-title">\uD83D\uDD2C ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
             '</div></div>' +
+            (enableTestRunner ? '<div id="tab-test" class="ne-vault-tab-content"></div>' : '') +
             '</div></div>';
 
         var sheld = byId('sheld');
@@ -2170,6 +2176,13 @@ export async function renderVaultPanel(getChatId) {
 
         freezeIframeHeight();
         renderSettingsTab();
+
+        if (enableTestRunner) {
+            var testContainer = byId('tab-test');
+            if (testContainer) {
+                renderTestRunnerTab(testContainer);
+            }
+        }
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
@@ -2309,6 +2322,7 @@ function renderSettingsTab() {
         '<div class="ne-settings-toggle-grid">' +
         '<label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
+        '<label><input type="checkbox" id="nes_enable_test_runner" ' + (settings.enableTestRunner ? 'checked' : '') + '> <span>' + t('Test Runner') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
@@ -2447,6 +2461,8 @@ function renderSettingsTab() {
     if (chkState) chkState.onchange = function () { saveSettingsTab(); };
     var chkRetrieval = byId('nes_enable_retrieval');
     if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
+    var chkTestRunner = byId('nes_enable_test_runner');
+    if (chkTestRunner) chkTestRunner.onchange = function () { saveSettingsTab(); location.reload(); };
     var chkTelemetry = byId('nes_enable_telemetry');
     if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
     // Number inputs — save on change
@@ -2578,6 +2594,7 @@ function saveSettingsTab() {
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
         useDynamicState: false,
+        enableTestRunner: byId('nes_enable_test_runner') ? byId('nes_enable_test_runner').checked : false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
