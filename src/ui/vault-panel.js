@@ -18,7 +18,6 @@ import { extractEntityNames, lookupEntityChains, mergePipelines } from '../engin
 import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
-import { renderTestRunnerTab } from '../test-runner/ui.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
 
 /* ──────── 工具 ──────── */
@@ -107,6 +106,25 @@ function injectBottomDrawerCSS() {
         '.ne-accordion-body .ne-accordion-header{background:transparent;font-weight:normal;font-size:0.9em;padding:6px 8px;border-left:3px solid transparent;border-radius:0;}' +
         '.ne-accordion-body .ne-accordion.open>.ne-accordion-header{border-left-color:var(--SmartThemeBorderColor);}' +
         '.ne-accordion-highlight{box-shadow:0 0 0 2px var(--SmartThemeBorderColor)!important;}' +
+        '.ne-tr-container{padding:4px 0;font-size:0.85em;}' +
+        '.ne-tr-select{width:100%;background:var(--black30a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;padding:4px 6px;font-size:0.9em;margin-bottom:6px;}' +
+        '.ne-tr-actions{display:flex;gap:4px;margin-bottom:6px;}' +
+        '.ne-tr-btn{flex:1;padding:4px 8px;font-size:0.85em;border-radius:4px;border:1px solid var(--SmartThemeBorderColor);background:var(--black30a);color:var(--text);cursor:pointer;text-align:center;transition:background .15s;}' +
+        '.ne-tr-btn:hover{background:var(--black50a);}' +
+        '.ne-tr-btn:disabled{opacity:0.5;cursor:not-allowed;}' +
+        '.ne-tr-btn.ok{background:#2e7d32;border-color:#2e7d32;color:#fff;}' +
+        '.ne-tr-btn.ok:hover{background:#388e3c;}' +
+        '.ne-tr-status{padding:4px 0;min-height:1.2em;font-size:0.9em;color:var(--grey-50);}' +
+        '.ne-tr-status.running{color:var(--text);}' +
+        '.ne-tr-result{padding:4px 0;}' +
+        '.ne-tr-result-header{font-weight:bold;margin:6px 0 2px;display:flex;align-items:center;gap:6px;}' +
+        '.ne-tr-result-entry{padding:2px 0 2px 12px;display:flex;align-items:center;gap:4px;font-size:0.9em;}' +
+        '.ne-tr-pass{color:#4caf50;font-weight:bold;}' +
+        '.ne-tr-fail{color:#f44336;font-weight:bold;}' +
+        '.ne-tr-semantic{margin-top:4px;padding:4px 8px;border-left:3px solid var(--SmartThemeBorderColor);font-size:0.85em;}' +
+        '.ne-tr-trace{display:none;margin-top:6px;padding:6px;background:var(--black20a);border-radius:4px;font-family:monospace;font-size:0.75em;white-space:pre-wrap;max-height:300px;overflow-y:auto;}' +
+        '.ne-tr-trace.open{display:block;}' +
+        '.ne-tr-export-bar{display:flex;gap:4px;margin-top:6px;}' +
         '.narrative_ltm_toggle{display:inline-block;transition:transform .2s;font-size:0.7em;color:var(--grey-50);cursor:pointer;}' +
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
         '.narrative_ltm_detail{display:none;}' +
@@ -1695,9 +1713,6 @@ export async function renderVaultPanel(getChatId) {
         injectBottomDrawerCSS();
         var vault = await read(getChatId());
         var c = vault.content || {};
-        var __settings = null;
-        try { __settings = JSON.parse(localStorage.getItem('ne_settings') || '{}'); } catch (e) {}
-        var enableTestRunner = __settings && __settings.enableTestRunner;
 
         var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
             '<div class="ne-vault-collapse-bar" title="' + t('Collapse memory panel') + '">' +
@@ -1720,7 +1735,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
-            (enableTestRunner ? '<div class="ne-vault-tab" data-tab="test"><i class="fa-solid fa-flask"></i> ' + t('Test') + '</div>' : '') +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
@@ -1803,6 +1817,9 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion" id="ne-tool-history">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
             '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
+            '<div class="ne-accordion" id="ne-tool-test-runner">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
+            '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
             '<div style="margin-top:8px;">' +
             '<button id="narrative_vault_export_btn" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export Logs') + '</button>' +
             '</div></div>' +
@@ -1816,7 +1833,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-settings-section-title">\uD83D\uDD2C ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
             '</div></div>' +
-            (enableTestRunner ? '<div id="tab-test" class="ne-vault-tab-content"></div>' : '') +
             '</div></div>';
 
         var sheld = byId('sheld');
@@ -2175,14 +2191,11 @@ export async function renderVaultPanel(getChatId) {
         };
 
         freezeIframeHeight();
-        renderSettingsTab();
 
-        if (enableTestRunner) {
-            var testContainer = byId('tab-test');
-            if (testContainer) {
-                renderTestRunnerTab(testContainer);
-            }
-        }
+        // Initialize Test Runner UI
+        initTestRunner();
+
+        renderSettingsTab();
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }
@@ -2297,6 +2310,147 @@ async function renderHistory(getChatId) {
     }
 }
 
+/* ──────── 测试运行器 ──────── */
+
+function initTestRunner() {
+    var container = byId('ne-tr-container');
+    if (!container) return;
+
+    var presets = globalThis.__ne_debug && globalThis.__ne_debug._testPresets;
+
+    container.innerHTML =
+        '<select id="ne-tr-select" class="ne-tr-select">' +
+        (presets ? Object.keys(presets).map(function(k) {
+            return '<option value="' + k + '">' + (presets[k].title || k) + '</option>';
+        }).join('') : '<option>' + t('No test cases available') + '</option>') +
+        '</select>' +
+        '<div class="ne-tr-actions">' +
+        '<button id="ne-tr-run" class="ne-tr-btn">\u25B6 ' + t('Run') + '</button>' +
+        '<button id="ne-tr-export" class="ne-tr-btn" disabled>' + t('Export') + '</button>' +
+        '</div>' +
+        '<div id="ne-tr-status" class="ne-tr-status">' + t('Select a test case and press Run') + '</div>' +
+        '<div id="ne-tr-result" class="ne-tr-result" style="display:none;"></div>' +
+        '<pre id="ne-tr-trace" class="ne-tr-trace"></pre>';
+
+    byId('ne-tr-run').onclick = function() {
+        var select = byId('ne-tr-select');
+        var key = select.value;
+        if (!presets || !presets[key]) return;
+        runTestFromUI(key, presets[key]);
+    };
+
+    byId('ne-tr-export').onclick = exportTestResults;
+}
+
+var _lastTestResult = null;
+
+async function runTestFromUI(key, preset) {
+    var runBtn = byId('ne-tr-run');
+    var exportBtn = byId('ne-tr-export');
+    var statusEl = byId('ne-tr-status');
+    var resultEl = byId('ne-tr-result');
+    var traceEl = byId('ne-tr-trace');
+
+    runBtn.disabled = true;
+    exportBtn.disabled = true;
+    resultEl.style.display = 'none';
+    traceEl.classList.remove('open');
+    statusEl.textContent = '\u23F3 ' + (t('Running') + ': ' + (preset.title || key) + '...');
+    statusEl.className = 'ne-tr-status running';
+
+    try {
+        var result = await globalThis.__ne_debug.runTest(preset);
+        _lastTestResult = result;
+
+        statusEl.textContent = t('Done') + ' \u2014 ' + result.roundCount + t(' rounds, ') + (result.totalDurationMs / 1000).toFixed(1) + 's';
+        statusEl.className = 'ne-tr-status';
+
+        renderTestResult(result, resultEl, traceEl);
+        exportBtn.disabled = false;
+    } catch (e) {
+        statusEl.textContent = t('Error') + ': ' + e.message;
+        statusEl.className = 'ne-tr-status';
+    } finally {
+        runBtn.disabled = false;
+    }
+}
+
+function renderTestResult(result, resultEl, traceEl) {
+    var html = '';
+
+    if (result.structuralResults) {
+        html += '<div class="ne-tr-result-header">\u26A0 ' + t('Structural') + '</div>';
+        result.structuralResults.forEach(function(r) {
+            html += '<div class="ne-tr-result-entry"><span class="' + (r.passed ? 'ne-tr-pass' : 'ne-tr-fail') + '">' + (r.passed ? '\u2714' : '\u2718') + '</span> ' + escapeHtml(r.label) + '</div>';
+        });
+    }
+
+    if (result.semanticResults && result.semanticResults.length > 0) {
+        html += '<div class="ne-tr-result-header">\uD83D\uDCDD ' + t('Semantic') + '</div>';
+        result.semanticResults.forEach(function(r) {
+            html += '<div class="ne-tr-result-entry"><span class="' + (r.passed ? 'ne-tr-pass' : 'ne-tr-fail') + '">' + (r.passed ? '\u2714' : '\u2718') + '</span> ' + escapeHtml(r.question) + '</div>';
+            if (r.evaluation) {
+                html += '<div class="ne-tr-semantic">' + escapeHtml(r.evaluation) + '</div>';
+            }
+        });
+    }
+
+    html += '<div class="ne-tr-actions" style="margin-top:6px;">' +
+        '<button id="ne-tr-toggle-trace" class="ne-tr-btn">' + t('Show Trace') + '</button>' +
+        '</div>';
+
+    resultEl.innerHTML = html;
+    resultEl.style.display = 'block';
+
+    var traceContent = (result.trace || result.report || '');
+    traceEl.textContent = traceContent;
+
+    byId('ne-tr-toggle-trace').onclick = function() {
+        traceEl.classList.toggle('open');
+        this.textContent = traceEl.classList.contains('open') ? t('Hide Trace') : t('Show Trace');
+    };
+}
+
+async function exportTestResults() {
+    if (!_lastTestResult) return;
+
+    try {
+        var handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    } catch (e) {
+        if (e.name === 'AbortError') return;
+        console.warn('[NE] Export cancelled or failed:', e.message);
+        return;
+    }
+
+    var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
+    var select = byId('ne-tr-select');
+    var name = select ? select.value : 'test';
+    var folder = select && select.selectedOptions && select.selectedOptions[0] ? select.selectedOptions[0].text : name;
+
+    try {
+        var subDir = await handle.getDirectoryHandle(folder, { create: true });
+
+        if (_lastTestResult.trace) {
+            var fh = await subDir.getFileHandle(name + '-' + ts + '-trace.md', { create: true });
+            var w = await fh.createWritable();
+            await w.write(_lastTestResult.trace);
+            await w.close();
+        }
+
+        if (_lastTestResult.report) {
+            var fh2 = await subDir.getFileHandle(name + '-' + ts + '-report.md', { create: true });
+            var w2 = await fh2.createWritable();
+            await w2.write(_lastTestResult.report);
+            await w2.close();
+        }
+
+        byId('ne-tr-status').textContent = '\u2705 ' + t('Exported to') + ' ' + folder + '/';
+    } catch (e) {
+        console.error('[NE] Export failed:', e);
+        byId('ne-tr-status').textContent = '\u274C ' + t('Export failed') + ': ' + e.message;
+    }
+}
+
 /* ──────── 设置面板 ──────── */
 
 function renderSettingsTab() {
@@ -2322,7 +2476,6 @@ function renderSettingsTab() {
         '<div class="ne-settings-toggle-grid">' +
         '<label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
-        '<label><input type="checkbox" id="nes_enable_test_runner" ' + (settings.enableTestRunner ? 'checked' : '') + '> <span>' + t('Test Runner') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
@@ -2461,8 +2614,6 @@ function renderSettingsTab() {
     if (chkState) chkState.onchange = function () { saveSettingsTab(); };
     var chkRetrieval = byId('nes_enable_retrieval');
     if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
-    var chkTestRunner = byId('nes_enable_test_runner');
-    if (chkTestRunner) chkTestRunner.onchange = function () { saveSettingsTab(); location.reload(); };
     var chkTelemetry = byId('nes_enable_telemetry');
     if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
     // Number inputs — save on change
@@ -2594,7 +2745,6 @@ function saveSettingsTab() {
         enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
         useDynamicState: false,
-        enableTestRunner: byId('nes_enable_test_runner') ? byId('nes_enable_test_runner').checked : false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: Number(byId('nes_stm_batch').value),
