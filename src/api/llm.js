@@ -36,6 +36,7 @@ async function loadMemoryConfig() {
 }
 
 export async function callMemoryLLM(messages, options = {}) {
+    var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig;
     if (options._forcePipelineApi) {
         secondaryConfig = loadSecondaryApiConfig();
@@ -100,7 +101,8 @@ export async function callMemoryLLM(messages, options = {}) {
         usage: usage,
         source: apiSource,
         durationMs: durationMs,
-        ts: new Date().toISOString()
+        ts: new Date().toISOString(),
+        roundTag: callRoundTag
     });
 
     return response;
@@ -224,6 +226,7 @@ function findValidJsonPrefixEnd(text, startIdx) {
 }
 
 export async function callMemoryLLMWithTools(messages, tools, toolExecutors, options, chatId) {
+    var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig = options._apiConfig || loadRetrievalApiConfig();
     if (!secondaryConfig || !secondaryConfig.url || !secondaryConfig.model) {
         throw new Error('Tool calling requires secondary API configured');
@@ -286,7 +289,8 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
         usage: totalUsage,
         source: 'secondary',
         durationMs: Date.now() - startTime,
-        ts: new Date().toISOString()
+        ts: new Date().toISOString(),
+        roundTag: callRoundTag
     });
 
     // 剥离最终文本中的推理标记，避免下游 parseResponse 失败

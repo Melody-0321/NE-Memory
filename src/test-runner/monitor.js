@@ -27,15 +27,24 @@ function _onPipelineCall(data) {
     _pipelineCallsPerRound.push(data);
 }
 
-export function drainPipelineCalls() {
-    var calls = _pipelineCallsPerRound.slice();
-    _pipelineCallsPerRound.length = 0;
-    return calls;
+function _filterByRoundTag(roundTag) {
+    var matching = [];
+    var remaining = [];
+    for (var i = 0; i < _pipelineCallsPerRound.length; i++) {
+        var c = _pipelineCallsPerRound[i];
+        if (c.roundTag === roundTag) {
+            matching.push(c);
+        } else {
+            remaining.push(c);
+        }
+    }
+    _pipelineCallsPerRound = remaining;
+    return matching;
 }
 
-export function collectRoundData() {
+export function collectRoundData(roundTag) {
     var injection = globalThis.__ne_debug_last_injection || null;
-    var pipelineCalls = drainPipelineCalls();
+    var pipelineCalls = roundTag != null ? _filterByRoundTag(roundTag) : _filterByRoundTag(null);
 
     return {
         injection: injection,
@@ -51,6 +60,12 @@ export function collectRoundData() {
         vault: null,
         timestamp: new Date().toISOString()
     };
+}
+
+export function drainOrphanPipelineCalls() {
+    var calls = _pipelineCallsPerRound.slice();
+    _pipelineCallsPerRound.length = 0;
+    return calls;
 }
 
 export async function collectVaultSummary() {

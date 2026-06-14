@@ -8,7 +8,7 @@
  * - 角色设定通过 AI 回复自然呈现（就像真实参与者通过对话认知故事世界）
  * - 测试用例的 conversationGuide 提供足够的方向指导
  */
-import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls } from './monitor.js';
+import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls, drainOrphanPipelineCalls } from './monitor.js';
 import { evaluateAllStructural, evaluateSemantic } from './assertions.js';
 import { createTrace, appendTraceRound, createReport } from './files.js';
 
@@ -78,9 +78,10 @@ export async function runTestLoop(testCase, hostDoc) {
         }
         console.log('[NE-TEST] Driver says: ' + userMessage);
 
+        globalThis.__ne_tr_currentRound = round;
         await sendMessageAndWait(userMessage, doc, testCase.timeoutPerRound);
 
-        var roundData = collectRoundData();
+        var roundData = collectRoundData(round);
         lastAiReply = getLastAiReply();
         lastInjection = roundData.injection || '';
 
@@ -106,6 +107,19 @@ export async function runTestLoop(testCase, hostDoc) {
     }
 
     stopCollectingPipelineCalls();
+
+    // 回收晚到的管线调用，追加到最后一条 trace 末尾
+    var orphanCalls = drainOrphanPipelineCalls();
+    if (orphanCalls.length > 0) {
+        trace += '\n\n## 轮次外管线调用（延迟到达）\n';
+        for (var oi = 0; oi < orphanCalls.length; oi++) {
+            var oc = orphanCalls[oi];
+            trace += '\n### 调用 #' + (oi + 1) + ' — ' + oc.operation + ' (roundTag=' + oc.roundTag + ', ' + oc.source + ', ' + oc.durationMs + 'ms)\n\n';
+            trace += '**System Prompt:**\n```\n' + (oc.messages ? (oc.messages.find(function(m) { return m.role === 'system'; }) || {}).content || '(none)' : '') + '\n```\n\n';
+            trace += '**User Prompt:**\n```\n' + (oc.messages ? (oc.messages.find(function(m) { return m.role === 'user'; }) || {}).content || '(none)' : '') + '\n```\n\n';
+            trace += '**LLM Response:**\n```\n' + (oc.response || '') + '\n```\n';
+        }
+    }
 
     var lastRound = roundDataList.length > 0 ? roundDataList[roundDataList.length - 1] : collectRoundData();
     var structuralResults = evaluateAllStructural(lastRound, testCase.structural);
