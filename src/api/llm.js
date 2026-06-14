@@ -275,6 +275,20 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
         }
     }
 
+    var rawFinalContent = finalContent;
+
+    firePipelineCallbacks({
+        operation: options.operation || 'retrieval_synthesis',
+        messages: messages,
+        fullConversation: msgs,
+        rawResponse: rawFinalContent || (msgs.length > 0 && msgs[msgs.length - 1].content) || '',
+        response: rawFinalContent || (msgs.length > 0 && msgs[msgs.length - 1].content) || '',
+        usage: totalUsage,
+        source: 'secondary',
+        durationMs: Date.now() - startTime,
+        ts: new Date().toISOString()
+    });
+
     // 剥离最终文本中的推理标记，避免下游 parseResponse 失败
     if (finalContent) {
         finalContent = String(finalContent).replace(/<thought>[\s\S]*?<\/thought>/g, '').replace(/<thinking>[\s\S]*?<\/thinking>/g, '').trim();

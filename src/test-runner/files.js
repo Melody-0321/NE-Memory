@@ -81,6 +81,21 @@ export function appendTraceRound(trace, roundData) {
             lines.push('```');
             lines.push(pc.response || '');
             lines.push('```');
+            if (pc.fullConversation && pc.fullConversation.length > 0) {
+                lines.push('');
+                lines.push('**完整对话 (含工具调用轮次):**');
+                for (var mi = 0; mi < pc.fullConversation.length; mi++) {
+                    var m = pc.fullConversation[mi];
+                    lines.push('- [' + m.role + ']');
+                    if (m.content) lines.push('  content: ' + m.content);
+                    if (m.tool_calls) {
+                        m.tool_calls.forEach(function(tc) {
+                            lines.push('  tool_call: ' + (tc.function ? tc.function.name : '?') + '(' + (tc.function ? (tc.function.arguments || '') : '') + ')');
+                        });
+                    }
+                    if (m.tool_call_id) lines.push('  tool_result (id=' + m.tool_call_id + '): ' + (m.content || ''));
+                }
+            }
         }
     } else {
         lines.push('(本轮无 NE 管线 LLM 调用)');
