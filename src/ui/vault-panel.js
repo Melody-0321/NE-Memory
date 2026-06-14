@@ -19,7 +19,7 @@ import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.j
 import { executeAccess } from '../tools.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { getAllChatStats } from '../engine/chat-telemetry.js';
-import { isAuto, computeStmBatch, computeStmMaxTokens, getTelemetryStats, setAuto } from '../params.js';
+import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../params.js';
 
 /* ──────── 工具 ──────── */
 
@@ -2480,7 +2480,6 @@ function renderSettingsTab() {
         '<div class="ne-settings-toggle-grid">' +
         '<label><input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> <span>' + t('Enable State Schema') + '</span></label>' +
         '<label><input type="checkbox" id="nes_enable_retrieval" ' + (settings.retrievalEnabled ? 'checked' : '') + '> <span>' + t('Enable Smart Retrieval') + '</span></label>' +
-        '<label><input type="checkbox" id="nes_enable_dynamic" disabled> <span>' + t('Use Dynamic Field Discovery') + '</span></label>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
@@ -2499,15 +2498,6 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Min STM per LTM') + '</span><span class="range-val" id="nes_stm_min_ltm_merge_val">' + (settings.stmMinLtmMerge || 3) + '</span></div>' +
-        '<input type="range" id="nes_stm_min_ltm_merge" min="3" max="8" step="1" value="' + (settings.stmMinLtmMerge || 3) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Each LTM must merge at least this many STM entries. 1:1 mapping is forbidden.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
-        '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature (rec. 0.3)') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
-        '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
@@ -2589,23 +2579,16 @@ function renderSettingsTab() {
 
     // === Advanced Settings ===
     if (advContainer) {
-        var stmMaxTokensAuto = isAuto('stmMaxTokens');
-        var computedMaxTokens = computeStmMaxTokens(computeStmBatch(getTelemetryStats().turnsPerEvent));
-        var displayMaxTokens = stmMaxTokensAuto ? computedMaxTokens : (mc.stm_max_tokens || 800);
         var advHtml = '<div class="ne-accordion" id="ne-set-memory">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Parameters') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-settings-grid">' +
-            '<div style="display:flex;align-items:center;gap:6px;">' +
-                '<label>' + t('STM Max Tokens') + '</label>' +
-                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;margin-left:auto;cursor:pointer;">' +
-                    '<input type="checkbox" id="nes_stm_max_tokens_auto" ' + (stmMaxTokensAuto ? 'checked' : '') + '> Auto' +
-                '</label>' +
-            '</div>' +
-            '<input type="number" id="nes_stm_max_tokens" min="100" max="4096" value="' + displayMaxTokens + '" title="' + t('Maximum tokens per single LLM call for STM extraction.') + '"' + (stmMaxTokensAuto ? ' disabled' : '') + '>' +
-            '<div><label>' + t('LTM Max Tokens') + '</label><input type="number" id="nes_ltm_max_tokens" min="100" max="4096" value="' + (mc.ltm_max_tokens || 500) + '" title="' + t('Maximum tokens per single LLM call for LTM consolidation.') + '"></div>' +
-            '<div><label>' + t('STM Per-Event Char Limit') + '</label><input type="number" id="nes_stm_max_chars" min="20" max="500" value="' + (mc.stm_max_chars || 120) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
-            '<div><label>' + t('LTM Per-Event Char Limit') + '</label><input type="number" id="nes_ltm_max_chars" min="20" max="500" value="' + (mc.ltm_max_chars || 100) + '" title="' + t('Max characters per event entry before truncation.') + '"></div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
+            '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature (rec. 0.3)') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
+            '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
             '</div></div></div>' +
             '<div class="ne-accordion" id="ne-set-schema">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
@@ -2628,15 +2611,11 @@ function renderSettingsTab() {
     if (sbEl) { sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
     var suEl = byId('nes_stm_max_unconsolidated');
     if (suEl) { suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
-    var smEl = byId('nes_stm_min_ltm_merge');
-    if (smEl) { smEl.oninput = function () { var v = byId('nes_stm_min_ltm_merge_val'); if (v) v.textContent = smEl.value; saveSettingsTab(); }; }
     // Checkboxes — save on change
     var chkState = byId('nes_enable_state_schema');
     if (chkState) chkState.onchange = function () { saveSettingsTab(); };
     var chkRetrieval = byId('nes_enable_retrieval');
     if (chkRetrieval) chkRetrieval.onchange = function () { saveSettingsTab(); };
-    var chkTelemetry = byId('nes_enable_telemetry');
-    if (chkTelemetry) chkTelemetry.onchange = function () { saveSettingsTab(); };
     // Auto toggles — save to params auto map and re-render
     var autoSb = byId('nes_stm_batch_auto');
     if (autoSb) {
@@ -2645,16 +2624,6 @@ function renderSettingsTab() {
             renderSettingsTab();
         };
     }
-    var autoMt = byId('nes_stm_max_tokens_auto');
-    if (autoMt) {
-        autoMt.onchange = function () {
-            setAuto('stmMaxTokens', autoMt.checked);
-            renderSettingsTab();
-        };
-    }
-    // Number inputs — save on change
-    var vals = ['nes_stm_max_tokens', 'nes_stm_max_chars', 'nes_ltm_max_tokens', 'nes_ltm_max_chars', 'nes_seg_min_turns', 'nes_seg_max_turns'];
-    for (var i = 0; i < vals.length; i++) { var el = byId(vals[i]); if (el) el.onchange = function () { saveSettingsTab(); }; }
     // Textareas — save on blur (not every keystroke to avoid perf issues)
     var ta1 = byId('nes_state_schema');
     if (ta1) ta1.onblur = function () { saveSettingsTab(); };
@@ -2770,30 +2739,17 @@ function renderSettingsTab() {
 }
 
 function saveSettingsTab() {
-    var minEl = byId('nes_seg_min_turns');
-    var maxEl = byId('nes_seg_max_turns');
-    if (minEl && maxEl) {
-        var minVal = Number(minEl.value) || 1;
-        var maxVal = Number(maxEl.value) || 1;
-        if (minVal > maxVal) { minEl.value = maxVal; }
-    }
     var settings = {
-        enableTelemetry: byId('nes_enable_telemetry') ? byId('nes_enable_telemetry').checked : false,
         enableStateSchema: byId('nes_enable_state_schema').checked,
         useDynamicState: false,
         retrievalEnabled: byId('nes_enable_retrieval').checked,
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: (byId('nes_stm_batch_auto') && byId('nes_stm_batch_auto').checked) ? 'auto' : Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
-        stmMinLtmMerge: Number(byId('nes_stm_min_ltm_merge').value),
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
-            temperature: Number(byId('nes_extraction_temperature').value),
-            stm_max_tokens: (byId('nes_stm_max_tokens_auto') && byId('nes_stm_max_tokens_auto').checked) ? 'auto' : Number(byId('nes_stm_max_tokens').value),
-            stm_max_chars: Number(byId('nes_stm_max_chars').value),
-            ltm_max_tokens: Number(byId('nes_ltm_max_tokens').value),
-            ltm_max_chars: Number(byId('nes_ltm_max_chars').value)
+            temperature: Number(byId('nes_extraction_temperature').value)
         }
     };
     var schemaText = byId('nes_state_schema').value.trim();
