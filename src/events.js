@@ -264,7 +264,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
 
-        await flushPendingMessages();  // await ensures vault is fresh for injection + guard stays up during pipeline
+        // Promote pipeline to background — do NOT block main generation on secondary API
+        flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline in onBeforeGenerate failed:', e); });
+        // Tiny yield so pipeline can set pipelineRunning=true before we read vault
+        await new Promise(function(r) { setTimeout(r, 0); });
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
             lastKnownChatId = chatId;

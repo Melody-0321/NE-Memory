@@ -289,10 +289,8 @@ export async function runStmExtractorCore(turns, params) {
     }
 
     if (rawEvents.length === 0) {
-        console.warn('[NE] All LLM attempts failed, falling back to single-entry batch');
-        var fallbackIndices = [];
-        for (var fi = 0; fi <= maxTurn; fi++) fallbackIndices.push(fi);
-        rawEvents = [{ event: 'Batch turns 0-' + maxTurn, period: '', scene: '', start: 0, end: maxTurn, turnIndices: fallbackIndices }];
+        console.warn('[NE] All LLM attempts failed, no events produced for this batch');
+        return [];
     }
     var stmEntries = [];
 
