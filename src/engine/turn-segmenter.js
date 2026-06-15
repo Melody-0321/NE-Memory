@@ -12,26 +12,29 @@ export function groupMessagesIntoTurns(messages) {
     for (var i = 0; i < messages.length; i++) {
         var m = messages[i];
         var isUser = m.role === 'user' || m.is_user;
+        var absIdx = (m._absIdx !== undefined) ? m._absIdx : i;
 
         if (isUser) {
             if (pendingUser !== null) {
-                turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._idx, msgEnd: i - 1 });
+                turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._absIdx || pendingUser._idx || i, msgEnd: messages[i - 1] ? (messages[i - 1]._absIdx !== undefined ? messages[i - 1]._absIdx : i - 1) : i - 1 });
             }
             pendingUser = m;
             pendingUser._idx = i;
+            pendingUser._absIdx = absIdx;
         } else {
             turns.push({
                 user: pendingUser,
                 assistant: m,
-                msgStart: pendingUser ? pendingUser._idx : i,
-                msgEnd: i
+                msgStart: pendingUser ? (pendingUser._absIdx !== undefined ? pendingUser._absIdx : (pendingUser._idx || i)) : (m._absIdx !== undefined ? m._absIdx : i),
+                msgEnd: absIdx
             });
             pendingUser = null;
         }
     }
 
     if (pendingUser !== null) {
-        turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._idx, msgEnd: messages.length - 1 });
+        var lastAbs = messages.length > 0 ? (messages[messages.length - 1]._absIdx !== undefined ? messages[messages.length - 1]._absIdx : messages.length - 1) : 0;
+        turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._absIdx !== undefined ? pendingUser._absIdx : 0, msgEnd: lastAbs });
     }
 
     return turns;

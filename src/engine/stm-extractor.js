@@ -145,6 +145,15 @@ export async function runStmExtractorCore(turns, params) {
         entry.turns = [mappedStart, mappedEnd];
         entry.msgRange = [mappedStart, mappedEnd];
 
+        // 存储绝对消息位置（跨 run 一致）
+        var startTurn = turns[localStart];
+        var endTurn = turns[localEnd];
+        if (startTurn && endTurn) {
+            entry.absMsgStart = startTurn.msgStart;
+            entry.absMsgEnd = endTurn.msgEnd;
+            entry.msgRange = [entry.absMsgStart, entry.absMsgEnd];
+        }
+
         if (!entry.id) entry.id = null;
         entry.timestamp = new Date().toISOString();
         if (!entry.period) entry.period = '';

@@ -814,6 +814,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force + ', skipState=' + !!skipState);
     const vault = await read(chatId);
 
+    // 给消息打绝对位置标记——确保 groupMessagesIntoTurns 的 msgStart/msgEnd 跨运行一致
+    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = mi; }
+
     var processedIds = collectProcessedMsgIds(vault);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
     console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');

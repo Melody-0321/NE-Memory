@@ -1079,12 +1079,18 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             var refs = entry.stm_refs || [];
             idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
         } else {
-            var turns = entry.turns || [];
             var msgCount = (entry.msg_ids || []).length;
-            if (turns.length >= 2 && msgCount > 0) {
-                idDisplay = 'Turn ' + turns[0] + '-' + turns[1] + ' / ' + msgCount + '\u6761';
-            } else if (msgCount > 0) {
-                idDisplay = msgCount + '\u6761';
+            var absMsgStart = entry.absMsgStart;
+            var absMsgEnd = entry.absMsgEnd;
+            if (absMsgStart !== undefined && absMsgEnd !== undefined && msgCount > 0) {
+                idDisplay = 'Msg ' + absMsgStart + '\u2013' + absMsgEnd + ' / ' + msgCount + '\u6761';
+            } else {
+                var turns = entry.turns || [];
+                if (turns.length >= 2 && msgCount > 0) {
+                    idDisplay = 'Turn ' + turns[0] + '-' + turns[1] + ' / ' + msgCount + '\u6761';
+                } else if (msgCount > 0) {
+                    idDisplay = msgCount + '\u6761';
+                }
             }
         }
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
