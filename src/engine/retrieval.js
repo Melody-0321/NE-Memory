@@ -7,11 +7,12 @@
  */
 
 import { isAuto, computeChainDepth, computeChainRecentWindow, computeChainHeadCount } from '../params.js';
+import { sortStmByMsgOrder } from '../vault/store.js';
 
 // ─── Entity chain lookup ───
 
 export async function lookupEntityChains(content, entityNames) {
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []));
     var allLTM = content.ltm_entries || [];
     var chains = {};
 
@@ -74,7 +75,7 @@ export async function lookupEntityChains(content, entityNames) {
 
 export function extractEntityNames(query, content) {
     var state = content.state || {};
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []));
     var knownNames = [];
 
     // Collect from RP-specific state: characters and factions
@@ -117,7 +118,7 @@ export function classifyQuery(query, state, content) {
     // Collect entity names from state
     var allNames = Object.keys(stateChars).concat(Object.keys(stateFactions));
     // Add entities from STM annotations
-    var allSTM = (content && content.unconsolidated_stm || []).concat(content && content.stm_entries || []);
+    var allSTM = sortStmByMsgOrder((content && content.unconsolidated_stm || []).concat(content && content.stm_entries || []));
     for (var i = 0; i < allSTM.length; i++) {
         var ents = allSTM[i].entities;
         if (ents && Array.isArray(ents)) {

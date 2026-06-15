@@ -215,6 +215,15 @@ export function collectAllMsgIds(vault) {
     return ids;
 }
 
+export function sortStmByMsgOrder(entries) {
+    if (!entries || entries.length < 2) return entries;
+    return entries.slice().sort(function (a, b) {
+        var aPos = a.absMsgStart !== undefined ? a.absMsgStart : (a.msgRange && a.msgRange[0] !== undefined ? a.msgRange[0] : (a.turns && a.turns[0] !== undefined ? a.turns[0] : Infinity));
+        var bPos = b.absMsgStart !== undefined ? b.absMsgStart : (b.msgRange && b.msgRange[0] !== undefined ? b.msgRange[0] : (b.turns && b.turns[0] !== undefined ? b.turns[0] : Infinity));
+        return aPos - bPos;
+    });
+}
+
 export function appendSTMEntries(vault, stmEntries) {
     const content = vault.content;
     const existingIds = new Set();

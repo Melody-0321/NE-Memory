@@ -8,7 +8,7 @@
 import { callMemoryLLM, callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { validateLTMOutput, postFillLTM } from './validate.js';
 import { getStmMinLtmMerge } from '../settings.js';
-import { read } from '../vault/store.js';
+import { read, sortStmByMsgOrder } from '../vault/store.js';
 import { saveVaultWithSnapshot } from './update.js';
 
 function findNextId(vault) {
@@ -34,7 +34,7 @@ function getMaxUnconsolidated() {
 
 export function checkConsolidateThreshold(vault) {
     const content = vault.content || {};
-    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
     return unconsolidated.length > getMaxUnconsolidated();
 }
 
@@ -54,6 +54,7 @@ export function buildConsolidatePrompt(vault, stmIds) {
     } else {
         unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     }
+    unconsolidated = sortStmByMsgOrder(unconsolidated);
     const referenceLtm = ltmEntries.slice(-5);
     const ltmText = referenceLtm.map((e, i) => {
         const refs = (e.stm_refs || []).join(', ');
@@ -334,7 +335,7 @@ async function runConsolidationCore(vault, stmIds) {
     }
 
     const content = vault.content || {};
-    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
 
     postFillLTM(result, unconsolidated);
     normalizeConsolidation(result.ltm_entries, stmIds);
@@ -448,7 +449,7 @@ export async function executeConsolidation(chatId, force) {
     const vault = await read(chatId);
     if (!force && !checkConsolidateThreshold(vault)) return { vault, merged: 0 };
     const content = vault.content || {};
-    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
     const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
     if (stmIds.length === 0) { console.log('[NE] Consolidation: no unconsolidated STM, skipping'); return { vault, merged: 0 }; }
 

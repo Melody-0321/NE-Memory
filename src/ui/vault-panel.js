@@ -4,7 +4,7 @@
  * 通过 window.parent.document 操作主 ST 页面 DOM。
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
-import { read, write, isStorageBlocked, collectAllMsgIds } from '../vault/store.js';
+import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
@@ -910,7 +910,7 @@ async function updateVaultViewerPopout(getChatId) {
     } catch (e) { _logSection('stm-index+selfheal', e); }
 
     // ── Section G: Memory table rendering ──
-    var unconsolidatedSTM = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
+    var unconsolidatedSTM = sortStmByMsgOrder(Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : []);
     var ltmEntries = Array.isArray(c.ltm_entries) ? c.ltm_entries : [];
     var ltmCount = ltmEntries.length;
     var stmCount = unconsolidatedSTM.length;
@@ -1307,9 +1307,9 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var content = vault.content || {};
     var state = content.state || {};
 
-    var allSTM = (content.unconsolidated_stm || []).filter(function(e) { return !e.parent_ltm; }).concat(
+    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(function(e) { return !e.parent_ltm; }).concat(
         (content.stm_entries || []).filter(function(e) { return !e.parent_ltm; })
-    );
+    ));
     var allLTM = content.ltm_entries || [];
 
     var SMART_PUSH_MIN_STM = 5;
@@ -1602,7 +1602,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 /* ──────── 固定预算检索包编译器（策略5）──────── */
 function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens) {
     if (!entityChains || Object.keys(entityChains).length === 0) return ''
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || [])
+    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []))
     var allLTM = content.ltm_entries || []
 
     var scoredEntities = []
