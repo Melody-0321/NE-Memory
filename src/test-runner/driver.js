@@ -451,7 +451,7 @@ function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, rou
     if (lastAiReply.length > 0) {
         lines.push('AI 刚刚说:');
         lines.push('```');
-        lines.push(lastAiReply.substring(0, 2000));
+        lines.push(cleanAiReply(lastAiReply).substring(0, 2000));
         lines.push('```');
     } else {
         lines.push('（第一轮，等待 AI 开场白或直接开始）');
@@ -478,16 +478,35 @@ function extractUserMessage(llmResponse, currentRound, minRounds) {
     var doneIdx = trimmed.indexOf('[DONE]');
     if (doneIdx !== -1) {
         if (currentRound < minRounds) {
-            // 软下限内 [DONE] 无效，仍提交消息
             console.log('[NE-TEST] [DONE] ignored before minRounds (' + currentRound + '/' + minRounds + ')');
             var preDone = trimmed.substring(0, doneIdx).trim();
-            return preDone.length > 0 ? preDone : null;
+            return preDone.length > 0 ? stripFormatTags(preDone) : null;
         }
         if (doneIdx === 0) return '__TEST_DONE__';
-        return trimmed.substring(0, doneIdx).trim() || '__TEST_DONE__';
+        return stripFormatTags(trimmed.substring(0, doneIdx).trim()) || '__TEST_DONE__';
     }
 
-    return trimmed;
+    return stripFormatTags(trimmed);
+}
+
+function stripFormatTags(text) {
+    return text
+        .replace(/<\/?content>/gi, '')
+        .replace(/<Time>.*?<\/Time>/gs, '')
+        .replace(/<Time\/>/gi, '')
+        .replace(/\[思考过程\][\s\S]*?(?=\n\n###|$)/, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
+}
+
+function cleanAiReply(text) {
+    return text
+        .replace(/<\/?content>/gi, '')
+        .replace(/<Time>.*?<\/Time>/gs, '')
+        .replace(/<Time\/>/gi, '')
+        .replace(/\[思考过程\][\s\S]*?(?=\n\n###|$)/, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trim();
 }
 
 function tryParseGated(driverResponse) {
