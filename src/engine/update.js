@@ -579,9 +579,12 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
     if (preGroupHint) instruction += '\n' + preGroupHint;
     if (force) instruction += '\n\n⚠️ 已到达窗口上限，请务必覆盖全部消息，不得跳过任何一条。不允许返回空数组。';
 
+    var userEnding = force
+        ? (lang === 'en' ? 'All messages must be covered. Do not skip any.' : '所有消息均须覆盖，禁止跳过。')
+        : (lang === 'en' ? 'If nothing significant, return [].' : '如果没有重要事件，返回 []。');
     var userPrompt = lang === 'en' ?
-        'IMPORTANT: Always use character proper names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\nMessages:\n' + itemsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\nIf nothing significant, return [].' :
-        '重要：event 中涉及人物时必须使用角色全名。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n消息：\n' + itemsText + '\n\n仅输出一个 JSON 数组：\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\n如果没有重要事件，返回 []。';
+        'IMPORTANT: Always use character proper names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\nMessages:\n' + itemsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\n' + userEnding :
+        '重要：event 中涉及人物时必须使用角色全名。参考上方已知角色列表和往期上下文。禁止使用代词（我/他/她）或模糊指代（某人、无名少女等）。若仍无法确认身份，使用 access(msg_id) 追溯原文。\n\n消息：\n' + itemsText + '\n\n仅输出一个 JSON 数组：\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\n' + userEnding;
 
     return { system: instruction, user: userPrompt };
 }
