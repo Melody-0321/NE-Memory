@@ -38,12 +38,24 @@ export function checkConsolidateThreshold(vault) {
     return unconsolidated.length > getMaxUnconsolidated();
 }
 
-export function buildConsolidatePrompt(vault) {
+const CONSOLIDATION_BATCH_SIZE = 30;
+
+export function buildConsolidatePrompt(vault, stmIds) {
     const content = vault.content || {};
     const lang = content.language === 'en' ? 'en' : 'zh';
     const ltmEntries = content.ltm_entries || [];
-    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
-    const ltmText = ltmEntries.map((e, i) => {
+    var unconsolidated;
+    if (stmIds) {
+        var stmIdSet = {};
+        stmIds.forEach(function(id) { stmIdSet[id] = true; });
+        unconsolidated = (content.unconsolidated_stm || []).filter(function(stm) {
+            return stmIdSet[stm.id];
+        });
+    } else {
+        unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    }
+    const referenceLtm = ltmEntries.slice(-5);
+    const ltmText = referenceLtm.map((e, i) => {
         const refs = (e.stm_refs || []).join(', ');
         return `${i + 1}. [${e.period || ''}] ${e.title || e.event || ''} [→${refs}]`;
     }).join('\n');
@@ -279,6 +291,58 @@ function normalizeConsolidation(ltmEntries, allStmIds) {
     }
 }
 
+async function runConsolidationCore(vault, stmIds) {
+    if (stmIds.length === 0) return { ltm_entries: [] };
+
+    const prompt = buildConsolidatePrompt(vault, stmIds);
+    var response = await callMemoryPipeline([
+        { role: 'system', content: prompt.system },
+        { role: 'user', content: prompt.user }
+    ]);
+    var result = parseConsolidateResponse(response, stmIds);
+
+    var validateErrors = validateLTMOutput(result);
+    if (validateErrors.length > 0) {
+        console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
+        var retryMsg = validateErrors.join('; ') + '\n\nFix your output accordingly. Re-output ALL LTM entries as JSON with ltm_entries array.';
+        var retryResponse = await callMemoryPipeline([
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user },
+            { role: 'assistant', content: response },
+            { role: 'user', content: retryMsg }
+        ]);
+        result = parseConsolidateResponse(retryResponse, stmIds);
+    }
+
+    const content = vault.content || {};
+    const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+
+    postFillLTM(result, unconsolidated);
+    normalizeConsolidation(result.ltm_entries, stmIds);
+
+    var stmPos = {};
+    stmIds.forEach(function(id, i) { stmPos[id] = i; });
+    result.ltm_entries.sort(function(a, b) {
+        var maxA = (a.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
+        var maxB = (b.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
+        return maxA - maxB;
+    });
+    var consumed = 0;
+    var keepCount = 0;
+    for (var k = 0; k < result.ltm_entries.length; k++) {
+        var refCount = (result.ltm_entries[k].stm_refs || []).length;
+        if (stmIds.length - (consumed + refCount) < 1) break;
+        consumed += refCount;
+        keepCount++;
+    }
+    if (keepCount < result.ltm_entries.length) {
+        console.log('[NE] Consolidation guard: keeping ' + keepCount + '/' + result.ltm_entries.length + ' LTM entries, consumed=' + consumed + ', batchSize=' + stmIds.length);
+        result.ltm_entries = result.ltm_entries.slice(0, keepCount);
+    }
+
+    return { ltm_entries: result.ltm_entries || [] };
+}
+
 export function applyConsolidation(vault, consolidationResult) {
     const content = vault.content || {};
     content.stm_entries = content.stm_entries || [];
@@ -368,73 +432,54 @@ export async function executeConsolidation(chatId, force) {
     const unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
     const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
     if (stmIds.length === 0) { console.log('[NE] Consolidation: no unconsolidated STM, skipping'); return { vault, merged: 0 }; }
-    const prompt = buildConsolidatePrompt(vault);
-    var response = await callMemoryPipeline([{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]);
-    var result = parseConsolidateResponse(response, stmIds);
 
-    var validateErrors = validateLTMOutput(result);
-    if (validateErrors.length > 0) {
-        console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
-        var retryMsg = validateErrors.join('; ') + '\n\nFix your output accordingly. Re-output ALL LTM entries as JSON with ltm_entries array.';
-        var retryResponse = await callMemoryPipeline([
-            { role: 'system', content: prompt.system },
-            { role: 'user', content: prompt.user },
-            { role: 'assistant', content: response },
-            { role: 'user', content: retryMsg }
-        ]);
-        result = parseConsolidateResponse(retryResponse, stmIds);
-    }
+    let totalMerged = 0;
+    var allMergedIds = [];
 
-    postFillLTM(result, unconsolidated);
-    normalizeConsolidation(result.ltm_entries, stmIds);
+    if (stmIds.length <= CONSOLIDATION_BATCH_SIZE) {
+        console.log('[NE] Consolidation: single shot (' + stmIds.length + ' STM)');
+        var result = await runConsolidationCore(vault, stmIds);
+        totalMerged = applyConsolidation(vault, result);
+        allMergedIds = (result.ltm_entries || []).map(function(e) { return e.id || ''; }).filter(Boolean);
+    } else {
+        console.log('[NE] Consolidation: batch processing ' + stmIds.length + ' STM');
+        var numBatches = Math.ceil(stmIds.length / CONSOLIDATION_BATCH_SIZE);
+        var batchSize = Math.ceil(stmIds.length / numBatches);
+        var idx = 0;
 
-    // 代码级守卫：从早到晚逐条应用 LTM，不消耗全部 STM（至少保留 1 条未整合）
-    // 先按 stm_refs 的最大索引排序（早→晚），确保保留的是最早的剧情弧
-    var stmPos = {};
-    stmIds.forEach(function(id, i) { stmPos[id] = i; });
-    result.ltm_entries.sort(function(a, b) {
-        var maxA = (a.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
-        var maxB = (b.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
-        return maxA - maxB;
-    });
-    var threshold = getMaxUnconsolidated();
-    var consumed = 0;
-    var keepCount = 0;
-    for (var k = 0; k < result.ltm_entries.length; k++) {
-        var refCount = (result.ltm_entries[k].stm_refs || []).length;
-        if (stmIds.length - (consumed + refCount) < 1) break;
-        consumed += refCount;
-        keepCount++;
-    }
-    if (keepCount < result.ltm_entries.length) {
-        console.log('[NE] Consolidation guard: keeping ' + keepCount + '/' + result.ltm_entries.length + ' LTM entries, consumed=' + consumed + ', threshold=' + threshold);
-        result.ltm_entries = result.ltm_entries.slice(0, keepCount);
-    }
-    if (result.ltm_entries.length === 0) {
-        console.log('[NE] Consolidation guard: all LTM entries discarded, leaving ' + stmIds.length + ' unconsolidated STM');
-    }
+        while (idx < stmIds.length) {
+            var thisBatchSize = Math.min(batchSize, stmIds.length - idx);
+            var batchStmIds = stmIds.slice(idx, idx + thisBatchSize);
+            idx += thisBatchSize;
 
-    const merged = applyConsolidation(vault, result);
+            var batchNum = Math.ceil(idx / thisBatchSize);
+            console.log('[NE] Consolidation batch [' + batchNum + '/' + numBatches + ']: processing ' + batchStmIds.length + ' STM');
+            var batchResult = await runConsolidationCore(vault, batchStmIds);
+            var batchMerged = applyConsolidation(vault, batchResult);
+            totalMerged += batchMerged;
+            allMergedIds = allMergedIds.concat((batchResult.ltm_entries || []).map(function(e) { return e.id || ''; }).filter(Boolean));
+        }
+    }
 
     globalThis.__ne_debug_last_consolidation = {
-        merged: merged,
-        merged_ids: result.ltm_entries ? result.ltm_entries.map(function(e) { return e.id || ''; }).filter(Boolean) : [],
+        merged: totalMerged,
+        merged_ids: allMergedIds,
         time: new Date().toISOString()
     };
 
-    if (merged > 0) {
+    if (totalMerged > 0) {
         vault._meta = vault._meta || {};
         vault._meta.last_pipeline_task = 'consolidation';
         vault._meta.last_pipeline_time = new Date().toISOString();
 
-        var stmInputCount = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; }).length;
+        var remaining = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; }).length;
         recordTelemetry({
             pipeline_task: 'consolidation',
-            consolidation_stm_input_count: stmInputCount,
-            consolidation_ltm_output_count: merged
+            consolidation_stm_input_count: remaining,
+            consolidation_ltm_output_count: totalMerged
         }, chatId);
 
         await saveVaultWithSnapshot(chatId, vault);
     }
-    return { vault, merged };
+    return { vault, merged: totalMerged };
 }

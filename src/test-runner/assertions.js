@@ -65,17 +65,22 @@ export function evaluateAllStructural(collected, assertions) {
 
 /**
  * 语义性断言 — 用 LLM 评估
+ * 支持三态结果：passed=true(通过), passed=false(不通过), passed=null(无法判断，需继续)
  * @param {string} injection - SmartPush 注入文本
  * @param {Array<string>} questions - 语义问题列表
  * @param {Function} callLLM - 调用 LLM 的函数 (systemPrompt, userPrompt) => string
+ * @param {number} round - 当前轮次
  * @returns {Array<object>} [{ question, passed, evaluation }]
  */
-export async function evaluateSemantic(injection, questions, callLLM) {
+export async function evaluateSemantic(injection, questions, callLLM, round) {
     if (!injection || injection.length === 0) {
-        return questions.map(function(q) { return { question: q, passed: false, evaluation: '无注入内容可评估。' }; });
+        return questions.map(function(q) { return { question: q, passed: null, evaluation: '尚无注入内容，无法判断。' }; });
     }
-    var systemPrompt = '你是 NE Memory 的测试评估器。给定 SmartPush 注入内容和测试问题列表，对每个问题判断注入是否满足要求。回答 JSON 数组: [{"question_index": 1, "passed": true/false, "evaluation": "简短评估说明"}]';
-    var userPrompt = '## 注入内容\n```\n' + injection.substring(0, 2000) + '\n```\n\n## 测试问题\n' + questions.map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n\n请对每个问题给出评估。回答 JSON 数组: [{"question_index": 1, "passed": true/false, "evaluation": "..."}]';
+    var systemPrompt = '你是 NE Memory 的测试评估器。给定 SmartPush 注入内容和测试问题列表，对每个问题判断注入是否满足要求。\n' +
+        '注意：如果当前轮次的数据尚不足以判断（比如故事还在展开、记忆还在积累中），可以回答 "无法判断"。\n' +
+        '回答 JSON 数组: [{"question_index": 1, "passed": true/false/null, "evaluation": "简短评估说明"}]。\n' +
+        'passed=true = 确定通过; passed=false = 确定不通过; passed=null = 数据不足，尚且无法判断。';
+    var userPrompt = '(第 ' + (round || '?') + ' 轮)\n## 注入内容\n```\n' + injection.substring(0, 2000) + '\n```\n\n## 测试问题\n' + questions.map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n\n请对每个问题给出评估。回答 JSON 数组: [{"question_index": 1, "passed": true/false/null, "evaluation": "..."}]';
 
     try {
         var response = await callLLM(systemPrompt, userPrompt);
@@ -83,15 +88,16 @@ export async function evaluateSemantic(injection, questions, callLLM) {
         if (parsed && Array.isArray(parsed)) {
             return questions.map(function(q, i) {
                 var match = parsed.find(function(r) { return r.question_index === i + 1; });
+                if (!match) return { question: q, passed: null, evaluation: 'LLM 未给出该问题的评估' };
                 return {
                     question: q,
-                    passed: match ? match.passed : false,
-                    evaluation: match ? match.evaluation : 'LLM 未给出评估'
+                    passed: match.passed,
+                    evaluation: match.evaluation || ''
                 };
             });
         }
     } catch (e) {}
-    return questions.map(function(q) { return { question: q, passed: false, evaluation: 'LLM 评估失败。' }; });
+    return questions.map(function(q) { return { question: q, passed: null, evaluation: 'LLM 评估失败，无法判断。' }; });
 }
 
 function resolveTarget(collected, targetName) {

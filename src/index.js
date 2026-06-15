@@ -14,7 +14,7 @@ import { checkAndRestoreEmbeddedVault } from './auto-restore.js';
 import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
-import { runTest, setReportsDir } from './test-runner/index.js';
+import { runTest, runTestByName, listTests, setReportsDir } from './test-runner/index.js';
 
 var _retryTimer = null;
 
@@ -382,44 +382,22 @@ function _buildDebugApi(host) {
                  return { error: e.message };
              }
          },
+        runTestByName: async function(name) {
+            try {
+                return await runTestByName(name, hostDoc);
+            } catch (e) {
+                console.error('[NE] runTestByName failed:', e);
+                return { error: e.message };
+            }
+        },
+        listTests: function() {
+            return listTests();
+        },
         setReportsDir: async function() {
             try {
                 return await setReportsDir();
             } catch (e) {
                 return 'Error: ' + e.message;
-            }
-        },
-        _testPresets: {
-            smartpush01: {
-                name: 'smartpush-01', folder: 'smartpush-01-not-empty', title: 'SmartPush 注入非空',
-                objective: '验证在有 STM 记录的情况下，SmartPush 向主 LLM 注入了记忆内容（非 state-only 降级）',
-                conversationGuide: '跟随 AI 的故事自然互动。在每轮中引入新的细节或事件，让对话持续积累内容。当 STM 积累足够（约 5-6 轮）后，提出一个与之前对话中已建立的信息相关的具体问题，触发 SmartPush 检索。不要编造特定故事背景——故事是什么就是什么。',
-                structural: [
-                    { op: 'min_length', target: 'smartpush_injection', value: 50 },
-                    { op: 'not_contains', target: 'smartpush_injection', value: '→stm:' },
-                    { op: 'not_contains', target: 'smartpush_injection', value: '→[stm:' }
-                ],
-                semantic: [
-                    'SmartPush 注入是否包含前几轮积累的记忆信息？',
-                    '注入是否以自然语言呈现，而非原始数据转储？'
-                ],
-                maxRounds: 7, timeoutPerRound: 120000
-            },
-            smartpush02: {
-                name: 'smartpush-02', folder: 'smartpush-02-no-markers', title: 'SmartPush 注入无来源标记',
-                objective: '验证 SmartPush 注入文本不包含内部来源标记（→stm: 或 →[stm: 格式）。这些是 NE 内部标记，不应泄露给主 LLM。',
-                conversationGuide: '跟随 AI 的故事自然互动。引入多个角色或情节线，让对话丰富起来。积累 5+ 轮后询问与之前讨论过的事件相关的问题。检查注入文本中是否有内部标记泄露。',
-                structural: [
-                    { op: 'min_length', target: 'smartpush_injection', value: 80 },
-                    { op: 'not_contains', target: 'smartpush_injection', value: '→stm:' },
-                    { op: 'not_contains', target: 'smartpush_injection', value: '→[stm:' },
-                    { op: 'not_contains', target: 'smartpush_injection', value: 'stm_' }
-                ],
-                semantic: [
-                    '注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？',
-                    '即使有多条记忆，注入是否以流畅的自然语言呈现？'
-                ],
-                maxRounds: 6, timeoutPerRound: 120000
             }
         }
     };

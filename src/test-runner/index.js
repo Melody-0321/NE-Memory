@@ -1,26 +1,77 @@
 /**
  * test-runner/index.js — NE Memory LLM Test Runner 入口
  *
- * 注册到 __ne_debug.runTest(runConfig)：
- *   runConfig = {
- *     name: 'smartpush-01',
- *     title: 'SmartPush 注入非空',
- *     objective: '验证...',
- *     conversationGuide: '积累...',
- *     structural: [{ op, target, value }, ...],
- *     semantic: ['问题1', ...],
- *     maxRounds: 8,
- *     timeoutPerRound: 120000,
- *     seedMessages: ['消息1', '消息2', ...]  // 可选
- *   }
+ * 入口函数：
+ *   runTestByName(name, hostDoc) — 从 test-case.md 加载配置并运行
+ *   listTests() — 返回已知测试用例列表
+ *   runTest(config, hostDoc) — 直接传入 JS 对象运行（向下兼容）
+ *   setReportsDir() — 设置报告输出目录
+ *
+ * 测试用例定义在 test-cases/<name>/test-case.md 中，
+ * 包含 YAML frontmatter 结构化参数。脚本自动提取和编译。
  */
-import { parseTestCase } from './files.js';
+import { parseTestCase, loadTestCaseByName, listKnownTests } from './files.js';
 import { runTestLoop, setReportsDir } from './driver.js';
 
 export { setReportsDir };
 
-export async function runTest(config, hostDoc) {
-    var testCase = parseTestCase(config);
+/**
+ * 运行测试用例：从 test-case.md 加载并执行
+ */
+export async function runTestByName(name, hostDoc) {
+    var testCase = await loadTestCaseByName(name);
+    if (!testCase) {
+        console.error('[NE-TEST-RUNNER] Test case "' + name + '" not found.');
+        return { error: 'Test case "' + name + '" not found. Ensure test-cases/' + name + '/test-case.md exists and is accessible.' };
+    }
+
+    // Group test: run each sub-test sequentially
+    if (testCase.tests && testCase.tests.length > 0) {
+        return await runTestGroup(testCase, hostDoc);
+    }
+
+    return await executeSingleTest(testCase, hostDoc);
+}
+
+async function runTestGroup(groupCase, hostDoc) {
+    var groupResult = {
+        name: groupCase.name,
+        title: groupCase.title,
+        subResults: [],
+        roundCount: 0,
+        totalDurationMs: 0,
+        allPassed: true,
+        endType: 'completed'
+    };
+
+    var groupStart = Date.now();
+    console.log('[NE-TEST-RUNNER] === Group: ' + groupCase.title + ' ===');
+
+    for (var gi = 0; gi < groupCase.tests.length; gi++) {
+        var subName = groupCase.tests[gi];
+        console.log('[NE-TEST-RUNNER] --- Sub-test ' + (gi + 1) + '/' + groupCase.tests.length + ': ' + subName + ' ---');
+
+        var subResult = await runTestByName(subName, hostDoc);
+        groupResult.subResults.push({
+            name: subName,
+            result: subResult
+        });
+        groupResult.roundCount += subResult.roundCount || 0;
+
+        if (subResult.error || (subResult.structuralResults && !subResult.structuralResults.every(function(r) { return r.passed; }))) {
+            groupResult.allPassed = false;
+        }
+        if (subResult.semanticResults) {
+            var semFailed = subResult.semanticResults.some(function(r) { return r.passed === false; });
+            if (semFailed) groupResult.allPassed = false;
+        }
+    }
+
+    groupResult.totalDurationMs = Date.now() - groupStart;
+    return groupResult;
+}
+
+async function executeSingleTest(testCase, hostDoc) {
     console.log('[NE-TEST-RUNNER] === Starting: ' + testCase.title + ' ===');
     console.log('[NE-TEST-RUNNER] Objective: ' + testCase.objective);
     console.log('[NE-TEST-RUNNER] Max rounds: ' + testCase.maxRounds);
@@ -51,4 +102,19 @@ export async function runTest(config, hostDoc) {
         console.error('[NE-TEST-RUNNER] Test failed with error:', e);
         return { error: e.message, trace: e.stack, report: '## 执行异常\n' + e.message + '\n\n```\n' + e.stack + '\n```' };
     }
+}
+
+/**
+ * 列出所有已知的测试用例
+ */
+export function listTests() {
+    return listKnownTests();
+}
+
+/**
+ * 直接传入 JS 对象运行（向下兼容）
+ */
+export async function runTest(config, hostDoc) {
+    var testCase = parseTestCase(config);
+    return await executeSingleTest(testCase, hostDoc);
 }

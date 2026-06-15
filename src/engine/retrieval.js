@@ -241,9 +241,10 @@ function discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM) {
 /**
  * Merge BM25 results, entity chains, and LTM groups into a unified Map + ThreadIndex.
  */
-export function mergePipelines(bm25Results, entityChains, allLTM, state, allSTM) {
+export async function mergePipelines(bm25Results, entityChains, allLTM, state, allSTM) {
     var map = new Map();
     var threadIndex = {};
+    var content = null; // for Step 5 short chain inline
 
     // ── Step 1: BM25 results into Map ──
     bm25Results.forEach(function(c) {
@@ -358,14 +359,82 @@ export function mergePipelines(bm25Results, entityChains, allLTM, state, allSTM)
     // ── Step 4: Implicit entity discovery → mark available chains ──
     var availableChains = discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM);
 
+    // ── Step 5: Short chain inline (count ≤ 5, directly inject into map) ──
+    if (availableChains && availableChains.length > 0) {
+        var shortChains = availableChains.filter(function(c) { return c.count <= 5; });
+        if (shortChains.length > 0) {
+            var chainNames = shortChains.map(function(c) { return c.name; });
+            var lookupContent = {
+                unconsolidated_stm: [],
+                stm_entries: allSTM || [],
+                ltm_entries: allLTM || []
+            };
+            try {
+                var shortEntityChains = await lookupEntityChains(lookupContent, chainNames);
+                Object.keys(shortEntityChains).forEach(function(entityName) {
+                    prefetchedNames.push(entityName);
+                    var entries = shortEntityChains[entityName];
+                    if (!entries || entries.length === 0) return;
+                    var threadId = 'chain:' + entityName;
+                    var stmIds = [];
+                    entries.forEach(function(e, idx) {
+                        var id = e.id;
+                        if (!id) return;
+                        stmIds.push(id);
+                        var existing = map.get(id);
+                        if (existing) {
+                            var hasThread = false;
+                            for (var i = 0; i < existing.threads.length; i++) {
+                                if (existing.threads[i].threadId === threadId) {
+                                    hasThread = true;
+                                    break;
+                                }
+                            }
+                            if (!hasThread) {
+                                existing.threads.push({ threadId: threadId, position: idx + 1, total: entries.length });
+                            }
+                            if (existing.sources.indexOf('chain:' + entityName) === -1) {
+                                existing.sources.push('chain:' + entityName);
+                            }
+                        } else {
+                            map.set(id, {
+                                entry: e,
+                                type: 'stm',
+                                bm25Score: 0,
+                                threads: [{ threadId: threadId, position: idx + 1, total: entries.length }],
+                                sources: ['chain:' + entityName],
+                                _expanded: false,
+                                _lastDescribedVersion: 0
+                            });
+                        }
+                    });
+                    threadIndex[threadId] = {
+                        type: 'entity_chain',
+                        label: entityName,
+                        stmIds: stmIds,
+                        timeRange: deriveThreadTimeRange(entries),
+                        dagLayer: 1,
+                        parentThreadId: null
+                    };
+                });
+                // Remove inlined chains from availableChains
+                availableChains = availableChains.filter(function(c) { return c.count > 5; });
+            } catch (e) {
+                console.warn('[NE] Short chain inline failed:', e);
+            }
+        }
+    }
+
     return { map: map, threadIndex: threadIndex, availableChains: availableChains };
 }
 
 // ─── Prompt builder (v2 — accepts notebook) ───
 
-export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode) {
+export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode, extraOptions) {
     budget = budget || 1200;
     isSummaryMode = isSummaryMode || false;
+    var conversationContext = extraOptions && extraOptions.conversationContext;
+    var visibleWindow = extraOptions && extraOptions.visibleWindow;
     var content = vault.content || {};
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
@@ -399,7 +468,11 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         // BM25 score
         var scoreAnno = e.bm25Score > 0 ? ' [BM25:' + e.bm25Score.toFixed(2) + ']' : '';
 
-        return (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
+        var line = (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
+        if (e._originalText) {
+            line += '\n   ↓ ' + e._originalText.replace(/\n/g, '\n   ');
+        }
+        return line;
     }).join('\n');
 
     var dirBlock = '';
@@ -423,9 +496,51 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             return c.name + ' [' + c.count + ' entries]';
         }).join(', ');
         availChainHint = '\n## Available Chains (not yet expanded)\n' + chainItems + '\n' +
-            'Long chains (high count) = this entity appears globally throughout the story. Their timeline overlaps with story chronology. Useful when the query takes this entity\'s perspective.\n' +
-            'Short chains (low count) = this entity appears sporadically. High information density per entry, more likely to reveal narrative turning points that BM25 missed.\n' +
+            'Long chains (high count) = this entity appears globally throughout the story. Their timeline overlaps with story chronology.\n' +
+            'Short chains (low count) = this entity appears sporadically. High information density per entry.\n' +
             'Use access(chain.X) to fetch a chain.\n';
+    }
+
+    // ── Visible window section ──
+    var visibleWindowBlock = '';
+    if (visibleWindow && visibleWindow.length > 0) {
+        if (lang === 'en') {
+            visibleWindowBlock = '\n## Current Visible Window (known to main LLM)\n' +
+                'The main LLM\'s context covers the following conversation rounds. Content within this window is already known to the main LLM:\n';
+        } else {
+            visibleWindowBlock = '\n## 当前对话可见窗口\n' +
+                '主 LLM 的上下文窗口覆盖了以下对话轮次，这些内容主 LLM 已知（数字为 msg_id，可与候选条目对照）：\n';
+        }
+        visibleWindow.forEach(function(vm) {
+            var vmName = vm.name || (vm.role === 'user' ? 'User' : 'AI');
+            var vmText = typeof vm.mes === 'string' ? vm.mes : (vm.content || '');
+            if (vmText) visibleWindowBlock += '[msg_' + (vm.id || vm.mes_id) + '] ' + vmName + ': ' + vmText.substring(0, 200) + '\n';
+        });
+        if (lang === 'en') {
+            visibleWindowBlock += '\nCandidate entries whose msg_ids fall within this window → the main LLM already knows that dialogue. Entries outside this window are the information the main LLM has not seen.\n';
+        } else {
+            visibleWindowBlock += '\n候选条目中的 msg_id 若在此窗口内，说明主 LLM 已知道该轮对话原文；不在窗口内的是需要你重点关注的信息。合成时仍需基于记忆事件本身，对话原文只是参考。\n';
+        }
+    } else {
+        if (lang === 'en') {
+            visibleWindowBlock = '\n## Current Visible Window\n(No visible window data — conversation may not have started or exceeds budget.)\n';
+        } else {
+            visibleWindowBlock = '\n## 当前对话可见窗口\n（当前无可见窗口数据——可能是对话尚未开始或超出上下文预算。）\n';
+        }
+    }
+
+    // ── Conversation context section ──
+    var conversationBlock = '';
+    if (conversationContext) {
+        if (lang === 'en') {
+            conversationBlock = '\n## Recent Conversation Context\n' +
+                'The latest round of dialogue (BM25 query source), providing context for the retrieval:\n' +
+                conversationContext + '\n';
+        } else {
+            conversationBlock = '\n## 最近一轮对话上下文\n' +
+                '以下是最新的一轮对话（BM25 检索基准），用于帮助你理解当前检索需求的语境：\n' +
+                conversationContext + '\n';
+        }
     }
 
     var stmCount = content.stm_entries ? content.stm_entries.length : 0;
@@ -449,27 +564,23 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         '## Thread Notation\n' +
         'Each candidate is annotated with thread tags: {L:entityName#pos/total} = entity chain position, {G:ltm_id#pos/total} = LTM group position, {D:label#pos/total} = dispersed narrative thread.\n' +
         '[BM25:X.XX] = relevance score. Higher = more relevant to the query.\n\n' +
-        '## Search Tools\n' +
-        'You have access to:\n' +
-        '- access(stm_id): get full original text of an STM entry\n' +
-        '- access(ltm_id): get full content of an LTM entry\n' +
-        '- access(msg_id): view the original chat message\n' +
-        '- access(chain.X): get full timeline of entity X\n' +
+        '## Reference Tools (fallback use)\n' +
+        'The following tools are available for verification when needed, but typically not required:\n' +
+        '- access(msg_id): view original chat message (prefetch and visible window provide most dialogue context already)\n' +
+        '- access(chain.X): get full timeline of entity X (short chains are already inlined; long chains available on request)\n' +
         '- note_thread(label, stm_ids): register a cross-entity narrative thread if you identify events spanning multiple entities and time gaps that share an underlying narrative line\n\n' +
-        'The candidate list is only the first round. If you find entity names or event references with incomplete info, use access to dig deeper. Search until you have sufficient context before synthesizing. At most 3 search rounds.\n\n';
+        'The candidate list shows full event descriptions. The current conversation context and prefetched original text already cover most scenarios requiring original dialogue.\n\n';
 
     var toolGuidanceZh = '## 上下文总览\n' + overview + '\n\n' +
         '## 线程标注\n' +
         '每条候选带有线程标签：{L:实体名#位置/总数} = 实体链位置, {G:ltm_id#位置/总数} = LTM 分组位置, {D:标签#位置/总数} = 散列叙事线。\n' +
         '[BM25:X.XX] = 相关性评分。越高越相关。\n\n' +
-        '## 搜索工具\n' +
-        '你可以使用：\n' +
-        '- access(stm_id): 获取 STM 条目完整原文\n' +
-        '- access(ltm_id): 获取 LTM 归档完整内容\n' +
-        '- access(msg_id): 查看原始对话消息\n' +
-        '- access(chain.X): 获取实体 X 的完整事件时间线\n' +
-        '- note_thread(label, stm_ids): 如果发现多条跨实体但属于同一隐约叙事线的事件（即使时间不连续），使用此工具注册。label 为简短摘要（如"矿洞异常线索追踪"）\n\n' +
-        '候选列表仅是第一轮线索。若发现候选中有实体名或事件引用但信息不完整，使用 access 获取更多上下文。搜索直到信息充足后再合成。最多搜索 3 轮。\n\n';
+        '## 参考工具（保底使用）\n' +
+        '以下工具在你需要精确验证时可用，但通常不需要：\n' +
+        '- access(msg_id): 查看原始对话消息（预取和可见窗口已提供主要原文；只有在需要精确验证时使用）\n' +
+        '- access(chain.X): 获取实体 X 的完整事件时间线（短链已自动注入；长链按需查询）\n' +
+        '- note_thread(label, stm_ids): 如果发现多条跨实体但属于同一隐约叙事线的事件（即使时间不连续），使用此工具注册\n\n' +
+        '候选列表已提供完整事件描述。当前对话上下文和原文预取已覆盖多数需要原文的场景。\n\n';
 
     if (lang === 'en') {
         var systemEn = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
@@ -488,6 +599,8 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
+            conversationBlock +
+            visibleWindowBlock +
             toolGuidanceEn +
             availChainHint +
             'Query: ' + query + '\n\nCandidates:\n' + candidatesText + dirBlock;
@@ -514,6 +627,8 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
+        conversationBlock +
+        visibleWindowBlock +
         toolGuidanceZh +
         availChainHint +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
@@ -664,9 +779,9 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
     };
 }
 
-export async function buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode) {
+export async function buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode, extraOptions) {
     try {
-        var prompt = buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode);
+        var prompt = buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode, extraOptions);
         return [
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user }

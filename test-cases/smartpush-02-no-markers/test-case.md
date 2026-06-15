@@ -1,3 +1,26 @@
+---
+name: smartpush-02
+folder: smartpush-02
+title: SmartPush 注入无来源标记
+objective: 验证 SmartPush 注入文本不包含内部来源标记（→st: 或 →[stm: 格式）
+preconditions:
+  - NE-Memory 已初始化
+  - 副 API 可用
+  - 已有足够的 STM 条目触发 SmartPush（>= 4 条）
+structural:
+  - { op: min_length, target: smartpush_injection, value: 80 }
+  - { op: not_contains, target: smartpush_injection, value: "→stm:" }
+  - { op: not_contains, target: smartpush_injection, value: "→[stm:" }
+  - { op: not_contains, target: smartpush_injection, value: "stm_" }
+semantic:
+  - "注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？"
+  - "即使有多条记忆，注入是否以流畅的自然语言呈现？"
+minRounds: 4
+maxRounds: 10
+expectedRounds: "5-7"
+timeoutPerRound: 120000
+---
+
 # SmartPush-02: 注入无来源标记
 
 ## 目标
@@ -31,16 +54,16 @@ Driver 跟随 AI 已有故事自然互动。**不编造特定故事背景。**
 - 即使有多条记忆，注入是否以流畅的自然语言呈现？
 
 ## 运行参数
-- maxRounds: 6
+- minRounds: 4
+- maxRounds: 10
+- expectedRounds: 5-7
 - timeoutPerRound: 120000
 
 ## 调用方式
 
 ```javascript
-await __ne_debug.runTest(__ne_debug._testPresets.smartpush02)
+await __ne_debug.runTestByName('smartpush-02')
 ```
-
-或手动指定 config。
 
 > **注意**：运行前确保聊天框中已加载角色卡且有开场白。Driver 通过 AI 回复自然感知故事世界。
 > 测试期间请不要手动操作聊天框。

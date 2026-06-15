@@ -31,13 +31,17 @@ export async function runTestLoop(testCase, hostDoc) {
     var lastAiReply = getLastAiReply();
     var lastInjection = '';
     var gatedResult = null;
+    var endType = 'completed';
+    // ── 语义评估追踪 ──
+    var semanticResults = null;
+    var semanticDefinitive = false;  // 所有语义断言是否已得出明确结论
     startCollectingPipelineCalls();
     for (var round = 1; round <= testCase.maxRounds; round++) {
         console.log('[NE-TEST] === Round ' + round + '/' + testCase.maxRounds + ' ===');
 
         var vaultSummary = await collectVaultSummary();
 
-        var driverSystem = buildPlayerPrompt();
+        var driverSystem = buildPlayerPrompt(testCase, round);
         var driverUser = buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, round);
 
         console.log('[NE-TEST] Calling LLM Driver (main API)...');
@@ -46,14 +50,16 @@ export async function runTestLoop(testCase, hostDoc) {
             driverResponse = await callMainApi(driverSystem, driverUser);
         } catch (e) {
             console.error('[NE-TEST] Driver LLM call failed:', e.message);
+            endType = 'error';
             break;
         }
         if (!driverResponse || driverResponse.trim().length === 0) {
             console.warn('[NE-TEST] Driver returned empty response, stopping.');
+            endType = 'error';
             break;
         }
 
-        var userMessage = extractUserMessage(driverResponse);
+        var userMessage = extractUserMessage(driverResponse, round, testCase.minRounds);
         if (!userMessage) {
             console.warn('[NE-TEST] Driver response not in expected format. Raw:', driverResponse);
             var fallback = fallbackUserMessage(driverResponse);
@@ -73,6 +79,7 @@ export async function runTestLoop(testCase, hostDoc) {
         }
         if (userMessage === '__TEST_DONE__') {
             console.log('[NE-TEST] Driver signaled test completion.');
+            endType = 'natural_done';
             gatedResult = tryParseGated(driverResponse);
             break;
         }
@@ -98,15 +105,57 @@ export async function runTestLoop(testCase, hostDoc) {
         roundDataList.push(roundData);
         trace = appendTraceRound(trace, roundData);
 
+        // ── 结构性断言（始终明确） ──
         var structResults = evaluateAllStructural(roundData, testCase.structural);
-        var structAllPassed = structResults.every(function(r) { return r.passed; });
+        var structAnyFailed = structResults.some(function(r) { return !r.passed; });
+        if (structAnyFailed) {
+            console.log('[NE-TEST] Structural assertion failed, stopping.');
+            endType = 'struct_fail';
+            break;
+        }
 
-        if (round >= testCase.maxRounds - 1 && roundData.injection && structAllPassed) {
-            console.log('[NE-TEST] Target likely achieved.');
+        // ── 语义性断言（三态：通过/不通过/无法判断） ──
+        var semanticQuestions = testCase.semantic;
+        if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 2 === 0) {
+            try {
+                var semResults = await evaluateSemantic(lastInjection, semanticQuestions, callMemoryApiForEval, round);
+                semanticResults = semResults;
+                // 分类结果：明确通过、明确不通过、无法判断
+                var semPassed = semResults.filter(function(r) { return r.passed === true; }).length;
+                var semFailed = semResults.filter(function(r) { return r.passed === false; }).length;
+                var semInconclusive = semResults.filter(function(r) { return r.passed === null; }).length;
+
+                if (semFailed > 0) {
+                    console.log('[NE-TEST] Semantic assertion definitively FAILED, stopping.');
+                    endType = 'semantic_fail';
+                    break;
+                }
+                if (semInconclusive === 0) {
+                    // 全部明确（全部通过或无无法判断），结论已定
+                    semanticDefinitive = true;
+                    if (semPassed === semResults.length) {
+                        console.log('[NE-TEST] All semantic assertions PASSED.');
+                        endType = 'natural_done';
+                        break;
+                    }
+                }
+                // semPassed > 0 但有 semInconclusive → 部分通过但还有无法判断的，继续
+                console.log('[NE-TEST] Semantic eval: ' + semPassed + ' passed, ' + semFailed + ' failed, ' + semInconclusive + ' inconclusive, continuing.');
+            } catch (e) {
+                console.warn('[NE-TEST] Semantic evaluation failed:', e);
+            }
+        }
+
+        if (round >= testCase.maxRounds) {
+            endType = 'forced_max_rounds';
+            break;
         }
     }
 
     stopCollectingPipelineCalls();
+
+    // 添加结束类型到 trace
+    trace += '\n\n---\n**测试结束类型**: ' + endType + '\n';
 
     // 回收晚到的管线调用，追加到最后一条 trace 末尾
     var orphanCalls = drainOrphanPipelineCalls();
@@ -124,14 +173,32 @@ export async function runTestLoop(testCase, hostDoc) {
     var lastRound = roundDataList.length > 0 ? roundDataList[roundDataList.length - 1] : collectRoundData();
     var structuralResults = evaluateAllStructural(lastRound, testCase.structural);
 
-    var semanticResults = [];
-    if (testCase.semantic && testCase.semantic.length > 0 && lastRound.injection) {
-        console.log('[NE-TEST] Running semantic assertions...');
-        semanticResults = await evaluateSemantic(lastRound.injection, testCase.semantic, callMemoryApiForEval);
+    // ── 最终语义评估 ──
+    // 如果循环内已作出明确结论，复用结果；否则在结束时做一次终局评估
+    if (testCase.semantic && testCase.semantic.length > 0) {
+        if (semanticResults && semanticDefinitive) {
+            console.log('[NE-TEST] Using loop-collected semantic results (definitive).');
+        } else if (lastRound && lastRound.injection) {
+            console.log('[NE-TEST] Running final semantic assertions...');
+            semanticResults = await evaluateSemantic(lastRound.injection, testCase.semantic, callMemoryApiForEval, roundDataList.length);
+        } else {
+            semanticResults = [];
+        }
+        if (endType === 'forced_max_rounds') {
+            semanticResults = semanticResults.map(function(r) {
+                if (r.passed === null) {
+                    return { question: r.question, passed: false, evaluation: r.evaluation + ' (超时截断，按不通过处理)' };
+                }
+                return r;
+            });
+        }
+    } else {
+        semanticResults = [];
     }
 
     var totalDuration = Date.now() - startTime;
     var report = createReport(testCase, roundDataList.length, totalDuration, structuralResults, semanticResults);
+    report += '\n\n**结束类型**: ' + endType + '\n';
 
     if (gatedResult) {
         report += '\n\n## LLM 分派结果\n```json\n' + JSON.stringify(gatedResult, null, 2) + '\n```\n';
@@ -145,7 +212,8 @@ export async function runTestLoop(testCase, hostDoc) {
         structuralResults: structuralResults,
         semanticResults: semanticResults,
         roundCount: roundDataList.length,
-        totalDurationMs: totalDuration
+        totalDurationMs: totalDuration,
+        endType: endType
     };
 }
 
@@ -298,7 +366,8 @@ function getLastAiReply() {
 }
 
 // ── Layer 1: 玩家角色 Prompt（纯身份 + 驱动力，不含测试目标）──
-function buildPlayerPrompt() {
+function buildPlayerPrompt(testCase, round) {
+    var expectedRounds = testCase.expectedRounds || '5-8';
     var lines = [
         '你是故事中的主要参与者。你正在与 AI 进行协作写作。',
         '',
@@ -317,6 +386,10 @@ function buildPlayerPrompt() {
         '每次你写你的整个"回合"——包括你如何回应、你的动作、你的内心活动、',
         '以及你推动场景前进的方式。你不是在写一句回话——你是在写你的故事部分。',
         '',
+        '轮次信息：',
+        '- 预期可在 ' + expectedRounds + ' 轮内自然完成。',
+        '- 如果测试目标尚未达成，你可以继续推进。',
+        '- 当前第 ' + round + ' 轮。',
         '',
         '当你认为测试目标已经自然达成时，在输出末尾加上:',
         '[DONE] 原因',
@@ -382,7 +455,7 @@ function fallbackUserMessage(llmResponse) {
     return trimmed.substring(0, 600);
 }
 
-function extractUserMessage(llmResponse) {
+function extractUserMessage(llmResponse, currentRound, minRounds) {
     if (!llmResponse) return null;
     var trimmed = llmResponse.trim();
 
@@ -390,6 +463,11 @@ function extractUserMessage(llmResponse) {
 
     var doneIdx = trimmed.indexOf('[DONE]');
     if (doneIdx !== -1) {
+        if (currentRound < minRounds) {
+            // 软下限内 [DONE] 无效，仍提交消息
+            console.log('[NE-TEST] [DONE] ignored before minRounds (' + currentRound + '/' + minRounds + ')');
+            return trimmed.substring(0, doneIdx).trim().substring(0, 600) || null;
+        }
         if (doneIdx === 0) return '__TEST_DONE__';
         return trimmed.substring(0, doneIdx).trim() || '__TEST_DONE__';
     }

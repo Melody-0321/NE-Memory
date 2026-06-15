@@ -1265,6 +1265,35 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
     return 1200;
 }
 
+function computeVisibleWindow(chatMessages, maxContext) {
+    if (!chatMessages || chatMessages.length === 0) return [];
+    if (!maxContext) {
+        try {
+            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                maxContext = SillyTavern.getContext().maxContext || 4096;
+            }
+        } catch (e) {}
+        if (!maxContext) return [];
+    }
+    var overhead = 1500;
+    var available = maxContext - overhead;
+    if (available <= 0) return [];
+
+    var visible = [];
+    var accumulated = 0;
+
+    for (var i = chatMessages.length - 1; i >= 0; i--) {
+        var m = chatMessages[i];
+        var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
+        var tokens = Math.round(text.length / 3.5) + 10;
+        if (accumulated + tokens > available) break;
+        accumulated += tokens;
+        visible.unshift(m);
+    }
+
+    return visible;
+}
+
 export async function formatSmartContext(vault, chatMessages, budget) {
     if (!budget) {
         budget = estimateComplexityBudget(chatMessages);
@@ -1287,18 +1316,43 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 
+    // ── 可见窗口计算 ──
+    var visibleWindow = computeVisibleWindow(chatMessages);
+
+    // ── 提取最近 2 轮对话（user + AI），三用途复用 ──
+    var conversationContext = '';
     var query;
     if (chatMessages && chatMessages.length > 0) {
-        // Use recent user messages as query (get up to 5 most recent user messages)
-        var userMessages = [];
-        for (var i = chatMessages.length - 1; i >= 0 && userMessages.length < 5; i--) {
-            var m = chatMessages[i];
-            if (m && (m.role === 'user' || m.is_user)) {
-                var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
-                if (text && text.trim().length > 5) userMessages.unshift(text.trim().substring(0, 200));
+        var aiTexts = [];
+        var userTexts = [];
+        var MAX_ROUNDS = 2;
+        for (var i = chatMessages.length - 1; i >= 0; i--) {
+            var mi = chatMessages[i];
+            if (!mi) continue;
+            var txt = typeof mi.mes === 'string' ? mi.mes : (mi.content || '');
+            if (!txt || txt.trim().length <= 5) continue;
+            if (mi.role === 'user' || mi.is_user) {
+                if (userTexts.length < MAX_ROUNDS) {
+                    userTexts.push(txt.trim().substring(0, 400));
+                }
+            } else {
+                if (aiTexts.length < MAX_ROUNDS) {
+                    aiTexts.push(txt.trim().substring(0, 400));
+                }
             }
+            if (userTexts.length >= MAX_ROUNDS && aiTexts.length >= MAX_ROUNDS) break;
         }
-        query = userMessages.length > 0 ? userMessages.join(' ').substring(0, 500) : null;
+        // Reconstruct time order: older → newer (reverse of collection order)
+        var contextParts = [];
+        var rounds = Math.max(aiTexts.length, userTexts.length);
+        for (var ri = rounds - 1; ri >= 0; ri--) {
+            if (aiTexts[ri]) contextParts.push(aiTexts[ri]);
+            if (userTexts[ri]) contextParts.push(userTexts[ri]);
+        }
+        if (contextParts.length > 0) {
+            conversationContext = contextParts.join('\n').substring(0, 1200);
+            query = conversationContext;
+        }
     }
     if (!query) {
         var queryParts = [];
@@ -1358,10 +1412,10 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     // ── 合并管线: BM25 + 实体链 + LTM 分组 → unified Map ──
     var pipelineMerged;
     try {
-        pipelineMerged = mergePipelines(topCandidates, entityChains, allLTM, state, allSTM);
+        pipelineMerged = await mergePipelines(topCandidates, entityChains, allLTM, state, allSTM);
     } catch (e) {
         console.warn('[NE] mergePipelines failed, using BM25-only:', e);
-        pipelineMerged = mergePipelines(topCandidates, {}, [], state, allSTM);
+        pipelineMerged = await mergePipelines(topCandidates, {}, [], state, allSTM);
     }
 
     // ── 构建笔记本 ──
@@ -1373,6 +1427,11 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         notebook.threadIndex = pipelineMerged.threadIndex;
     }
     notebook._availableChains = pipelineMerged ? (pipelineMerged.availableChains || []) : [];
+
+    // ── 原文预取：在 memory LLM 看到候选之前拎取关键对话 ──
+    try {
+        prefetchOriginalTexts(notebook, chatMessages, visibleWindow, 3);
+    } catch (e) {}
 
     // ── Debug: stash for test hooks ──
     globalThis.__ne_debug_last_merge = pipelineMerged ? {
@@ -1393,7 +1452,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var synthesized;
     var smPushMethod;
     try {
-        var messages = await buildRetrievalMessages(notebook, query, vault, budget);
+        var messages = await buildRetrievalMessages(notebook, query, vault, budget, false, { conversationContext: conversationContext, visibleWindow: visibleWindow });
         var accessTool = {
             type: 'function',
             function: {
@@ -1693,6 +1752,54 @@ function formatBM25Results(query, candidates) {
     });
     lines.push('');
     return lines.join('\n');
+}
+
+// ── 原文预取：对 top-3 BM25 候选，拎取全部 msg_id 的原始对话文本，带 [msg_xx] 标注 ──
+function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
+    if (!chatMessages || chatMessages.length === 0) return;
+    topK = topK || 3;
+    var entries = [];
+    notebook.map.forEach(function(v) { entries.push(v); });
+    entries.sort(function(a, b) { return (b.bm25Score || 0) - (a.bm25Score || 0); });
+
+    entries.slice(0, topK).forEach(function(entry) {
+        var raw = entry.entry;
+        var msgIds = raw.msg_ids;
+        if (!msgIds || msgIds.length === 0) return;
+
+        // 可见窗口跳过：如果所有 msg_id 都在 visibleWindow 内，说明主 LLM 已知
+        if (visibleWindow && visibleWindow.length > 0) {
+            var allInWindow = msgIds.every(function(mid) {
+                return visibleWindow.some(function(vm) {
+                    return String(vm.id || vm.mes_id) === String(mid);
+                });
+            });
+            if (allInWindow) return;
+        }
+
+        var originalLines = [];
+        var totalLen = 0;
+        var MAX_TOTAL = 2000;
+        msgIds.forEach(function(mid) {
+            if (totalLen >= MAX_TOTAL) return;
+            var msg = chatMessages.find(function(m) { return String(m.id || m.mes_id) === String(mid); });
+            if (msg) {
+                var name = msg.name || (msg.role === 'user' ? 'User' : 'AI');
+                var text = typeof msg.mes === 'string' ? msg.mes : (msg.content || '');
+                if (text) {
+                    var line = '[msg_' + mid + '] ' + name + ': ' + text.substring(0, 200);
+                    if (totalLen + line.length > MAX_TOTAL) {
+                        line = line.substring(0, MAX_TOTAL - totalLen);
+                    }
+                    originalLines.push(line);
+                    totalLen += line.length;
+                }
+            }
+        });
+        if (originalLines.length > 0) {
+            entry._originalText = originalLines.join('\n');
+        }
+    });
 }
 
 /* ──────── 面板初始化 ──────── */
@@ -2187,12 +2294,13 @@ function initTestRunner() {
     var container = byId('ne-tr-container');
     if (!container) return;
 
-    var presets = globalThis.__ne_debug && globalThis.__ne_debug._testPresets;
+    var debug = globalThis.__ne_debug;
+    var tests = debug && debug.listTests ? debug.listTests() : [];
 
     container.innerHTML =
         '<select id="ne-tr-select" class="ne-tr-select">' +
-        (presets ? Object.keys(presets).map(function(k) {
-            return '<option value="' + k + '">' + (presets[k].title || k) + '</option>';
+        (tests.length > 0 ? tests.map(function(t) {
+            return '<option value="' + t.name + '">' + t.title + '</option>';
         }).join('') : '<option>' + t('No test cases available') + '</option>') +
         '</select>' +
         '<div class="ne-tr-actions">' +
@@ -2205,9 +2313,9 @@ function initTestRunner() {
 
     byId('ne-tr-run').onclick = function() {
         var select = byId('ne-tr-select');
-        var key = select.value;
-        if (!presets || !presets[key]) return;
-        runTestFromUI(key, presets[key]);
+        var name = select.value;
+        if (!name) return;
+        runTestFromUI(name);
     };
 
     byId('ne-tr-export').onclick = exportTestResults;
@@ -2215,25 +2323,26 @@ function initTestRunner() {
 
 var _lastTestResult = null;
 
-async function runTestFromUI(key, preset) {
+async function runTestFromUI(name) {
     var runBtn = byId('ne-tr-run');
     var exportBtn = byId('ne-tr-export');
     var statusEl = byId('ne-tr-status');
     var resultEl = byId('ne-tr-result');
     var traceEl = byId('ne-tr-trace');
+    var debug = globalThis.__ne_debug;
 
     runBtn.disabled = true;
     exportBtn.disabled = true;
     resultEl.style.display = 'none';
     traceEl.classList.remove('open');
-    statusEl.textContent = '\u23F3 ' + (t('Running') + ': ' + (preset.title || key) + '...');
+    statusEl.textContent = '\u23F3 ' + (t('Running') + ': ' + name + '...');
     statusEl.className = 'ne-tr-status running';
 
     try {
-        var result = await globalThis.__ne_debug.runTest(preset);
+        var result = await debug.runTestByName(name);
         _lastTestResult = result;
 
-        statusEl.textContent = t('Done') + ' \u2014 ' + result.roundCount + t(' rounds, ') + (result.totalDurationMs / 1000).toFixed(1) + 's';
+        statusEl.textContent = t('Done') + ' \u2014 ' + (result.roundCount || '?') + t(' rounds, ') + ((result.totalDurationMs || 0) / 1000).toFixed(1) + 's';
         statusEl.className = 'ne-tr-status';
 
         renderTestResult(result, resultEl, traceEl);
