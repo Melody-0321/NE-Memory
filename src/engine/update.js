@@ -817,7 +817,26 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     var processedIds = collectProcessedMsgIds(vault);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
     console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');
-    if (filteredMessages.length === 0 && !force) { console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process'); return { vault: vault, added: 0 }; }
+    if (filteredMessages.length === 0 && !force) {
+        // 防死信：如果 vault 没有 STM/LTM 但有 processed_msg_ids，说明数据已被清空
+        // 而 msg_id 标记残留。此时清除标记让消息重新参与提取。
+        var hasAnyMemories = (vault.content.stm_entries && vault.content.stm_entries.length > 0) || (vault.content.ltm_entries && vault.content.ltm_entries.length > 0) || (vault.content.unconsolidated_stm && vault.content.unconsolidated_stm.length > 0);
+        if (!hasAnyMemories && processedIds.size > 0) {
+            console.warn('[NE-DIAG] dead processed_msg_ids detected (no STM/LTM, ' + processedIds.size + ' stale IDs). Clearing and retrying.');
+            vault.content.processed_msg_ids = {};
+            await write(chatId, vault);
+            processedIds = new Set();
+            filteredMessages = filterNewMessages(newMessages, processedIds);
+            console.log('[NE-DIAG] retry after clearing — ' + filteredMessages.length + ' messages remain');
+            if (filteredMessages.length === 0) {
+                console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — all messages filtered even after clearing dead IDs');
+                return { vault: vault, added: 0 };
+            }
+        } else {
+            console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
+            return { vault: vault, added: 0 };
+        }
+    }
 
     // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
     if (isDynamicStateMode() && !vault.content.dynamic_state) {
