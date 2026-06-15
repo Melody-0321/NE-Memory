@@ -16,7 +16,8 @@ export function groupMessagesIntoTurns(messages) {
 
         if (isUser) {
             if (pendingUser !== null) {
-                turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._absIdx || pendingUser._idx || i, msgEnd: messages[i - 1] ? (messages[i - 1]._absIdx !== undefined ? messages[i - 1]._absIdx : i - 1) : i - 1 });
+                var prevAbs = messages[i - 1] && messages[i - 1]._absIdx !== undefined ? messages[i - 1]._absIdx : i - 1;
+                turns.push({ user: pendingUser, assistant: null, msgStart: pendingUser._absIdx !== undefined ? pendingUser._absIdx : (pendingUser._idx !== undefined ? pendingUser._idx : i), msgEnd: prevAbs });
             }
             pendingUser = m;
             pendingUser._idx = i;
@@ -25,7 +26,7 @@ export function groupMessagesIntoTurns(messages) {
             turns.push({
                 user: pendingUser,
                 assistant: m,
-                msgStart: pendingUser ? (pendingUser._absIdx !== undefined ? pendingUser._absIdx : (pendingUser._idx || i)) : (m._absIdx !== undefined ? m._absIdx : i),
+                msgStart: pendingUser ? (pendingUser._absIdx !== undefined ? pendingUser._absIdx : (pendingUser._idx !== undefined ? pendingUser._idx : i)) : (m._absIdx !== undefined ? m._absIdx : i),
                 msgEnd: absIdx
             });
             pendingUser = null;
