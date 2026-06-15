@@ -130,9 +130,8 @@ function initStateFromSchema(schema) {
 export function filterNewMessages(messages, processedIds) {
     return messages.filter(m => {
         const id = m.id || m.mes_id;
-        if (id !== undefined) return !processedIds.has(String(id));
-        if (m._absIdx !== undefined) return !processedIds.has('msg_abs_' + m._absIdx);
-        return true;
+        if (id === undefined) return true;
+        return !processedIds.has(String(id));
     });
 }
 
@@ -815,8 +814,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force + ', skipState=' + !!skipState);
     const vault = await read(chatId);
 
-    // 给消息打绝对位置标记——确保 groupMessagesIntoTurns 的 msgStart/msgEnd 跨运行一致
-    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = mi; }
+    // 给消息打绝对位置标记——使用消息在原始 chat 中的位置 (m.id) 而非 batch 循环下标
+    // m.id 在 processHistory 中设为原始 chat idx，在 onMessageSent/Received 中设为 ST 的 messageIndex
+    // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
+    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
     var processedIds = collectProcessedMsgIds(vault);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
