@@ -256,17 +256,38 @@ function splitInline(str) {
 }
 
 export function getTestBaseUrl() {
+    // Priority 1: captured at IIFE load time via document.currentScript
+    if (_scriptSrc) {
+        var distIdx = _scriptSrc.lastIndexOf('/dist/');
+        if (distIdx !== -1) {
+            return _scriptSrc.substring(0, distIdx) + '/test-cases/';
+        }
+        var dir = _scriptSrc.substring(0, _scriptSrc.lastIndexOf('/'));
+        return dir + '/../test-cases/';
+    }
+    // Priority 2: search all script tags at runtime
     try {
         var scripts = document.getElementsByTagName('script');
         for (var i = 0; i < scripts.length; i++) {
             var src = scripts[i].src || '';
-            if (src.indexOf('ne-memory') !== -1 || src.indexOf('ne_memory') !== -1 || src.indexOf('NE-Memory') !== -1) {
+            if (src.indexOf('ne-memory') !== -1 || src.indexOf('ne_memory') !== -1 ||
+                src.indexOf('NE-Memory') !== -1 || src.indexOf('NE_Memory') !== -1 ||
+                src.indexOf('/dist/index.js') !== -1) {
+                var distIdx = src.lastIndexOf('/dist/');
+                if (distIdx !== -1) {
+                    return src.substring(0, distIdx) + '/test-cases/';
+                }
                 var scriptDir = src.substring(0, src.lastIndexOf('/'));
                 return scriptDir + '/../test-cases/';
             }
         }
-    } catch (e) {}
-    return 'test-cases/';
+    } catch (e) {
+        console.warn('[NE-TEST] getTestBaseUrl exception:', e);
+    }
+    // Priority 3: fallback relative to page path
+    var fromLocation = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/')) + '/test-cases/';
+    console.warn('[NE-TEST] getTestBaseUrl: all methods failed, trying:', fromLocation);
+    return fromLocation;
 }
 
 var KNOWN_TESTS = [
@@ -284,6 +305,13 @@ var KNOWN_TESTS = [
     { name: 'retrieval-58', title: '短链自动 inline' },
     { name: 'smartpush-group-b', title: '[组合] SmartPush 检索优化（05+08+10+11+55+58）' }
 ];
+
+// Capture script URL at IIFE load time for test-cases base path resolution
+var _scriptSrc = '';
+try {
+    var cs = document.currentScript;
+    if (cs && cs.src) _scriptSrc = cs.src;
+} catch (e) {}
 
 export function listKnownTests() {
     return KNOWN_TESTS;
