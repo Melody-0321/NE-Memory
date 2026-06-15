@@ -22,10 +22,66 @@ function getChatId() {
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             const ctx = SillyTavern.getContext();
-            return ctx.chatId || 'default';
+            // ST may report 'default' for all chats — fall back to chat fingerprint
+            if (ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
+            var fp = getChatFingerprint(ctx);
+            if (fp) return fp;
         }
     } catch (e) {}
     return 'default';
+}
+
+function getChatFingerprint(ctx) {
+    try {
+        var chat = ctx.chat || [];
+        // Stable fingerprint: prefer first message ID (persists across reloads)
+        if (chat.length > 0) {
+            var firstId = chat[0].id || chat[0].mes_id || '0';
+            var fp = 'ne_' + (ctx.characterId || 'x') + '_' + firstId;
+            // Persist for subsequent empty-chat phase
+            try { localStorage.setItem('ne_chat_fp_' + (ctx.characterId || 'x'), fp); } catch (e) {}
+            return fp;
+        }
+        // Empty chat: restore from localStorage if available, else generate transitional key
+        try {
+            var cachedFp = localStorage.getItem('ne_chat_fp_' + (ctx.characterId || 'x'));
+            if (cachedFp) {
+                console.log('[NE] getChatFingerprint: empty chat, using cached fingerprint ' + cachedFp);
+                return cachedFp;
+            }
+        } catch (e) {}
+        console.log('[NE] getChatFingerprint: chat is empty, using timestamp fallback');
+        return 'ne_' + (ctx.characterId || 'x') + '_' + Date.now();
+    } catch (e) {
+        console.warn('[NE] getChatFingerprint failed:', e);
+        return '';
+    }
+}
+
+// 迁移旧 'default' vault 到新 chat 指纹
+async function migrateVaultIfNeeded(chatId, currentVault) {
+    if (chatId === 'default' || !chatId.startsWith('ne_')) return currentVault;
+    if (currentVault && currentVault.version !== 0) return currentVault;
+    try {
+        var defaultVault = await read('default');
+        if (!defaultVault || defaultVault.version === 0) return currentVault;
+        var content = defaultVault.content || {};
+        var hasData = (content.stm_entries && content.stm_entries.length > 0) ||
+            (content.ltm_entries && content.ltm_entries.length > 0) ||
+            (content.unconsolidated_stm && content.unconsolidated_stm.length > 0) ||
+            Object.keys(content.processed_msg_ids || {}).length > 0;
+        if (!hasData) return currentVault;
+        console.log('[NE] Migrating vault from "default" to fingerprint: ' + chatId);
+        defaultVault.chat_id = chatId;
+        await write(chatId, defaultVault);
+        // 清除旧 vault（保留空壳避免重复迁移）
+        await write('default', { chat_id: 'default', version: -1, content: {} });
+        console.log('[NE] Vault migration complete');
+        return defaultVault;
+    } catch (e) {
+        console.warn('[NE] Vault migration failed:', e.message);
+        return currentVault;
+    }
 }
 function getChatMessages() {
     try {
@@ -65,7 +121,9 @@ async function init() {
     setDynamicStateMode(settings && settings.useDynamicState || false);
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
     const chatId = getChatId();
-    const vault = await read(chatId);
+    console.log('[NE] Engine initializing — chatId=' + chatId);
+    var vault = await read(chatId);
+    vault = await migrateVaultIfNeeded(chatId, vault);
     if (vault.version === 0 && !vault.content.language) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
         vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
@@ -139,6 +197,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('chat_id_changed', async () => {
                 try {
                     const chatId = getChatId();
+                    console.log('[NE] chat_id_changed → chatId=' + chatId);
                     neSyncChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
@@ -149,6 +208,7 @@ function setupEventListeners(retryCount) {
                         vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
                         await write(chatId, vault);
                     }
+                    await migrateVaultIfNeeded(chatId, vault);
                     checkAndRestoreEmbeddedVault(chatId);
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
             }); } catch (e) {}
@@ -170,6 +230,7 @@ function setupEventListeners(retryCount) {
             if (tavern_events.CHAT_CHANGED) {
                 TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
                     const chatId = getChatId();
+                    console.log('[NE] CHAT_CHANGED (legacy) → chatId=' + chatId);
                     neSyncChatId(chatId);
                     var settings = loadSettings();
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
@@ -180,6 +241,7 @@ function setupEventListeners(retryCount) {
                         vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
                         await write(chatId, vault);
                     }
+                    await migrateVaultIfNeeded(chatId, vault);
                     checkAndRestoreEmbeddedVault(chatId);
                 });
             }
