@@ -3,7 +3,7 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
+import { read, write, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, reconcileProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
@@ -822,6 +822,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
     for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
+    var reconciled = reconcileProcessedMsgIds(vault);
+    if (reconciled > 0) {
+        await write(chatId, vault);
+    }
     var processedIds = collectProcessedMsgIds(vault);
     console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
     var filteredMessages = filterNewMessages(newMessages, processedIds);

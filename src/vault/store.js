@@ -340,3 +340,20 @@ export function collectProcessedMsgIds(vault) {
     var processed = (vault.content || {}).processed_msg_ids || {};
     return new Set(Object.keys(processed));
 }
+
+export function reconcileProcessedMsgIds(vault) {
+    var content = vault.content || {};
+    var processed = content.processed_msg_ids || {};
+    var liveMsgIds = collectAllMsgIds(vault);
+    var removed = 0;
+    Object.keys(processed).forEach(function (key) {
+        if (!liveMsgIds.has(key)) {
+            delete processed[key];
+            removed++;
+        }
+    });
+    if (removed > 0) {
+        console.log('[NE] reconcileProcessedMsgIds: pruned ' + removed + ' orphaned IDs (no longer referenced by any STM entry)');
+    }
+    return removed;
+}

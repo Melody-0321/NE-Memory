@@ -320,11 +320,16 @@ function deleteSingleEntry(entryType, entryId) {
     }
     if (entryType === 'stm') {
         c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function(e) { return e.id !== entryId; });
+        c.stm_entries = (c.stm_entries || []).filter(function(e) { return e.id !== entryId; });
     } else {
         c.ltm_entries = (c.ltm_entries || []).filter(function(e) { return e.id !== entryId; });
         c.stm_entries = (c.stm_entries || []).filter(function(e) { return e.id !== entryId; });
     }
-    write(getChatId(), vault).then(function() {});
+    write(getChatId(), vault).then(function () {
+        console.log('[NE] deleteSingleEntry: persisted deletion of ' + entryType + ' ' + entryId);
+    }).catch(function (err) {
+        console.error('[NE] deleteSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
+    });
 }
 
 function closeVaultOverlay() {
