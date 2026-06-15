@@ -3,7 +3,7 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, write, appendSTMEntries, markMessagesProcessed, collectProcessedMsgIds, reconcileProcessedMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
+import { read, appendSTMEntries, collectAllMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
@@ -822,37 +822,17 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
     for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
-    var reconciled = reconcileProcessedMsgIds(vault);
-    if (reconciled > 0) {
-        await write(chatId, vault);
-    }
-    var processedIds = collectProcessedMsgIds(vault);
+    var processedIds = collectAllMsgIds(vault);
     console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
-    console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');
+    console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages');
     if (filteredMessages.length !== newMessages.length) {
         var filteredIds = newMessages.filter(function(m){ return filteredMessages.indexOf(m) === -1; }).map(function(m){return m.id;});
         console.log('[NE-DIAG] executeIncrementalUpdate — filtered OUT msg ids:', filteredIds.join(','));
     }
     if (filteredMessages.length === 0 && !force) {
-        // 防死信：如果 vault 没有 STM/LTM 但有 processed_msg_ids，说明数据已被清空
-        // 而 msg_id 标记残留。此时清除标记让消息重新参与提取。
-        var hasAnyMemories = (vault.content.stm_entries && vault.content.stm_entries.length > 0) || (vault.content.ltm_entries && vault.content.ltm_entries.length > 0) || (vault.content.unconsolidated_stm && vault.content.unconsolidated_stm.length > 0);
-        if (!hasAnyMemories && processedIds.size > 0) {
-            console.warn('[NE-DIAG] dead processed_msg_ids detected (no STM/LTM, ' + processedIds.size + ' stale IDs). Clearing and retrying.');
-            vault.content.processed_msg_ids = {};
-            await write(chatId, vault);
-            processedIds = new Set();
-            filteredMessages = filterNewMessages(newMessages, processedIds);
-            console.log('[NE-DIAG] retry after clearing — ' + filteredMessages.length + ' messages remain');
-            if (filteredMessages.length === 0) {
-                console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — all messages filtered even after clearing dead IDs');
-                return { vault: vault, added: 0 };
-            }
-        } else {
-            console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
-            return { vault: vault, added: 0 };
-        }
+        console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
+        return { vault: vault, added: 0 };
     }
 
     // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
@@ -999,7 +979,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
             getCursorState: getCursorState,
             updateCursorState: updateCursorState,
-            markProcessed: function(v, ids) { markMessagesProcessed(v, ids); },
             buildBatchPrompt: buildBatchPrompt
         };
         cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
@@ -1041,15 +1020,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
 
     console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
-
-    try {
-        var processedIds = collectProcessedMsgIds(vault);
-        globalThis.__ne_debug_last_cursor = {
-            processedIds: processedIds || [],
-            size: processedIds ? processedIds.length : 0,
-            time: new Date().toISOString()
-        };
-    } catch (e) {}
 
     return { vault: vault, added: newEntries.length };
 }

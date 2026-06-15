@@ -182,8 +182,7 @@ export function emptyVault(chatId) {
             consolidate_threshold: 5,
             memory_config: {},
             language: 'zh',
-            cursor_state: { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } },
-            processed_msg_ids: {}
+            cursor_state: { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } }
         },
         link_index: {},
         stm_index: {},
@@ -197,9 +196,9 @@ export function mergeVaultFromMessages(messages, existingVault) {
     const newMessages = [];
     for (let i = 0; i < messages.length; i++) {
         const msg = messages[i];
-        const msgId = msg.id || msg.mes_id || i;
-        if (!processedIds.has(msgId)) {
-            newMessages.push({ id: msgId, role: msg.is_user ? 'user' : 'assistant', content: msg.mes || '', name: msg.name || '' });
+        const msgId = (msg.id != null) ? msg.id : msg.mes_id;
+        if (msgId == null || !processedIds.has(String(msgId))) {
+            newMessages.push({ id: msgId != null ? msgId : i, role: msg.is_user ? 'user' : 'assistant', content: msg.mes || '', name: msg.name || '' });
         }
     }
     return { vault, newMessages };
@@ -210,7 +209,13 @@ export function collectAllMsgIds(vault) {
     const content = vault.content || {};
     const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     allSTM.forEach(stm => {
-        (stm.msg_ids || []).forEach(id => ids.add(String(id)));
+        (stm.msg_ids || []).forEach(id => {
+            var sid = String(id);
+            ids.add(sid);
+            if (sid.startsWith('msg_user_') || sid.startsWith('msg_asst_')) {
+                ids.add(sid.replace(/^msg_(?:user|asst)_/, ''));
+            }
+        });
     });
     return ids;
 }
@@ -296,10 +301,6 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     });
     content.ltm_entries = keptLTM;
 
-    // 清除 processed_msg_ids，允许这些消息在下一次提取时重新参与
-    var processed = content.processed_msg_ids || {};
-    removedMsgIds.forEach(function(id) { delete processed[id]; });
-
     return updated;
 }
 
@@ -314,46 +315,4 @@ export function updateCursorState(vault, mode, state) {
     if (!vault.content) vault.content = {};
     if (!vault.content.cursor_state) vault.content.cursor_state = {};
     vault.content.cursor_state[mode] = state;
-}
-
-// ─── Processed Message ID Tracking ───
-
-export function markMessagesProcessed(vault, msgIds) {
-    if (!vault.content) vault.content = {};
-    if (!vault.content.processed_msg_ids) vault.content.processed_msg_ids = {};
-    var set = vault.content.processed_msg_ids;
-    msgIds.forEach(function(id) { if (id !== undefined && id !== null) set[String(id)] = true; });
-}
-
-export function isMessageProcessed(vault, msgId) {
-    // normalize to string: object keys are always string-typed
-    var key = msgId !== undefined && msgId !== null ? String(msgId) : '';
-    var set = (vault.content || {}).processed_msg_ids;
-    return key ? !!set[key] : false;
-}
-
-export function getProcessedMessageIds(vault) {
-    return Object.keys((vault.content || {}).processed_msg_ids || {});
-}
-
-export function collectProcessedMsgIds(vault) {
-    var processed = (vault.content || {}).processed_msg_ids || {};
-    return new Set(Object.keys(processed));
-}
-
-export function reconcileProcessedMsgIds(vault) {
-    var content = vault.content || {};
-    var processed = content.processed_msg_ids || {};
-    var liveMsgIds = collectAllMsgIds(vault);
-    var removed = 0;
-    Object.keys(processed).forEach(function (key) {
-        if (!liveMsgIds.has(key)) {
-            delete processed[key];
-            removed++;
-        }
-    });
-    if (removed > 0) {
-        console.log('[NE] reconcileProcessedMsgIds: pruned ' + removed + ' orphaned IDs (no longer referenced by any STM entry)');
-    }
-    return removed;
 }

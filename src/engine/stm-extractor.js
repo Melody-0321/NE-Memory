@@ -23,7 +23,6 @@ export async function runStmExtractorCore(turns, params) {
     var appendEntries = params.appendEntries;
     var getCursorState = params.getCursorState;
     var updateCursorState = params.updateCursorState;
-    var markProcessed = params.markProcessed;
     var globalIndexMap = params.globalIndexMap || null;
 
     if (!turns || turns.length === 0) {
@@ -184,13 +183,6 @@ export async function runStmExtractorCore(turns, params) {
         appendEntries(vault, validEntries);
         totalAdded = validEntries.length;
     }
-
-    // Phase H: Mark msg_ids as processed
-    var allMsgIds = [];
-    validEntries.forEach(function (e) {
-        (e.msg_ids || []).forEach(function (id) { allMsgIds.push(id); });
-    });
-    markProcessed(vault, allMsgIds);
 
     var cursorState = getCursorState(vault, 'stm');
     var processedCount = (cursorState.processed_count || 0) + totalAdded;

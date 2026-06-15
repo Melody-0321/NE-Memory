@@ -68,8 +68,7 @@ async function migrateVaultIfNeeded(chatId, currentVault) {
         var content = defaultVault.content || {};
         var hasData = (content.stm_entries && content.stm_entries.length > 0) ||
             (content.ltm_entries && content.ltm_entries.length > 0) ||
-            (content.unconsolidated_stm && content.unconsolidated_stm.length > 0) ||
-            Object.keys(content.processed_msg_ids || {}).length > 0;
+            (content.unconsolidated_stm && content.unconsolidated_stm.length > 0);
         if (!hasData) return currentVault;
         console.log('[NE] Migrating vault from "default" to fingerprint: ' + chatId);
         defaultVault.chat_id = chatId;
