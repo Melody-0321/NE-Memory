@@ -46,139 +46,90 @@ function parseYamlFrontmatter(text) {
 function parseYaml(yamlText) {
     var result = {};
     var lines = yamlText.split('\n');
-    var currentKey = null;
-    var currentList = null;
-    var listIndent = 0;
-    var inBlock = 'none'; // 'none', 'list', 'sub'
+
+    // State tracking
+    var stack = [];  // { key, indent, type: 'list'|'obj', list: []|null }
+    var currentObj = result;
 
     for (var li = 0; li < lines.length; li++) {
         var rawLine = lines[li];
-        var line = rawLine.replace(/^\s*/, function(m) { return m; }); // Just read, don't strip
         var indent = rawLine.length - rawLine.replace(/^[ \t]+/, '').length;
         var content = rawLine.trim();
+
         if (!content || content.charAt(0) === '#') continue;
 
-        if (inBlock === 'list') {
-            if (indent > listIndent && content.charAt(0) === '-') {
-                var item = content.substring(1).trim();
-                if (item.charAt(0) === '{' && item.charAt(item.length - 1) === '}') {
-                    currentList.push(parseInlineObject(item));
-                } else {
-                    item = unquoteString(item);
-                    currentList.push(item);
-                }
-                continue;
-            } else if (indent > listIndent && currentKey) {
-                var subMatch = content.match(/^(\w+):\s*(.*)/);
-                if (subMatch && currentList.length > 0 && typeof currentList[currentList.length - 1] === 'object') {
-                    var obj = currentList[currentList.length - 1];
-                    obj[subMatch[1]] = parseScalar(subMatch[2]);
-                    continue;
-                }
+        // Pop stack for lines with lower or equal indentation
+        while (stack.length > 0 && indent <= stack[stack.length - 1].indent) {
+            var frame = stack.pop();
+            if (frame.parentKey && frame.type === 'list') {
+                currentObj[frame.parentKey] = frame.list;
             }
+            currentObj = frame.parentObj;
         }
 
-        if (inBlock === 'sub' && currentKey) {
-            if (indent > listIndent || listIndent === 0) {
-                var subMatch = content.match(/^(\w+):\s*(.*)/);
-                if (subMatch) {
-                    var val = parseScalar(subMatch[2]);
-                    if (typeof result[currentKey] !== 'object' || Array.isArray(result[currentKey])) {
-                        result[currentKey] = {};
-                    }
-                    result[currentKey][subMatch[1]] = val;
-                    continue;
-                }
-            }
-        }
+        if (content.charAt(0) === '-') {
+            // List item
+            var itemText = content.substring(1).trim();
+            if (stack.length === 0) continue; // top-level list items ignored
 
-        // Top-level key
-        var match = content.match(/^(\w+):\s*(.*)/);
-        if (!match) {
-            inBlock = 'none';
-            currentKey = null;
-            currentList = null;
+            var parent = stack[stack.length - 1];
+            if (parent.type !== 'list') continue;
+
+            if (itemText.charAt(0) === '{' && itemText.charAt(itemText.length - 1) === '}') {
+                parent.list.push(parseInlineObject(itemText));
+            } else {
+                parent.list.push(unquoteString(itemText));
+            }
             continue;
         }
 
-        currentKey = match[1];
-        var rest = match[2].trim();
+        // Key: value pair
+        var kvMatch = content.match(/^(\w[\w-]*):\s*(.*)/);
+        if (!kvMatch) continue;
+
+        var key = kvMatch[1];
+        var rest = kvMatch[2].trim();
 
         if (rest === '') {
-            // Check next line for list or sub-object
-            currentList = null;
-            currentKey = currentKey;
-            listIndent = indent;
-            inBlock = 'pending';
-            continue;
-        }
-
-        if (rest.charAt(0) === '-') {
-            // Inline list start
-            var item = rest.substring(1).trim();
-            if (item.charAt(0) === '{' && item.charAt(item.length - 1) === '}') {
-                result[currentKey] = [parseInlineObject(item)];
-            } else {
-                result[currentKey] = [unquoteString(item)];
-            }
-            currentList = result[currentKey];
-            listIndent = indent;
-            inBlock = 'list';
-            continue;
-        }
-
-        result[currentKey] = parseScalar(rest);
-        inBlock = 'none';
-        currentList = null;
-    }
-
-    // Second pass: handle pending (multi-line list/sub)
-    if (inBlock === 'pending' && currentKey) {
-        // Re-scan for indented content
-        var pendingKey = currentKey;
-        var pendingIndent = listIndent;
-        var pendingList = [];
-        var pendingIsList = false;
-        var pendingIsSub = false;
-
-        for (var li2 = 0; li2 < lines.length; li2++) {
-            var rawLine2 = lines[li2];
-            var indent2 = rawLine2.length - rawLine2.replace(/^[ \t]+/, '').length;
-            var content2 = rawLine2.trim();
-
-            if (!content2 || content2.charAt(0) === '#') continue;
-
-            var match2 = content2.match(/^(\w+):\s*(.*)/);
-            if (match2) {
-                if (match2[1] === pendingKey && match2[2].trim() === '') {
-                    continue; // The header line itself
-                }
-                if (indent2 > pendingIndent) {
-                    // This is a sub-key of pending
-                    pendingIsSub = true;
-                    break;
-                }
-                if (indent2 <= pendingIndent && pendingKey) {
-                    break;
-                }
-            } else if (content2.charAt(0) === '-' && indent2 > pendingIndent) {
-                pendingIsList = true;
-                pendingList.push(content2.substring(1).trim());
-            } else if (indent2 > pendingIndent && !pendingIsList) {
-                pendingIsSub = true;
+            // Check next non-empty line to determine type
+            var nextIndent = -1;
+            var nextContent = '';
+            for (var nli = li + 1; nli < lines.length; nli++) {
+                var nLine = lines[nli].trim();
+                if (!nLine || nLine.charAt(0) === '#') continue;
+                nextIndent = lines[nli].length - lines[nli].replace(/^[ \t]+/, '').length;
+                nextContent = nLine;
                 break;
             }
-        }
 
-        if (pendingIsList) {
-            result[pendingKey] = pendingList.map(function(item) {
-                item = item.trim();
-                if (item.charAt(0) === '{' && item.charAt(item.length - 1) === '}') {
-                    return parseInlineObject(item);
-                }
-                return unquoteString(item);
-            });
+            if (nextIndent > indent && nextContent.charAt(0) === '-') {
+                // List
+                stack.push({ parentKey: key, indent: indent, type: 'list', list: [], parentObj: currentObj });
+                currentObj[key] = []; // placeholder
+            } else if (nextIndent > indent) {
+                // Sub-object
+                stack.push({ parentKey: null, indent: indent, type: 'obj', list: null, parentObj: currentObj });
+                currentObj = currentObj[key] = {};
+            } else {
+                // No children, empty key
+                currentObj[key] = null;
+            }
+        } else if (rest === '[]') {
+            currentObj[key] = [];
+        } else if (rest === '{}') {
+            currentObj[key] = {};
+        } else {
+            currentObj[key] = parseScalar(rest);
         }
+    }
+
+    // Flush remaining stack frames
+    while (stack.length > 0) {
+        var frame = stack.pop();
+        if (frame.parentKey && frame.type === 'list') {
+            currentObj[frame.parentKey] = frame.list;
+        }
+        currentObj = frame.parentObj;
     }
 
     return result;
