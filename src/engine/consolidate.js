@@ -179,7 +179,26 @@ function parseConsolidateText(text, stmIds) {
 export function parseConsolidateResponse(llmResponse, stmIds) {
     try {
         const text = String(llmResponse || '').trim();
-        return JSON.parse(text);
+        var parsed = JSON.parse(text);
+        // 标准化 stm_refs — LLM 可能返回 ["1","2"] 而非 ["stm_1","stm_2"]
+        // 如果这里不修正，postFillLTM 会判全部无效 → 全替换 → guard 拒绝
+        var ltmEntries = parsed.ltm_entries || [];
+        for (var i = 0; i < ltmEntries.length; i++) {
+            var refs = ltmEntries[i].stm_refs || [];
+            var normalized = [];
+            for (var j = 0; j < refs.length; j++) {
+                var r = String(refs[j]).trim();
+                if (r.indexOf('stm_') === 0) {
+                    normalized.push(r);
+                } else if (stmIds.indexOf('stm_' + r) !== -1) {
+                    normalized.push('stm_' + r);
+                } else if (stmIds.indexOf(r) !== -1) {
+                    normalized.push(r);
+                }
+            }
+            ltmEntries[i].stm_refs = normalized.length > 0 ? normalized : refs;
+        }
+        return parsed;
     } catch (e) {
         console.warn('[NE] Consolidate JSON parse failed, using text fallback');
         return parseConsolidateText(llmResponse, stmIds || []);

@@ -111,19 +111,43 @@ export function postFillLTM(result, sourceSTMList) {
         if (!e.stm_refs || e.stm_refs.length === 0) {
             e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
         } else {
-            // Validate LLM-provided stm_refs — if any ID is not in sourceSTMList,
-            // the LLM returned wrong IDs (e.g. index numbers instead of stm_X).
-            // Replace with all source STM IDs to ensure parent_ltm is set correctly.
-            var allValid = true;
+            var validCount = 0;
+            var invalidCount = 0;
             for (var j = 0; j < e.stm_refs.length; j++) {
-                if (!sourceSTMList.find(function(s) { return s.id === e.stm_refs[j]; })) {
-                    allValid = false;
-                    break;
+                if (sourceSTMList.find(function(s) { return s.id === e.stm_refs[j]; })) {
+                    validCount++;
+                } else {
+                    invalidCount++;
                 }
             }
-            if (!allValid) {
-                console.log('[NE] postFillLTM: replacing invalid stm_refs for LTM', e.id || '(new)', '—', JSON.stringify(e.stm_refs).substring(0, 80));
-                e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
+            if (invalidCount > 0) {
+                // 尝试逐个修复（可能缺少 stm_ 前缀，或 LLM 用了数字序号）
+                var fixedRefs = [];
+                for (var j = 0; j < e.stm_refs.length; j++) {
+                    var ref = e.stm_refs[j];
+                    if (sourceSTMList.find(function(s) { return s.id === ref; })) {
+                        fixedRefs.push(ref);
+                    } else if (sourceSTMList.find(function(s) { return s.id === 'stm_' + ref; })) {
+                        fixedRefs.push('stm_' + ref);
+                    } else {
+                        // 尝试按序号匹配 (LLM 可能返回 "1" 对应 stmIds[0])
+                        var idx = parseInt(ref, 10);
+                        if (!isNaN(idx) && idx >= 1 && idx <= sourceSTMList.length) {
+                            var matchId = sourceSTMList[idx - 1].id;
+                            // 避免重复添加
+                            if (fixedRefs.indexOf(matchId) === -1) {
+                                fixedRefs.push(matchId);
+                            }
+                        }
+                    }
+                }
+                if (fixedRefs.length > 0) {
+                    console.log('[NE] postFillLTM: fixed ' + fixedRefs.length + ' stm_refs for LTM', e.id || '(new)', '(was ' + invalidCount + ' invalid)');
+                    e.stm_refs = fixedRefs;
+                } else {
+                    console.warn('[NE] postFillLTM: all stm_refs invalid, assigning all source STMs for LTM', e.id || '(new)');
+                    e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
+                }
             }
         }
 

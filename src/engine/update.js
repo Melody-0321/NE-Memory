@@ -577,7 +577,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
 
     if (partialCtx) instruction += '\n' + partialCtx;
     if (preGroupHint) instruction += '\n' + preGroupHint;
-    if (force) instruction += '\n\n⚠️ 已到达窗口上限，请务必返回至少一条事件。不允许返回空数组。';
+    if (force) instruction += '\n\n⚠️ 已到达窗口上限，请务必覆盖全部消息，不得跳过任何一条。不允许返回空数组。';
 
     var userPrompt = lang === 'en' ?
         'IMPORTANT: Always use character proper names in event descriptions. Refer to the known characters and retrospective context above. Never use pronouns (I/he/she) or vague labels ("someone", "unknown girl").\n\nMessages:\n' + itemsText + '\n\nOutput ONLY a JSON array:\n[\n  { "event": "...", "msgRange": [0, 2], "status": "closed"|"partial", "entity": "...", "translation": "...", "parent_partial": null },\n  ...\n]\nIf nothing significant, return [].' :
