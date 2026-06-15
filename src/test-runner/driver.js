@@ -116,7 +116,7 @@ export async function runTestLoop(testCase, hostDoc) {
 
         // ── 语义性断言（三态：通过/不通过/无法判断） ──
         var semanticQuestions = testCase.semantic;
-        if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 2 === 0) {
+        if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 3 === 0) {
             try {
                 var semResults = await evaluateSemantic(lastInjection, semanticQuestions, callMemoryApiForEval, round);
                 semanticResults = semResults;
@@ -134,9 +134,13 @@ export async function runTestLoop(testCase, hostDoc) {
                     // 全部明确（全部通过或无无法判断），结论已定
                     semanticDefinitive = true;
                     if (semPassed === semResults.length) {
-                        console.log('[NE-TEST] All semantic assertions PASSED.');
-                        endType = 'natural_done';
-                        break;
+                        // 全部明确通过，但需要至少留出 minRounds+3 轮让 TC-05 有两次触发机会
+                        if (round >= testCase.minRounds + 3) {
+                            console.log('[NE-TEST] All semantic assertions PASSED (round ' + round + ' >= minRounds+3).');
+                            endType = 'natural_done';
+                            break;
+                        }
+                        console.log('[NE-TEST] All semantic assertions PASSED but round ' + round + ' < minRounds+3, continuing for data collection.');
                     }
                 }
                 // semPassed > 0 但有 semInconclusive → 部分通过但还有无法判断的，继续
@@ -153,6 +157,9 @@ export async function runTestLoop(testCase, hostDoc) {
     }
 
     stopCollectingPipelineCalls();
+
+    // 清理全局状态
+    delete globalThis.__ne_tr_currentRound;
 
     // 添加结束类型到 trace
     trace += '\n\n---\n**测试结束类型**: ' + endType + '\n';
@@ -185,7 +192,7 @@ export async function runTestLoop(testCase, hostDoc) {
             semanticResults = [];
         }
         if (endType === 'forced_max_rounds') {
-            semanticResults = semanticResults.map(function(r) {
+            semanticResults = (semanticResults || []).map(function(r) {
                 if (r.passed === null) {
                     return { question: r.question, passed: false, evaluation: r.evaluation + ' (超时截断，按不通过处理)' };
                 }
@@ -274,14 +281,18 @@ async function saveReport(folder, name, trace, report) {
 
 function downloadFallback(name, trace, report) {
     var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    var a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([trace], { type: 'text/markdown;charset=utf-8' }));
-    a.download = name + '-' + ts + '-trace.md';
-    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    var traceUrl, reportUrl;
 
-    a.href = URL.createObjectURL(new Blob([report], { type: 'text/markdown;charset=utf-8' }));
-    a.download = name + '-' + ts + '-report.md';
+    traceUrl = URL.createObjectURL(new Blob([trace], { type: 'text/markdown;charset=utf-8' }));
+    var a = document.createElement('a');
+    a.href = traceUrl; a.download = name + '-' + ts + '-trace.md';
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(traceUrl); }, 5000);
+
+    reportUrl = URL.createObjectURL(new Blob([report], { type: 'text/markdown;charset=utf-8' }));
+    a.href = reportUrl; a.download = name + '-' + ts + '-report.md';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function() { URL.revokeObjectURL(reportUrl); }, 5000);
 }
 
 async function getOrCreateSubDir(name) {
@@ -327,8 +338,11 @@ async function saveDirHandleToDB(handle) {
                     var tx = req.result.transaction('files', 'readwrite');
                     tx.objectStore('files').put(handle, 'reportsDir');
                     tx.oncomplete = function() { resolve(); };
-                    tx.onerror = function() { resolve(); };
-                } catch (e) { resolve(); }
+                    tx.onerror = function(ev) {
+                        console.warn('[NE-TEST] IndexedDB save failed (non-Chrome browsers may not support storing directory handles):', ev.target && ev.target.error ? ev.target.error.message : '');
+                        resolve();
+                    };
+                } catch (e) { console.warn('[NE-TEST] IndexedDB save failed:', e.message); resolve(); }
             };
             req.onerror = function() { resolve(); };
         });
@@ -378,13 +392,12 @@ function buildPlayerPrompt(testCase, round) {
         '你的驱动力：',
         '1. 你对关键角色有好奇心——了解他们的过去、情感、秘密',
         '2. 你有真实的欲望——想靠近、想了解、想改变、想获得',
-        '3. 每轮你都推进关系——对话、动作、情感流露、身体接触、场景转换',
+        '3. 每轮你都推动关系——对话、动作、情感、场景转换',
         '4. 你跟随感受——她说了什么触动你，你就沿那个方向走',
         '5. 与场景中最活跃、最有趣的角色互动，不要跑题',
         '',
-        '',
-        '每次你写你的整个"回合"——包括你如何回应、你的动作、你的内心活动、',
-        '以及你推动场景前进的方式。你不是在写一句回话——你是在写你的故事部分。',
+        '用玩家的方式输出：一两句话表达你的回应、做出一个动作、或提出一个问题。',
+        '保持简练，不要写长篇叙事。',
         '',
         '轮次信息：',
         '- 预期可在 ' + expectedRounds + ' 轮内自然完成。',
@@ -408,7 +421,7 @@ function buildTestStateBlock(testCase, vaultSummary, lastInjection, round) {
     }
 
     if (lastInjection && lastInjection.length > 0) {
-        var preview = lastInjection.substring(0, 180);
+        var preview = lastInjection.substring(0, 500);
         lines.push('上轮注入预览: ' + preview.replace(/\n/g, ' '));
     }
 
@@ -424,9 +437,11 @@ function buildTestStateBlock(testCase, vaultSummary, lastInjection, round) {
 function buildStrategyHint(testCase, vaultSummary, round) {
     var stm = vaultSummary ? vaultSummary.stmCount : 0;
     var maxR = testCase.maxRounds || 7;
+    var minR = testCase.minRounds || 0;
     if (stm === 0 && round === 1) return '这是第一轮。自然开场即可。';
-    if (stm >= 4 && round >= 3) return 'STM 已积累 ' + stm + ' 条。这是自然的时机，可以在对话中提出一个与早期已建立的信息相关的具体问题。';
-    if (round >= maxR) return '最后一轮。如果测试目标还未达成，现在自然引入一个与之前对话相关的问题。';
+    if (stm >= 4 && round >= 3 && round < minR + 2) return 'STM 已积累 ' + stm + ' 条。可以在对话中提出一个与早期已建立的信息相关的具体问题。';
+    if (stm >= 4 && round >= minR + 2 && round <= minR + 4) return 'STM 已积累 ' + stm + ' 条。如果已经问过一次，可以再次提出与同一事件相关的问题，观察注入内容的变化。';
+    if (round >= maxR - 2) return '还剩不到 2 轮。如果测试目标还未达成，尽快引入测试查询。';
     return '';
 }
 
@@ -436,7 +451,7 @@ function buildDriverUser(testCase, lastAiReply, vaultSummary, lastInjection, rou
     if (lastAiReply.length > 0) {
         lines.push('AI 刚刚说:');
         lines.push('```');
-        lines.push(lastAiReply.substring(0, 600));
+        lines.push(lastAiReply.substring(0, 2000));
         lines.push('```');
     } else {
         lines.push('（第一轮，等待 AI 开场白或直接开始）');
@@ -452,13 +467,12 @@ function fallbackUserMessage(llmResponse) {
     if (!llmResponse) return null;
     var trimmed = llmResponse.trim();
     if (trimmed.length < 2) return null;
-    return trimmed.substring(0, 600);
+    return trimmed;
 }
 
 function extractUserMessage(llmResponse, currentRound, minRounds) {
     if (!llmResponse) return null;
     var trimmed = llmResponse.trim();
-
     if (trimmed.length < 2) return null;
 
     var doneIdx = trimmed.indexOf('[DONE]');
@@ -466,13 +480,14 @@ function extractUserMessage(llmResponse, currentRound, minRounds) {
         if (currentRound < minRounds) {
             // 软下限内 [DONE] 无效，仍提交消息
             console.log('[NE-TEST] [DONE] ignored before minRounds (' + currentRound + '/' + minRounds + ')');
-            return trimmed.substring(0, doneIdx).trim().substring(0, 600) || null;
+            var preDone = trimmed.substring(0, doneIdx).trim();
+            return preDone.length > 0 ? preDone : null;
         }
         if (doneIdx === 0) return '__TEST_DONE__';
         return trimmed.substring(0, doneIdx).trim() || '__TEST_DONE__';
     }
 
-    return trimmed.substring(0, 600);
+    return trimmed;
 }
 
 function tryParseGated(driverResponse) {

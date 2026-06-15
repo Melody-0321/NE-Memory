@@ -25,6 +25,13 @@ function collect(dir) {
         var entry = entries[ei];
         if (!entry.isDirectory()) continue;
 
+        // Skip abandoned/obsolete directories
+        var skipDirs = ['smartpush-group-a'];
+        if (skipDirs.indexOf(entry.name) !== -1) {
+            console.log('[gen-test-data] Skipping obsolete directory: ' + entry.name);
+            continue;
+        }
+
         var mdPath = path.join(dir, entry.name, 'test-case.md');
         if (!fs.existsSync(mdPath)) continue;
 
