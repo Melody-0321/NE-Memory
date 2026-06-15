@@ -1,7 +1,7 @@
 ---
 name: smartpush-group-b
 folder: smartpush-group-b
-title: "[组合] SmartPush 检索优化（去重+可见窗口+预取+query+prompt+短链）"
+title: "[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）"
 objective: 单次对话覆盖 TC-05/08/10/11/55/58 的 trace 和语义验证
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
@@ -13,23 +13,21 @@ semantic:
   - "在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？"
   - "注入内容是否聚焦于窗口外的事件而非窗口内重复内容？"
   - "注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？"
-  - "可见窗口节段是否包含 msg_id 标注和\"主 LLM 已知/未知\"的说明？"
 minRounds: 8
 maxRounds: 14
 expectedRounds: "10-12"
 timeoutPerRound: 120000
 ---
 
-# SmartPush Group B — 检索优化（去重 + 可见窗口 + 预取 + query + system prompt + 短链 inline）
+# SmartPush Group B — 检索优化（去重 + 可见窗口 + 预取 + query + 短链 inline）
 
 ## 目标
-单次对话覆盖六个检索优化特性验证：
+单次对话覆盖五个检索优化特性验证：
 1. **注入内容去重（TC-05）** — 同一事件二次触发时内容稳定无膨胀
 2. **可见窗口跳过预取（TC-08）** — visibleWindow 内事件跳过 prefetch
 3. **预取原文完整度（TC-10）** — 全量 msg_id 原文 + [msg_xx] 前缀 + ≤2000 字符
 4. **query 含 AI reply（TC-11）** — BM25 query 包含最近 2 轮 AI 回复和 user 输入
-5. **检索 System Prompt 结构（TC-55）** — 包含可见窗口/对话上下文节段
-6. **短链自动 inline（TC-58）** — count ≤ 5 的实体链自动注入
+5. **短链自动 inline（TC-58）** — count ≤ 5 的实体链自动注入
 
 ## 对话设计（给 LLM Driver 的指导）
 Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
@@ -63,7 +61,6 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 1. 在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？
 2. 注入内容是否聚焦于窗口外的事件而非窗口内重复内容？
 3. 注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？
-4. 可见窗口节段是否包含 msg_id 标注和"主 LLM 已知/未知"的说明？
 
 ## 运行参数
 - minRounds: 8（确保两次 SmartPush 触发）

@@ -43,7 +43,7 @@ export function evaluateStructural(collected, assertion) {
     case 'exists':
         var exists = target !== null && target !== undefined && target !== '';
         var expected = value !== undefined ? value : true;
-        return { op: op, passed: exists === expected, label: label, detail: exists ? '存在, 期望=' + expected : '不存在, 期望=' + expected };
+        return { op: op, passed: exists === expected, label: label, detail: (exists ? '存在' : '不存在') + ', 期望=' + expected };
 
     case 'regex':
         if (typeof target !== 'string') return { op: op, passed: false, label: label, detail: 'target 不是字符串' };
