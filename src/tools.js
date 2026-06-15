@@ -31,7 +31,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     refType = 'msg';
                     var msgId = parseInt(ref.replace('msg#', ''));
                     var chat = getChatMessages();
-                    var msg = chat.find(function(m) { return (m.id || m.mes_id) === msgId; });
+                    var msg = chat.find(function(m) { return (m.id != null && m.id === msgId) || (m.mes_id != null && m.mes_id === msgId); });
                     if (!msg) result = 'Message #' + msgId + ' not found.';
                     else {
                         var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));

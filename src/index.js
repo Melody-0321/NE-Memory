@@ -36,7 +36,7 @@ function getChatFingerprint(ctx) {
         var chat = ctx.chat || [];
         // Stable fingerprint: prefer first message ID (persists across reloads)
         if (chat.length > 0) {
-            var firstId = chat[0].id || chat[0].mes_id || '0';
+            var firstId = (chat[0].id != null) ? chat[0].id : (chat[0].mes_id != null ? chat[0].mes_id : '0');
             var fp = 'ne_' + (ctx.characterId || 'x') + '_' + firstId;
             // Persist for subsequent empty-chat phase
             try { localStorage.setItem('ne_chat_fp_' + (ctx.characterId || 'x'), fp); } catch (e) {}

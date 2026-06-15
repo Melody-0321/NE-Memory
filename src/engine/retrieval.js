@@ -515,7 +515,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         visibleWindow.forEach(function(vm) {
             var vmName = vm.name || (vm.role === 'user' ? 'User' : 'AI');
             var vmText = typeof vm.mes === 'string' ? vm.mes : (vm.content || '');
-            if (vmText) visibleWindowBlock += '[msg_' + (vm.id || vm.mes_id) + '] ' + vmName + ': ' + vmText.substring(0, 200) + '\n';
+            if (vmText) visibleWindowBlock += '[msg_' + (vm.id != null ? vm.id : vm.mes_id) + '] ' + vmName + ': ' + vmText.substring(0, 200) + '\n';
         });
         if (lang === 'en') {
             visibleWindowBlock += '\nCandidate entries whose msg_ids fall within this window → the main LLM already knows that dialogue. Entries outside this window are the information the main LLM has not seen.\n';

@@ -86,11 +86,11 @@ export function collectMsgIdsFromTurns(turns, turnIndices) {
         var t = turns[indices[ti]];
         if (!t) continue;
         if (t.user) {
-            var uid = String((t.user.id != null ? t.user.id : t.user.mes_id) || ('msg_user_' + indices[ti]));
+            var uid = (t.user.id != null) ? String(t.user.id) : ((t.user.mes_id != null) ? String(t.user.mes_id) : ('msg_user_' + indices[ti]));
             if (uid && !seen[uid]) { seen[uid] = true; ids.push(uid); }
         }
         if (t.assistant) {
-            var aid = String((t.assistant.id != null ? t.assistant.id : t.assistant.mes_id) || ('msg_asst_' + indices[ti]));
+            var aid = (t.assistant.id != null) ? String(t.assistant.id) : ((t.assistant.mes_id != null) ? String(t.assistant.mes_id) : ('msg_asst_' + indices[ti]));
             if (aid && !seen[aid]) { seen[aid] = true; ids.push(aid); }
         }
     }

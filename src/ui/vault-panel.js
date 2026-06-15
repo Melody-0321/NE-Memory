@@ -301,7 +301,11 @@ function saveSingleEntry(entryType, entryId, updates) {
             }
         }
     }
-    write(getChatId(), vault).then(function() {});
+    write(getChatId(), vault).then(function () {
+        console.log('[NE] saveSingleEntry: persisted ' + entryType + ' ' + entryId);
+    }).catch(function (err) {
+        console.error('[NE] saveSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
+    });
 }
 
 function deleteSingleEntry(entryType, entryId) {
@@ -1774,7 +1778,7 @@ function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
         if (visibleWindow && visibleWindow.length > 0) {
             var allInWindow = msgIds.every(function(mid) {
                 return visibleWindow.some(function(vm) {
-                    return String(vm.id || vm.mes_id) === String(mid);
+                    return String(vm.id != null ? vm.id : vm.mes_id) === String(mid);
                 });
             });
             if (allInWindow) return;
@@ -1785,7 +1789,7 @@ function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
         var MAX_TOTAL = 2000;
         msgIds.forEach(function(mid) {
             if (totalLen >= MAX_TOTAL) return;
-            var msg = chatMessages.find(function(m) { return String(m.id || m.mes_id) === String(mid); });
+            var msg = chatMessages.find(function(m) { return String(m.id != null ? m.id : m.mes_id) === String(mid); });
             if (msg) {
                 var name = msg.name || (msg.role === 'user' ? 'User' : 'AI');
                 var text = typeof msg.mes === 'string' ? msg.mes : (msg.content || '');
