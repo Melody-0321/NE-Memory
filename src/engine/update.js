@@ -823,8 +823,13 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
     var processedIds = collectProcessedMsgIds(vault);
+    console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
     console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages (processedIds.size=' + processedIds.size + ')');
+    if (filteredMessages.length !== newMessages.length) {
+        var filteredIds = newMessages.filter(function(m){ return filteredMessages.indexOf(m) === -1; }).map(function(m){return m.id;});
+        console.log('[NE-DIAG] executeIncrementalUpdate — filtered OUT msg ids:', filteredIds.join(','));
+    }
     if (filteredMessages.length === 0 && !force) {
         // 防死信：如果 vault 没有 STM/LTM 但有 processed_msg_ids，说明数据已被清空
         // 而 msg_id 标记残留。此时清除标记让消息重新参与提取。

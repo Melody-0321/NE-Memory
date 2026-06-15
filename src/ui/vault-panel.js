@@ -2018,9 +2018,16 @@ export async function renderVaultPanel(getChatId) {
 
                 var vault = await read(getChatId());
                 var stmMsgIdSet = collectAllMsgIds(vault);
+                console.log('[NE-DIAG] processHistory pre-filter — chatId=' + getChatId() + ', stmMsgIdSet.size=' + stmMsgIdSet.size + ', toProcessBefore=' + toProcess.length);
+                var filteredOut = [];
                 toProcess = toProcess.filter(function (msg) {
-                    return !stmMsgIdSet.has(String(msg.id));
+                    var key = String(msg.id);
+                    var skip = stmMsgIdSet.has(key);
+                    if (skip) filteredOut.push(msg.id);
+                    return !skip;
                 });
+                if (filteredOut.length > 0) console.log('[NE-DIAG] processHistory pre-filter — removed msg ids:', filteredOut.join(','));
+                console.log('[NE-DIAG] processHistory pre-filter — toProcessAfter=' + toProcess.length + ', remaining ids:', toProcess.map(function(m){return m.id;}).join(','));
 
                 if (toProcess.length === 0) {
                     alert(t('All messages have already been processed.'));
