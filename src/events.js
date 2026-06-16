@@ -8,6 +8,7 @@ import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
 import { detectContradictions } from './engine/contradiction.js';
 import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './ui/vault-panel.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
+import { isStateSchemaEnabled } from './vault/schema.js';
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
@@ -170,7 +171,6 @@ export async function onMessageReceived(messageIndex) {
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || totalWords >= getStmWordsThreshold()
-                || (pendingMessages.length >= 3 && totalWords >= 100)
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
             if (shouldRunPipeline) {
@@ -193,10 +193,8 @@ async function flushPendingMessages() {
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
     var pressureVal = computeContextPressure(pendingTokenCount);
     if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {
-        if (pendingMessages.length < 3 || totalWords < 100) {
-            console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
-            return;
-        }
+        console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
+        return;
     }
     const batch = pendingMessages.splice(0);
     persistPending();
@@ -251,6 +249,7 @@ async function flushPendingMessages() {
 }
 
 function triggerPerRoundExtraction(assistantMsg) {
+    if (!isStateSchemaEnabled()) return;
     if (statePipelineRunning || pipelineRunning) return;
     statePipelineRunning = true;
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
@@ -291,10 +290,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
         lastGenerationTime = now;
 
-        // Promote pipeline to background — do NOT block main generation on secondary API
-        flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline in onBeforeGenerate failed:', e); });
-        // Tiny yield so pipeline can set pipelineRunning=true before we read vault
-        await new Promise(function(r) { setTimeout(r, 0); });
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
         if (chatId !== lastKnownChatId) {
             lastKnownChatId = chatId;
