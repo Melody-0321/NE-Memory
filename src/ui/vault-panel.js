@@ -147,6 +147,37 @@ function injectBottomDrawerCSS() {
         '#tab-settings textarea{width:100%;background:#fff;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
         '#tab-settings input[type=range]{width:100%;margin:4px 0;}' +
         '#tab-settings .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
+        '.ne-state-card-table{width:100%;border-collapse:collapse;font-size:0.85em;}' +
+        '.ne-state-card-table td{padding:2px 6px;vertical-align:middle;}' +
+        '.ne-state-card-table td:first-child{color:var(--grey-50);width:85px;text-align:right;white-space:nowrap;}' +
+        '.ne-state-badge{display:inline-block;padding:1px 7px;border-radius:3px;font-size:0.78em;font-weight:bold;}' +
+        '.ne-state-badge.active{background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid rgba(76,175,80,.3);}' +
+        '.ne-state-badge.inactive{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
+        '.ne-state-badge.departed{background:rgba(244,67,54,.12);color:#ef5350;border:1px solid rgba(244,67,54,.3);}' +
+        '.ne-state-badge.friendly{background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid rgba(76,175,80,.3);}' +
+        '.ne-state-badge.hostile{background:rgba(244,67,54,.12);color:#ef5350;border:1px solid rgba(244,67,54,.3);}' +
+        '.ne-state-badge.neutral{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
+        '.ne-affection-bar{display:inline-block;width:80px;height:8px;background:var(--black50a);border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:4px;}' +
+        '.ne-affection-bar>div{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef5350,#ffeb3b,#66bb6a);}' +
+        '.ne-char-card{margin:4px 0;padding:6px 8px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
+        '.ne-char-card-header{display:flex;align-items:center;gap:6px;cursor:pointer;}' +
+        '.ne-char-card-header .ne-char-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}' +
+        '.ne-char-card.open>.ne-char-card-header .ne-char-toggle{transform:rotate(90deg);}' +
+        '.ne-char-card-body{padding-top:4px;}' +
+        '.ne-char-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
+        '.ne-char-card.open>.ne-char-card-detail{display:block;}' +
+        '.ne-char-card-detail .ne-char-card-detail-row{margin:2px 0;}' +
+        '.ne-state-global-block{background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px 10px;margin-bottom:8px;}' +
+        '.ne-state-global-block .ne-state-global-table{width:100%;border-collapse:collapse;font-size:0.88em;}' +
+        '.ne-state-global-block .ne-state-global-table td{padding:3px 6px;vertical-align:middle;}' +
+        '.ne-state-global-block .ne-state-global-table td:first-child{color:var(--grey-50);width:80px;text-align:right;white-space:nowrap;}' +
+        '.ne-faction-card{margin:4px 0;padding:6px 8px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
+        '.ne-faction-card-header{display:flex;align-items:center;gap:6px;cursor:pointer;}' +
+        '.ne-faction-card-header .ne-faction-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}' +
+        '.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle{transform:rotate(90deg);}' +
+        '.ne-faction-card-body{padding-top:4px;}' +
+        '.ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
+        '.ne-faction-card.open>.ne-faction-card-detail{display:block;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
         '.ne-settings-save-btn:hover{background:var(--black70a);}' +
         '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
@@ -421,41 +452,56 @@ function getCharacterCardType(name, state) {
 function renderCharacterCard(name, card, schema, cardType) {
     var cardSchema = schema[cardType] || schema.npc;
     var fields = cardSchema.fields || {};
-    var summaryLines = [];
-    var detailLines = [];
+    var summaryRows = [];
+    var detailRows = [];
+
+    var statusStr = card.status || '未知';
+    var statusCls;
+    if (ACTIVE_STATUSES.indexOf(statusStr) !== -1) statusCls = 'active';
+    else if (DEPARTED_STATUSES.indexOf(statusStr) !== -1) statusCls = 'departed';
+    else statusCls = 'inactive';
 
     Object.keys(fields).forEach(function (key) {
         var fieldDef = fields[key];
         var val = card[key];
         if (val === undefined || val === null || val === '') return;
-        if (key === 'status') return;
-        if (key === 'name') return; // 名字已在卡片标题显示，不重复
+        if (key === 'status' || key === 'name') return;
 
         var displayVal;
         if (key === 'clothing_build' && card.clothing_mode === true) {
-            displayVal = String(val).substring(0, 30) + '...';
+            displayVal = escapeHtml(String(val).substring(0, 30)) + '...';
         } else if (typeof val === 'object') {
-            // power_slots 等对象类型 → JSON 序列化
             try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
-            if (displayVal.length > 50) displayVal = displayVal.substring(0, 50);
+            if (displayVal.length > 50) displayVal = displayVal.substring(0, 50) + '...';
+            displayVal = escapeHtml(displayVal);
         } else {
-            displayVal = String(val).substring(0, 50);
+            displayVal = escapeHtml(String(val));
         }
 
+        var row = '<tr><td>' + t_field(key) + '</td><td>' + displayVal + '</td></tr>';
+
         if (fieldDef.expose_level === 'summary') {
-            summaryLines.push(t_field(key) + ': ' + displayVal);
+            summaryRows.push(row);
         } else if (fieldDef.expose_level === 'detail') {
-            detailLines.push(t_field(key) + ': ' + escapeHtml(String(val)));
+            detailRows.push('<div class="ne-char-card-detail-row">' + t_field(key) + ': ' + displayVal + '</div>');
         }
     });
 
-    // Virtual equipment: filter inventory items where equipped===true
+    var affectionHtml = '';
+    if (cardType === 'npc' && card.affection !== undefined && card.affection !== null && card.affection !== '') {
+        var affNum = Number(card.affection);
+        if (!isNaN(affNum)) {
+            affNum = Math.max(0, Math.min(100, affNum));
+            affectionHtml = '<tr><td>' + t_field('affection') + '</td><td><span class="ne-affection-bar"><div style="width:' + affNum + '%;"></div></span>' + affNum + '</td></tr>';
+        }
+    }
+
     var equipmentHtml = '';
     var inventory = card.inventory;
     if (inventory && typeof inventory === 'object' && Array.isArray(inventory.items)) {
         var equipped = inventory.items.filter(function (item) { return item && item.equipped === true; });
         if (equipped.length > 0) {
-            equipmentHtml = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;">' + t_field('equipment') + ': ';
+            equipmentHtml = '<div class="ne-char-card-detail-row" style="color:#e2b714;">' + t_field('equipment') + ': ';
             equipped.forEach(function (item) {
                 equipmentHtml += escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : '') + ' ';
             });
@@ -463,15 +509,13 @@ function renderCharacterCard(name, card, schema, cardType) {
         }
     }
 
-    // Injuries / status_effects
     if (card.injuries) {
-        detailLines.push(t_field('injuries') + ': ' + escapeHtml(String(card.injuries)));
+        detailRows.push('<div class="ne-char-card-detail-row">' + t_field('injuries') + ': ' + escapeHtml(String(card.injuries)) + '</div>');
     }
     if (card.status_effects) {
-        detailLines.push(t_field('status_effects') + ': ' + escapeHtml(String(card.status_effects)));
+        detailRows.push('<div class="ne-char-card-detail-row">' + t_field('status_effects') + ': ' + escapeHtml(String(card.status_effects)) + '</div>');
     }
 
-    // Inventory detail
     var invMode = card.inventory_mode || '关闭';
     if (invMode !== '关闭' && inventory && Array.isArray(inventory.items)) {
         var invLines = [];
@@ -480,10 +524,10 @@ function renderCharacterCard(name, card, schema, cardType) {
             invLines.push(escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : ''));
         });
         if (invLines.length > 0 || (inventory.gold != null)) {
-            var invHtml = '<div style="margin-top:2px;font-size:0.85em;">Inventory' + (invMode === '静态' ? ' (static)' : '') + ': ';
+            var invHtml = t_field('inventory') + (invMode === '静态' ? ' (static)' : '') + ': ';
             if (inventory.gold != null) invHtml += escapeHtml(String(inventory.gold)) + 'G ';
-            invHtml += invLines.join(', ') + '</div>';
-            detailLines.push(invHtml);
+            invHtml += invLines.join(', ');
+            detailRows.push('<div class="ne-char-card-detail-row" style="color:#ccc;font-size:0.85em;">' + invHtml + '</div>');
         }
     }
 
@@ -501,37 +545,31 @@ function renderCharacterCard(name, card, schema, cardType) {
         }
     }
 
-    var cardId = 'ne_char_' + name.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
-    var statusLabel = card.status || '未知';
-
-    var html = '<div class="ne_character_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
-        '<div class="ne_char_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
-        '<span class="ne_char_toggle" style="font-size:0.8em;">\u25B6</span>' +
+    var hasDetail = detailRows.length > 0 || equipmentHtml;
+    var html = '<div class="ne-char-card">' +
+        '<div class="ne-char-card-header" onclick="var p=this.parentElement;p.classList.toggle(\'open\');">' +
+        '<span class="ne-char-toggle">\u25B6</span>' +
         '<b>' + escapeHtml(name) + '</b>' +
-        '<span style="font-size:0.8em;color:var(--grey70);">[' + statusLabel + ']</span>' +
-        '<span style="font-size:0.75em;color:var(--grey50);">' + (cardType === 'npc' ? 'NPC' : 'PC') + '</span>' +
+        '<span class="ne-state-badge ' + statusCls + '">' + escapeHtml(statusStr) + '</span>' +
+        '<span style="font-size:0.75em;color:var(--grey-50);">' + (cardType === 'npc' ? 'NPC' : 'PC') + '</span>' +
         '</div>' +
-        '<div class="ne_char_summary" style="font-size:0.85em;margin-top:3px;color:#ccc;">' + summaryLines.join(' | ') + '</div>' +
+        '<div class="ne-char-card-body">' +
+        '<table class="ne-state-card-table">' + summaryRows.join('') + affectionHtml + '</table>' +
         powerSlotBar +
-        equipmentHtml +
-        '<div class="ne_char_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
-        detailLines.map(function (l) { return '<div style="margin:2px 0;">' + l + '</div>'; }).join('') +
-        '</div>' +
-        '</div>';
+        (hasDetail ? '<div class="ne-char-card-detail">' + equipmentHtml + detailRows.join('') + '</div>' : '') +
+        '</div></div>';
 
     return html;
 }
 
 function renderCharacterGroup(label, names, characters, schema, state) {
     if (names.length === 0) return '';
-    var groupId = 'ne_char_group_' + label.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
     var headerColor = label === '活跃' ? '#4caf50' : (label === '已退场' ? '#f44336' : '#ff9800');
 
-    var html = '<div class="ne_character_group" style="margin:6px 0;">' +
-        '<div class="ne_group_header" data-group-id="' + groupId + '" style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
-        '<span class="ne_group_toggle">\u25BC</span> ' + t(label) + ' (' + names.length + ')' +
-        '</div>' +
-        '<div class="ne_group_cards" id="' + groupId + '_cards">';
+    var html = '<details class="ne_character_group" open style="margin:6px 0;">' +
+        '<summary style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
+        t(label) + ' (' + names.length + ')</summary>' +
+        '<div style="padding-top:2px;">';
 
     names.forEach(function (name) {
         var card = characters[name];
@@ -539,7 +577,7 @@ function renderCharacterGroup(label, names, characters, schema, state) {
         html += renderCharacterCard(name, card, schema, cardType);
     });
 
-    html += '</div></div>';
+    html += '</div></details>';
     return html;
 }
 
@@ -584,14 +622,12 @@ function renderCharacterPanelHTML(state, characterSchema) {
 }
 
 function renderFactionCard(name, faction) {
-    var cardId = 'ne_faction_' + name.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
     var attitude = faction.attitude_toward_player || '未知';
-    var attitudeColor = attitude === '友好' ? '#4caf50' : (attitude === '敌对' ? '#f44336' : (attitude === '冷淡' ? '#ff9800' : '#ff9800'));
+    var attitudeCls = attitude === '友好' ? 'friendly' : (attitude === '敌对' ? 'hostile' : 'neutral');
 
-    var summaryFields = [];
-    if (faction.name) summaryFields.push(t_field('name') + ': ' + escapeHtml(String(faction.name).substring(0, 20)));
-    var displayAttitude = faction.attitude_toward_player || '未知';
-    summaryFields.push(t_field('attitude_toward_player') + ': <span style="color:' + attitudeColor + '">' + escapeHtml(displayAttitude) + '</span>');
+    var summaryRows = [];
+    if (faction.name) summaryRows.push('<tr><td>' + t_field('name') + '</td><td>' + escapeHtml(String(faction.name).substring(0, 20)) + '</td></tr>');
+    summaryRows.push('<tr><td>' + t_field('attitude_toward_player') + '</td><td><span class="ne-state-badge ' + attitudeCls + '">' + escapeHtml(attitude) + '</span></td></tr>');
 
     var detailLines = [];
     if (faction.description) detailLines.push('<div style="margin:2px 0;">' + t_field('description') + ': ' + escapeHtml(String(faction.description)) + '</div>');
@@ -610,17 +646,17 @@ function renderFactionCard(name, faction) {
         }
     }
 
-    var html = '<div class="ne_faction_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
-        '<div class="ne_faction_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
-        '<span class="ne_faction_toggle" style="font-size:0.8em;">\u25B6</span>' +
+    var hasDetail = detailLines.length > 0;
+    var html = '<div class="ne-faction-card">' +
+        '<div class="ne-faction-card-header" onclick="var p=this.parentElement;p.classList.toggle(\'open\');">' +
+        '<span class="ne-faction-toggle">\u25B6</span>' +
         '<b>' + escapeHtml(name) + '</b>' +
-        '<span style="font-size:0.8em;color:' + attitudeColor + ';">[' + escapeHtml(attitude) + ']</span>' +
+        '<span class="ne-state-badge ' + attitudeCls + '">' + escapeHtml(attitude) + '</span>' +
         '</div>' +
-        '<div class="ne_faction_summary" style="font-size:0.85em;margin-top:3px;color:#ccc;">' + summaryFields.join(' | ') + '</div>' +
-        '<div class="ne_faction_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
-        detailLines.join('') +
-        '</div>' +
-        '</div>';
+        '<div class="ne-faction-card-body">' +
+        '<table class="ne-state-card-table">' + summaryRows.join('') + '</table>' +
+        (hasDetail ? '<div class="ne-faction-card-detail">' + detailLines.join('') + '</div>' : '') +
+        '</div></div>';
 
     return html;
 }
@@ -871,9 +907,22 @@ async function updateVaultViewerPopout(getChatId) {
                 } else {
                     stateHtml = formatCoreStateSummary(c.state);
                 }
+                var stateRows = '';
+                if (stateHtml) {
+                    var lines = stateHtml.split(', ');
+                    lines.forEach(function (line) {
+                        var idx = line.indexOf('=');
+                        if (idx === -1) { stateRows += '<tr><td colspan="2">' + escapeHtml(line) + '</td></tr>'; return; }
+                        var key = line.substring(0, idx);
+                        var val = line.substring(idx + 1);
+                        stateRows += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(val) + '</td></tr>';
+                    });
+                }
                 stateContainer.innerHTML =
                     '<div class="ne-inline-state-view">' +
-                    '<div style="background:var(--black50a);padding:8px;border-radius:4px;font-size:0.9em;white-space:pre-wrap;font-family:monospace;">' + escapeHtml(stateHtml) + '</div>' +
+                    '<div class="ne-state-global-block">' +
+                    '<table class="ne-state-global-table">' + stateRows + '</table>' +
+                    '</div>' +
                     '<div style="margin-top:4px;display:flex;gap:4px;align-items:center;">' +
                     '<span class="ne-inline-state-edit-btn fa-solid fa-pen-to-square" title="' + t('Edit State') + '" style="font-size:0.75em;opacity:0.5;cursor:pointer;"></span>' +
                     '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t_narrative('Clear') + '</button>' +
