@@ -1923,7 +1923,7 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
-            '<div class="ne-settings-scroll" style="padding:4px 12px;overflow-y:auto;">' +
+            '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
             '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
             '<div class="ne-settings-section-title">\u2B50 ' + t('Common Settings') + '</div>' +
             '<div id="ne_common_settings"></div></div>' +
