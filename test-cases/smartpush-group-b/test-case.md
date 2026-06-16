@@ -1,6 +1,8 @@
 ---
 name: smartpush-group-b
 folder: smartpush-group-b
+status: passed
+last_run: 2026-06-16
 title: "[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）"
 objective: 单次对话覆盖 TC-05/08/10/11/55/58 的 trace 和语义验证
 preconditions:

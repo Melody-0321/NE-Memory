@@ -1,6 +1,8 @@
 ---
 name: smartpush-02
 folder: smartpush-02
+status: passed
+last_run: 2026-06-16
 title: SmartPush 注入无来源标记
 objective: 验证 SmartPush 注入文本不包含内部来源标记（→st: 或 →[stm: 格式）
 preconditions:

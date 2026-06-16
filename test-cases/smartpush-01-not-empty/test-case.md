@@ -1,6 +1,8 @@
 ---
 name: smartpush-01
 folder: smartpush-01
+status: passed
+last_run: 2026-06-15
 title: SmartPush 注入非空
 objective: 验证在有 STM 记录的情况下，SmartPush 向主 LLM 注入了记忆内容（非 state-only 降级）
 preconditions:

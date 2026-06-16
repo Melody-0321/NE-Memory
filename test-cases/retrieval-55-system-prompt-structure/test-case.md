@@ -1,6 +1,8 @@
 ---
 name: retrieval-55
 folder: retrieval-55
+status: passed
+last_run: 2026-06-15
 title: SmartPush 注入内容格式（事件日志 + msg_id 标注）
 objective: 验证 SmartPush 注入内容以事件日志格式组织，条目带时间戳和 msg_id 标注
 preconditions:
