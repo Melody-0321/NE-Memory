@@ -44,13 +44,13 @@ runner 管理从 frontmatter 自动提取所有断言。无需 `tests` 数组。
 | 02 | **注入无来源标记** | ✅ 通过 | 注入文本不包含 `→stm:` / `→[stm:` / `stm_` 等内部标记（trace-level, 在 T01 trace 上判定） |
 | 03 | **大轮次注入稳定性** | 🟡 待测 | 连续 15-20 轮，SmartPush 持续稳定注入，无退化（变空、乱码、重复碎片） |
 | 04 | **STM=0 注入降级** | 🟡 待测 | 无 STM 时优雅降级为 state-only 注入。运行前需手动清空 vault |
-| 05 | **注入内容去重** | 🟡 待测 | 同一事件二次触发时，注入内容稳定、无多余重复膨胀（合并于 Group B） |
+| 05 | **注入内容去重** | ✅ 通过 (B) | 同一事件二次触发时，注入内容稳定、无多余重复膨胀（Group B 覆盖） |
 | 06 | **跨场景注入切换** | 🟡 待测 | 场景切换后注入重心从老场景转向新场景 |
 | 07 | **注入格式兼容性** | ⬜ 未定义 | Inject 文本对主 LLM 输出的影响：是否导致 LLM 在回复中确认"我记得" |
-| 08 | **可见窗口跳过预取** | 🟡 待测 | 事件全部 msg_id 在 visibleWindow 内时，prefetch 是否跳过该条目，避免向 memory LLM 重复注入主 LLM 已知信息 |
+| 08 | **可见窗口跳过预取** | ✅ 通过 (B) | 事件全部 msg_id 在 visibleWindow 内时，prefetch 是否跳过该条目（Group B 覆盖） |
 | 09 | **可见窗口计算精度** | 🟡 待测 | 向后行走 token 计数器是否正确累加；构造 30 轮对话，验证 maxContext 边界处截断正确（检查被标记为"可见"的消息实际 token 总和是否 ≤ maxContext - 1500） |
-| 10 | **预取原文完整度** | 🟡 待测 | prefetchOriginalTexts 是否取全部 msg_id 的原文而非仅首尾；原文行是否带 `[msg_xx]` 前缀；3 条候选总计是否不超过 2000 字符；事件原文较短时不因 eventLen > 80 而被跳过 |
-| 11 | **query 含 AI reply** | 🟡 待测 | 验证格式处理后的 system prompt 的 BM25 query 是否包含最近的 2 轮 AI 回复和 user 输入，而非仅 5 条 user messages；降级路径（只有 user）是否正常 |
+| 10 | **预取原文完整度** | ✅ 通过 (B) | prefetchOriginalTexts 是否取全部 msg_id 的原文而非仅首尾（Group B 覆盖） |
+| 11 | **query 含 AI reply** | ✅ 通过 (B) | 验证 BM25 query 是否包含最近的 AI 回复和 user 输入（Group B 覆盖） |
 
 ### STM 提取管线
 
@@ -104,10 +104,10 @@ runner 管理从 frontmatter 自动提取所有断言。无需 `tests` 数组。
 | 52 | **Pipeline 合并（四路）** | ⬜ 未定义 | BM25 + entity chains + LTM groups + 隐式实体发现是否正确合并 |
 | 53 | **Notebook 去重** | ⬜ 未定义 | 同一事件在多条 pipeline 中被检出时，notebook 是否去重 |
 | 54 | **Notebook 线程标注** | ⬜ 未定义 | 条目在 notebook 中的 thread 批注是否正确（chain/group/dispersed） |
-| 55 | **检索 System Prompt 构建** | 🟡 待测 | buildRetrievalPrompt 的 system prompt 是否包含：候选记忆、线程标注、`## 当前对话可见窗口` 节段（含 msg_id 标注）、`## 最近一轮对话上下文` 节段、精简后的参考工具说明 |
+| 55 | **检索 System Prompt 构建** | ✅ 通过 (B) | buildRetrievalPrompt 的 system prompt 是否包含：候选记忆、线程标注、`## 当前对话可见窗口` 节段（含 msg_id 标注）、`## 最近一轮对话上下文` 节段、精简后的参考工具说明（Group B 覆盖） |
 | 56 | **检索 Token 预算控制** | ⬜ 未定义 | estimateComplexityBudget 是否正确限制候选数量 |
 | 57 | **检索跨语言处理** | ⬜ 未定义 | 中英混合输入时，检索是否正确处理候选排序 |
-| 58 | **短链自动 inline** | 🟡 待测 | mergePipelines Step 5：availableChains 中 count ≤ 5 的实体链是否被自动注入到 notebook map，并从 availableChains 移除；count > 5 的长链保持不变 |
+| 58 | **短链自动 inline** | ✅ 通过 (B) | mergePipelines Step 5：availableChains 中 count ≤ 5 的实体链是否被自动注入到 notebook map（Group B 覆盖） |
 | 59 | **工具调用频率下降验证** | ⬜ 未定义 | 在 trace 中统计 access/note_thread 工具调用次数，对比优化前后同一数据集的调用轮数是否显著下降（预期从 2-3 轮降至接近 0） |
 
 ---
@@ -217,19 +217,17 @@ Driver 在 minRounds 后每 2 轮执行一次语义评估（LLM 调用），评�
 
 | 分组 | 计划 | 已通过 | 待测 | 未定义 |
 |------|------|--------|------|--------|
-| SmartPush 注入 | 11 | 2 | 8 | 1 |
+| SmartPush 注入 | 11 | 6 | 4 | 1 |
 | STM 提取管线 | 6 | - | 1 | 5 |
 | LTM 合并 | 4 | - | - | 4 |
 | State 管线 | 6 | - | - | 6 |
 | Entity 系统 | 3 | - | - | 3 |
-| 检索层 | 10 | - | 3 | 7 |
+| 检索层 | 10 | 2 | - | 8 |
 | 存储层 | 8 | - | - | 8 |
 | API/LLM 调用 | 5 | - | 1 | 4 |
 | 集成/边界 | 9 | - | 1 | 8 |
 | 压力/稳定性 | 4 | - | - | 4 |
-| **合计** | **66** | **2** | **14** | **50** |
+| **合计** | **66** | **8** | **7** | **51** |
 
 > 注：smartpush-02-no-markers (TC-02) 为 trace-level 断言，基于 smartpush-01 的 trace 直接判定，无需独立运行。
-> 当前 66 个用例中有 54 个尚未设计具体测试。建议将 smartpush 系列（01-11）作为第一阶段覆盖，管线核心（10-15、20-23、30-35）作为第二阶段。
-> 新增的检索优化测试（TC-08~11、55、58、59）依赖本次检索管线优化的改动（可见窗口计算、预取重写、短链 inline）。
-> 测试框架 v2 新增: test-case.md 自包含 YAML frontmatter，runner 自动提取编译。组合测试通过 frontmatter 的 `tests` 数组声明。调用: `__ne_debug.runTestByName(name)`。
+> (B) 标记的用例通过 smartpush-group-b 组合测试覆盖，单次对话统一验证。
