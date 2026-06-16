@@ -295,7 +295,7 @@ function setupTabSwitching() {
             qsa('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
             var content = byId('tab-' + tabName);
             if (content) content.classList.add('active');
-            if (tabName === 'entities' && _pendingInlineStorage && _pendingInlineStorage.vault) {
+            if (window.__NE_DEV_MODE && tabName === 'entities' && _pendingInlineStorage && _pendingInlineStorage.vault) {
                 try { renderEntitiesTab(_pendingInlineStorage.vault); } catch (e) { console.warn('[NE] Entities tab render failed:', e); }
             }
         };
@@ -394,7 +394,9 @@ function createVaultPopout(getChatId) {
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
         renderSettingsTab();
-        read(getChatId()).then(function(v) { renderEntitiesTab(v); }).catch(function(e) { console.warn('[NE] Initial entities tab render failed:', e); });
+        if (window.__NE_DEV_MODE) {
+            read(getChatId()).then(function(v) { renderEntitiesTab(v); }).catch(function(e) { console.warn('[NE] Initial entities tab render failed:', e); });
+        }
     } else {
         overlay.classList.remove('open');
         if (chat) chat.style.display = '';
@@ -1017,7 +1019,9 @@ async function updateVaultViewerPopout(getChatId) {
         });
     } catch (e) { _logSection('event-handlers', e); }
 
-    try { renderEntitySummaryBar(vault); } catch (e) { console.warn('[NE] Entity summary bar render failed:', e); }
+    if (window.__NE_DEV_MODE) {
+        try { renderEntitySummaryBar(vault); } catch (e) { console.warn('[NE] Entity summary bar render failed:', e); }
+    }
 
     if (loading) loading.style.display = 'none';
     _updatingPopout = false;
@@ -1874,7 +1878,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="entities"><i class="fa-solid fa-diagram-project"></i> ' + t('Entities') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="entities" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '"><i class="fa-solid fa-diagram-project"></i> ' + t('Entities') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
@@ -2795,6 +2799,7 @@ function collectAllEntityNames(content) {
 }
 
 function renderEntitySummaryBar(vault) {
+    if (!window.__NE_DEV_MODE) return;
     var bar = byId('ne_entity_summary');
     if (!bar) return;
     var content = vault.content || {};
@@ -2819,6 +2824,7 @@ function renderEntitySummaryBar(vault) {
 }
 
 function renderEntitiesTab(vault) {
+    if (!window.__NE_DEV_MODE) return;
     var listEl = byId('ne_entity_list');
     var detailEl = byId('ne_entity_chain_detail');
     if (!listEl) return;
