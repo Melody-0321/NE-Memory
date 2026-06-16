@@ -173,7 +173,31 @@ function injectBottomDrawerCSS() {
         '.ne-settings-section-card{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:8px;padding:10px 12px;margin-bottom:8px;}' +
         '.ne-settings-section-card .ne-settings-section-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;display:flex;align-items:center;gap:4px;}' +
         '.ne-settings-section-card .ne-accordion-body{padding:4px 0 0 0;}' +
-        '.ne-status-dot{font-size:0.7em;margin-left:4px;}';
+        '.ne-status-dot{font-size:0.7em;margin-left:4px;}' +
+        '.ne-entity-summary-bar{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:0.82em;}' +
+        '.ne-entity-summary-bar summary{cursor:pointer;color:var(--grey-60);font-weight:bold;}' +
+        '.ne-entity-summary-bar summary:hover{color:var(--text);}' +
+        '.ne-entity-chain-tag{display:inline-block;padding:1px 6px;border-radius:3px;margin:2px 4px 2px 0;font-size:0.8em;white-space:nowrap;}' +
+        '.ne-entity-chain-tag.short{background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid rgba(76,175,80,.3);}' +
+        '.ne-entity-chain-tag.long{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
+        '#tab-entities{padding:4px 12px;}' +
+        '#tab-entities .ne-entity-list{display:flex;flex-direction:column;gap:4px;}' +
+        '#tab-entities .ne-entity-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;transition:background .15s;}' +
+        '#tab-entities .ne-entity-row:hover{background:var(--black30a);}' +
+        '#tab-entities .ne-entity-row.selected{border-color:#4caf50;background:rgba(76,175,80,.08);}' +
+        '#tab-entities .ne-entity-icon{font-size:1em;width:20px;text-align:center;flex-shrink:0;}' +
+        '#tab-entities .ne-entity-name{font-weight:bold;min-width:60px;}' +
+        '#tab-entities .ne-entity-type{color:var(--grey-50);font-size:0.8em;}' +
+        '#tab-entities .ne-entity-count{margin-left:auto;font-size:0.8em;color:var(--grey-50);}' +
+        '#tab-entities .ne-entity-status{font-size:0.75em;padding:1px 5px;border-radius:3px;}' +
+        '#tab-entities .ne-entity-status.inline{background:rgba(76,175,80,.15);color:#66bb6a;}' +
+        '#tab-entities .ne-entity-status.available{background:rgba(255,152,0,.12);color:#ffb74d;}' +
+        '#tab-entities .ne-chain-detail{margin-top:4px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;font-size:0.78em;}' +
+        '#tab-entities .ne-chain-entry{display:flex;gap:6px;padding:3px 0;border-bottom:1px solid var(--black20a);}' +
+        '#tab-entities .ne-chain-entry:last-child{border-bottom:none;}' +
+        '#tab-entities .ne-chain-time{color:var(--grey-50);white-space:nowrap;min-width:90px;}' +
+        '#tab-entities .ne-chain-scene{color:var(--grey-60);}' +
+        '#tab-entities .ne-empty-hint{color:var(--grey-50);font-size:0.85em;padding:20px;text-align:center;}';
     pdHead().appendChild(style);
 }
 
@@ -271,6 +295,9 @@ function setupTabSwitching() {
             qsa('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
             var content = byId('tab-' + tabName);
             if (content) content.classList.add('active');
+            if (tabName === 'entities' && _pendingInlineStorage && _pendingInlineStorage.vault) {
+                try { renderEntitiesTab(_pendingInlineStorage.vault); } catch (e) { console.warn('[NE] Entities tab render failed:', e); }
+            }
         };
     });
 }
@@ -367,6 +394,7 @@ function createVaultPopout(getChatId) {
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
         renderSettingsTab();
+        read(getChatId()).then(function(v) { renderEntitiesTab(v); }).catch(function(e) { console.warn('[NE] Initial entities tab render failed:', e); });
     } else {
         overlay.classList.remove('open');
         if (chat) chat.style.display = '';
@@ -988,6 +1016,8 @@ async function updateVaultViewerPopout(getChatId) {
             };
         });
     } catch (e) { _logSection('event-handlers', e); }
+
+    try { renderEntitySummaryBar(vault); } catch (e) { console.warn('[NE] Entity summary bar render failed:', e); }
 
     if (loading) loading.style.display = 'none';
     _updatingPopout = false;
@@ -1844,6 +1874,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="entities"><i class="fa-solid fa-diagram-project"></i> ' + t('Entities') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
@@ -1851,6 +1882,7 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
             '<div id="tab-memory" class="ne-vault-tab-content active">' +
+            '<div id="ne_entity_summary" class="ne-entity-summary-bar" style="display:none;"></div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
@@ -1922,6 +1954,11 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
             '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
             '</div></div>' +
+            '</div></div>' +
+            '<div id="tab-entities" class="ne-vault-tab-content">' +
+            '<div style="padding:4px 0;">' +
+            '<div id="ne_entity_list" class="ne-entity-list"></div>' +
+            '<div id="ne_entity_chain_detail"></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
@@ -2730,6 +2767,127 @@ function renderSettingsTab() {
             });
         };
     }
+}
+
+var ENTITY_TYPE_ICONS = {
+    character: '\uD83E\uDDD1',
+    faction: '\uD83C\uDFF0',
+    location: '\uD83C\uDFD9\uFE0F',
+    item: '\uD83D\uDCE6',
+    concept: '\uD83D\uDCA1',
+    event: '\uD83C\uDF0D'
+};
+
+function collectAllEntityNames(content) {
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var allLTM = content.ltm_entries || [];
+    var nameMap = {};
+    allSTM.concat(allLTM).forEach(function(e) {
+        (e.entities || []).forEach(function(en) {
+            if (en.name && !nameMap[en.name]) {
+                nameMap[en.name] = { name: en.name, type: en.type || 'character', count: 0 };
+            }
+            if (nameMap[en.name]) nameMap[en.name].count++;
+        });
+    });
+    return Object.values(nameMap).sort(function(a, b) { return b.count - a.count; });
+}
+
+function renderEntitySummaryBar(vault) {
+    var bar = byId('ne_entity_summary');
+    if (!bar) return;
+    var content = vault.content || {};
+    var entities = collectAllEntityNames(content);
+    if (entities.length === 0) { bar.style.display = 'none'; return; }
+    bar.style.display = '';
+
+    var shortCount = entities.filter(function(e) { return e.count <= 5; }).length;
+    var longCount = entities.length - shortCount;
+
+    var tagsHtml = entities.map(function(en) {
+        var cls = en.count <= 5 ? 'short' : 'long';
+        var label = en.count <= 5 ? 'inline' : 'avail';
+        return '<span class="ne-entity-chain-tag ' + cls + '">' + escapeHtml(en.name) + ' (' + en.count + ', ' + label + ')</span>';
+    }).join('');
+
+    var summaryText = 'Entities: ' + entities.length + ' total';
+    if (shortCount > 0) summaryText += ', ' + shortCount + ' short (inlined)';
+    if (longCount > 0) summaryText += ', ' + longCount + ' long (available)';
+
+    bar.innerHTML = '<details><summary>' + escapeHtml(summaryText) + '</summary><div style="padding-top:4px;">' + tagsHtml + '</div></details>';
+}
+
+function renderEntitiesTab(vault) {
+    var listEl = byId('ne_entity_list');
+    var detailEl = byId('ne_entity_chain_detail');
+    if (!listEl) return;
+    var content = vault.content || {};
+    var entities = collectAllEntityNames(content);
+
+    if (entities.length === 0) {
+        listEl.innerHTML = '<div class="ne-empty-hint">No entities tracked yet. Entities are extracted from STM/LTM entries via the entity annotation field.</div>';
+        if (detailEl) detailEl.innerHTML = '';
+        return;
+    }
+
+    var allSTMLTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []).concat(content.ltm_entries || []);
+
+    var rowsHtml = entities.map(function(en, idx) {
+        var icon = ENTITY_TYPE_ICONS[en.type] || '\u2753';
+        var statusCls = en.count <= 5 ? 'inline' : 'available';
+        var statusLabel = en.count <= 5 ? 'inlined' : 'available';
+        return '<div class="ne-entity-row" data-entity-idx="' + idx + '" data-entity-name="' + escapeHtml(en.name) + '">' +
+            '<span class="ne-entity-icon">' + icon + '</span>' +
+            '<span class="ne-entity-name">' + escapeHtml(en.name) + '</span>' +
+            '<span class="ne-entity-type">' + escapeHtml(en.type) + '</span>' +
+            '<span class="ne-entity-count">' + en.count + ' entries</span>' +
+            '<span class="ne-entity-status ' + statusCls + '">' + statusLabel + '</span>' +
+            '</div>';
+    }).join('');
+
+    listEl.innerHTML = rowsHtml;
+    if (detailEl) detailEl.innerHTML = '';
+
+    var rows = listEl.querySelectorAll('.ne-entity-row');
+    rows.forEach(function(row) {
+        row.onclick = function() {
+            var wasSelected = this.classList.contains('selected');
+            rows.forEach(function(r) { r.classList.remove('selected'); });
+            if (detailEl) detailEl.innerHTML = '';
+            if (wasSelected) return;
+            this.classList.add('selected');
+
+            var entityName = this.getAttribute('data-entity-name');
+            var type = entities[Number(this.getAttribute('data-entity-idx'))].type;
+
+            var chainEntries = [];
+            allSTMLTM.forEach(function(e) {
+                if (e.entities && e.entities.some(function(en) { return en.name === entityName; })) {
+                    chainEntries.push(e);
+                }
+            });
+            chainEntries.sort(function(a, b) {
+                return new Date(a.timestamp || 0).getTime() - new Date(b.timestamp || 0).getTime();
+            });
+
+            if (detailEl && chainEntries.length > 0) {
+                var detailRows = chainEntries.map(function(e, i) {
+                    var timePart = e.period || '';
+                    var scenePart = e.scene || '';
+                    var eventPart = e.event || e.summary || '';
+                    return '<div class="ne-chain-entry">' +
+                        '<span class="ne-chain-time">' + escapeHtml(timePart) + '</span>' +
+                        '<span class="ne-chain-scene">' + escapeHtml(scenePart) + '</span>' +
+                        '<span>' + escapeHtml(eventPart) + '</span>' +
+                        '</div>';
+                }).join('');
+                detailEl.innerHTML = '<div class="ne-chain-detail" style="margin-top:6px;">' +
+                    '<div style="font-weight:bold;margin-bottom:4px;color:var(--grey-60);">' +
+                    escapeHtml(entityName) + ' (' + escapeHtml(type) + ') — ' + chainEntries.length + ' events</div>' +
+                    detailRows + '</div>';
+            }
+        };
+    });
 }
 
 function saveSettingsTab() {
