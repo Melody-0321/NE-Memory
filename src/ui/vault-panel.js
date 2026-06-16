@@ -1563,6 +1563,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
         if (parts.length > 0) parts.push('---');
         var synthText = synthesized.trim();
+        synthText = synthText.replace(/\(?(stm_|ltm_)\d+\)?/g, '');
         parts.push(synthText);
 
         // ── 显式缺口标记（策略2）──

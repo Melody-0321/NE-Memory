@@ -544,7 +544,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         }
     }
 
-    var stmCount = content.stm_entries ? content.stm_entries.length : 0;
+    var stmCount = ((content.unconsolidated_stm || []).concat(content.stm_entries || [])).length;
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
     if (isSummaryMode) {
@@ -591,13 +591,12 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
             '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
             '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
-            '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>".\n' +
+            '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>". Do NOT include internal IDs (stm_, ltm_, msg_ patterns).\n' +
             '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n' +
             '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
             'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
             'Output format:\n' +
             '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n\n' +
-            'Keep the total response under ' + budget + ' tokens.\n\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
             conversationBlock +
@@ -619,17 +618,15 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
         '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
         '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
-        '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。\n' +
+        '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。不要包含内部 ID（stm_、ltm_、msg_ 等模式）。\n' +
         '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n' +
         '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
         '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
         '输出格式：\n' +
         '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n\n' +
-        '回复总长度控制在 ' + budget + ' tokens 以内。\n\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
-        conversationBlock +
-        visibleWindowBlock +
+        conversationBlock + visibleWindowBlock +
         toolGuidanceZh +
         availChainHint +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
@@ -673,7 +670,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
         });
     }
 
-    var stmCount = content.stm_entries ? content.stm_entries.length : 0;
+    var stmCount = ((content.unconsolidated_stm || []).concat(content.stm_entries || [])).length;
     var ltmCount = content.ltm_entries ? content.ltm_entries.length : 0;
 
     var entityNames = extractEntityNames(query, content);

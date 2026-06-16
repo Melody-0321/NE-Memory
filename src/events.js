@@ -2,7 +2,7 @@
  * events.js — ST 事件绑定（通过 TH API）
  */
 import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/update.js';
-import { executeConsolidation } from './engine/consolidate.js';
+import { executeConsolidation, checkConsolidateThreshold } from './engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
 import { detectContradictions } from './engine/contradiction.js';
@@ -217,6 +217,16 @@ async function flushPendingMessages() {
         console.log('[NE] Incremental update done, added=' + result.added);
         if (result.added > 0 && batch.length > 0) {
             recordTelemetry({ turns: batch.length, events: result.added });
+        }
+
+        if (latestVault && checkConsolidateThreshold(latestVault)) {
+            try {
+                const consResult2 = await executeConsolidation(chatId, true, latestVault);
+                if (consResult2 && consResult2.vault) { latestVault = consResult2.vault; }
+                console.log('[NE] Post-extraction consolidation done, merged=' + (consResult2 ? consResult2.merged : 0));
+            } catch (ce) {
+                console.warn('[NE] Post-extraction consolidation failed:', ce);
+            }
         }
 
         // Record vault size snapshot

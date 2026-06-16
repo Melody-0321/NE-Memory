@@ -445,8 +445,8 @@ function deriveTimeRange(sourceSTMEntries) {
     return fmt(first) + ' → ' + fmt(last);
 }
 
-export async function executeConsolidation(chatId, force) {
-    const vault = await read(chatId);
+export async function executeConsolidation(chatId, force, preloadedVault) {
+    var vault = preloadedVault || await read(chatId);
     if (!force && !checkConsolidateThreshold(vault)) return { vault, merged: 0 };
     const content = vault.content || {};
     const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
