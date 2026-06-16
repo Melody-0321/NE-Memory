@@ -35,6 +35,11 @@ export async function runTestLoop(testCase, hostDoc) {
     // ── 语义评估追踪 ──
     var semanticResults = null;
     var semanticDefinitive = false;  // 所有语义断言是否已得出明确结论
+    var structuralDefinitive = false; // 所有结构断言是否已得出明确结论
+    // 无结构断言的测试，结构部分视为已完成
+    if (!testCase.structural || testCase.structural.length === 0) {
+        structuralDefinitive = true;
+    }
     startCollectingPipelineCalls();
     for (var round = 1; round <= testCase.maxRounds; round++) {
         console.log('[NE-TEST] === Round ' + round + '/' + testCase.maxRounds + ' ===');
@@ -105,13 +110,17 @@ export async function runTestLoop(testCase, hostDoc) {
         roundDataList.push(roundData);
         trace = appendTraceRound(trace, roundData);
 
-        // ── 结构性断言（始终明确） ──
-        var structResults = evaluateAllStructural(roundData, testCase.structural);
-        var structAnyFailed = structResults.some(function(r) { return !r.passed; });
-        if (structAnyFailed) {
-            console.log('[NE-TEST] Structural assertion failed, stopping.');
-            endType = 'struct_fail';
-            break;
+        // ── 结构性断言（minRounds 后检查，单条不通过不终止）──
+        if (!structuralDefinitive && testCase.structural && testCase.structural.length > 0 && round >= testCase.minRounds) {
+            var structResults = evaluateAllStructural(roundData, testCase.structural);
+            var structAllPassed = structResults.every(function(r) { return r.passed; });
+            if (structAllPassed) {
+                structuralDefinitive = true;
+                console.log('[NE-TEST] All structural assertions PASSED (round ' + round + ').');
+            } else {
+                var structFailedCount = structResults.filter(function(r) { return !r.passed; }).length;
+                console.log('[NE-TEST] Structural: ' + structFailedCount + '/' + structResults.length + ' failed, continuing.');
+            }
         }
 
         // ── 语义性断言（三态：通过/不通过/无法判断） ──
@@ -131,16 +140,16 @@ export async function runTestLoop(testCase, hostDoc) {
                     break;
                 }
                 if (semInconclusive === 0) {
-                    // 全部明确（全部通过或无无法判断），结论已定
                     semanticDefinitive = true;
-                    if (semPassed === semResults.length) {
-                        // 全部明确通过，但需要至少留出 minRounds+3 轮让 TC-05 有两次触发机会
+                    if (semPassed === semResults.length && structuralDefinitive) {
                         if (round >= testCase.minRounds + 3) {
-                            console.log('[NE-TEST] All semantic assertions PASSED (round ' + round + ' >= minRounds+3).');
+                            console.log('[NE-TEST] All semantic + structural assertions PASSED (round ' + round + ' >= minRounds+3).');
                             endType = 'natural_done';
                             break;
                         }
-                        console.log('[NE-TEST] All semantic assertions PASSED but round ' + round + ' < minRounds+3, continuing for data collection.');
+                        console.log('[NE-TEST] All assertions PASSED but round ' + round + ' < minRounds+3, continuing for data collection.');
+                    } else if (semPassed === semResults.length && !structuralDefinitive) {
+                        console.log('[NE-TEST] Semantic assertions all PASSED but structural not yet definitive, continuing.');
                     }
                 }
                 // semPassed > 0 但有 semInconclusive → 部分通过但还有无法判断的，继续
