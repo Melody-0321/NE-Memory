@@ -1950,7 +1950,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion" id="ne-tool-history">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
             '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
-            '<div class="ne-accordion" id="ne-tool-test-runner">' +
+            '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
             '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
             '</div></div>' +
@@ -2282,7 +2282,7 @@ export async function renderVaultPanel(getChatId) {
         freezeIframeHeight();
 
         // Initialize Test Runner UI
-        initTestRunner();
+        if (window.__NE_DEV_MODE) initTestRunner();
 
         renderSettingsTab();
     } catch (e) {
@@ -2343,6 +2343,7 @@ async function renderHistory(getChatId) {
 /* ──────── 测试运行器 ──────── */
 
 function initTestRunner() {
+    if (!window.__NE_DEV_MODE) return;
     var container = byId('ne-tr-container');
     if (!container) return;
 

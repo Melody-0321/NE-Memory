@@ -15,6 +15,7 @@ import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner/index.js';
+window.__NE_DEV_MODE = window.__NE_DEV_MODE || false;
 
 var _retryTimer = null;
 
