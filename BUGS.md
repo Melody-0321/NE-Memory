@@ -440,6 +440,238 @@ if (cursorResult.totalAdded > 0) {
 
 ---
 
+## #16 ✅ `processed_msg_ids` 毒化 vault —— pipeline 消息全部被过滤，STM 永久为 0
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-11 |
+| **解决** | 2026-06-14 |
+| **严重程度** | **High** |
+| **影响** | vault 的 STM/LTM 被清空后 `processed_msg_ids` 残留。`filterNewMessages` 认为所有消息"已处理" → 全部过滤 → STM 永远不提取。 |
+
+### 根因
+
+`processed_msg_ids` 是独立于 STM 条目的缓存。删除条目清空了 STM 数组但缓存未同步清理 → 僵死状态。
+
+### 修复（三阶段）
+
+**阶段 1 — 自愈合** ([`3721091`](file:///))：
+`executeIncrementalUpdate` 检测死信（filteredMessages 为 0 但 vault 无任何 STM/LTM 且 processedIds > 0）→ 自动清除 `processed_msg_ids` 并重试过滤。
+
+**阶段 2 — 对账** ([`31b7cfd`](file:///))：
+入口处与 `collectAllMsgIds` 对账，已删条目的 msg_id 踢出；`deleteSingleEntry` 同步清理 `stm_entries` 防止残留。
+
+**阶段 3 — 彻底删除缓存** ([`14001d0`](file:///))：
+删除 `processed_msg_ids` 及其 5 个维护函数。统一以 STM 条目自身的 `msg_ids` 为唯一事实源 —— `collectAllMsgIds` 在每次 pipeline 入口实时扫描。
+
+### commit
+
+`3721091` `31b7cfd` `14001d0`
+
+---
+
+## #17 ✅ `||` 运算符吞 `msg_id=0` —— 消息 0 永远穿透去重
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-12 |
+| **解决** | 2026-06-14 |
+| **严重程度** | **High** |
+| **影响** | ST 消息 id 从 0 开始。`id || mes_id` 将 `id=0` 判为 falsy 跳到 `mes_id`。两侧（写入/过滤）产生不同的 fallback 键值，互不认识 → msg 0 永远无法被去重。 |
+
+### 根因
+
+JavaScript `||` 把 `0` 当 falsy。`collectMsgIdsFromTurns` 写入 `'msg_user_0'`，但 `filterNewMessages` 过滤侧返回 `undefined` → 永远放行。
+
+### 修复
+
+- [`e693bcd`](file:///)：`id != null ? id : mes_id` 替代 `id || mes_id`
+- [`1f22acd`](file:///)：全系统 7 处 `id || mes_id` → `id != null ? id : mes_id`（vault-panel.js `visibleWindow` / `saveSingleEntry`、tools.js `access()`、index.js 指纹、retrieval.js 标签）
+
+### commit
+
+`e693bcd` `1f22acd`
+
+---
+
+## #18 ✅ ST chatId 始终为 `'default'` —— 对话切换不识别
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-13 |
+| **解决** | 2026-06-13 |
+| **严重程度** | **High** |
+| **影响** | ST 的"新建聊天"不生成唯一 chatId → 所有对话共享 `'default'` vault。`neSyncChatId` 因 `default === default` 跳过重置，新旧对话数据串在一起。 |
+
+### 修复
+
+- `getChatId()`：chatId 为 `'default'` 时用 `getChatFingerprint(ctx)` 生成稳定指纹（`ne_<characterId>_<firstMsgId>`）
+- 空对话回退 localStorage 缓存
+- `migrateVaultIfNeeded`：自动将旧的 `'default'` vault 迁移到新指纹
+- `chat_id_changed` / `CHAT_CHANGED` 事件中加迁移调用
+
+### commit
+
+`d54b893`
+
+---
+
+## #19 ✅ SmartPush 四项修复
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-15 |
+| **解决** | 2026-06-15 |
+| **严重程度** | **High** |
+| **影响** | 四项独立 bug 共同导致 SmartPush 注入质量差、用户感知不到记忆。 |
+
+### Bug 1：Consolidation 延迟
+
+STM 提取后 LTM 不立刻整合 —— 需等下一轮 pipeline 才触发。修复：`flushPendingMessages` 提取后加 post-extraction consolidation check，同轮完成整合。
+
+### Bug 2：stmCount 误报 0
+
+`retrieval.js` 两处计数只看 `stm_entries`，忽略了 `unconsolidated_stm`。修复：改为 `unconsolidated_stm.concat(stm_entries).length` 全量统计。
+
+### Bug 3：合成内容截断
+
+中英文 prompt 中含"回复控制在 X tokens 以内"自估 soft budget 指令，LLM 自估不准导致内容被截。修复：删除 soft budget 指令。
+
+### Bug 4：`stm_` 前缀泄漏
+
+检索 prompt 中 STM 条目带有内部 ID（`stm_42`），被复制进合成注入文本。修复：规则 5 加"不要包含内部 ID"；`formatSmartContext` 输出加 `replace(/(stm_|ltm_)\d+/g, '')`。
+
+### commit
+
+`504a0a6`
+
+---
+
+## #20 ✅ 格式化标签泄漏 —— driver 输入 / chat 消息被污染
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-13 |
+| **解决** | 2026-06-13 |
+| **严重程度** | Medium |
+| **影响** | AI 回复中的 `<content>`、`<Time>`、`[思考过程]` 等格式标签被 driver 模仿并发送到 chat 作为玩家消息，污染测试数据。 |
+
+### 修复
+
+两层过滤：
+- **入口**：`buildDriverUser` 传给 driver 的 AI 回复先过 `cleanAiReply()` 去除格式标签和思考链
+- **出口**：`extractUserMessage` 发送到 chat 的消息先过 `stripFormatTags()` 二次过滤
+
+### commit
+
+`5e289dd`
+
+---
+
+## #21 ✅ Settings 面板无法滚轮滚动
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-15 |
+| **解决** | 2026-06-15 |
+| **严重程度** | Medium |
+| **影响** | Settings tab 内容多时无法鼠标滚轮滚动，只能拖滚动条。 |
+
+### 根因
+
+`.ne-settings-scroll` 有 `overflow-y:auto` 但无 `height` 约束 → 内容不溢出 → 无法滚内部；同时截获 wheel 事件阻止传到父级 `.ne-vault-scroll-area`。
+
+### 修复
+
+删除 `overflow-y:auto`，让父级 `.flex:1 + overflow-y:auto` 的 scroll-area 统一处理所有 tab 滚动。
+
+### commit
+
+`18bc38d`
+
+---
+
+## #22 ✅ 消息去重击穿 —— 三联动缺陷导致跨 run 重复处理
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-12 |
+| **解决** | 2026-06-13 |
+| **严重程度** | **High** |
+| **影响** | 同一批消息跨 run 被反复送入 pipeline，产生重复 STM。 |
+
+### 三个根因
+
+**（A）fallback ID 不一致** ([`3e153c8`](file:///))：
+消息缺 `id`/`mes_id` 时，`filterNewMessages`（过滤侧）永远 `return true`（放行），而 `collectMsgIdsFromTurns`（写入侧）用 batch-relative `turnIndex` 生成 `'msg_user_0'`。两端互不认识 → 已标记的消息无法被过滤。
+
+**（B）`_absIdx` 跨 run 重叠** ([`265a2fc`](file:///))：
+Process History 预过滤后传入 `executeIncrementalUpdate` 的消息已不是原始 batch，`_absIdx` 用 for 循环 `mi` 重新从 0 计数 → 与之前 run 的 `_absIdx` 值重叠。修复：改用 `m.id`（原始 chat 数组下标 / ST messageIndex），跨 run 不变的真正绝对位置。
+
+**（C）`force=true` 时 prompt 矛盾** ([`a85e031`](file:///))：
+system prompt 说"覆盖全部消息不得跳过"，user prompt 说"如果没有重要事件返回 `[]`"。LLM 取中 → 跳过 Turn 0。修复：force 时 user ending 改为"所有消息均须覆盖禁止跳过"。
+
+### commit
+
+`3e153c8` `265a2fc` `a85e031`
+
+---
+
+## #23 ✅ STM 条目排序错误 + msgRange 位置显示误导
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-12 |
+| **解决** | 2026-06-12 |
+| **严重程度** | Medium |
+| **影响** | Memory tab 中 STM 条目按 LLM 调用顺序排列（生成顺序）而非对话顺序；entry 的 `msgRange` 显示 batch-relative 位置，跨 run 误导。 |
+
+### 修复
+
+- [`f079ad8`](file:///)：新增 `sortStmByMsgOrder()`，六处渲染点接入（vault panel、retrieval、notebook 等）
+- [`2905959`](file:///)：`msgRange` 从 batch-relative → 绝对消息位置
+
+### commit
+
+`f079ad8` `2905959`
+
+---
+
+## #24 ✅ test-runner 全面审计 —— 6 类缺陷
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-06-13 |
+| **解决** | 2026-06-14 |
+| **严重程度** | Medium |
+| **影响** | 测试结果不可靠：断言误报通过、长测试提前终止、语义评估永远 false、Blob URL 泄漏。 |
+
+### 修复
+
+| 缺陷 | 修复 |
+|------|------|
+| `exists` 断言逻辑反转 → 永远 false | 修正比较语义 |
+| `forced_max_rounds` 时 `semanticResults` 为 null → 崩溃 | 加 `\|\| []` 空数组保护 |
+| 语义评估提前结束（TC-05 来不及二次触发） | 要求 `round >= minRounds + 3` 才允许 `natural_done` |
+| 策略提示不适应长测试 | 分轮次给出第二次提问引导 |
+| 结构断言失败提前终止 → 一条失败后面全跳过 | 改为继续跑 |
+| Blob URL 泄漏 | 5 秒后 revoke |
+
+### commit
+
+`9fa09bd` `cc7e23d` `50692ba`
+
+---
+
 ## 汇总
 
 | # | 描述 | 严重度 | 状态 |
@@ -457,5 +689,14 @@ if (cursorResult.totalAdded > 0) {
 | 11 | 内联编辑保存无效 / 取消后无法再编辑 / 无删除 | **High** | ✅ 已解决 |
 | 12 | Process History `force=true` 导致消息全部重复处理 | **High** | ✅ 已解决 |
 | 13 | cursor 窗口 2+ msg_ids 全部丢失（msgRange 全局偏移未减 position） | **High** | ✅ 已解决 |
-| 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 → 消息永不被标记 | **P0** | 🟡 待解决 |
+| 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 | **P0** | 🟡 待解决 |
 | 15 | Gemini 中转站副 API 401（URL/Key/Model 不匹配 + `response_format` 不兼容） | Medium | 🟡 待解决 |
+| 16 | `processed_msg_ids` 毒化 vault → pipeline 消息全部被过滤 | **High** | ✅ 已解决 |
+| 17 | `\|\|` 吞 `msg_id=0` → 消息 0 永远穿透去重 | **High** | ✅ 已解决 |
+| 18 | ST chatId 始终为 `'default'` → 对话切换不识别 | **High** | ✅ 已解决 |
+| 19 | SmartPush 四项修复（Consolidation 延迟 / stmCount / 合成截断 / stm_ 泄漏） | **High** | ✅ 已解决 |
+| 20 | 格式化标签泄漏（driver 输入 / chat 消息） | Medium | ✅ 已解决 |
+| 21 | Settings 面板无法滚轮滚动 | Medium | ✅ 已解决 |
+| 22 | 消息去重击穿（fallback ID 不一致 + `_absIdx` 重叠 + force prompt 矛盾） | **High** | ✅ 已解决 |
+| 23 | STM 条目排序错误 + msgRange 位置误导 | Medium | ✅ 已解决 |
+| 24 | test-runner 6 类缺陷（exists 断言反转 / null 崩溃 / 提前终止 / Blob 泄漏） | Medium | ✅ 已解决 |
