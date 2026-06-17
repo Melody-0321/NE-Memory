@@ -11,6 +11,7 @@ import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validat
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { processTurnsInBatches } from './stm-extractor.js';
+import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm, applyLtmDecision } from './consolidate.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
 import { writeWithSnapshot } from '../vault/store.js';
@@ -649,9 +650,56 @@ export function buildBatchPrompt(turns, vault) {
     var userText = turnsText.join('\n');
     var maxTurnLabel = turns.length - 1;
 
+    var injectLtmContext = isLtmEnabled(vault);
+    var ltmAppend = '';
+
+    if (injectLtmContext) {
+        var ltmEntries = content.ltm_entries || [];
+        var openLtm = findOpenLtm(vault);
+        var closedCatalog = formatLtmCatalog(ltmEntries);
+
+        ltmAppend += '\n\n## 当前进行中的叙事弧（开放 LTM）\n';
+        if (openLtm) {
+            ltmAppend += 'title: ' + (openLtm.title || '') + '\n';
+            ltmAppend += 'event: ' + (openLtm.event || '').substring(0, 200) + '\n';
+            ltmAppend += 'period: ' + (openLtm.period || '') + '\n';
+            ltmAppend += 'entities: ' + ((openLtm.entities || []).map(function(e) { return e.name; }).join(', ') || '') + '\n';
+            ltmAppend += 'stm_refs 数量: ' + ((openLtm.stm_refs || []).length) + '\n';
+        } else {
+            ltmAppend += '(无)\n';
+        }
+
+        ltmAppend += '\n## 最近已闭合的叙事弧\n' + closedCatalog + '\n';
+
+        var newStmEvents = [];
+        ltmAppend += '\n## 闭合信号（由系统根据时间、场景、实体计算）\n';
+        if (openLtm) {
+            var signals = computeClosureSignals(openLtm, newStmEvents);
+            if (signals) {
+                ltmAppend += '- 时间：' + signals.timeGap + '\n';
+                ltmAppend += '- 场景：' + (signals.openScene || '?') + ' → ' + (signals.newScene || '?') + (signals.sceneChange ? '（切换）' : '（仍在同一场景）') + '\n';
+                ltmAppend += '- 实体重叠：' + signals.entityDetail + '\n';
+                ltmAppend += '综合信号：' + signals.signalSummary + '\n';
+            }
+        } else {
+            ltmAppend += '无开放 LTM，若本轮有新事件出现，即为新叙事弧的开始。\n';
+        }
+
+        ltmAppend += '\n## 判断标准\n';
+        ltmAppend += 'append（追加到当前弧）：当新事件与当前弧在叙事上连续 —— 时间在同一日或紧邻的时区、场景在附近区域或同一活动范围内、至少一个核心角色仍在场。该事件是同一故事线的新发展，而非新故事的开始。\n';
+        ltmAppend += 'close_and_new（闭合+开启新弧）：叙事弧已自然终结。下列任一条件成立时选用：时间跨日或出现大段空白 / 场景发生根本性变化 / 所有核心角色离场且新角色登场 / 事件本身是明确的终结点（道别、离开、任务完成、夜晚就寝）。满足时闭合当前 LTM，用本轮事件开启新弧。\n';
+        ltmAppend += 'skip（跳过）：本轮事件是短暂的过渡性内容。该事件留在"待处理"区，不追加到任何 LTM。如果没有 open LTM，不使用 skip。\n';
+
+        if (lang === 'en') {
+            ltmAppend += '\nIn addition to events, output an ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "updated arc label (15-40 chars, only for append/close_and_new)",\n    "updated_event": "updated arc summary (80-140 chars, only for append/close_and_new)"\n  }\n}\n';
+        } else {
+            ltmAppend += '\n在输出 events 的同时，输出 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "更新后的弧标签（15-40字，仅 append/close_and_new 时输出）",\n    "updated_event": "更新后的弧摘要（80-140字，仅 append/close_and_new 时输出）"\n  }\n}\n';
+        }
+    }
+
     var system = lang === 'en' ?
-        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (20-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. If unsure: \\"-\\"",\n      "scene": "inferred scene. If unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- If no valid events can be extracted, set events to empty array [].') :
-        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（20-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。必须使用与往期事件相同的格式。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 如果无法提取有效事件，将 events 设为空数组 []。');
+        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (20-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. If unsure: \\"-\\"",\n      "scene": "inferred scene. If unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- If no valid events can be extracted, set events to empty array [].' + ltmAppend) :
+        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（20-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。必须使用与往期事件相同的格式。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 如果无法提取有效事件，将 events 设为空数组 []。' + ltmAppend);
 
     return { system: system, user: userText };
 }
@@ -1020,6 +1068,21 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
 
     console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
+
+    var ltmDecision = globalThis.__ne_debug_ltm_decision;
+    if (ltmDecision && newEntries.length > 0) {
+        var consumedIds = newEntries.map(function(e) { return e.id; }).filter(Boolean);
+        if (consumedIds.length > 0) {
+            try {
+                applyLtmDecision(vault, ltmDecision, consumedIds);
+                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] LTM save failed:', e); }
+                console.log('[NE] LTM decision applied — action=' + ltmDecision.action + ', consumed=' + consumedIds.length);
+            } catch (e) {
+                console.warn('[NE] LTM decision application failed:', e);
+            }
+        }
+        globalThis.__ne_debug_ltm_decision = null;
+    }
 
     return { vault: vault, added: newEntries.length };
 }

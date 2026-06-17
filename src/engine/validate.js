@@ -171,6 +171,10 @@ export function postFillLTM(result, sourceSTMList) {
         if (!e.title && e.event) {
             e.title = e.event.substring(0, 40);
         }
+
+        if (!e.status) {
+            e.status = 'closed';
+        }
     }
 
     return result;

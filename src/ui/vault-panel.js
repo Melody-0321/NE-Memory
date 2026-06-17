@@ -6,7 +6,6 @@
  */
 import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
-import { executeConsolidation } from '../engine/consolidate.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
 import { escapeHtml, formatLocalTime } from './utils.js';
@@ -143,8 +142,8 @@ function injectBottomDrawerCSS() {
         '.ne-settings-section{margin-bottom:8px;}' +
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
         '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
-        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
-        '#tab-settings textarea{width:100%;background:#fff;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
+        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
+        '#tab-settings textarea{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
         '#tab-settings input[type=range]{width:100%;margin:4px 0;}' +
         '#tab-settings .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
         '.ne-state-card-table{width:100%;border-collapse:collapse;font-size:0.85em;}' +
@@ -1180,7 +1179,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="font-weight:bold;">' + (entry.title || entry.event || entry.summary || '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="font-weight:bold;">' + (entry.title || entry.event || entry.summary || '') + (type === 'ltm' && entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -2160,16 +2159,16 @@ export async function renderVaultPanel(getChatId) {
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
-                if (!confirm(t('Consolidate will convert STM entries into LTM. Continue?'))) return;
+                if (!confirm(t('This will process pending STM entries. Continue?'))) return;
                 var prevText = consolidateBtn.textContent;
                 consolidateBtn.disabled = true;
                 consolidateBtn.textContent = t('Processing...');
                 try {
-                    await executeConsolidation(getChatId(), true);
+                    await executeIncrementalUpdate(getChatId(), [], true);
                     await updateVaultViewerPopout(getChatId);
                 } catch (e) {
-                    console.error('[NE] Consolidation failed:', e);
-                    alert(t('Consolidation failed') + ': ' + e.message);
+                    console.error('[NE] Process failed:', e);
+                    alert(t('Process failed') + ': ' + e.message);
                 } finally {
                     consolidateBtn.disabled = false;
                     consolidateBtn.textContent = prevText;
@@ -2270,12 +2269,6 @@ export async function renderVaultPanel(getChatId) {
                         } catch (e2) {}
                     }
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
-                    try {
-                        processHistoryBtn.textContent = t('Consolidating...');
-                        await executeConsolidation(getChatId(), true);
-                    } catch (consErr) {
-                        console.warn('[NE] Process History consolidate failed:', consErr);
-                    }
                     processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + '\u8f6e' + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);

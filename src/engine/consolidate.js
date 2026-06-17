@@ -1,15 +1,12 @@
 /**
- * engine/consolidate.js — STM→LTM 整合引擎
+ * engine/consolidate.js — STM→LTM 流式整合引擎
  *
- * 当 unconsolidated_stm 达到阈值时触发。
- * 生成 LTM 摘要，标记原始 STM，不删除。
- * 这是 NE 最核心的差异化功能。
+ * STM 提取与 LTM 归类在同一次 LLM 调用中完成。
+ * LTM 分 open/closed 状态，单次最多一个 open LTM，
+ * 渐进式追加 STM 直到弧自然终结或达到硬上限。
  */
-import { callMemoryLLM, callMemoryPipeline, recordTelemetry } from '../api/llm.js';
-import { validateLTMOutput, postFillLTM } from './validate.js';
-import { getStmMinLtmMerge } from '../settings.js';
-import { read, sortStmByMsgOrder } from '../vault/store.js';
-import { saveVaultWithSnapshot } from './update.js';
+
+const MAX_OPEN_STM_REFS = 15;
 
 function findNextId(vault) {
     const content = vault.content || {};
@@ -32,363 +29,146 @@ function getMaxUnconsolidated() {
     return 5;
 }
 
-export function checkConsolidateThreshold(vault) {
+export function isLtmEnabled(vault) {
     const content = vault.content || {};
-    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
-    return unconsolidated.length > getMaxUnconsolidated();
+    const unconsolidated = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
+    return unconsolidated.length >= getMaxUnconsolidated();
 }
 
-const CONSOLIDATION_BATCH_SIZE = 30;
+export function computeClosureSignals(openLtm, newStmEvents) {
+    if (!openLtm) return null;
 
-export function buildConsolidatePrompt(vault, stmIds) {
-    const content = vault.content || {};
-    const lang = content.language === 'en' ? 'en' : 'zh';
-    const ltmEntries = content.ltm_entries || [];
-    var unconsolidated;
-    if (stmIds) {
-        var stmIdSet = {};
-        stmIds.forEach(function(id) { stmIdSet[id] = true; });
-        unconsolidated = (content.unconsolidated_stm || []).filter(function(stm) {
-            return stmIdSet[stm.id];
+    var openEntities = (openLtm.entities || []).map(function(e) { return e.name; });
+    var newEntityNames = [];
+    (newStmEvents || []).forEach(function(ev) {
+        (ev.entities || []).forEach(function(e) {
+            if (newEntityNames.indexOf(e.name) === -1) newEntityNames.push(e.name);
         });
-    } else {
-        unconsolidated = (content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm);
+    });
+
+    var overlap = 0;
+    var shared = [];
+    openEntities.forEach(function(name) {
+        if (newEntityNames.indexOf(name) !== -1) { overlap++; shared.push(name); }
+    });
+    var totalUnique = openEntities.length + newEntityNames.length - overlap;
+
+    var openPeriod = openLtm.period || '';
+    var lastStmPeriod = '';
+    if (newStmEvents && newStmEvents.length > 0) {
+        lastStmPeriod = newStmEvents[newStmEvents.length - 1].period || '';
     }
-    unconsolidated = sortStmByMsgOrder(unconsolidated);
-    const referenceLtm = ltmEntries.slice(-5);
-    const ltmText = referenceLtm.map((e, i) => {
-        const refs = (e.stm_refs || []).join(', ');
-        return `${i + 1}. [${e.period || ''}] ${e.title || e.event || ''} [→${refs}]`;
+
+    var timeGap = '同日';
+    if (openPeriod && lastStmPeriod) {
+        var openDay = openPeriod.split('-').slice(0, 3).join('-');
+        var newDay = lastStmPeriod.split('-').slice(0, 3).join('-');
+        if (openDay !== newDay) timeGap = '跨日';
+        else timeGap = '同日';
+    }
+
+    var openScene = openLtm.scene || (openLtm.entities && openLtm.entities.length > 0 ? openLtm.entities[0].scene : '') || '';
+    var newScene = (newStmEvents && newStmEvents.length > 0) ? (newStmEvents[0].scene || '') : '';
+    var sceneChange = openScene && newScene && openScene !== newScene;
+
+    var entityOverlap = totalUnique > 0 ? overlap / totalUnique : 0;
+
+    var entityDetail = '';
+    if (shared.length > 0) {
+        entityDetail = shared.slice(0, 3).join('、') + ' 仍在场';
+    }
+    if (overlap === 0) {
+        entityDetail = '所有核心角色已离场';
+        if (newEntityNames.length > 0) {
+            entityDetail += '；新角色 ' + newEntityNames.slice(0, 3).join('、') + ' 登场';
+        }
+    }
+
+    var signalSummary = '';
+    if (timeGap === '跨日' && sceneChange && overlap === 0) {
+        signalSummary = '时间跨日、场景切换且核心角色全面离场——这是一个明确的新叙事弧的开始。';
+    } else if (timeGap === '跨日') {
+        signalSummary = '时间跨日——可能是同一弧的新阶段，也可能是新弧开始。请根据事件内容的连续性判断。';
+    } else if (sceneChange && overlap === 0) {
+        signalSummary = '场景切换且角色全部不同——倾向于新弧。';
+    } else if (overlap > 0) {
+        signalSummary = '核心角色仍在场——事件具有叙事连续性，倾向于延续当前弧。';
+    }
+    if (!signalSummary) signalSummary = '基于以上信号判断叙事弧归属。';
+
+    return { timeGap, sceneChange, entityOverlap, entityDetail, signalSummary, openScene, newScene };
+}
+
+export function formatLtmCatalog(ltmEntries) {
+    var closedLtms = (ltmEntries || []).filter(function(e) { return e.status !== 'open'; });
+    var recent = closedLtms.slice(-5);
+    if (recent.length === 0) return '(无)';
+    return recent.map(function(e) {
+        return '- [' + (e.title || e.event || '').substring(0, 50) + '] ' + (e.period || '');
     }).join('\n');
-    const stmText = unconsolidated.map((e, i) => {
-        const refs = (e.msg_ids || []).join(', ');
-        return `${i + 1}. [${e.period || ''}] ${e.time_label ? e.time_label + '·' : ''}${e.scene || ''}: ${e.event || ''} [→${refs}]`;
-    }).join('\n');
-
-    if (lang === 'en') {
-        return {
-            system: `You are a long-term memory editor. Elevate multiple short-term memories (STM) into higher-level long-term memories (LTM).
-
-Existing LTM:
-${ltmText || '(none)'}
-
-STM to consolidate (detail events describing continuous story segments):
-${stmText}
-
-Requirements:
-- Merge consecutive STM entries into LTMs by story arc. NEVER do 1:1 mapping.
-- The LTM "title" is a short scene:label (15-40 chars), NOT a full sentence. e.g. '酒馆:苏蔓失踪·报警'
-- The LTM "event" is a complete sentence describing the arc content (80-140 chars).
-- "title" MUST be a short label (15-40 chars), NOT a full sentence.
-
-Output JSON with this schema:
-{
-  "ltm_entries": [
-    {
-      "stm_refs": ["stm_X", "stm_Y", ...],
-      "title": "scene: concise label (15-40 chars)",
-      "event": "a complete sentence describing the arc content (80-140 chars)"
-    }
-  ]
 }
 
-IMPORTANT: Use character proper names.`,
-            user: 'Elevate these STM entries into high-level LTM. Output JSON with ltm_entries array (title + event per entry).'
-        };
+export function findOpenLtm(vault) {
+    var content = vault.content || {};
+    var openLtms = (content.ltm_entries || []).filter(function(e) { return e.status === 'open'; });
+    if (openLtms.length > 1) {
+        console.warn('[NE] Multiple open LTMs detected, closing all');
+        openLtms.forEach(function(e) { e.status = 'closed'; });
+        return null;
     }
-    return {
-        system: `你是长期记忆编撰者。将多条短期记忆（STM）提升为更高抽象层的长期记忆（LTM）。
-
-已有 LTM：
-${ltmText || '(无)'}
-
-待整合 STM（描述连续剧情的细节事件）：
-${stmText}
-
-要求：
-- 将内容连续的 STM 按剧情弧合并为 LTM。禁止 1:1 映射。
-- LTM 的 "title" 是简短的情景标签（15-40 字），不是完整句子。例如'酒馆:苏蔓失踪·报警'
-- LTM 的 "event" 是描述弧内容的完整句子（80-140 字）。
-- "title" 必须是简短的标签（15-40 字），不是完整句子。
-
-输出 JSON，schema 如下：
-{
-  "ltm_entries": [
-    {
-      "stm_refs": ["stm_X", "stm_Y", ...],
-      "title": "scene: 简练标签（15-40 字）",
-      "event": "描述弧内容的完整句子（80-140 字）"
-    }
-  ]
+    return openLtms.length === 1 ? openLtms[0] : null;
 }
 
-重要：使用角色全名，禁止代词。`,
-        user: '将以下 STM 条目提升为高层 LTM。输出包含 ltm_entries 数组的 JSON（每条含 title + event）。'
-    };
-}
+export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
+    if (!ltmDecision) return;
 
-function parseConsolidateText(text, stmIds) {
-    var clean = String(text || '');
-    try { return JSON.parse(clean); } catch (_) {}
-    var jsonMatch = clean.match(/\{[\s\S]*\}/);
-    if (jsonMatch) { try { return JSON.parse(jsonMatch[0]); } catch (_) {} }
-    var lines = clean.split('\n');
-    var ltmEntries = [];
-    var currentEntry = null;
-    for (var i = 0; i < lines.length; i++) {
-        var line = lines[i].trim();
-        if (!line) {
-            if (currentEntry && currentEntry.event) {
-                ltmEntries.push(currentEntry);
-                currentEntry = null;
-            }
-            continue;
+    var content = vault.content || {};
+    var action = ltmDecision.action;
+    var updatedTitle = ltmDecision.updated_title || '';
+    var updatedEvent = ltmDecision.updated_event || '';
+
+    var openLtm = findOpenLtm(vault);
+
+    if (action === 'close_and_new') {
+        if (openLtm) openLtm.status = 'closed';
+        openLtm = null;
+        action = 'append';
+    }
+
+    if (action === 'skip') return;
+
+    if (action === 'append') {
+        if (!openLtm) {
+            openLtm = {
+                id: findNextId(vault),
+                status: 'open',
+                stm_refs: [],
+                title: updatedTitle || 'New Arc',
+                event: updatedEvent || '',
+                period: '',
+                entities: [],
+                timestamp: Date.now()
+            };
+            content.ltm_entries = content.ltm_entries || [];
+            content.ltm_entries.push(openLtm);
         }
-        var refMatch = line.match(/stm_refs?\s*[:：]\s*(.+)/i);
-        if (refMatch) {
-            if (currentEntry && currentEntry.event) {
-                ltmEntries.push(currentEntry);
-            }
-            var refs = refMatch[1].split(/[,，\s]+/);
-            var stmRefs = [];
-            refs.forEach(function(r) {
-                r = r.trim();
-                if (r.indexOf('stm_') === 0) r = r;
-                else r = 'stm_' + r;
-                if (stmIds.indexOf(r) !== -1) stmRefs.push(r);
-            });
-            currentEntry = { stm_refs: stmRefs.length > 0 ? stmRefs : stmIds, event: '' };
-            continue;
-        }
-        if (!currentEntry) continue;
-        var eventMatch = line.match(/event\s*[:：]\s*(.+)/i);
-        if (eventMatch) {
-            currentEntry.event = eventMatch[1].trim().substring(0, 50);
-            continue;
-        }
-    }
-    if (currentEntry && currentEntry.event) {
-        ltmEntries.push(currentEntry);
-    }
-    if (ltmEntries.length === 0) {
-        ltmEntries.push({ stm_refs: stmIds, event: 'Consolidated STM ' + stmIds.join(', ') });
-    }
-    ltmEntries.forEach(function(e) { e.event = e.event.substring(0, 160).trim(); });
-    return { ltm_entries: ltmEntries, delete_stm_ids: [] };
-}
 
-export function parseConsolidateResponse(llmResponse, stmIds) {
-    try {
-        const text = String(llmResponse || '').trim();
-        var parsed = JSON.parse(text);
-        // 标准化 stm_refs — LLM 可能返回 ["1","2"] 而非 ["stm_1","stm_2"]
-        // 如果这里不修正，postFillLTM 会判全部无效 → 全替换 → guard 拒绝
-        var ltmEntries = parsed.ltm_entries || [];
-        for (var i = 0; i < ltmEntries.length; i++) {
-            var refs = ltmEntries[i].stm_refs || [];
-            var normalized = [];
-            for (var j = 0; j < refs.length; j++) {
-                var r = String(refs[j]).trim();
-                if (r.indexOf('stm_') === 0) {
-                    normalized.push(r);
-                } else if (stmIds.indexOf('stm_' + r) !== -1) {
-                    normalized.push('stm_' + r);
-                } else if (stmIds.indexOf(r) !== -1) {
-                    normalized.push(r);
-                }
-            }
-            ltmEntries[i].stm_refs = normalized.length > 0 ? normalized : refs;
-        }
-        return parsed;
-    } catch (e) {
-        console.warn('[NE] Consolidate JSON parse failed, using text fallback');
-        return parseConsolidateText(llmResponse, stmIds || []);
-    }
-}
+        openLtm.stm_refs = (openLtm.stm_refs || []).concat(consumedStmIds);
+        if (updatedTitle) openLtm.title = updatedTitle;
+        if (updatedEvent) openLtm.event = updatedEvent;
 
-function normalizeConsolidation(ltmEntries, allStmIds) {
-    if (!ltmEntries || ltmEntries.length === 0) return;
-    if (!allStmIds || allStmIds.length === 0) return;
-
-    var covered = {};
-    ltmEntries.forEach(function(ltm) {
-        (ltm.stm_refs || []).forEach(function(id) { covered[id] = true; });
-    });
-
-    var stmPos = {};
-    allStmIds.forEach(function(id, i) { stmPos[id] = i; });
-
-    ltmEntries.sort(function(a, b) {
-        var pa = stmPos[(a.stm_refs || [])[0]];
-        var pb = stmPos[(b.stm_refs || [])[0]];
-        if (pa === undefined) pa = 999;
-        if (pb === undefined) pb = 999;
-        return pa - pb;
-    });
-
-    // 填补 LTM 内部 gap：连续剧情弧不应该跳过中间 STM
-    ltmEntries.forEach(function(ltm) {
-        var ids = (ltm.stm_refs || []).filter(function(id) { return stmPos[id] !== undefined; });
-        ids.sort(function(a, b) { return stmPos[a] - stmPos[b]; });
-        var gapFilled = false;
-        for (var gi = 0; gi < ids.length - 1; gi++) {
-            var currentPos = stmPos[ids[gi]];
-            var nextPos = stmPos[ids[gi + 1]];
-            if (nextPos - currentPos > 1) {
-                for (var gj = currentPos + 1; gj < nextPos; gj++) {
-                    var gapId = allStmIds[gj];
-                    if (gapId && !covered[gapId]) {
-                        ltm.stm_refs.push(gapId);
-                        covered[gapId] = true;
-                    }
-                }
-                gapFilled = true;
-            }
-        }
-        if (gapFilled) {
-            ltm.stm_refs.sort(function(a, b) { return (stmPos[a] || 0) - (stmPos[b] || 0); });
-        }
-    });
-
-    var uncovered = allStmIds.filter(function(id) { return !covered[id]; });
-    if (uncovered.length === 0) return;
-
-    var ltmRanges = ltmEntries.map(function(ltm) {
-        var ids = ltm.stm_refs || [];
-        var positions = ids.map(function(id) { return stmPos[id]; }).filter(function(p) { return p !== undefined; });
-        return {
-            ltm: ltm,
-            firstPos: positions.length > 0 ? Math.min.apply(null, positions) : Infinity,
-            lastPos: positions.length > 0 ? Math.max.apply(null, positions) : -Infinity
-        };
-    });
-
-    if (ltmRanges.length > 0) {
-        var firstLtmRange = ltmRanges[0];
-        var prefixOrphans = uncovered.filter(function(id) {
-            return stmPos[id] !== undefined && stmPos[id] < firstLtmRange.firstPos;
-        });
-        if (prefixOrphans.length > 0) {
-            firstLtmRange.ltm.stm_refs = prefixOrphans.concat(firstLtmRange.ltm.stm_refs || []);
-            prefixOrphans.forEach(function(id) { covered[id] = true; });
-        }
-    }
-
-    for (var li = 0; li < ltmRanges.length; li++) {
-        var range = ltmRanges[li];
-        var nextPos = (li + 1 < ltmRanges.length) ? ltmRanges[li + 1].firstPos : allStmIds.length;
-        var gapOrphans = uncovered.filter(function(id) {
-            var pos = stmPos[id];
-            return pos !== undefined && pos > range.lastPos && pos < nextPos && !covered[id];
-        });
-        if (gapOrphans.length > 0) {
-            range.ltm.stm_refs = (range.ltm.stm_refs || []).concat(gapOrphans);
-            gapOrphans.forEach(function(id) { covered[id] = true; });
-        }
-    }
-
-    if (ltmRanges.length > 0) {
-        var lastLtmRange = ltmRanges[ltmRanges.length - 1];
-        var suffixOrphans = uncovered.filter(function(id) {
-            return stmPos[id] !== undefined && stmPos[id] > lastLtmRange.lastPos && !covered[id];
-        });
-        var minMerge = getStmMinLtmMerge();
-        if (suffixOrphans.length >= minMerge) {
-            lastLtmRange.ltm.stm_refs = (lastLtmRange.ltm.stm_refs || []).concat(suffixOrphans);
-            suffixOrphans.forEach(function(id) { covered[id] = true; });
-        }
-    }
-
-    ltmEntries.forEach(function(ltm) {
-        ltm.stm_refs = (ltm.stm_refs || []).sort(function(a, b) {
-            return (stmPos[a] || 0) - (stmPos[b] || 0);
-        });
-    });
-
-    var coveredCount = uncovered.filter(function(id) { return covered[id]; }).length;
-    if (coveredCount > 0) {
-        console.log('[NE] normalizeConsolidation: covered ' + coveredCount + ' of ' + uncovered.length + ' uncovered STMs');
-    }
-}
-
-async function runConsolidationCore(vault, stmIds) {
-    if (stmIds.length === 0) return { ltm_entries: [] };
-
-    const prompt = buildConsolidatePrompt(vault, stmIds);
-    var response = await callMemoryPipeline([
-        { role: 'system', content: prompt.system },
-        { role: 'user', content: prompt.user }
-    ], { operation: 'consolidation' });
-    var result = parseConsolidateResponse(response, stmIds);
-
-    var validateErrors = validateLTMOutput(result);
-    if (validateErrors.length > 0) {
-        console.warn('[NE] LTM output validation failed, retrying:', validateErrors.join('; '));
-        var retryMsg = validateErrors.join('; ') + '\n\nFix your output accordingly. Re-output ALL LTM entries as JSON with ltm_entries array.';
-        var retryResponse = await callMemoryPipeline([
-            { role: 'system', content: prompt.system },
-            { role: 'user', content: prompt.user },
-            { role: 'assistant', content: response },
-            { role: 'user', content: retryMsg }
-        ], { operation: 'consolidation' });
-        result = parseConsolidateResponse(retryResponse, stmIds);
-    }
-
-    const content = vault.content || {};
-    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
-
-    postFillLTM(result, unconsolidated);
-    normalizeConsolidation(result.ltm_entries, stmIds);
-
-    var stmPos = {};
-    stmIds.forEach(function(id, i) { stmPos[id] = i; });
-    result.ltm_entries.sort(function(a, b) {
-        var maxA = (a.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
-        var maxB = (b.stm_refs || []).reduce(function(m, id) { return Math.max(m, stmPos[id] !== undefined ? stmPos[id] : -1); }, -1);
-        return maxA - maxB;
-    });
-    var consumed = 0;
-    var keepCount = 0;
-    for (var k = 0; k < result.ltm_entries.length; k++) {
-        var refCount = (result.ltm_entries[k].stm_refs || []).length;
-        if (stmIds.length - (consumed + refCount) < 1) break;
-        consumed += refCount;
-        keepCount++;
-    }
-    if (keepCount < result.ltm_entries.length) {
-        console.log('[NE] Consolidation guard: keeping ' + keepCount + '/' + result.ltm_entries.length + ' LTM entries, consumed=' + consumed + ', batchSize=' + stmIds.length);
-        result.ltm_entries = result.ltm_entries.slice(0, keepCount);
-    }
-
-    return { ltm_entries: result.ltm_entries || [] };
-}
-
-export function applyConsolidation(vault, consolidationResult) {
-    const content = vault.content || {};
-    content.stm_entries = content.stm_entries || [];
-    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-
-    const ltmEntries = consolidationResult.ltm_entries || [];
-    var assignedStmIds = {};
-    ltmEntries.forEach(function(ltm) {
-        ltm.stm_refs = (ltm.stm_refs || []).filter(function(sid) {
-            if (assignedStmIds[sid]) return false;
-            assignedStmIds[sid] = true;
-            return true;
-        });
-    });
-    ltmEntries.forEach(ltm => {
-        if (!ltm.id) ltm.id = findNextId(vault);
-
+        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
         var sourceSTM = allSTM.filter(function(s) {
-            return (ltm.stm_refs || []).indexOf(s.id) !== -1;
+            return consumedStmIds.indexOf(s.id) !== -1;
         });
-        ltm.time_range = deriveTimeRange(sourceSTM);
+        openLtm.time_range = deriveTimeRange(
+            allSTM.filter(function(s) { return (openLtm.stm_refs || []).indexOf(s.id) !== -1; })
+        );
+
         var maxTs = 0;
         sourceSTM.forEach(function(s) { if (s.timestamp && s.timestamp > maxTs) maxTs = s.timestamp; });
-        ltm.timestamp = maxTs || Date.now();
+        openLtm.timestamp = maxTs || Date.now();
 
-        // 从源 STM 继承 entities（去重）
         var ltmEntities = sourceSTM.reduce(function(acc, s) {
             (s.entities || []).forEach(function(e) {
                 if (!acc.find(function(a) { return a.name === e.name; })) {
@@ -396,25 +176,30 @@ export function applyConsolidation(vault, consolidationResult) {
                 }
             });
             return acc;
-        }, []);
-        ltm.entities = ltmEntities;
+        }, (openLtm.entities || []));
+        openLtm.entities = ltmEntities;
 
-        content.ltm_entries.push(ltm);
-        (ltm.stm_refs || []).forEach(function(stmId) {
+        consumedStmIds.forEach(function(stmId) {
             if (vault.stm_index && vault.stm_index[stmId]) {
-                vault.stm_index[stmId].ltm_id = ltm.id;
+                vault.stm_index[stmId].ltm_id = openLtm.id;
             }
             var found = allSTM.find(function(s) { return s.id === stmId; });
-            if (found) found.parent_ltm = ltm.id;
+            if (found) found.parent_ltm = openLtm.id;
         });
-    });
-    var unconsolidated = content.unconsolidated_stm || [];
-    var consolidated = unconsolidated.filter(function (s) { return s.parent_ltm; });
-    if (consolidated.length > 0) {
-        content.stm_entries = (content.stm_entries || []).concat(consolidated);
-        content.unconsolidated_stm = unconsolidated.filter(function (s) { return !s.parent_ltm; });
+
+        if ((openLtm.stm_refs || []).length >= MAX_OPEN_STM_REFS) {
+            openLtm.status = 'closed';
+        }
     }
-    return ltmEntries.length;
+
+    var unconsolidated = content.unconsolidated_stm || [];
+    var moved = unconsolidated.filter(function(s) { return consumedStmIds.indexOf(s.id) !== -1 && s.parent_ltm; });
+    if (moved.length > 0) {
+        content.stm_entries = (content.stm_entries || []).concat(moved);
+        content.unconsolidated_stm = unconsolidated.filter(function(s) {
+            return consumedStmIds.indexOf(s.id) === -1 || !s.parent_ltm;
+        });
+    }
 }
 
 function deriveTimeRange(sourceSTMEntries) {
@@ -443,63 +228,4 @@ function deriveTimeRange(sourceSTMEntries) {
         return first.period;
     }
     return fmt(first) + ' → ' + fmt(last);
-}
-
-export async function executeConsolidation(chatId, force, preloadedVault) {
-    var vault = preloadedVault || await read(chatId);
-    if (!force && !checkConsolidateThreshold(vault)) return { vault, merged: 0 };
-    const content = vault.content || {};
-    const unconsolidated = sortStmByMsgOrder((content.unconsolidated_stm || []).filter(stm => !stm.parent_ltm));
-    const stmIds = unconsolidated.map(function(s) { return s.id; }).filter(Boolean);
-    if (stmIds.length === 0) { console.log('[NE] Consolidation: no unconsolidated STM, skipping'); return { vault, merged: 0 }; }
-
-    let totalMerged = 0;
-    var allMergedIds = [];
-
-    if (stmIds.length <= CONSOLIDATION_BATCH_SIZE) {
-        console.log('[NE] Consolidation: single shot (' + stmIds.length + ' STM)');
-        var result = await runConsolidationCore(vault, stmIds);
-        totalMerged = applyConsolidation(vault, result);
-        allMergedIds = (result.ltm_entries || []).map(function(e) { return e.id || ''; }).filter(Boolean);
-    } else {
-        console.log('[NE] Consolidation: batch processing ' + stmIds.length + ' STM');
-        var numBatches = Math.ceil(stmIds.length / CONSOLIDATION_BATCH_SIZE);
-        var batchSize = Math.ceil(stmIds.length / numBatches);
-        var idx = 0;
-
-        while (idx < stmIds.length) {
-            var thisBatchSize = Math.min(batchSize, stmIds.length - idx);
-            var batchStmIds = stmIds.slice(idx, idx + thisBatchSize);
-            idx += thisBatchSize;
-
-            var batchNum = Math.ceil(idx / thisBatchSize);
-            console.log('[NE] Consolidation batch [' + batchNum + '/' + numBatches + ']: processing ' + batchStmIds.length + ' STM');
-            var batchResult = await runConsolidationCore(vault, batchStmIds);
-            var batchMerged = applyConsolidation(vault, batchResult);
-            totalMerged += batchMerged;
-            allMergedIds = allMergedIds.concat((batchResult.ltm_entries || []).map(function(e) { return e.id || ''; }).filter(Boolean));
-        }
-    }
-
-    globalThis.__ne_debug_last_consolidation = {
-        merged: totalMerged,
-        merged_ids: allMergedIds,
-        time: new Date().toISOString()
-    };
-
-    if (totalMerged > 0) {
-        vault._meta = vault._meta || {};
-        vault._meta.last_pipeline_task = 'consolidation';
-        vault._meta.last_pipeline_time = new Date().toISOString();
-
-        var remaining = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; }).length;
-        recordTelemetry({
-            pipeline_task: 'consolidation',
-            consolidation_stm_input_count: remaining,
-            consolidation_ltm_output_count: totalMerged
-        }, chatId);
-
-        await saveVaultWithSnapshot(chatId, vault);
-    }
-    return { vault, merged: totalMerged };
 }
