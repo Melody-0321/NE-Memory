@@ -34,6 +34,17 @@ function pdCreate(tag) { return PD.createElement(tag); }
 function pdHead() { return PD.head; }
 function pdAddEventListener(type, fn, opts) { PD.addEventListener(type, fn, opts); }
 
+function sortLtmByMsgOrder(ltmEntries, stmIndexMap) {
+    if (!ltmEntries || ltmEntries.length < 2) return ltmEntries || [];
+    return ltmEntries.slice().sort(function(a, b) {
+        var aId = (a.stm_refs || [])[0];
+        var bId = (b.stm_refs || [])[0];
+        var aPos = (stmIndexMap[aId] && stmIndexMap[aId].absMsgStart !== undefined) ? stmIndexMap[aId].absMsgStart : Infinity;
+        var bPos = (stmIndexMap[bId] && stmIndexMap[bId].absMsgStart !== undefined) ? stmIndexMap[bId].absMsgStart : Infinity;
+        return aPos - bPos;
+    });
+}
+
 function freezeIframeHeight() {
     try { if (window.frameElement) { window.frameElement.style.height = '0px'; window.frameElement.style.minHeight = '0px'; } } catch (e) {}
 }
@@ -391,11 +402,7 @@ function deleteSingleEntry(entryType, entryId) {
             }
         });
 
-        if (targetLtm && targetLtm.status === 'open') {
-            c.unconsolidated_stm = (c.unconsolidated_stm || []).concat(toRelease);
-        } else {
-            vault._released_stm_pool = (vault._released_stm_pool || []).concat(toRelease);
-        }
+        c.unconsolidated_stm = (c.unconsolidated_stm || []).concat(toRelease);
 
         c.stm_entries = stmEntries.filter(function(s) { return releasedStmIds.indexOf(s.id) === -1; });
 
@@ -1013,7 +1020,7 @@ async function updateVaultViewerPopout(getChatId) {
 
     // ── Section G: Memory table rendering ──
     var unconsolidatedSTM = sortStmByMsgOrder(Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : []);
-    var ltmEntries = Array.isArray(c.ltm_entries) ? c.ltm_entries : [];
+    var ltmEntries = sortLtmByMsgOrder(Array.isArray(c.ltm_entries) ? c.ltm_entries : [], stmIndexMap);
     var ltmCount = ltmEntries.length;
     var stmCount = unconsolidatedSTM.length;
 
@@ -1198,7 +1205,8 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var entryId = entry.id || (type + '_' + i);
         var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
         var entryNo = type === 'stm' ? parseInt(String(entry.id || '').replace('stm_', ''), 10) || (i + 1) : (i + 1);
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + entryNo + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="font-weight:bold;">' + (entry.title || entry.event || entry.summary || '') + (type === 'ltm' && entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
+        var titleStyle = type === 'ltm' && entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + entryNo + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (type === 'ltm' && entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
         if (type === 'ltm') {
             var detailRows = '';
             var stmRefs = entry.stm_refs || [];
@@ -1299,6 +1307,12 @@ export async function formatVaultForPrompt(vault, chatMessages) {
     var unconsolidated = (content.unconsolidated_stm || []).filter(function (e) { return !e.parent_ltm; });
     var showLtm = ltm;
     var showStm = unconsolidated;
+
+    var stmIndexMap = {};
+    [].concat(unconsolidated).concat(content.stm_entries || []).forEach(function(s) {
+        stmIndexMap[s.id] = { absMsgStart: s.absMsgStart };
+    });
+    showLtm = sortLtmByMsgOrder(ltm, stmIndexMap);
 
     if ((ltm.length > 0 || unconsolidated.length > 0) && typeof filterCandidates === 'function') {
         try {

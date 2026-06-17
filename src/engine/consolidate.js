@@ -8,6 +8,8 @@
 
 const MAX_OPEN_STM_REFS = 15;
 
+import { sortStmByMsgOrder } from '../vault/store.js';
+
 function findNextId(vault) {
     const content = vault.content || {};
     let max = 0;
@@ -146,6 +148,8 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     if (action === 'close_and_new') {
         if (openLtm) openLtm.status = 'closed';
         openLtm = null;
+        updatedTitle = '';
+        updatedEvent = '';
         action = 'append';
     }
 
@@ -165,21 +169,17 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
             };
             content.ltm_entries = content.ltm_entries || [];
             content.ltm_entries.push(openLtm);
-
-            var orphanSTM = (content.unconsolidated_stm || []).filter(function(s) {
-                return !s.parent_ltm && consumedStmIds.indexOf(s.id) === -1;
-            });
-            if (orphanSTM.length > 0) {
-                consumedStmIds = consumedStmIds.concat(orphanSTM.map(function(s) { return s.id; }));
-                console.log('[NE] LTM cleanup: absorbed ' + orphanSTM.length + ' orphan STMs into new open LTM');
-            }
         }
 
         openLtm.stm_refs = (openLtm.stm_refs || []).concat(consumedStmIds);
+        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+        var stmSortMap = {};
+        allSTM.forEach(function(s) { stmSortMap[s.id] = s; });
+        openLtm.stm_refs = sortStmByMsgOrder(
+            openLtm.stm_refs.map(function(id) { return stmSortMap[id]; }).filter(Boolean)
+        ).map(function(s) { return s.id; });
         if (updatedTitle) openLtm.title = updatedTitle;
         if (updatedEvent) openLtm.event = updatedEvent;
-
-        var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
         var sourceSTM = allSTM.filter(function(s) {
             return consumedStmIds.indexOf(s.id) !== -1;
         });
@@ -226,56 +226,77 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     globalThis.__ne_debug_last_ltm_state = getLtmSummary(vault);
 }
 
-export async function runLtmRebatch(vault, stmPool, callMemoryPipeline) {
-    if (!stmPool || stmPool.length === 0) return { consumed: 0 };
+export async function runLtmRebatch(vault, callMemoryPipeline) {
+    var content = vault.content || {};
+    var orphans = (content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
+    if (orphans.length === 0) return { consumed: 0 };
 
-    var prompt = buildRebatchPrompt(vault, stmPool);
+    var stmIds = orphans.map(function(s) { return s.id; });
+
+    var prompt;
+    try { prompt = buildConsolidatePrompt(vault, stmIds); } catch (e) {
+        console.warn('[NE] LTM rebatch: build prompt failed', e); return { consumed: 0 };
+    }
+
     var response;
     try {
-        response = await callMemoryPipeline(prompt.system, prompt.user, { operation: 'ltm_rebatch' });
+        response = await callMemoryPipeline([
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user }
+        ], { operation: 'ltm_rebatch' });
     } catch (e) {
-        console.warn('[NE] LTM rebatch LLM call failed:', e);
-        return { consumed: 0 };
+        console.warn('[NE] LTM rebatch: LLM call failed', e); return { consumed: 0 };
     }
 
-    var parsed = parseRebatchResponse(response);
+    var parsed = parseConsolidateResponse(response);
     if (!parsed || !parsed.ltm_entries || parsed.ltm_entries.length === 0) {
-        console.log('[NE] LTM rebatch: LLM returned no LTM entries, leaving ' + stmPool.length + ' STMs in pool');
+        console.log('[NE] LTM rebatch: no LTM entries from LLM, ' + orphans.length + ' STMs left orphaned');
         return { consumed: 0 };
     }
 
-    return applyRebatchLtms(vault, parsed.ltm_entries, stmPool);
+    var ltmEntries = normalizeConsolidation(parsed.ltm_entries, stmIds);
+    return applyConsolidation(vault, ltmEntries, stmIds);
 }
 
-function buildRebatchPrompt(vault, stmPool) {
+function buildConsolidatePrompt(vault, stmIds) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
+    var stmMap = {};
+    var allUnc = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    allUnc.forEach(function(e) { stmMap[e.id] = e; });
 
-    var stmLines = stmPool.map(function(s, i) {
-        return (i + 1) + '. [' + (s.id || '') + '] ' + (s.event || '').substring(0, 200) +
-            '\n   period=' + (s.period || '-') + '  scene=' + (s.scene || '-');
+    var stmSet = stmIds.slice();
+    stmSet.sort(function(a, b) {
+        var sa = stmMap[a], sb = stmMap[b];
+        return ((sa && sa.absMsgStart) || Infinity) - ((sb && sb.absMsgStart) || Infinity);
     });
 
-    var ltmIndex = (content.ltm_entries || []).map(function(e) {
-        return '- [' + (e.title || e.event || '').substring(0, 50) + '] ' + (e.period || '') + ' (' + ((e.stm_refs || []).length) + ' STM)';
+    var stmLines = stmSet.map(function(sid, i) {
+        var e = stmMap[sid];
+        if (!e) return '';
+        var label = e.period ? e.period + (e.time_label ? '\u00b7' + e.time_label : '') : '';
+        return (i + 1) + '. [' + sid + '] ' + (e.event || '').substring(0, 200) + '\n   period=' + (e.period || '-') + '  scene=' + (e.scene || '-');
+    }).filter(Boolean);
+
+    var existingLtms = (content.ltm_entries || []).map(function(ltm) {
+        return '- [' + (ltm.title || ltm.event || '').substring(0, 50) + '] stm_refs=[' + (ltm.stm_refs || []).join(',') + ']';
     });
 
     var system = lang === 'en' ?
-        'You are a memory consolidator. Group the following STM entries into LTM arcs based on narrative continuity.\n\n' +
-        'Existing LTM arcs for reference:\n' + (ltmIndex.length > 0 ? ltmIndex.join('\n') : '(none)') + '\n\n' +
-        'Output JSON:\n{\n  "ltm_entries": [\n    {\n      "stm_refs": ["stm_1", "stm_2"],\n      "title": "brief arc label (15-40 chars)",\n      "event": "complete arc summary (80-140 chars)"\n    }\n  ]\n}\n\n' +
-        'Rules:\n- Group STMs that belong to the same narrative arc.\n- Do NOT create 1-ref LTMs (a single STM alone). If only 1 STM belongs to a group, merge it into the most relevant arc.\n- Use character proper names only. No pronouns.\n- If no valid grouping can be made, return empty ltm_entries: [].' :
-        '你是记忆整合器。根据叙事连续性将以下 STM 条目分组为 LTM 弧。\n\n' +
-        '现有 LTM 弧参考：\n' + (ltmIndex.length > 0 ? ltmIndex.join('\n') : '(无)') + '\n\n' +
-        '输出 JSON：\n{\n  "ltm_entries": [\n    {\n      "stm_refs": ["stm_1", "stm_2"],\n      "title": "弧简短标签（15-40字）",\n      "event": "完整弧摘要（80-140字）"\n    }\n  ]\n}\n\n' +
-        '规则：\n- 将属于同一叙事弧的 STM 分组。\n- 禁止 1:1 映射。若只有 1 条 STM 属于某组，将其合并到最相关的弧中。\n- 使用角色全名，禁止代词。\n- 若无法进行有效分组，返回空 ltm_entries: []。';
+        'You are a memory consolidator. Group STM entries into LTM arcs based on narrative continuity.\n\n' +
+        'Existing LTM arcs (do NOT assign STMs to these — they are already consumed):\n' + (existingLtms.length > 0 ? existingLtms.join('\n') : '(none)') + '\n\n' +
+        'Output ONLY a JSON object:\n{\n  "ltm_entries": [\n    {\n      "stm_refs": ["stm_3", "stm_5", "stm_7"],\n      "title": "arc label (15-40 chars)",\n      "event": "complete arc summary (80-140 chars)"\n    }\n  ]\n}\n\n' +
+        'Rules:\n- Use ONLY the provided STMs. Do not use IDs already in existing LTM stm_refs.\n- Group STMs that belong to the same narrative arc. No 1-ref LTMs.\n- Use character full names only. No pronouns (he/she/they/him/her).\n- If no grouping possible, return {"ltm_entries":[]}' :
+        '你是记忆整合器。将 STM 条目分组为 LTM 叙事弧。\n\n' +
+        '现有 LTM 弧（不要向这些分配 STM — 它们已消费）：\n' + (existingLtms.length > 0 ? existingLtms.join('\n') : '(无)') + '\n\n' +
+        '仅输出 JSON 对象：\n{\n  "ltm_entries": [\n    {\n      "stm_refs": ["stm_3", "stm_5", "stm_7"],\n      "title": "弧标签（15-40字）",\n      "event": "完整弧摘要（80-140字）"\n    }\n  ]\n}\n\n' +
+        '规则：\n- 仅使用提供的 STM。不要使用已存在于现有 LTM stm_refs 中的 ID。\n- 将属于同一叙事弧的 STM 分组。禁止 1-ref LTM。\n- 使用角色全名，禁止代词。\n- 若无法分组，返回 {"ltm_entries":[]}';
 
     var user = '待整合的 STM 条目：\n\n' + stmLines.join('\n\n');
-
     return { system: system, user: user };
 }
 
-function parseRebatchResponse(text) {
+function parseConsolidateResponse(text) {
     if (!text) return null;
     try { return JSON.parse(text); } catch (e) {}
     var jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)```/);
@@ -286,58 +307,145 @@ function parseRebatchResponse(text) {
     if (bracketMatch) {
         try { return JSON.parse(bracketMatch[0]); } catch (e3) {}
     }
+
+    var lines = text.split('\n').filter(function(l) { return l.trim(); });
+    var entries = [];
+    var current;
+    lines.forEach(function(line) {
+        var stmRefsMatch = line.match(/stm_refs\s*[:=]\s*\[([^\]]+)\]/);
+        if (stmRefsMatch) {
+            if (current && current.stm_refs && current.stm_refs.length) entries.push(current);
+            current = { stm_refs: [], title: '', event: '' };
+            var refs = stmRefsMatch[1].split(',').map(function(r) {
+                var t = r.trim().replace(/["'\[\]]/g, '');
+                return t.indexOf('stm_') === 0 ? t : 'stm_' + t;
+            });
+            current.stm_refs = refs;
+            return;
+        }
+        if (!current) return;
+        var titleMatch = line.match(/(?:title|标题)\s*[:=]\s*["']?([^"'\n]+)/);
+        if (titleMatch) { current.title = titleMatch[1].trim(); return; }
+        var eventMatch = line.match(/(?:event|事件|summary|摘要)\s*[:=]\s*["']?([^"'\n]+)/);
+        if (eventMatch) { current.event = eventMatch[1].trim(); return; }
+    });
+    if (current && current.stm_refs && current.stm_refs.length) entries.push(current);
+    if (entries.length > 0) return { ltm_entries: entries };
+
     return null;
 }
 
-function applyRebatchLtms(vault, ltmEntries, stmPool) {
+function normalizeConsolidation(ltmEntries, allStmIds) {
+    if (!ltmEntries || !ltmEntries.length) return [];
+
+    var assigned = new Set();
+    ltmEntries.forEach(function(e) { (e.stm_refs || []).forEach(function(id) { assigned.add(id); }); });
+
+    ltmEntries = ltmEntries.filter(function(e) { return (e.stm_refs || []).length > 0; });
+
+    ltmEntries.sort(function(a, b) {
+        var aPos = allStmIds.indexOf((a.stm_refs || [])[0]);
+        var bPos = allStmIds.indexOf((b.stm_refs || [])[0]);
+        return (aPos === -1 ? Infinity : aPos) - (bPos === -1 ? Infinity : bPos);
+    });
+
+    var unassigned = allStmIds.filter(function(id) { return !assigned.has(id); });
+    if (unassigned.length > 0 && ltmEntries.length > 0) {
+        unassigned.forEach(function(sid) {
+            var pos = allStmIds.indexOf(sid);
+            if (pos === -1) return;
+            var best = null, bestDist = Infinity;
+            ltmEntries.forEach(function(e) {
+                (e.stm_refs || []).forEach(function(rid) {
+                    var rpos = allStmIds.indexOf(rid);
+                    if (rpos !== -1 && Math.abs(pos - rpos) < bestDist) {
+                        bestDist = Math.abs(pos - rpos);
+                        best = e;
+                    }
+                });
+            });
+            if (best && bestDist < 5) {
+                best.stm_refs = best.stm_refs || [];
+                best.stm_refs.push(sid);
+                assigned.add(sid);
+            }
+        });
+    }
+
+    return ltmEntries;
+}
+
+function applyConsolidation(vault, ltmEntries, stmIds) {
     var content = vault.content || {};
     var consumed = 0;
-    var poolIds = stmPool.map(function(s) { return s.id; });
+
+    var seenSTM = {};
+    ltmEntries.forEach(function(e) {
+        e.stm_refs = (e.stm_refs || []).filter(function(sid) {
+            if (seenSTM[sid]) return false;
+            seenSTM[sid] = true;
+            return stmIds.indexOf(sid) !== -1;
+        });
+    });
+    ltmEntries = ltmEntries.filter(function(e) { return (e.stm_refs || []).length > 0; });
+
+    if (ltmEntries.length === 0) return { consumed: 0 };
+
+    var maxConsume = Math.ceil(stmIds.length * 0.85);
+    var counted = 0;
+    var guarded = [];
+    for (var i = 0; i < ltmEntries.length; i++) {
+        var refs = ltmEntries[i].stm_refs || [];
+        if (counted + refs.length > maxConsume && i > 0) {
+            for (var k = i; k < ltmEntries.length; k++) guarded.push(ltmEntries[k]);
+            ltmEntries = ltmEntries.slice(0, i);
+            break;
+        }
+        counted += refs.length;
+    }
 
     ltmEntries.forEach(function(entry) {
-        var refs = (entry.stm_refs || []).filter(function(id) {
-            return poolIds.indexOf(id) !== -1;
+        var refs = entry.stm_refs.map(function(sid) {
+            return sid.indexOf('stm_') === 0 ? sid : 'stm_' + sid;
         });
-        if (refs.length === 0) return;
 
         var ltm = {
             id: findNextId(vault),
             status: 'closed',
             stm_refs: refs,
-            title: entry.title || '',
-            event: entry.event || '',
+            title: (entry.title || '').substring(0, 60),
+            event: (entry.event || '').substring(0, 200),
             period: '',
             entities: [],
             timestamp: Date.now()
         };
 
         refs.forEach(function(stmId) {
-            if (vault.stm_index && vault.stm_index[stmId]) {
-                vault.stm_index[stmId].ltm_id = ltm.id;
+            vault.stm_index = vault.stm_index || {};
+            if (vault.stm_index[stmId]) vault.stm_index[stmId].ltm_id = ltm.id;
+            var uncIdx = (content.unconsolidated_stm || []).findIndex(function(s) { return s.id === stmId; });
+            if (uncIdx !== -1) {
+                var stm = content.unconsolidated_stm[uncIdx];
+                stm.parent_ltm = ltm.id;
+                content.stm_entries = content.stm_entries || [];
+                content.stm_entries.push(stm);
+                content.unconsolidated_stm.splice(uncIdx, 1);
+                consumed++;
             }
-            var found = stmPool.find(function(s) { return s.id === stmId; });
-            if (found) found.parent_ltm = ltm.id;
         });
 
-        var sourceStm = stmPool.filter(function(s) { return refs.indexOf(s.id) !== -1; });
+        var sourceStm = content.stm_entries.filter(function(s) { return refs.indexOf(s.id) !== -1; });
         ltm.time_range = deriveTimeRange(sourceStm);
-        var maxTs = 0;
-        sourceStm.forEach(function(s) { if (s.timestamp && s.timestamp > maxTs) maxTs = s.timestamp; });
-        ltm.timestamp = maxTs || Date.now();
-
         var entities = [];
         sourceStm.forEach(function(s) {
             (s.entities || []).forEach(function(e) {
-                if (!entities.find(function(a) { return a.name === e.name; })) {
-                    entities.push({ name: e.name, type: e.type || 'character' });
-                }
+                if (!entities.find(function(a) { return a.name === e.name; })) entities.push({ name: e.name, type: e.type || 'character' });
             });
         });
         ltm.entities = entities;
 
         content.ltm_entries = content.ltm_entries || [];
         content.ltm_entries.push(ltm);
-        consumed += refs.length;
         console.log('[NE] LTM rebatch: created LTM "' + ltm.title + '" with ' + refs.length + ' STMs');
     });
 

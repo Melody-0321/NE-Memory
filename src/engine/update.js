@@ -1094,14 +1094,13 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         globalThis.__ne_debug_ltm_decision = null;
     }
 
-    var pool = vault._released_stm_pool;
-    if (pool && pool.length > 0) {
+    var orphans = (vault.content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
+    if (orphans.length >= 3) {
         try {
-            var rebatchResult = await runLtmRebatch(vault, pool, callMemoryPipeline);
+            var rebatchResult = await runLtmRebatch(vault, callMemoryPipeline);
             if (rebatchResult.consumed > 0) {
-                vault._released_stm_pool = null;
                 await saveVaultWithSnapshot(chatId, vault);
-                console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs from pool');
+                console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
             }
         } catch (e) {
             console.warn('[NE] LTM rebatch failed:', e);
