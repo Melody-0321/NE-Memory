@@ -1210,9 +1210,16 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                 var stm = stmIndexMap && stmIndexMap[stmId];
                 if (stm) {
                     var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
-                    var subTurns = stm.turns || [];
+                    var subAbsMsgStart = stm.absMsgStart;
+                    var subAbsMsgEnd = stm.absMsgEnd;
                     var subMsgCount = (stm.msg_ids || []).length;
-                    var subMsgDisplay = subTurns.length >= 2 && subMsgCount > 0 ? 'Turn ' + subTurns[0] + '-' + subTurns[1] + ' / ' + subMsgCount : (subMsgCount > 0 ? subMsgCount + '\u6761' : stmId);
+                    var subMsgDisplay;
+                    if (subAbsMsgStart !== undefined && subAbsMsgEnd !== undefined && subMsgCount > 0) {
+                        subMsgDisplay = 'Msg ' + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + subMsgCount + '\u6761';
+                    } else {
+                        var subTurns = stm.turns || [];
+                        subMsgDisplay = subTurns.length >= 2 && subMsgCount > 0 ? 'Turn ' + subTurns[0] + '-' + subTurns[1] + ' / ' + subMsgCount : (subMsgCount > 0 ? subMsgCount + '\u6761' : stmId);
+                    }
                     detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }
             });
