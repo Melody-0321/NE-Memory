@@ -245,6 +245,9 @@ export function appendSTMEntries(vault, stmEntries) {
     });
 
     let addedCount = 0;
+    stmEntries.sort(function(a, b) {
+        return (a.absMsgStart !== undefined ? a.absMsgStart : Infinity) - (b.absMsgStart !== undefined ? b.absMsgStart : Infinity);
+    });
     stmEntries.forEach(entry => {
         if (!entry.id) {
             maxId++;
