@@ -349,54 +349,40 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 
 ---
 
-## #14 🟡 `runStmExtractorCore` 5 处 `return []` 违反下游合约
+## #14 🟡 Pipeline 零产出死循环：`return []` 合约破坏 + `added>0` 跳过保存
 
 | 属性 | 值 |
 |---|---|
 | **状态** | 🟡 待解决 |
-| **发现** | 2026-06-16 |
+| **发现** | 2026-06-16（用户报告）→ 2026-06-17（根因定位） |
 | **严重程度** | **P0** |
-| **影响** | API 正常返回但 LLM 输出空事件或格式不匹配时，`return []`（数组）传入下游 `processTurnsInBatches` → `cursorResult.totalAdded = undefined` → 永远为 0 → vault 不保存 → 下一轮 pipeline 重新捡起同一批消息 → 无限循环。用户 76 轮对话、面板始终空白。 |
+| **影响** | 用户 152 条消息（76 轮对话），面板始终空白。Process History 显示"Completed (10 轮)"，但记忆仍为空。Pipeline 每 12 条消息触发一次，共 ~6 次，每次 LLM 调用成功（或返回空事件），每次零产出，每次 vault 不保存，每次下轮重新扫描——死循环。 |
 
-### 根因
+### 用户报告实录
 
-`runStmExtractorCore` 有 5 处退出点直接 `return []`：
+- 导入 test4.0，副 API 已连 → 聊了 76 轮，记忆从未更新
+- 点击「处理历史」→ 显示 "10 轮" → 仍空白
+- maxContext 开满
 
-| 行号 (stm-extractor.js) | 触发条件 | 是否常规 |
-|---|---|---|
-| L45 | LLM 调用抛异常（网络/API 错误） | 异常但不罕见 |
+### 完整根因链
+
+**第 1 环：`runStmExtractorCore` 5 处 `return []` 违反下游合约**
+
+[stm-extractor.js](file:///d:/SillyTavern/xm/ne-memory/src/engine/stm-extractor.js) 有 5 个退出点直接 `return []`：
+
+| 行号 | 触发条件 | 类型 |
+|------|---------|------|
+| L45 | LLM 调用抛异常 | 异常 |
 | L50 | LLM 返回空响应 | 异常 |
-| L78 | JSON 解析失败（含 fallback 正则提取） | 对不同模型是常规 |
-| L107 | JSON 解析成功但无有效事件（`turns` 正则 `(\d+)\s*[-–~至到]\s*(\d+)` 不匹配） | **常规** |
-| L132 | 所有事件的 `msg_ids` 为空 | 极端边缘 |
+| L78 | JSON 解析失败 | 常规（不同模型） |
+| **L107** | **JSON 解析成功但 `turns` 正则不匹配** | **常规** |
+| L132 | 所有事件 msg_ids 为空 | 边缘 |
 
-下游 `processTurnsInBatches` 期望返回 `{ vault, totalAdded }` 对象。`[]` 没有 `.totalAdded` 属性 → `undefined` → `0`。单 batch 路径静默吞 0；多 batch 路径 `batchResult.vault = undefined` → 崩溃。
+下游 `processTurnsInBatches` 期望返回 `{ vault, totalAdded }` 对象。`[]` 没有 `.totalAdded` → `undefined` → `0`。
 
-L107 是用户案例最可能的触发点——LLM 调用成功、JSON 解析成功，但 `turns` 字段格式微小偏差（如 `"1,3,5"` 而非 `"1-3"`）导致全部事件被丢弃。
+**第 2 环：`added > 0` 才保存 vault → 消息永不被标记**
 
-### 待修复
-
-1. 5 处 `return []` → `return { vault, totalAdded: 0 }`
-2. `processTurnsInBatches` 多 batch 路径加 `(batchResult && batchResult.totalAdded) || 0` 判空
-
-### 引入者
-
-`a0088af`（6 月 14 日，test3.0 → test4.0 之间），将旧版 fallback 占位条目改为直接 `return []`。
-
----
-
-## #15 🟡 Pipeline 零产出时 vault 不保存 → 消息永久循环
-
-| 属性 | 值 |
-|---|---|
-| **状态** | 🟡 待解决 |
-| **发现** | 2026-06-16 |
-| **严重程度** | **P0** |
-| **影响** | 与 #14 联动构成死循环。Pipeline 运行 → 零产出 → vault 不保存 → `collectAllMsgIds` 下次返回空集合 → 同批消息被重复送入 LLM → 再零产出 → 再循环。用户 76 轮对话中跑了 ~6 次 pipeline，每次处理 12 条新消息，每次零产出，每次不保存。 |
-
-### 根因
-
-`executeIncrementalUpdate` [L1000](file:///d:/SillyTavern/xm/ne-memory/src/engine/update.js#L1000)：
+[update.js L1000](file:///d:/SillyTavern/xm/ne-memory/src/engine/update.js#L1000)：
 
 ```javascript
 if (cursorResult.totalAdded > 0) {
@@ -406,42 +392,51 @@ if (cursorResult.totalAdded > 0) {
 }
 ```
 
-`added > 0` 才保存。这隐含假设「零产出 = 没有要持久化的东西」。但实际上每次 pipeline 运行都会从 `pendingMessages` `splice(0)` 消费消息。不保存 vault 意味着下次 `collectAllMsgIds` 完全找不到这批消息的 ID —— 它们既不在任何 STM 条目中（零产出），也不在 vault metadata 中（未保存）。
+`added === 0` 跳过保存 → `collectAllMsgIds` 下次返回空 Set → `filterNewMessages` 认为所有消息"未处理" → 重新送入 LLM → 再次零产出 → 永不保存。
 
-`collectAllMsgIds` 只从 `unconsolidated_stm` 和 `stm_entries` 中提取 `msg_ids`。零产出时两个数组都无新条目 → IDs 丢失 → 消息从未被标记为已处理。
+**第 3 环：pendingMessages 已消费，无法回退**
 
-### 待修复
+`flushPendingMessages` L199 `pendingMessages.splice(0)` 消费了消息。如果 pipeline 返回时抛异常，inflight 备份可以恢复；但 pipeline "成功"返回了（只是 added=0），inflight 被 `finally` 清除 → 消息永久从 pending 中消失，又不在 vault 中。
 
-移除 `added > 0` 条件——每次 pipeline 运行后都保存 vault，至少更新 `_meta` metadata。零产出时记录 `last_pipeline_task = 'stm_extract_empty'`。
+**引入者：`a0088af`**（6 月 14 日），将旧版 fallback 占位条目改为直接 `return []`。
+
+### Process History "10 轮"之谜
+
+152 条消息 → `collectAllMsgIds` 命中 132 条 → 过滤后剩 20 条（10 轮）。
+`collectAllMsgIds` 只读 `unconsolidated_stm` + `stm_entries`。面板空白 ≠ vault 空——旧 vault 的 STM 条目可能在 `stm_entries` 中（已 consolidate），但 `unconsolidated_stm` 和 `ltm_entries` 为空 → 面板两表皆空，但 msg_ids 仍有效。
+
+### 修复方案
+
+1. **stm-extractor.js**：5 处 `return []` → `return { vault, totalAdded: 0 }`
+2. **stm-extractor.js**：`processTurnsInBatches` 多 batch 路径加 `(batchResult && batchResult.totalAdded) || 0` 判空
+3. **update.js L1000**：移除 `if (added > 0)` 条件，零产出时也保存 vault（至少写 `_meta`）
 
 ---
 
-## #16 🟡 Gemini 中转站副 API 401
+## #15 🟡 Gemini 中转站副 API 401
 
 | 属性 | 值 |
 |---|---|
 | **状态** | 🟡 待解决 |
 | **发现** | 2026-06-16 |
 | **严重程度** | Medium |
-| **影响** | 使用国内中转站（非 Google 官方 API）连接 Gemini 模型的用户 100% 失败。UI 显示 "Not connected — 401"。 |
+| **影响** | 使用国内中转站连接 Gemini 模型的用户 100% 失败。UI 显示 "Not connected — 401"。 |
 
 ### 根因分析
 
-`callCustomAPI` 发标准 OpenAI-compatible 请求：`POST <url>` + `Authorization: Bearer <key>` + `Content-Type: application/json`。401 = 服务端拒绝了 Authorization header，不是网络不通。
+`callCustomAPI` 发标准 OpenAI-compatible 请求。401 = 服务端拒绝 Authorization header。
 
 三种可能：
 
 | 原因 | 说明 |
 |------|------|
-| **URL 格式错误** | 中转站需要完整路径 `/v1/chat/completions`。用户可能填了裸域名 |
-| **Key 不匹配** | 用户填了 Google 官方 API Key，中转站有独立的 Key 体系 |
-| **模型名不匹配** | Google 用 `models/gemini-2.0-flash`，中转站通常映射为 `gemini-2.0-flash` |
-
-用户需确认中转站提供的三要素（URL / Key / Model），填入副 API 对应字段。
+| **URL 格式错误** | 中转站需要完整路径 `/v1/chat/completions` |
+| **Key 不匹配** | 用户填了 Google 官方 Key，中转站有独立 Key 体系 |
+| **模型名不匹配** | Google 用 `models/gemini-2.0-flash`，中转站映射为 `gemini-2.0-flash` |
 
 ### 潜在隐患
 
-请求体中硬编码了 `response_format: { type: "json_object" }`（[L503](file:///d:/SillyTavern/xm/ne-memory/src/api/llm.js#L503)）和 `thinking: { type: "disabled" }`（[L506](file:///d:/SillyTavern/xm/ne-memory/src/api/llm.js#L506)）。这两个字段是 OpenAI 专有参数，Gemini 原生 API 和中转站可能不支持，修复 401 后可能继续遇到 400 错误。未来需要让这些参数可配置或根据 API 类型自动切换。
+请求体中硬编码了 `response_format: { type: "json_object" }` 和 `thinking: { type: "disabled" }`。这两个是 OpenAI 专有参数，Gemini 原生 API 和中转站可能返回 400。
 
 ---
 
@@ -462,6 +457,5 @@ if (cursorResult.totalAdded > 0) {
 | 11 | 内联编辑保存无效 / 取消后无法再编辑 / 无删除 | **High** | ✅ 已解决 |
 | 12 | Process History `force=true` 导致消息全部重复处理 | **High** | ✅ 已解决 |
 | 13 | cursor 窗口 2+ msg_ids 全部丢失（msgRange 全局偏移未减 position） | **High** | ✅ 已解决 |
-| 14 | `runStmExtractorCore` 5 处 `return []` 违反下游 `{ vault, totalAdded }` 合约 | **P0** | 🟡 待解决 |
-| 15 | Pipeline 零产出时 `added > 0` 跳过 vault 保存 → 消息永不被标记已处理 | **P0** | 🟡 待解决 |
-| 16 | Gemini 中转站副 API 401（非 OpenAI 兼容 URL / Key 不匹配 / `response_format` 不兼容） | Medium | 🟡 待解决 |
+| 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 → 消息永不被标记 | **P0** | 🟡 待解决 |
+| 15 | Gemini 中转站副 API 401（URL/Key/Model 不匹配 + `response_format` 不兼容） | Medium | 🟡 待解决 |
