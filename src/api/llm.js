@@ -103,6 +103,8 @@ export async function callMemoryLLM(messages, options = {}) {
         roundTag: callRoundTag
     });
 
+    globalThis.__ne_debug_all_pipeline_responses = (globalThis.__ne_debug_all_pipeline_responses || '') + (response || '') + '\n---\n';
+
     return response;
 }
 

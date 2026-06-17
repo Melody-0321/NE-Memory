@@ -24,7 +24,7 @@ export default {
             exclude: 'node_modules/**'
         }),
         terser({
-            compress: { drop_console: false }
+            compress: { drop_console: false, side_effects: false }
         })
     ]
 };

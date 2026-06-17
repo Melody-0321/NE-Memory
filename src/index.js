@@ -299,6 +299,8 @@ function bootNE(retries) {
     }
 
     // Pipeline LLM hook — exposes raw response callbacks for test-runner
+    globalThis.__ne_debug_all_pipeline_responses = globalThis.__ne_debug_all_pipeline_responses || '';
+    globalThis.__ne_debug_last_smartpush_prompt = globalThis.__ne_debug_last_smartpush_prompt || '';
     globalThis.__ne_llm_hook = {
         onPipelineLLMCall: onPipelineLLMCall,
         offPipelineLLMCall: offPipelineLLMCall
