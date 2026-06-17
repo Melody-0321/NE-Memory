@@ -1378,6 +1378,7 @@ function computeVisibleWindow(chatMessages, maxContext) {
         var tokens = Math.round(text.length / 3.5) + 10;
         if (accumulated + tokens > available) break;
         accumulated += tokens;
+        m._msg_id = String(i);
         visible.unshift(m);
     }
 
@@ -1644,10 +1645,26 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     // ── Event memory (memory LLM synthesis) ──
     if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
-        if (parts.length > 0) parts.push('---');
         var synthText = synthesized.trim();
-        synthText = synthText.replace(/\(?(stm_|ltm_)\d+\)?/g, '');
-        parts.push(synthText);
+
+        // ── Layer 1: 解析 KB 标签，生成认知边界指令块 ──
+        var kbParseResult = parseKBAnnotations(synthText);
+        if (kbParseResult.annotations.length > 0) {
+            var kbBlock = buildKBInstructionBlock(kbParseResult);
+            if (kbBlock) {
+                if (parts.length > 0) parts.push('---');
+                parts.push(kbBlock);
+            }
+        }
+
+        // ── Layer 2: 叙事文本（KB 标签已移除，ID 清洗，添加视角标记）──
+        var narrativeText = kbParseResult.cleanText
+            ? kbParseResult.cleanText.replace(/\(?(stm_|ltm_)\d+\)?/g, '')
+            : synthText.replace(/\(?(stm_|ltm_)\d+\)?/g, '');
+        if (narrativeText) {
+            if (parts.length > 0) parts.push('---');
+            parts.push(narrativeText);
+        }
 
         // ── 显式缺口标记（策略2）──
         if (entityNames && entityNames.length > 0 && entityChains && Object.keys(entityChains).length > 0) {
@@ -1682,6 +1699,92 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     }
 
     return parts.join('\n\n');
+}
+
+// ─── KB 注释解析器 ───
+
+function parseKBAnnotations(text) {
+    var sections = [];
+    var cleanSections = [];
+
+    var contentParts = text.split(/(?=## )/);
+
+    contentParts.forEach(function(part) {
+        var kbLines = [];
+        var cleanPart = part.replace(/^\s*\[KB:\s*([^\]]+)\]\s*$/gm, function(_match, content) {
+            var parsed = parseKBLine(content.trim());
+            if (parsed) kbLines.push(parsed);
+            return '';
+        }).trim();
+
+        if (kbLines.length > 0) {
+            var threadTitle = extractKBThreadTitle(part);
+            sections.push({ threadTitle: threadTitle, chars: kbLines });
+            var perspectiveLine = '> 角色视角：' + kbLines.map(function(kb) {
+                return kb.name + '=' + kb.level + (kb.reason ? '(' + kb.reason + ')' : '');
+            }).join(' | ');
+            cleanSections.push(cleanPart + '\n' + perspectiveLine);
+        } else {
+            cleanSections.push(cleanPart);
+        }
+    });
+
+    return {
+        cleanText: cleanSections.join('\n\n').trim(),
+        annotations: sections
+    };
+}
+
+function parseKBLine(line) {
+    var match = line.match(/^(.+?)=(.+?)(?:\((.+)\))?$/);
+    if (!match) return null;
+    var level = match[2].trim();
+    var validLevels = ['直接知晓', '间接知晓', '线索', '未知'];
+    if (validLevels.indexOf(level) === -1) {
+        var fuzzy = validLevels.find(function(v) { return v.indexOf(level) !== -1 || level.indexOf(v) !== -1; });
+        if (fuzzy) level = fuzzy;
+    }
+    return {
+        name: match[1].trim(),
+        level: level,
+        reason: (match[3] || '').trim()
+    };
+}
+
+function extractKBThreadTitle(part) {
+    var match = part.match(/^## (.+?)(?:\n|$)/m);
+    return match ? match[1].trim() : '';
+}
+
+function buildKBInstructionBlock(parseResult) {
+    var allChars = {};
+    parseResult.annotations.forEach(function(section) {
+        section.chars.forEach(function(ch) {
+            if (!allChars[ch.name]) allChars[ch.name] = ch.name;
+        });
+    });
+    var activeChars = Object.keys(allChars);
+    if (activeChars.length === 0) return '';
+
+    var lines = [];
+    lines.push('## 角色认知边界');
+    lines.push('当前场景活跃角色：' + activeChars.join('、'));
+    lines.push('');
+    lines.push('以下记忆已按各角色的知晓程度分类。你同时扮演这些角色，每个角色的行动和发言必须严格基于其对应认知等级：');
+    lines.push('- **直接知晓** = 该角色亲自在场或经历，完全知情。可以此为基础主动行动和发言。');
+    lines.push('- **间接知晓** = 该角色通过他人转述、书面记录、或可观察后果推断得知。可以提及但应保持细节不确定性。');
+    lines.push('- **线索** = 该角色只有碎片信息。角色只能基于碎片推理，不应表现出完全知情。');
+    lines.push('- 叙事线中未提到的角色 = 该角色**不知道**此叙事线的事件。仅供你理解故事全局语境，禁止该角色在对话中表现出知情。');
+    lines.push('');
+
+    parseResult.annotations.forEach(function(section) {
+        var charEntries = section.chars.map(function(ch) {
+            return ch.name + '：' + ch.level;
+        });
+        lines.push('[' + section.threadTitle + '] ' + charEntries.join(' | '));
+    });
+
+    return lines.join('\n');
 }
 
 /* ──────── 固定预算检索包编译器（策略5）──────── */
@@ -1862,7 +1965,7 @@ function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
         if (visibleWindow && visibleWindow.length > 0) {
             var allInWindow = msgIds.every(function(mid) {
                 return visibleWindow.some(function(vm) {
-                    return String(vm.id != null ? vm.id : vm.mes_id) === String(mid);
+                return String(vm._msg_id) === String(mid);
                 });
             });
             if (allInWindow) return;

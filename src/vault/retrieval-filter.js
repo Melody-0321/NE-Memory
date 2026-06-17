@@ -344,8 +344,8 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
     entries.sort(function (a, b) { return b._score - a._score; });
 
     // ── 分数断崖检测：找到自然截断点 ──
-    var CUTOFF_RATIO = 3.0;
-    var CUTOFF_FLOOR = 0.15;
+    var CUTOFF_RATIO = 5.0;
+    var CUTOFF_FLOOR = 0.25;
 
     var resultCount = Math.min(topK, entries.length);
     if (resultCount >= minResults && entries.length > minResults && entries[0]._score > 0) {

@@ -469,7 +469,10 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         // BM25 score
         var scoreAnno = e.bm25Score > 0 ? ' [BM25:' + e.bm25Score.toFixed(2) + ']' : '';
 
-        var line = (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
+        var msgIds = e.entry.msg_ids;
+        var msgsTag = (msgIds && msgIds.length > 0) ? ' [msgs: ' + msgIds.join(',') + ']' : '';
+
+        var line = (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + msgsTag + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
         if (e._originalText) {
             line += '\n   ↓ ' + e._originalText.replace(/\n/g, '\n   ');
         }
@@ -505,42 +508,23 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
     // ── Visible window section ──
     var visibleWindowBlock = '';
     if (visibleWindow && visibleWindow.length > 0) {
+        var ids = visibleWindow.map(function(vm) { return '[msg_' + vm._msg_id + ']'; }).join(' ');
         if (lang === 'en') {
-            visibleWindowBlock = '\n## Current Visible Window (known to main LLM)\n' +
-                'The main LLM\'s context covers the following conversation rounds. Content within this window is already known to the main LLM:\n';
+            visibleWindowBlock = '\n## Visible Window msg_id List\n' + ids + '\n\n' +
+                'Cross-reference: if a candidate entry\'s [msgs: X,Y] intersects with the list above → the main LLM already knows the original dialogue for that entry, skip access().\n' +
+                'If ALL msg_ids of a candidate are outside the list → the main LLM has NOT seen that conversation.\n' +
+                'Even when original dialogue is visible, structured facts must still be included in synthesis.\n';
         } else {
-            visibleWindowBlock = '\n## 当前对话可见窗口\n' +
-                '主 LLM 的上下文窗口覆盖了以下对话轮次，这些内容主 LLM 已知（数字为 msg_id，可与候选条目对照）：\n';
-        }
-        visibleWindow.forEach(function(vm) {
-            var vmName = vm.name || (vm.role === 'user' ? 'User' : 'AI');
-            var vmText = typeof vm.mes === 'string' ? vm.mes : (vm.content || '');
-            if (vmText) visibleWindowBlock += '[msg_' + (vm.id != null ? vm.id : vm.mes_id) + '] ' + vmName + ': ' + vmText.substring(0, 200) + '\n';
-        });
-        if (lang === 'en') {
-            visibleWindowBlock += '\nA candidate\'s msg_ids falling inside this window means the main LLM already has the original dialogue text. You can skip access() calls for those. Outside this window → the main LLM has NOT seen it, so prefer structured facts from entries well beyond the window. Important: even for entries whose original dialogue is visible, the structured facts extracted by upstream pipelines (key events, relationships, outcomes) are NOT known to the main LLM — include those in your synthesis.\n';
-        } else {
-            visibleWindowBlock += '\n候选条目中的 msg_id 若在此窗口内，说明主 LLM 已有该轮对话原文，你可以省去对应的 access() 调用。不在窗口内 → 主 LLM 未见过，此时应优先关注远远超出窗口的条目中的结构化事实。重要：即使条目的对话原文已在窗口中可见，上游管线已从中提取的结构化事实（关键事件、人物关系、结果结论）主 LLM 并不知晓——需要你写入合成结果。\n';
+            visibleWindowBlock = '\n## 可见窗口 msg_id 列表\n' + ids + '\n\n' +
+                '对照：候选条目中 [msgs: X,Y] 若与上方列表有交集 → 主 LLM 已知该条目的原始对话，无需 access()。\n' +
+                '候选条目全部 msg_ids 都不在列表中 → 主 LLM 未见过该轮对话。\n' +
+                '即使原文可见，结构化事实（事件描述、人物关系、结论）仍需写入合成。\n';
         }
     } else {
         if (lang === 'en') {
             visibleWindowBlock = '\n## Current Visible Window\n(No visible window data — conversation may not have started or exceeds budget.)\n';
         } else {
             visibleWindowBlock = '\n## 当前对话可见窗口\n（当前无可见窗口数据——可能是对话尚未开始或超出上下文预算。）\n';
-        }
-    }
-
-    // ── Conversation context section ──
-    var conversationBlock = '';
-    if (conversationContext) {
-        if (lang === 'en') {
-            conversationBlock = '\n## Recent Conversation Context\n' +
-                'The latest round of dialogue (BM25 query source), providing context for the retrieval:\n' +
-                conversationContext + '\n';
-        } else {
-            conversationBlock = '\n## 最近一轮对话上下文\n' +
-                '以下是最新的一轮对话（BM25 检索基准），用于帮助你理解当前检索需求的语境：\n' +
-                conversationContext + '\n';
         }
     }
 
@@ -566,22 +550,22 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         'Each candidate is annotated with thread tags: {L:entityName#pos/total} = entity chain position, {G:ltm_id#pos/total} = LTM group position, {D:label#pos/total} = dispersed narrative thread.\n' +
         '[BM25:X.XX] = relevance score. Higher = more relevant to the query.\n\n' +
         '## Reference Tools (fallback use)\n' +
-        'The following tools are available for verification when needed, but typically not required:\n' +
-        '- access(msg_id): view original chat message (prefetch and visible window provide most dialogue context already)\n' +
-        '- access(chain.X): get full timeline of entity X (short chains are already inlined; long chains available on request)\n' +
+        'The following tools are available for verification when needed:\n' +
+        '- access(msg_id): view original chat message (only when prefetched ↓ text is missing or incomplete)\n' +
+        '- access(chain.X): get full timeline of entity X\n' +
         '- note_thread(label, stm_ids): register a cross-entity narrative thread if you identify events spanning multiple entities and time gaps that share an underlying narrative line\n\n' +
-        'The candidate list shows full event descriptions. The current conversation context and prefetched original text already cover most scenarios requiring original dialogue.\n\n';
+        'You may call access() at most 2 times — prioritize entries with highest BM25 scores whose ↓ prefetched text is missing.\n\n';
 
     var toolGuidanceZh = '## 上下文总览\n' + overview + '\n\n' +
         '## 线程标注\n' +
         '每条候选带有线程标签：{L:实体名#位置/总数} = 实体链位置, {G:ltm_id#位置/总数} = LTM 分组位置, {D:标签#位置/总数} = 散列叙事线。\n' +
         '[BM25:X.XX] = 相关性评分。越高越相关。\n\n' +
         '## 参考工具（保底使用）\n' +
-        '以下工具在你需要精确验证时可用，但通常不需要：\n' +
-        '- access(msg_id): 查看原始对话消息（预取和可见窗口已提供主要原文；只有在需要精确验证时使用）\n' +
-        '- access(chain.X): 获取实体 X 的完整事件时间线（短链已自动注入；长链按需查询）\n' +
-        '- note_thread(label, stm_ids): 如果发现多条跨实体但属于同一隐约叙事线的事件（即使时间不连续），使用此工具注册\n\n' +
-        '候选列表已提供完整事件描述。当前对话上下文和原文预取已覆盖多数需要原文的场景。\n\n';
+        '以下工具在你需要精确验证时可用：\n' +
+        '- access(msg_id): 查看原始对话消息（仅当候选条目未附带 ↓ 预取原文时使用）\n' +
+        '- access(chain.X): 获取实体 X 的完整事件时间线\n' +
+        '- note_thread(label, stm_ids): 注册跨实体叙事线\n\n' +
+        '最多 2 次 access() 调用——优先预取原文缺失且 BM25 最高的条目。\n\n';
 
     if (lang === 'en') {
         var systemEn = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
@@ -594,19 +578,18 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>". Do NOT include internal IDs (stm_, ltm_, msg_ patterns).\n' +
             '6. SELF-CONTAINED: your output must be semantically self-sufficient — every paragraph can stand alone. This is about your output format: do not use cross-references ("see above"), dangling pronouns (name the subject explicitly), or internal IDs (stm_xx). The visible window tells you which original dialogue the main LLM already knows — but structured facts extracted from those entries (who did what, relationships, key outcomes) are still your responsibility to include, because the main LLM has not extracted them as memory.\n' +
             '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
-            '8. KNOWLEDGE BOUNDARY: First, identify all active characters from the conversation context — extract named characters with dialogue, action, or explicit mention (usually 1-4). Exclude generic groups and background characters. Then, for each narrative thread, evaluate what each active character knows:\n' +
+            '8. KNOWLEDGE BOUNDARY: Identify active characters from the entities[] annotations and thread tags {L:entityName} in candidate entries — characters appearing most frequently in recent candidates are the active cast (prioritize top 1-4). Then, for each narrative thread, evaluate what each active character knows:\n' +
             '   - 直接知晓 (DIRECT): the character is present in the events — see entities[] or {L:name} thread tags containing the character\n' +
             '   - 间接知晓 (INDIRECT): the character was not present, but could learn through relayed information, shared-scene dialogue, or observable consequences\n' +
             '   - 线索 (CLUES): the character has only fragments, insufficient to reconstruct the full picture\n' +
             '   - 未知 (UNKNOWN): no traceable connection between the character and this thread\n' +
-            '   Judgment sources: candidate entities[] annotations, thread tags {L:entity}, original text excerpts, time/scene relationships. When uncertain, default to 线索 with a brief reason.\n' +
-            '   Active character identification: extract from the conversation context all named characters who have spoken lines, performed actions, or been explicitly referenced. Prioritize the 1-4 characters most directly involved in recent dialogue.\n\n' +
+            '   Judgment sources: candidate entities[] annotations, thread tags {L:entity}, original text excerpts, time/scene relationships. When uncertain, default to 线索 with a brief reason.\n\n' +
             'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
             'Output format:\n' +
             '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n[KB: <characterName>=<level>]\n[KB: <characterName>=<level>(<reason>)]\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
-            conversationBlock +
+            (conversationContext ? '## Current Context\nThe main LLM is about to respond to this dialogue:\n' + conversationContext + '\n\n' : '') +
             visibleWindowBlock +
             toolGuidanceEn +
             availChainHint +
@@ -628,19 +611,19 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。不要包含内部 ID（stm_、ltm_、msg_ 等模式）。\n' +
         '6. 自包含：你的输出必须语义自足——每个段落可独立阅读。这是对输出格式的要求：不要使用"参见上文"等交叉引用，不要出现无主语的"他/她说"（显式写出主语），不出现内部 ID（stm_xx）。可见窗口告诉你哪些对话原文主 LLM 已知——但那些条目中已提取的结构化事实（谁做了什么、人物关系、关键结论）仍需你写入合成结果，因为主 LLM 并未将这些提取为记忆。\n' +
         '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
-        '8. 认知边界：先从对话上下文中识别当前场景的活跃角色——提取有台词、有动作或被明确提及的具名角色（通常 1-4 位），排除泛指群体和背景角色。然后对每条合成叙事线，从各活跃角色的视角判断知晓程度：\n' +
+        '8. 认知边界：从候选条目的 entities[] 标注和线程标签 {L:角色名} 中识别活跃角色——最近候选条目中出现频率最高的 1-4 位即为活跃阵容。然后对每条合成叙事线，从各活跃角色的视角判断知晓程度：\n' +
         '   - 直接知晓：该角色在事件中在场——看候选的 entities[] 或线程标注 {L:角色名} 中是否有该角色\n' +
         '   - 间接知晓：该角色不在场，但可通过以下方式获悉——他人转述、共享场景的对话、可观察的后果\n' +
         '   - 线索：该角色只有碎片信息，不足以还原事件全貌\n' +
         '   - 未知：该角色与该叙事线无任何可追溯的连接\n' +
-        '   判断依据：候选条目的 entities[] 标注、线程标签 {L:实体名}、原文片段提及、时间/场景关联。不确定时标注为"线索"并注明原因。\n' +
-        '   活跃角色识别：从对话上下文中提取所有有台词、有动作或被明确引用的具名角色。优先选择最近对话中直接参与的 1-4 位角色。\n\n' +
+        '   判断依据：候选条目的 entities[] 标注、线程标签 {L:实体名}、原文片段提及、时间/场景关联。不确定时标注为"线索"并注明原因。\n\n' +
         '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
         '输出格式：\n' +
         '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n[KB: <角色名>=<等级>]\n[KB: <角色名>=<等级>(<理由>)]\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
-        conversationBlock + visibleWindowBlock +
+        (conversationContext ? '## 当前语境\n主 LLM 即将回复这轮对话：\n' + conversationContext + '\n\n' : '') +
+        visibleWindowBlock +
         toolGuidanceZh +
         availChainHint +
         '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
@@ -728,7 +711,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
         '- access(ltm_id): get full content of an LTM entry\n' +
         '- access(msg_id): view the original chat message\n' +
         '- access(chain.X): get full timeline of entity X\n\n' +
-        'The BM25 candidate list is only the first round. If you find entity names or event references with incomplete info, use access to dig deeper. Search until you have sufficient context before synthesizing. At most 3 search rounds.\n\n';
+        'At most 3 search rounds. Prioritize entries with highest BM25 scores.\n\n';
 
     var toolGuidanceZh = '## 搜索工具\n' +
         '你可以使用：access(ref)。支持的 ref 格式：\n' +
@@ -736,7 +719,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
         '- access(ltm_id): 获取 LTM 归档完整内容\n' +
         '- access(msg_id): 查看原始对话消息\n' +
         '- access(chain.X): 获取实体 X 的完整事件时间线\n\n' +
-        'BM25 候选列表仅是第一轮线索。若发现候选中有实体名或事件引用但信息不完整，使用 access 获取更多上下文。搜索直到信息充足后再合成。最多搜索 3 轮。\n\n';
+        '最多 3 轮搜索。优先 BM25 最高的条目。\n\n';
 
     if (lang === 'en') {
         var system = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
