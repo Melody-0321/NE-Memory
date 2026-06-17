@@ -1190,13 +1190,8 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             var absMsgEnd = entry.absMsgEnd;
             if (absMsgStart !== undefined && absMsgEnd !== undefined && msgCount > 0) {
                 idDisplay = 'Msg ' + absMsgStart + '\u2013' + absMsgEnd + ' / ' + msgCount + '\u6761';
-            } else {
-                var turns = entry.turns || [];
-                if (turns.length >= 2 && msgCount > 0) {
-                    idDisplay = 'Turn ' + turns[0] + '-' + turns[1] + ' / ' + msgCount + '\u6761';
-                } else if (msgCount > 0) {
-                    idDisplay = msgCount + '\u6761';
-                }
+            } else if (msgCount > 0) {
+                idDisplay = msgCount + '\u6761';
             }
         }
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
@@ -1216,9 +1211,10 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                     var subMsgDisplay;
                     if (subAbsMsgStart !== undefined && subAbsMsgEnd !== undefined && subMsgCount > 0) {
                         subMsgDisplay = 'Msg ' + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + subMsgCount + '\u6761';
+                    } else if (subMsgCount > 0) {
+                        subMsgDisplay = subMsgCount + '\u6761';
                     } else {
-                        var subTurns = stm.turns || [];
-                        subMsgDisplay = subTurns.length >= 2 && subMsgCount > 0 ? 'Turn ' + subTurns[0] + '-' + subTurns[1] + ' / ' + subMsgCount : (subMsgCount > 0 ? subMsgCount + '\u6761' : stmId);
+                        subMsgDisplay = stmId;
                     }
                     detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + (si + 1) + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
                 }

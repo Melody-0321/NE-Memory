@@ -138,13 +138,12 @@ export async function runStmExtractorCore(turns, params) {
     var processedEntries = [];
     for (var ei = 0; ei < stmEntries.length; ei++) {
         var entry = Object.assign({}, stmEntries[ei]);
-        var turnRange = entry.turns || [0, 0];
-        var localStart = turnRange[0];
-        var localEnd = turnRange[1];
+        var localStart = (entry.turns || [0])[0];
+        var localEnd = (entry.turns || [0, 0])[1];
         var mappedStart = (globalIndexMap && globalIndexMap[localStart] !== undefined) ? globalIndexMap[localStart] : localStart;
         var mappedEnd = (globalIndexMap && globalIndexMap[localEnd] !== undefined) ? globalIndexMap[localEnd] : localEnd;
-        entry.turns = [mappedStart, mappedEnd];
         entry.msgRange = [mappedStart, mappedEnd];
+        delete entry.turns;
 
         // 存储绝对消息位置（跨 run 一致）
         var startTurn = turns[localStart];
