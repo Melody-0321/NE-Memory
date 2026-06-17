@@ -413,30 +413,15 @@ if (cursorResult.totalAdded > 0) {
 
 ---
 
-## #15 🟡 Gemini 中转站副 API 401
+## #15 ❌ Gemini 中转站副 API 401（用户侧配置错误，非 Bug）
 
 | 属性 | 值 |
 |---|---|
-| **状态** | 🟡 待解决 |
+| **状态** | ❌ 已关闭（非 Bug） |
 | **发现** | 2026-06-16 |
-| **严重程度** | Medium |
-| **影响** | 使用国内中转站连接 Gemini 模型的用户 100% 失败。UI 显示 "Not connected — 401"。 |
-
-### 根因分析
-
-`callCustomAPI` 发标准 OpenAI-compatible 请求。401 = 服务端拒绝 Authorization header。
-
-三种可能：
-
-| 原因 | 说明 |
-|------|------|
-| **URL 格式错误** | 中转站需要完整路径 `/v1/chat/completions` |
-| **Key 不匹配** | 用户填了 Google 官方 Key，中转站有独立 Key 体系 |
-| **模型名不匹配** | Google 用 `models/gemini-2.0-flash`，中转站映射为 `gemini-2.0-flash` |
-
-### 潜在隐患
-
-请求体中硬编码了 `response_format: { type: "json_object" }` 和 `thinking: { type: "disabled" }`。这两个是 OpenAI 专有参数，Gemini 原生 API 和中转站可能返回 400。
+| **关闭** | 2026-06-17 |
+| **严重程度** | — |
+| **结论** | 401 = 用户填入的模型名 / URL / Key 不匹配中转站要求，属用户侧配置错误。 `callCustomAPI` 行为正常。 |
 
 ---
 
@@ -690,7 +675,7 @@ system prompt 说"覆盖全部消息不得跳过"，user prompt 说"如果没有
 | 12 | Process History `force=true` 导致消息全部重复处理 | **High** | ✅ 已解决 |
 | 13 | cursor 窗口 2+ msg_ids 全部丢失（msgRange 全局偏移未减 position） | **High** | ✅ 已解决 |
 | 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 | **P0** | 🟡 待解决 |
-| 15 | Gemini 中转站副 API 401（URL/Key/Model 不匹配 + `response_format` 不兼容） | Medium | 🟡 待解决 |
+| 15 | Gemini 中转站副 API 401（用户侧配置错误） | — | ❌ 非 Bug |
 | 16 | `processed_msg_ids` 毒化 vault → pipeline 消息全部被过滤 | **High** | ✅ 已解决 |
 | 17 | `\|\|` 吞 `msg_id=0` → 消息 0 永远穿透去重 | **High** | ✅ 已解决 |
 | 18 | ST chatId 始终为 `'default'` → 对话切换不识别 | **High** | ✅ 已解决 |
