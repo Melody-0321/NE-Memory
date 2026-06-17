@@ -74,8 +74,12 @@ function injectBottomDrawerCSS() {
     style.id = 'ne_vault_bottom_style';
     style.textContent = '.ne-vault-bottom-overlay{' +
         'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
-        'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'position:relative;z-index:35;background:transparent;' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;}' +
+        '.ne-vault-bottom-overlay::before{' +
+        'content:"";position:absolute;inset:0;z-index:-1;' +
+        'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'border-radius:inherit;}' +
         '.ne-vault-bottom-overlay.open{display:flex;flex-grow:1;min-height:0;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
