@@ -1544,6 +1544,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var smPushMethod;
     try {
         var messages = await buildRetrievalMessages(notebook, query, vault, budget, false, { conversationContext: conversationContext, visibleWindow: visibleWindow });
+        globalThis.__ne_debug_last_smartpush_prompt = (messages[0] && messages[0].content) ? messages[0].content : null;
         var accessTool = {
             type: 'function',
             function: {

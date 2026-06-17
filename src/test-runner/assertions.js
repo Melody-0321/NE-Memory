@@ -107,6 +107,7 @@ function resolveTarget(collected, targetName) {
     case 'pipeline_changes': return collected.pipeline ? JSON.stringify(collected.pipeline.changes || {}) : '';
     case 'stm_events': return collected.stmEvents ? JSON.stringify(collected.stmEvents.events || []) : '';
     case 'injection': return collected.injection || '';
+    case 'smartpush_prompt': return collected.smartpushPrompt || '';
     default: return '';
     }
 }

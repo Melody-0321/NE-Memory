@@ -57,6 +57,7 @@ export function collectRoundData(roundTag) {
         stmEvents: globalThis.__ne_debug_last_stm_events || null,
         consolidation: globalThis.__ne_debug_last_consolidation || null,
         cursor: globalThis.__ne_debug_last_cursor || null,
+        smartpushPrompt: globalThis.__ne_debug_last_smartpush_prompt || null,
         vault: null,
         timestamp: new Date().toISOString()
     };

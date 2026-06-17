@@ -339,6 +339,7 @@ function _buildDebugApi(host) {
         getStmEvents: function() { return globalThis.__ne_debug_last_stm_events || null; },
         getConsolidation: function() { return globalThis.__ne_debug_last_consolidation || null; },
         getCursor: function() { return globalThis.__ne_debug_last_cursor || null; },
+        getSmartpushPrompt: function() { return globalThis.__ne_debug_last_smartpush_prompt || null; },
         dumpVault: async function() {
             try {
                 var v = await read(getChatId());
