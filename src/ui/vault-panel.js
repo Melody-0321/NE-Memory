@@ -386,7 +386,13 @@ function deleteSingleEntry(entryType, entryId) {
                 vault.stm_index[stm.id].ltm_id = null;
             }
         });
-        c.unconsolidated_stm = (c.unconsolidated_stm || []).concat(toRelease);
+
+        if (targetLtm && targetLtm.status === 'open') {
+            c.unconsolidated_stm = (c.unconsolidated_stm || []).concat(toRelease);
+        } else {
+            vault._released_stm_pool = (vault._released_stm_pool || []).concat(toRelease);
+        }
+
         c.stm_entries = stmEntries.filter(function(s) { return releasedStmIds.indexOf(s.id) === -1; });
 
         c.ltm_entries = (c.ltm_entries || []).filter(function(e) { return e.id !== entryId; });

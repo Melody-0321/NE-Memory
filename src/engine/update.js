@@ -3,7 +3,7 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, appendSTMEntries, collectAllMsgIds, getCursorState, updateCursorState } from '../vault/store.js';
+import { read, appendSTMEntries, collectAllMsgIds, getCursorState, updateCursorState, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
@@ -11,7 +11,7 @@ import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validat
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { processTurnsInBatches } from './stm-extractor.js';
-import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm, applyLtmDecision } from './consolidate.js';
+import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm, applyLtmDecision, runLtmRebatch } from './consolidate.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
 import { writeWithSnapshot } from '../vault/store.js';
@@ -1032,7 +1032,12 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
 
         var totalAdded = cursorResult.totalAdded || 0;
-        newEntries = totalAdded > 0 ? (vault.content.unconsolidated_stm || []).slice(-totalAdded) : [];
+        if (totalAdded > 0) {
+            var sortedUnc = sortStmByMsgOrder(vault.content.unconsolidated_stm || []);
+            newEntries = sortedUnc.slice(-totalAdded);
+        } else {
+            newEntries = [];
+        }
 
         // Post-fill STM entries with _checkpoints
         if (totalAdded > 0) {
@@ -1087,6 +1092,20 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
         }
         globalThis.__ne_debug_ltm_decision = null;
+    }
+
+    var pool = vault._released_stm_pool;
+    if (pool && pool.length > 0) {
+        try {
+            var rebatchResult = await runLtmRebatch(vault, pool, callMemoryPipeline);
+            if (rebatchResult.consumed > 0) {
+                vault._released_stm_pool = null;
+                await saveVaultWithSnapshot(chatId, vault);
+                console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs from pool');
+            }
+        } catch (e) {
+            console.warn('[NE] LTM rebatch failed:', e);
+        }
     }
 
     return { vault: vault, added: newEntries.length };
