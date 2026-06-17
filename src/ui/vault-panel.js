@@ -375,8 +375,21 @@ function deleteSingleEntry(entryType, entryId) {
         c.unconsolidated_stm = (c.unconsolidated_stm || []).filter(function(e) { return e.id !== entryId; });
         c.stm_entries = (c.stm_entries || []).filter(function(e) { return e.id !== entryId; });
     } else {
+        var targetLtm = (c.ltm_entries || []).find(function(e) { return e.id === entryId; });
+        var releasedStmIds = targetLtm ? (targetLtm.stm_refs || []) : [];
+
+        var stmEntries = c.stm_entries || [];
+        var toRelease = stmEntries.filter(function(s) { return releasedStmIds.indexOf(s.id) !== -1; });
+        toRelease.forEach(function(stm) {
+            stm.parent_ltm = null;
+            if (vault.stm_index && vault.stm_index[stm.id]) {
+                vault.stm_index[stm.id].ltm_id = null;
+            }
+        });
+        c.unconsolidated_stm = (c.unconsolidated_stm || []).concat(toRelease);
+        c.stm_entries = stmEntries.filter(function(s) { return releasedStmIds.indexOf(s.id) === -1; });
+
         c.ltm_entries = (c.ltm_entries || []).filter(function(e) { return e.id !== entryId; });
-        c.stm_entries = (c.stm_entries || []).filter(function(e) { return e.id !== entryId; });
     }
     write(getChatId(), vault).then(function () {
         console.log('[NE] deleteSingleEntry: persisted deletion of ' + entryType + ' ' + entryId);
