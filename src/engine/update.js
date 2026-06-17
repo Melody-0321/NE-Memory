@@ -860,7 +860,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var stateResponse = await callMemoryPipeline([
                 { role: 'system', content: statePrompt.system },
                 { role: 'user', content: statePrompt.user }
-            ]);
+            ], { operation: 'state_extract' });
             stateParsed = parseSTMResponse(stateResponse);
             stateChanges = stateParsed.stateChanges || {};
             console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
@@ -1047,7 +1047,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         stateResponse = await callMemoryPipeline([
             { role: 'system', content: statePrompt.system },
             { role: 'user', content: statePrompt.user }
-        ]);
+        ], { operation: 'state_extract' });
     } catch (e) {
         console.warn('[NE] Per-round state extraction failed:', e);
         return { vault, changed: false };

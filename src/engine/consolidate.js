@@ -318,7 +318,7 @@ async function runConsolidationCore(vault, stmIds) {
     var response = await callMemoryPipeline([
         { role: 'system', content: prompt.system },
         { role: 'user', content: prompt.user }
-    ]);
+    ], { operation: 'consolidation' });
     var result = parseConsolidateResponse(response, stmIds);
 
     var validateErrors = validateLTMOutput(result);
@@ -330,7 +330,7 @@ async function runConsolidationCore(vault, stmIds) {
             { role: 'user', content: prompt.user },
             { role: 'assistant', content: response },
             { role: 'user', content: retryMsg }
-        ]);
+        ], { operation: 'consolidation' });
         result = parseConsolidateResponse(retryResponse, stmIds);
     }
 

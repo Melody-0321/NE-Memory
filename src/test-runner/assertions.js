@@ -108,6 +108,9 @@ function resolveTarget(collected, targetName) {
     case 'stm_events': return collected.stmEvents ? JSON.stringify(collected.stmEvents.events || []) : '';
     case 'injection': return collected.injection || '';
     case 'smartpush_prompt': return collected.smartpushPrompt || '';
+    case 'pipeline_responses':
+        var calls = collected.pipelineCalls || [];
+        return calls.map(function(c) { return c.response || ''; }).join('\n---\n');
     default: return '';
     }
 }

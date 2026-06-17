@@ -39,7 +39,7 @@ export async function runStmExtractorCore(turns, params) {
         responseText = await callLLM([
             { role: 'system', content: batchPrompt.system },
             { role: 'user', content: batchPrompt.user }
-        ]);
+        ], { operation: 'stm_extract' });
     } catch (e) {
         console.warn('[NE] Batch LLM failed:', e.message);
         return [];
