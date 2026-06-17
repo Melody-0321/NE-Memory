@@ -1,8 +1,8 @@
 ---
 name: smartpush-14
 folder: smartpush-14
-title: 全链路冒烟测试（STM + SmartPush + 注入）
-objective: 验证全链路（STM 提取 → SmartPush 检索 → 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
+title: 全链路冒烟测试（STM + LTM + SmartPush + 注入）
+objective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - 副 API 可用
@@ -16,10 +16,13 @@ structural:
   - { op: exists, target: stm_events }
   - { op: min_length, target: pipeline_responses, value: 50 }
   - { op: not_contains, target: pipeline_responses, value: "\"error\"" }
+  - { op: contains, target: pipeline_responses, value: "\"ltm_decision\"" }
+  - { op: exists, target: ltm_state }
 semantic:
   - "SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？"
   - "注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？"
   - "STM 提取事件是否覆盖了该轮对话中的重要情节？"
+  - "STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？"
   - "trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？"
   - "trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？"
 minRounds: 4
@@ -28,10 +31,10 @@ expectedRounds: "5-7"
 timeoutPerRound: 120000
 ---
 
-# smartpush-14: 全链路冒烟测试
+# smartpush-14: 全链路冒烟测试（STM + LTM + SmartPush + 注入）
 
 ## 目标
-验证全链路（STM 提取 → SmartPush 检索 → 注入）无断裂。每个 push 前跑。
+验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂。每个 push 前跑。
 
 ## 前置条件
 - NE-Memory 已初始化，SmartPush 启用
@@ -59,13 +62,16 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 | 6 | `exists: stm_events` | STM 提取成功 |
 | 7 | `min_length: pipeline_responses >= 50` | 至少一条 pipeline LLM 有有效输出 |
 | 8 | `not_contains: pipeline_responses ["error"]` | 无 pipeline 报错 |
+| 9 | `contains: pipeline_responses ["ltm_decision"]` | STM+LTM 合流管线正常工作 |
+| 10 | `exists: ltm_state` | LTM 状态快照有效 |
 
 ### 语义性断言（LLM 评估 trace）
 1. SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？
 2. 注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？
 3. STM 提取事件是否覆盖了该轮对话中的重要情节？
-4. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？
-5. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？
+4. STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？
+5. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？
+6. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？
 
 ## 运行参数
 - minRounds: 4

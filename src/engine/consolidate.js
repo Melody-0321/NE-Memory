@@ -108,6 +108,20 @@ export function formatLtmCatalog(ltmEntries) {
     }).join('\n');
 }
 
+export function getLtmSummary(vault) {
+    var content = vault.content || {};
+    var ltms = content.ltm_entries || [];
+    var openLtms = ltms.filter(function(e) { return e.status === 'open'; });
+    var closedLtms = ltms.filter(function(e) { return e.status !== 'open'; });
+    return {
+        total: ltms.length,
+        open: openLtms.length,
+        closed: closedLtms.length,
+        openStmRefs: openLtms.length > 0 ? (openLtms[0].stm_refs || []).length : 0,
+        openTitle: openLtms.length > 0 ? (openLtms[0].title || '') : ''
+    };
+}
+
 export function findOpenLtm(vault) {
     var content = vault.content || {};
     var openLtms = (content.ltm_entries || []).filter(function(e) { return e.status === 'open'; });
@@ -200,6 +214,8 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
             return consumedStmIds.indexOf(s.id) === -1 || !s.parent_ltm;
         });
     }
+
+    globalThis.__ne_debug_last_ltm_state = getLtmSummary(vault);
 }
 
 function deriveTimeRange(sourceSTMEntries) {

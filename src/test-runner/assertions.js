@@ -109,6 +109,8 @@ function resolveTarget(collected, targetName) {
     case 'injection': return collected.injection || '';
     case 'smartpush_prompt': return globalThis.__ne_debug_last_smartpush_prompt || '';
     case 'pipeline_responses': return globalThis.__ne_debug_all_pipeline_responses || '';
+    case 'ltm_decision': return collected.ltmDecision ? JSON.stringify(collected.ltmDecision) : '';
+    case 'ltm_state': return collected.ltmState ? JSON.stringify(collected.ltmState) : '';
     default: return '';
     }
 }

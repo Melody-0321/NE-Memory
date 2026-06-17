@@ -56,6 +56,8 @@ export function collectRoundData(roundTag) {
         notebook: globalThis.__ne_debug_last_notebook || null,
         stmEvents: globalThis.__ne_debug_last_stm_events || null,
         consolidation: globalThis.__ne_debug_last_consolidation || null,
+        ltmDecision: globalThis.__ne_debug_last_ltm_decision || null,
+        ltmState: globalThis.__ne_debug_last_ltm_state || null,
         cursor: globalThis.__ne_debug_last_cursor || null,
         smartpushPrompt: globalThis.__ne_debug_last_smartpush_prompt || null,
         vault: null,

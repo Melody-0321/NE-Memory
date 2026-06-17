@@ -1076,6 +1076,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             try {
                 applyLtmDecision(vault, ltmDecision, consumedIds);
                 try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] LTM save failed:', e); }
+                globalThis.__ne_debug_last_ltm_decision = {
+                    action: ltmDecision.action,
+                    consumed: consumedIds.length,
+                    time: new Date().toISOString()
+                };
                 console.log('[NE] LTM decision applied — action=' + ltmDecision.action + ', consumed=' + consumedIds.length);
             } catch (e) {
                 console.warn('[NE] LTM decision application failed:', e);
