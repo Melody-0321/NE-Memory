@@ -10,6 +10,17 @@ import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from '
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
 import { isStateSchemaEnabled } from './vault/schema.js';
 
+var MEMORY_INJECTION_WRAPPER = [
+    '[以下是你在故事中积累的记忆。]',
+    '',
+    '每个记忆章节末尾的 [KB: 角色=等级] 标明了该故事线中各个角色的知情程度。',
+    '当你扮演某个角色或从这个角色的视角写作时，只能写出该角色知情的内容：',
+    '  直接知晓 — 该角色亲身经历了该事件，可以自由谈论或回忆',
+    '  线索       — 该角色可能间接了解，只能模糊或不确指地提及',
+    '  未知       — 该角色对此事完全不知情：不要从其口中说出，也不要从其内心视角呈现',
+    '如果你以旁白/叙述者身份写作，只需遵循事实，不区分角色视角。'
+].join('\n');
+
 let getChatIdFn = null;
 let getChatMessagesFn = null;
 let onVaultUpdateCallback = null;
@@ -318,6 +329,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 formatted = buildStateOnlyInjection(vault);
             }
             if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+                var fbMarker = formatted.indexOf('[KB:');
+                var fsMarker = formatted.indexOf('## ');
+                if (fbMarker !== -1 || fsMarker !== -1) {
+                    formatted = MEMORY_INJECTION_WRAPPER + '\n\n' + formatted;
+                }
                 globalThis.__ne_debug_last_injection = formatted;
                 TavernHelper.injectPrompts([{
                     id: 'ne_memory_vault',
