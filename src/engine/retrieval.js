@@ -518,9 +518,9 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             if (vmText) visibleWindowBlock += '[msg_' + (vm.id != null ? vm.id : vm.mes_id) + '] ' + vmName + ': ' + vmText.substring(0, 200) + '\n';
         });
         if (lang === 'en') {
-            visibleWindowBlock += '\nCandidate entries whose msg_ids fall within this window → the main LLM already knows that dialogue. Entries outside this window are the information the main LLM has not seen.\n';
+            visibleWindowBlock += '\nA candidate\'s msg_ids falling inside this window means the main LLM already has the original dialogue text. You can skip access() calls for those. Outside this window → the main LLM has NOT seen it, so prefer structured facts from entries well beyond the window. Important: even for entries whose original dialogue is visible, the structured facts extracted by upstream pipelines (key events, relationships, outcomes) are NOT known to the main LLM — include those in your synthesis.\n';
         } else {
-            visibleWindowBlock += '\n候选条目中的 msg_id 若在此窗口内，说明主 LLM 已知道该轮对话原文；不在窗口内的是需要你重点关注的信息。合成时仍需基于记忆事件本身，对话原文只是参考。\n';
+            visibleWindowBlock += '\n候选条目中的 msg_id 若在此窗口内，说明主 LLM 已有该轮对话原文，你可以省去对应的 access() 调用。不在窗口内 → 主 LLM 未见过，此时应优先关注远远超出窗口的条目中的结构化事实。重要：即使条目的对话原文已在窗口中可见，上游管线已从中提取的结构化事实（关键事件、人物关系、结果结论）主 LLM 并不知晓——需要你写入合成结果。\n';
         }
     } else {
         if (lang === 'en') {
@@ -592,11 +592,18 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
             '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
             '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
             '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>". Do NOT include internal IDs (stm_, ltm_, msg_ patterns).\n' +
-            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n' +
+            '6. SELF-CONTAINED: your output must be semantically self-sufficient — every paragraph can stand alone. This is about your output format: do not use cross-references ("see above"), dangling pronouns (name the subject explicitly), or internal IDs (stm_xx). The visible window tells you which original dialogue the main LLM already knows — but structured facts extracted from those entries (who did what, relationships, key outcomes) are still your responsibility to include, because the main LLM has not extracted them as memory.\n' +
             '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
+            '8. KNOWLEDGE BOUNDARY: First, identify all active characters from the conversation context — extract named characters with dialogue, action, or explicit mention (usually 1-4). Exclude generic groups and background characters. Then, for each narrative thread, evaluate what each active character knows:\n' +
+            '   - 直接知晓 (DIRECT): the character is present in the events — see entities[] or {L:name} thread tags containing the character\n' +
+            '   - 间接知晓 (INDIRECT): the character was not present, but could learn through relayed information, shared-scene dialogue, or observable consequences\n' +
+            '   - 线索 (CLUES): the character has only fragments, insufficient to reconstruct the full picture\n' +
+            '   - 未知 (UNKNOWN): no traceable connection between the character and this thread\n' +
+            '   Judgment sources: candidate entities[] annotations, thread tags {L:entity}, original text excerpts, time/scene relationships. When uncertain, default to 线索 with a brief reason.\n' +
+            '   Active character identification: extract from the conversation context all named characters who have spoken lines, performed actions, or been explicitly referenced. Prioritize the 1-4 characters most directly involved in recent dialogue.\n\n' +
             'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
             'Output format:\n' +
-            '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n\n' +
+            '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n[KB: <characterName>=<level>]\n[KB: <characterName>=<level>(<reason>)]\n' +
             'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
             'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
             conversationBlock +
@@ -619,11 +626,18 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
         '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
         '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
         '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。不要包含内部 ID（stm_、ltm_、msg_ 等模式）。\n' +
-        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n' +
+        '6. 自包含：你的输出必须语义自足——每个段落可独立阅读。这是对输出格式的要求：不要使用"参见上文"等交叉引用，不要出现无主语的"他/她说"（显式写出主语），不出现内部 ID（stm_xx）。可见窗口告诉你哪些对话原文主 LLM 已知——但那些条目中已提取的结构化事实（谁做了什么、人物关系、关键结论）仍需你写入合成结果，因为主 LLM 并未将这些提取为记忆。\n' +
         '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
+        '8. 认知边界：先从对话上下文中识别当前场景的活跃角色——提取有台词、有动作或被明确提及的具名角色（通常 1-4 位），排除泛指群体和背景角色。然后对每条合成叙事线，从各活跃角色的视角判断知晓程度：\n' +
+        '   - 直接知晓：该角色在事件中在场——看候选的 entities[] 或线程标注 {L:角色名} 中是否有该角色\n' +
+        '   - 间接知晓：该角色不在场，但可通过以下方式获悉——他人转述、共享场景的对话、可观察的后果\n' +
+        '   - 线索：该角色只有碎片信息，不足以还原事件全貌\n' +
+        '   - 未知：该角色与该叙事线无任何可追溯的连接\n' +
+        '   判断依据：候选条目的 entities[] 标注、线程标签 {L:实体名}、原文片段提及、时间/场景关联。不确定时标注为"线索"并注明原因。\n' +
+        '   活跃角色识别：从对话上下文中提取所有有台词、有动作或被明确引用的具名角色。优先选择最近对话中直接参与的 1-4 位角色。\n\n' +
         '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
         '输出格式：\n' +
-        '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n\n' +
+        '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n[KB: <角色名>=<等级>]\n[KB: <角色名>=<等级>(<理由>)]\n' +
         '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
         '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
         conversationBlock + visibleWindowBlock +
@@ -733,7 +747,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
             '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
             '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
             '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>".\n' +
-            '6. SELF-CONTAINED: the output is the sole memory source for the main LLM. Make every paragraph self-sufficient without external references.\n' +
+            '6. SELF-CONTAINED: your output must be semantically self-sufficient — every paragraph can stand alone. This is about your output format: do not use cross-references ("see above"), dangling pronouns (name the subject explicitly), or internal IDs (stm_xx). The main LLM receives your synthesis as its sole memory source — include structured facts (who did what, relationships, key outcomes) even when the original dialogue was prefetched.\n' +
             '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
             'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
             'Output format:\n' +
@@ -759,7 +773,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
         '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
         '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
         '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。\n' +
-        '6. 自包含：输出是主 LLM 的唯一记忆来源。每个段落自足，不依赖外部引用。\n' +
+        '6. 自包含：你的输出必须语义自足——每个段落可独立阅读。这是对输出格式的要求：不要使用"参见上文"等交叉引用，不要出现无主语的"他/她说"（显式写出主语），不出现内部 ID（stm_xx）。你的合成结果是主 LLM 的唯一记忆来源——即使预取已提供了原文，结构化事实（谁做了什么、人物关系、关键结论）仍需写入。\n' +
         '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
         '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
         '输出格式：\n' +
