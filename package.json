@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "build": "node scripts/generate-test-data.cjs && rollup -c",
-    "watch": "rollup -c -w"
+    "watch": "rollup -c -w",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "keywords": [],
   "author": "",
