@@ -8,6 +8,7 @@ import { detectContradictions } from './engine/contradiction.js';
 import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './ui/vault-panel.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
 import { isStateSchemaEnabled } from './vault/schema.js';
+import { tryAcquire, transitionTo, releasePipeline, releaseInjection, isIdle, getPipelinePhase, getState, reset } from './engine/pipeline-guard.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆。]',
@@ -27,15 +28,12 @@ let lastKnownChatId = null;
 let pendingMessages = [];
 let getContextBudgetFn = null;
 let lastMemoryInjectionTokens = 0;
-var pipelineRunning = false;
-var statePipelineRunning = false;
 var consecutiveFailures = 0;
 var _drainContinuationCount = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
 const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
-var onBeforeGenerateRunning = false; // 重入守卫：斩断 generateRaw → Generate() → onBeforeGenerate 级联
 
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
@@ -111,8 +109,7 @@ export function neSyncChatId(chatId) {
     if (chatId !== lastKnownChatId) {
         pendingMessages = [];
         persistPending();
-        pipelineRunning = false;
-        statePipelineRunning = false;
+        reset();
         consecutiveFailures = 0;
         retroCapturedChatId = null;
     }
@@ -176,7 +173,7 @@ export async function onMessageReceived(messageIndex) {
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
 
-            if (pipelineRunning) return;
+            if (!isIdle() && getPipelinePhase() !== 'injecting') return;
 
             const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
@@ -199,7 +196,10 @@ export async function onMessageReceived(messageIndex) {
 }
 
 async function flushPendingMessages() {
-    if (pipelineRunning) return;
+    if (!tryAcquire('state')) {
+        console.log('[NE] flushPendingMessages: blocked by guard — state=' + getState());
+        return;
+    }
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
@@ -215,7 +215,6 @@ async function flushPendingMessages() {
     const chatId = getChatIdFn ? getChatIdFn() : 'default';
     var pipelineStart = Date.now();
     incrementChatTurn(chatId);
-    pipelineRunning = true;
     try {
         const result = await executeIncrementalUpdate(chatId, batch);
         var latestVault = result.vault;
@@ -247,8 +246,8 @@ async function flushPendingMessages() {
             persistPending();
         }
     } finally {
-        console.log('[NE] Pipeline: setting pipelineRunning=false');
-        pipelineRunning = false;
+        console.log('[NE] Pipeline: releasing guard pipeline');
+        releasePipeline();
         persistPending();
 
         if (pendingMessages.length > 0) {
@@ -274,8 +273,7 @@ async function flushPendingMessages() {
 
 function triggerPerRoundExtraction(assistantMsg) {
     if (!isStateSchemaEnabled()) return;
-    if (statePipelineRunning || pipelineRunning) return;
-    statePipelineRunning = true;
+    if (!tryAcquire('state')) return;
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
     extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
@@ -283,7 +281,7 @@ function triggerPerRoundExtraction(assistantMsg) {
     }).catch(function(e) {
         console.warn('[NE] Per-round state pipeline failed:', e);
     }).finally(function() {
-        statePipelineRunning = false;
+        releasePipeline();
     });
 }
 
@@ -298,11 +296,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
-    if (onBeforeGenerateRunning) {
+    if (!tryAcquire('injecting')) {
         console.log('[NE] onBeforeGenerate: re-entrant call blocked (already running)');
         return;
     }
-    onBeforeGenerateRunning = true;
     try {
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
@@ -360,7 +357,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
     } finally {
-        onBeforeGenerateRunning = false;
+        releaseInjection();
     }
 }
 
@@ -480,10 +477,10 @@ export async function onMessageGenerated(chatId) {
 export function waitForPipelineIdle(timeoutMs) {
     timeoutMs = timeoutMs || 30000;
     return new Promise(function(resolve) {
-        if (!pipelineRunning) { resolve(); return; }
+        if (isIdle()) { resolve(); return; }
         var start = Date.now();
         var check = setInterval(function() {
-            if (!pipelineRunning || Date.now() - start >= timeoutMs) {
+            if (isIdle() || Date.now() - start >= timeoutMs) {
                 clearInterval(check);
                 setTimeout(resolve, 500);
             }

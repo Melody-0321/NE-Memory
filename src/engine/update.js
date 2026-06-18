@@ -12,6 +12,7 @@ import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { processTurnsInBatches } from './stm-extractor.js';
 import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm, applyLtmDecision, runLtmRebatch } from './consolidate.js';
+import { transitionTo, releasePipeline } from './pipeline-guard.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
 import { writeWithSnapshot } from '../vault/store.js';
@@ -1148,6 +1149,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         }
     }
 
+    transitionTo('stm');
+
     // ═══════════════════════════════════════════
     // Pipeline 2: Cursor（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
     // ═══════════════════════════════════════════
@@ -1205,6 +1208,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     } catch (e) {
         console.warn('[NE] Cursor pipeline failed:', e);
     }
+
+    transitionTo('ltm');
 
     console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
 
