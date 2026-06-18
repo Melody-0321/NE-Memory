@@ -107,8 +107,8 @@ function resolveTarget(collected, targetName) {
     case 'pipeline_changes': return collected.pipeline ? JSON.stringify(collected.pipeline.changes || {}) : '';
     case 'stm_events': return collected.stmEvents ? JSON.stringify(collected.stmEvents.events || []) : '';
     case 'injection': return collected.injection || '';
-    case 'smartpush_prompt': return globalThis.__ne_debug_last_smartpush_prompt || '';
-    case 'pipeline_responses': return globalThis.__ne_debug_all_pipeline_responses || '';
+    case 'smartpush_prompt': return collected.smartpushPrompt || '';
+    case 'pipeline_responses': return collected.pipelineResponses || globalThis.__ne_debug_all_pipeline_responses || '';
     case 'ltm_decision': return collected.ltmDecision ? JSON.stringify(collected.ltmDecision) : '';
     case 'ltm_state': return collected.ltmState ? JSON.stringify(collected.ltmState) : '';
     default: return '';

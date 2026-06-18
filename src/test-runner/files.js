@@ -141,7 +141,9 @@ function parseScalar(val) {
     if (val === 'false') return false;
     if (val === 'null' || val === '~') return null;
     if (val.length >= 2 && val.charAt(0) === '"' && val.charAt(val.length - 1) === '"') {
-        return val.substring(1, val.length - 1);
+        var inner = val.substring(1, val.length - 1);
+        inner = inner.replace(/\\"/g, '"');
+        return inner;
     }
     if (val.length >= 2 && val.charAt(0) === "'" && val.charAt(val.length - 1) === "'") {
         return val.substring(1, val.length - 1);

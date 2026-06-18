@@ -23,12 +23,11 @@ export function tokenize(text) {
             var cjkStart = i;
             while (i < len && isCJK(text.charAt(i))) i++;
             var cjkText = text.substring(cjkStart, i);
-            if (cjkText.length === 1) {
-                tokens.push(cjkText);
-            } else {
-                for (var j = 0; j < cjkText.length - 1; j++) {
-                    tokens.push(cjkText.substring(j, j + 2));
-                }
+            for (var j = 0; j < cjkText.length; j++) {
+                tokens.push(cjkText.charAt(j));
+            }
+            for (var j = 0; j < cjkText.length - 1; j++) {
+                tokens.push('^' + cjkText.substring(j, j + 2));
             }
         } else if (isAlpha(ch)) {
             var wordStart = i;
