@@ -4,75 +4,93 @@
 export var __KNOWN_TESTS = [
   {
     "name": "pipeline-ltm-01",
-    "title": "LTM 流式整合测试（STM+LTM 合流）"
+    "title": "LTM 流式整合测试（STM+LTM 合流）",
+    "category": "functional"
   },
   {
     "name": "pipeline-state-01",
-    "title": "State 管线集成测试"
+    "title": "State 管线集成测试",
+    "category": "functional"
   },
   {
     "name": "pipeline-stm-01",
-    "title": "STM 提取质量测试"
+    "title": "STM 提取质量测试",
+    "category": "functional"
   },
   {
     "name": "retrieval-55",
-    "title": "SmartPush 注入内容格式（事件日志 + msg_id 标注）"
+    "title": "SmartPush 注入内容格式（事件日志 + msg_id 标注）",
+    "category": "functional"
   },
   {
     "name": "retrieval-58",
-    "title": "短链自动 inline"
+    "title": "短链自动 inline",
+    "category": "functional"
   },
   {
     "name": "smartpush-01",
-    "title": "SmartPush 注入非空"
+    "title": "SmartPush 注入非空",
+    "category": "functional"
   },
   {
     "name": "smartpush-02",
-    "title": "SmartPush 注入无来源标记"
+    "title": "SmartPush 注入无来源标记",
+    "category": "functional"
   },
   {
     "name": "smartpush-03",
-    "title": "大轮次注入稳定性"
+    "title": "大轮次注入稳定性",
+    "category": "functional"
   },
   {
     "name": "smartpush-04",
-    "title": "STM=0 注入降级"
+    "title": "STM=0 注入降级",
+    "category": "functional"
   },
   {
     "name": "smartpush-05",
-    "title": "注入内容去重"
+    "title": "注入内容去重",
+    "category": "functional"
   },
   {
     "name": "smartpush-06",
-    "title": "跨场景注入切换"
+    "title": "跨场景注入切换",
+    "category": "functional"
   },
   {
     "name": "smartpush-08",
-    "title": "可见窗口跳过预取"
+    "title": "可见窗口跳过预取",
+    "category": "functional"
   },
   {
     "name": "smartpush-09",
-    "title": "可见窗口计算精度"
+    "title": "可见窗口计算精度",
+    "category": "functional"
   },
   {
     "name": "smartpush-10",
-    "title": "预取原文完整度"
+    "title": "预取原文完整度",
+    "category": "functional"
   },
   {
     "name": "smartpush-11",
-    "title": "query 含 AI reply"
+    "title": "query 含 AI reply",
+    "category": "functional"
   },
   {
     "name": "smartpush-12",
-    "title": "SmartPush Memory LLM 系统提示词结构"
+    "title": "SmartPush Memory LLM 系统提示词结构",
+    "category": "functional"
   },
   {
     "name": "smartpush-14",
-    "title": "全链路冒烟测试（STM + LTM + SmartPush + 注入）"
+    "title": "全链路冒烟测试（STM + LTM + SmartPush + 注入）",
+    "category": "smoke"
   },
   {
     "name": "smartpush-group-b",
-    "title": "[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）"
+    "title": "[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）",
+    "category": "functional"
   }
 ];
 
@@ -93,6 +111,6 @@ export var __TEST_MARKDOWN = {
   "smartpush-10": "---\nname: smartpush-10\nfolder: smartpush-10\ntitle: 预取原文完整度\nobjective: 验证 prefetchOriginalTexts 取全部 msg_id 原文，每行带 [msg_xx] 前缀，总字符 ≤ 2000\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - stmBatch >= 4\nstructural:\n  - { op: exists, target: smartpush_injection }\nsemantic: []\nminRounds: 4\nmaxRounds: 10\nexpectedRounds: \"5-8\"\ntimeoutPerRound: 120000\n---\n\n# SmartPush 预取原文完整度\n\n## 目标\n验证 prefetchOriginalTexts 取全部 msg_id 原文，每行带 [msg_xx] 前缀，总字符 ≤ 2000。\n\n## 前置条件\n- NE-Memory 已初始化，SmartPush 启用\n- stmBatch >= 4\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 5-8 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n引导策略：正常自然互动。积累 5+ 轮 STM 后触发 SmartPush。不需要特殊引导。\n\n## 断言\n\n### 结构性断言\n- exists: smartpush_injection\n\n### 语义性断言\n无（通过 trace 手工验证：prefetch 包含所有 msg_id 原文、每行带 [msg_xx] 前缀、总字符 ≤ 2000）\n\n## 运行参数\n- minRounds: 4\n- maxRounds: 10\n- expectedRounds: 5-8\n- timeoutPerRound: 120000\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-10')\n```\n",
   "smartpush-11": "---\nname: smartpush-11\nfolder: smartpush-11\ntitle: query 含 AI reply\nobjective: 验证 BM25 query 包含最近的 2 轮 AI 回复和 user 输入，而非仅 5 条 user messages\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - stmBatch >= 4\nstructural:\n  - { op: exists, target: smartpush_injection }\nsemantic: []\nminRounds: 4\nmaxRounds: 10\nexpectedRounds: \"5-7\"\ntimeoutPerRound: 120000\n---\n\n# SmartPush query 含 AI reply\n\n## 目标\n验证 BM25 query 包含最近的 2 轮 AI 回复和 user 输入，而非仅 5 条 user messages。\n\n## 前置条件\n- NE-Memory 已初始化，SmartPush 启用\n- stmBatch >= 4\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n引导策略：正常自然互动。积累 5+ 轮后触发 SmartPush。Driver 在后期轮次回复应包含 AI 和 user 对话。\n\n## 断言\n\n### 结构性断言\n- exists: smartpush_injection\n\n### 语义性断言\n无（通过 trace 手工验证 system prompt 中的 query 包含最近 AI 回复和 user 输入）\n\n## 运行参数\n- minRounds: 4\n- maxRounds: 10\n- expectedRounds: 5-7\n- timeoutPerRound: 120000\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-11')\n```\n",
   "smartpush-12": "---\nname: smartpush-12\nfolder: smartpush-12\ntitle: SmartPush Memory LLM 系统提示词结构\nobjective: 验证 Memory LLM 收到的 system prompt 遵循 7 层认知结构，不含原文泄漏、msg_id 为有效数字、候选条目带 msgs 标签、access() 限制已告知\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - stmBatch >= 4\n  - 副 API 可用\nstructural:\n  - { op: exists, target: smartpush_prompt }\n  - { op: not_contains, target: smartpush_prompt, value: \"## 最近一轮对话上下文\" }\n  - { op: not_contains, target: smartpush_prompt, value: \"[msg_undefined]\" }\n  - { op: contains, target: smartpush_prompt, value: \"[msgs:\" }\n  - { op: contains, target: smartpush_prompt, value: \"最多 2 次 access\" }\n  - { op: min_length, target: smartpush_prompt, value: 200 }\nsemantic:\n  - \"System prompt 中是否存在 7 层结构：身份+任务 → 规则 → 当前语境 → 可见窗口 → 候选记忆 → 工具？每一层是否出现在正确的位置顺序？\"\n  - \"可见窗口段是否仅包含 [msg_N] 格式的紧凑列表（无原文）？\"\n  - \"候选记忆条目是否带有 [msgs: X,Y] 标签？\"\n  - \"[msg_N] 中的 N 是否为有效数字（而非 undefined/null）？\"\n  - \"System prompt 中是否未出现主 LLM 的对话原文泄漏（conversationBlock 已删除）？\"\n  - \"规则 8「认知边界」是否引用 entities[] 和线程标签（而非 conversation context 原文）？\"\nminRounds: 4\nmaxRounds: 10\nexpectedRounds: \"5-7\"\ntimeoutPerRound: 120000\n---\n\n# smartpush-12: Memory LLM 系统提示词结构\n\n## 目标\n验证 SmartPush 触发时，Memory LLM 收到的 system prompt 遵循以下结构约束：\n\n1. **7 层认知顺序** — 身份→规则→语境→可见窗口→候选→工具，自顶向下面向 LLM 认知模型\n2. **无原文泄漏** — `## 最近一轮对话上下文` 段已删除；可见窗口不含 200 chars 原文复述\n3. **msg_id 有效** — 可见窗口中 `[msg_N]` 的 N 为实际数字（非 `undefined`）\n4. **候选带 msgs 标签** — 条目含 `[msgs: X,Y]` 用于对照可见窗口\n5. **access() 限制** — 工具段明确「最多 2 次 access() 调用」\n6. **规则 8 来源正确** — 活跃角色从 `entities[]` + 线程标签识别，不引用已删除的 conversation context\n\n## 前置条件\n- NE-Memory 已初始化，SmartPush 启用\n- stmBatch >= 4\n- 副 API 可用\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n引导策略：自然互动 4-5 轮积累 STM，然后提出一个与之前对话内容相关的具体问题，触发 SmartPush。无需特殊构造——正常对话即可触发。\n\n## 断言\n\n### 结构性断言（代码自动检查）\n| 断言 | 含义 |\n|------|------|\n| `exists: smartpush_prompt` | SmartPush 触发后 system prompt 存在 |\n| `not_contains: \"## 最近一轮对话上下文\"` | conversationBlock 已删除——无原文泄漏 |\n| `not_contains: \"[msg_undefined]\"` | msg_id 全部有效——`computeVisibleWindow` 的 `_msg_id` 已注入 |\n| `contains: \"[msgs:\"` | 候选条目带有 msgs 标签——对照链路存在 |\n| `contains: \"最多 2 次 access\"` | access() 调用限制已在 prompt 中告知 |\n| `min_length: 200` | System prompt 非空且小于合理长度 |\n\n### 语义性断言（LLM 评估 trace）\n1. System prompt 中是否存在 7 层结构？每一层是否出现在正确的位置顺序？\n2. 可见窗口段是否仅包含 `[msg_N]` 格式的紧凑列表（无原文）？\n3. 候选记忆条目是否带有 `[msgs: X,Y]` 标签？\n4. `[msg_N]` 中的 N 是否为有效数字？\n5. System prompt 中是否未出现主 LLM 的对话原文泄漏？\n6. 规则 8 是否引用 `entities[]` 和线程标签（而非 conversation context）？\n\n## 运行参数\n- minRounds: 4\n- maxRounds: 10\n- expectedRounds: 5-7\n- timeoutPerRound: 120000\n\n## 说明\n\n此测试的验证对象是 **Memory LLM 的 system prompt**（即 trace 中的 `## System Prompt` 段），而非注入主 LLM 的 `smartpush_injection` 文本。\n\n需要新增 assertion target `smartpush_prompt`：在 `assertions.js` 的 `resolveTarget` 中添加：\n\n```javascript\ncase 'smartpush_prompt':\n    return collected.prompt || '';\n```\n\n在 `monitor.js` 的 `collectRoundData` 中捕获 prompt 内容：\n\n```javascript\nvar prompt = globalThis.__ne_debug_last_pipeline || null;\n// 提取 system message content\n```\n\n`smartpush_injection` 已有测试（retrieval-55 / smartpush-group-b），本测试专门覆盖 prompt 结构。\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-12')\n```\n",
-  "smartpush-14": "---\nname: smartpush-14\nfolder: smartpush-14\ntitle: 全链路冒烟测试（STM + LTM + SmartPush + 注入）\nobjective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - 副 API 可用\n  - stmBatch >= 4\nstructural:\n  - { op: exists, target: smartpush_injection }\n  - { op: min_length, target: smartpush_injection, value: 50 }\n  - { op: not_contains, target: smartpush_injection, value: \"→stm:\" }\n  - { op: exists, target: smartpush_prompt }\n  - { op: min_length, target: smartpush_prompt, value: 200 }\n  - { op: exists, target: stm_events }\n  - { op: min_length, target: pipeline_responses, value: 50 }\n  - { op: not_contains, target: pipeline_responses, value: \"\\\"error\\\"\" }\n  - { op: contains, target: pipeline_responses, value: \"\\\"ltm_decision\\\"\" }\n  - { op: exists, target: ltm_state }\nsemantic:\n  - \"SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？\"\n  - \"注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？\"\n  - \"STM 提取事件是否覆盖了该轮对话中的重要情节？\"\n  - \"STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？\"\n  - \"trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？\"\n  - \"trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？\"\nminRounds: 4\nmaxRounds: 8\nexpectedRounds: \"5-7\"\ntimeoutPerRound: 120000\n---\n\n# smartpush-14: 全链路冒烟测试（STM + LTM + SmartPush + 注入）\n\n## 目标\n验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂。每个 push 前跑。\n\n## 前置条件\n- NE-Memory 已初始化，SmartPush 启用\n- 副 API 可用\n- stmBatch >= 4\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n引导策略：跟随 AI 已有故事自然互动。不需要引入特殊角色、场景切换或复杂事件。就正常聊 5-7 轮，积累对话内容，让管道自然运作。当 SmartPush 触发（注入非空）后即可结束。\n\n## 断言\n\n### 结构性断言（代码自动检查）\n| # | 断言 | 含义 |\n|---|------|------|\n| 1 | `exists: smartpush_injection` | SmartPush 触发成功 |\n| 2 | `min_length: smartpush_injection >= 50` | 注入非空壳 |\n| 3 | `not_contains: smartpush_injection [→stm:]` | 无内部标记泄漏 |\n| 4 | `exists: smartpush_prompt` | Memory LLM 收到 system prompt |\n| 5 | `min_length: smartpush_prompt >= 200` | Prompt 非空 |\n| 6 | `exists: stm_events` | STM 提取成功 |\n| 7 | `min_length: pipeline_responses >= 50` | 至少一条 pipeline LLM 有有效输出 |\n| 8 | `not_contains: pipeline_responses [\"error\"]` | 无 pipeline 报错 |\n| 9 | `contains: pipeline_responses [\"ltm_decision\"]` | STM+LTM 合流管线正常工作 |\n| 10 | `exists: ltm_state` | LTM 状态快照有效 |\n\n### 语义性断言（LLM 评估 trace）\n1. SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？\n2. 注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？\n3. STM 提取事件是否覆盖了该轮对话中的重要情节？\n4. STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？\n5. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？\n6. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？\n\n## 运行参数\n- minRounds: 4\n- maxRounds: 8\n- expectedRounds: 5-7\n- timeoutPerRound: 120000\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-14')\n```\n",
-  "smartpush-group-b": "---\nname: smartpush-group-b\nfolder: smartpush-group-b\nstatus: passed\nlast_run: 2026-06-16\ntitle: \"[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）\"\nobjective: 单次对话覆盖 TC-05/08/10/11/55/58 的 trace 和语义验证\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - stmBatch >= 4\n  - 角色卡包含至少 3 个不同角色\nstructural:\n  - { op: exists, target: smartpush_injection }\nsemantic:\n  - \"在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？\"\n  - \"注入内容是否聚焦于窗口外的事件而非窗口内重复内容？\"\n  - \"注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？\"\nminRounds: 8\nmaxRounds: 14\nexpectedRounds: \"10-12\"\ntimeoutPerRound: 120000\n---\n\n# SmartPush Group B — 检索优化（去重 + 可见窗口 + 预取 + query + 短链 inline）\n\n## 目标\n单次对话覆盖五个检索优化特性验证：\n1. **注入内容去重（TC-05）** — 同一事件二次触发时内容稳定无膨胀\n2. **可见窗口跳过预取（TC-08）** — visibleWindow 内事件跳过 prefetch\n3. **预取原文完整度（TC-10）** — 全量 msg_id 原文 + [msg_xx] 前缀 + ≤2000 字符\n4. **query 含 AI reply（TC-11）** — BM25 query 包含最近 2 轮 AI 回复和 user 输入\n5. **短链自动 inline（TC-58）** — count ≤ 5 的实体链自动注入\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 10-12 轮。低于 8 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n### 角色要求\n确保对话中自然出现**至少 3 个不同角色**。让其中一个角色频繁出场（5+ 次互动），其他角色仅 2-3 次出场。这将建立长链/短链区分（TC-58）。\n\n### 分阶段引导策略\n\n**阶段一（前 5-6 轮）** — 自然推进对话，引入多个角色和一个具体事件 A。让早期轮次自然展开，积累 STM。\n\n**阶段二（第 6-8 轮）** — 提出一个与事件 A 相关的具体问题，触发第一次 SmartPush。在此之后继续推进 1-2 轮对话，引入新的事件 B。\n\n**阶段三（第 9-11 轮）** — 再次提出与**同一事件 A** 相关的问题，触发第二次 SmartPush。验证两次注入的一致性（TC-05）。\n\n**阶段四（后续轮次）** — 如果对话仍在继续，正常互动即可。不早于第 8 轮声明 [DONE]。\n\n### 关键时序要求\n- 两次关于事件 A 的提问之间间隔至少 1-2 轮自然对话\n- 早期轮次（前 4-5 轮）的内容应能在后续滑出 maxContext 可见窗口，以验证窗口跳过（TC-08）\n\n## 断言\n\n### 结构性断言\n- exists: smartpush_injection\n\n### 语义性断言（LLM 评估）\n1. 在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？\n2. 注入内容是否聚焦于窗口外的事件而非窗口内重复内容？\n3. 注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？\n\n## 运行参数\n- minRounds: 8（确保两次 SmartPush 触发）\n- maxRounds: 14\n- expectedRounds: 10-12\n- timeoutPerRound: 120000\n\n> 此组合测试为单次对话统一运行，所有 6 个检查点共享同一段对话数据。\n> 个体测试（smartpush-05/08/10/11、retrieval-55/58）保留各自的 test-case.md 供单独调试。\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-group-b')\n```\n"
+  "smartpush-group-b": "---\nname: smartpush-group-b\nfolder: smartpush-group-b\nstatus: passed\nlast_run: 2026-06-16\ntitle: \"[组合] SmartPush 检索优化（去重+可见窗口+预取+query+短链）\"\nobjective: 单次对话覆盖 TC-05/08/10/11/55/58 的 trace 和语义验证\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - stmBatch >= 4\n  - 角色卡包含至少 3 个不同角色\nstructural:\n  - { op: exists, target: smartpush_injection }\nsemantic:\n  - \"在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？\"\n  - \"注入内容是否聚焦于窗口外的事件而非窗口内重复内容？\"\n  - \"注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？\"\nminRounds: 8\nmaxRounds: 14\nexpectedRounds: \"10-12\"\ntimeoutPerRound: 120000\n---\n\n# SmartPush Group B — 检索优化（去重 + 可见窗口 + 预取 + query + 短链 inline）\n\n## 目标\n单次对话覆盖五个检索优化特性验证：\n1. **注入内容去重（TC-05）** — 同一事件二次触发时内容稳定无膨胀\n2. **可见窗口跳过预取（TC-08）** — visibleWindow 内事件跳过 prefetch\n3. **预取原文完整度（TC-10）** — 全量 msg_id 原文 + [msg_xx] 前缀 + ≤2000 字符\n4. **query 含 AI reply（TC-11）** — BM25 query 包含最近 2 轮 AI 回复和 user 输入\n5. **短链自动 inline（TC-58）** — count ≤ 5 的实体链自动注入\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 10-12 轮。低于 8 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n### 角色要求\n确保对话中自然出现**至少 3 个不同角色**。让其中一个角色频繁出场（5+ 次互动），其他角色仅 2-3 次出场。这将建立长链/短链区分（TC-58）。\n\n### 分阶段引导策略\n\n**阶段一（前 5-6 轮）** — 自然推进对话，引入多个角色和一个具体事件 A。让早期轮次自然展开，积累 STM。\n\n**阶段二（第 6-8 轮）** — 提出一个与事件 A 相关的具体问题，触发第一次 SmartPush。在此之后继续推进 1-2 轮对话，引入新的事件 B。\n\n**阶段三（第 9-11 轮）** — 再次提出与**同一事件 A** 相关的问题，触发第二次 SmartPush。验证两次注入的一致性（TC-05）。\n\n**阶段四（后续轮次）** — 如果对话仍在继续，正常互动即可。不早于第 8 轮声明 [DONE]。\n\n### 关键时序要求\n- 两次关于事件 A 的提问之间间隔至少 1-2 轮自然对话\n- 早期轮次（前 4-5 轮）的内容应能在后续滑出 maxContext 可见窗口，以验证窗口跳过（TC-08）\n\n## 断言\n\n### 结构性断言\n- exists: smartpush_injection\n\n### 语义性断言（LLM 评估）\n1. 在 trace 中是否出现了两次或多次 SmartPush 注入？如果是，第二次注入中关于同一事件的信息是否与第一次注入一致，没有出现内容 2x+ 膨胀或矛盾？\n2. 注入内容是否聚焦于窗口外的事件而非窗口内重复内容？\n3. 注入中是否可见 [msg_xx] 标注（指示原文来自哪轮对话）？\n\n## 运行参数\n- minRounds: 8（确保两次 SmartPush 触发）\n- maxRounds: 14\n- expectedRounds: 10-12\n- timeoutPerRound: 120000\n\n> 此组合测试为单次对话统一运行，所有 6 个检查点共享同一段对话数据。\n> 个体测试（smartpush-05/08/10/11、retrieval-55/58）保留各自的 test-case.md 供单独调试。\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-group-b')\n```\n",
+  "smartpush-14": "---\nname: smartpush-14\nfolder: smartpush-14\ntitle: 全链路冒烟测试（STM + LTM + SmartPush + 注入）\nobjective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback\npreconditions:\n  - NE-Memory 已初始化，SmartPush 启用\n  - 副 API 可用\n  - stmBatch >= 4\nstructural:\n  - { op: exists, target: smartpush_injection }\n  - { op: min_length, target: smartpush_injection, value: 50 }\n  - { op: not_contains, target: smartpush_injection, value: \"→stm:\" }\n  - { op: exists, target: smartpush_prompt }\n  - { op: min_length, target: smartpush_prompt, value: 200 }\n  - { op: exists, target: stm_events }\n  - { op: min_length, target: pipeline_responses, value: 50 }\n  - { op: not_contains, target: pipeline_responses, value: \"\\\"error\\\"\" }\n  - { op: contains, target: pipeline_responses, value: \"\\\"ltm_decision\\\"\" }\n  - { op: exists, target: ltm_state }\nsemantic:\n  - \"SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？\"\n  - \"注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？\"\n  - \"STM 提取事件是否覆盖了该轮对话中的重要情节？\"\n  - \"STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？\"\n  - \"trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？\"\n  - \"trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？\"\nminRounds: 4\nmaxRounds: 8\nexpectedRounds: \"5-7\"\ntimeoutPerRound: 120000\n---\n\n# smartpush-14: 全链路冒烟测试（STM + LTM + SmartPush + 注入）\n\n## 目标\n验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂。每个 push 前跑。\n\n## 前置条件\n- NE-Memory 已初始化，SmartPush 启用\n- 副 API 可用\n- stmBatch >= 4\n\n## 对话设计（给 LLM Driver 的指导）\nDriver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。\nDriver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。\n\n轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。\n\n引导策略：跟随 AI 已有故事自然互动。不需要引入特殊角色、场景切换或复杂事件。就正常聊 5-7 轮，积累对话内容，让管道自然运作。当 SmartPush 触发（注入非空）后即可结束。\n\n## 断言\n\n### 结构性断言（代码自动检查）\n| # | 断言 | 含义 |\n|---|------|------|\n| 1 | `exists: smartpush_injection` | SmartPush 触发成功 |\n| 2 | `min_length: smartpush_injection >= 50` | 注入非空壳 |\n| 3 | `not_contains: smartpush_injection [→stm:]` | 无内部标记泄漏 |\n| 4 | `exists: smartpush_prompt` | Memory LLM 收到 system prompt |\n| 5 | `min_length: smartpush_prompt >= 200` | Prompt 非空 |\n| 6 | `exists: stm_events` | STM 提取成功 |\n| 7 | `min_length: pipeline_responses >= 50` | 至少一条 pipeline LLM 有有效输出 |\n| 8 | `not_contains: pipeline_responses [\"error\"]` | 无 pipeline 报错 |\n| 9 | `contains: pipeline_responses [\"ltm_decision\"]` | STM+LTM 合流管线正常工作 |\n| 10 | `exists: ltm_state` | LTM 状态快照有效 |\n\n### 语义性断言（LLM 评估 trace）\n1. SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？\n2. 注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？\n3. STM 提取事件是否覆盖了该轮对话中的重要情节？\n4. STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？\n5. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？\n6. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？\n\n## 运行参数\n- minRounds: 4\n- maxRounds: 8\n- expectedRounds: 5-7\n- timeoutPerRound: 120000\n\n## 调用方式\n\n```javascript\nawait __ne_debug.runTestByName('smartpush-14')\n```\n"
 };

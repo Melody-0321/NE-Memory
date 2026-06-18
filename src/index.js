@@ -15,6 +15,7 @@ import { setRetrievalEnabled } from './settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from './api/llm.js';
 import { ensureStateWorldBook } from './engine/worldbook-sync.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner/index.js';
+import { getTestCaseMetadata } from './test-runner/files.js';
 window.__NE_DEV_MODE = window.__NE_DEV_MODE !== undefined ? window.__NE_DEV_MODE : true;
 
 var _retryTimer = null;
@@ -457,6 +458,9 @@ function _buildDebugApi(host) {
         },
         listTests: function() {
             return listTests();
+        },
+        getTestCaseMetadata: function(name) {
+            return getTestCaseMetadata(name);
         },
         setReportsDir: async function() {
             try {

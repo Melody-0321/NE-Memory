@@ -1,17 +1,10 @@
 var _pipelinePhase = 'idle'; // idle | state | stm | ltm
-var _isInjecting = false;
+var _pipelineWaiters = [];
 var _stateSince = 0;
 
 var PIPELINE_PHASES = ['state', 'stm', 'ltm'];
 
 export function tryAcquire(targetState) {
-    if (targetState === 'injecting') {
-        if (_isInjecting) return false;
-        _isInjecting = true;
-        _stateSince = Date.now();
-        console.log('[NE-GUARD] acquire injecting (state=' + getState() + ')');
-        return true;
-    }
     if (_pipelinePhase !== 'idle') return false;
     if (PIPELINE_PHASES.indexOf(targetState) === -1) return false;
     _pipelinePhase = targetState;
@@ -30,18 +23,16 @@ export function transitionTo(newState) {
 
 export function releasePipeline() {
     _pipelinePhase = 'idle';
-    if (!_isInjecting) _stateSince = 0;
-    console.log('[NE-GUARD] release pipeline' + (_isInjecting ? ' (injecting still running)' : ' → idle'));
-}
-
-export function releaseInjection() {
-    _isInjecting = false;
-    if (_pipelinePhase === 'idle') _stateSince = 0;
-    console.log('[NE-GUARD] release injecting' + (_pipelinePhase !== 'idle' ? ' (pipeline still ' + _pipelinePhase + ')' : ' → idle'));
+    _stateSince = 0;
+    console.log('[NE-GUARD] release pipeline → idle');
+    var waiters = _pipelineWaiters.splice(0);
+    for (var i = 0; i < waiters.length; i++) {
+        try { waiters[i].resolve(); } catch (e) {}
+    }
 }
 
 export function isIdle() {
-    return _pipelinePhase === 'idle' && !_isInjecting;
+    return _pipelinePhase === 'idle';
 }
 
 export function getPipelinePhase() {
@@ -49,15 +40,40 @@ export function getPipelinePhase() {
 }
 
 export function getState() {
-    if (_pipelinePhase === 'idle' && !_isInjecting) return 'idle';
-    if (_pipelinePhase === 'idle' && _isInjecting) return 'injecting';
-    if (_pipelinePhase !== 'idle' && !_isInjecting) return _pipelinePhase;
-    return _pipelinePhase + '+injecting';
+    return _pipelinePhase;
 }
 
 export function reset() {
     _pipelinePhase = 'idle';
-    _isInjecting = false;
     _stateSince = 0;
+    var waiters = _pipelineWaiters.splice(0);
+    _pipelineWaiters = [];
+    for (var i = 0; i < waiters.length; i++) {
+        try { waiters[i].resolve(); } catch (e) {}
+    }
     console.log('[NE-GUARD] reset → idle');
+}
+
+export function waitForPipelineTrackIdle(timeoutMs) {
+    timeoutMs = timeoutMs || 15000;
+    return new Promise(function(resolve) {
+        if (_pipelinePhase === 'idle') { resolve(); return; }
+        var resolved = false;
+        var timer = setTimeout(function() {
+            if (!resolved) {
+                resolved = true;
+                var idx = _pipelineWaiters.indexOf(entry);
+                if (idx !== -1) _pipelineWaiters.splice(idx, 1);
+                resolve();
+            }
+        }, timeoutMs);
+        var entry = { resolve: function() {
+            if (!resolved) {
+                resolved = true;
+                clearTimeout(timer);
+                resolve();
+            }
+        }};
+        _pipelineWaiters.push(entry);
+    });
 }

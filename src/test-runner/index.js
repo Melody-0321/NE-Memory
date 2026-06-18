@@ -18,7 +18,7 @@ export { setReportsDir };
 /**
  * 运行测试用例：从 test-case.md 加载并执行
  */
-export async function runTestByName(name, hostDoc) {
+export async function runTestByName(name, hostDoc, maxRoundsOverride) {
     var testCase = await loadTestCaseByName(name);
     if (!testCase) {
         console.error('[NE-TEST-RUNNER] Test case "' + name + '" not found.');
@@ -27,13 +27,13 @@ export async function runTestByName(name, hostDoc) {
 
     // Group test: run each sub-test sequentially
     if (testCase.tests && testCase.tests.length > 0) {
-        return await runTestGroup(testCase, hostDoc);
+        return await runTestGroup(testCase, hostDoc, maxRoundsOverride);
     }
 
-    return await executeSingleTest(testCase, hostDoc);
+    return await executeSingleTest(testCase, hostDoc, maxRoundsOverride);
 }
 
-async function runTestGroup(groupCase, hostDoc) {
+async function runTestGroup(groupCase, hostDoc, maxRoundsOverride) {
     var groupResult = {
         name: groupCase.name,
         title: groupCase.title,
@@ -51,7 +51,7 @@ async function runTestGroup(groupCase, hostDoc) {
         var subName = groupCase.tests[gi];
         console.log('[NE-TEST-RUNNER] --- Sub-test ' + (gi + 1) + '/' + groupCase.tests.length + ': ' + subName + ' ---');
 
-        var subResult = await runTestByName(subName, hostDoc);
+        var subResult = await runTestByName(subName, hostDoc, maxRoundsOverride);
         groupResult.subResults.push({
             name: subName,
             result: subResult
@@ -71,7 +71,10 @@ async function runTestGroup(groupCase, hostDoc) {
     return groupResult;
 }
 
-async function executeSingleTest(testCase, hostDoc) {
+async function executeSingleTest(testCase, hostDoc, maxRoundsOverride) {
+    if (typeof maxRoundsOverride === 'number' && maxRoundsOverride > 0) {
+        testCase = Object.assign({}, testCase, { maxRounds: maxRoundsOverride });
+    }
     console.log('[NE-TEST-RUNNER] === Starting: ' + testCase.title + ' ===');
     console.log('[NE-TEST-RUNNER] Objective: ' + testCase.objective);
     console.log('[NE-TEST-RUNNER] Max rounds: ' + testCase.maxRounds);

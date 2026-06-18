@@ -12,7 +12,7 @@ var OUTPUT_FILE = path.join(__dirname, '..', 'src', 'test-runner', 'test-data.ge
 var knownTests = [];
 var markdownMap = {};
 
-function collect(dir) {
+function collect(dir, category) {
     var entries;
     try {
         entries = fs.readdirSync(dir, { withFileTypes: true });
@@ -41,8 +41,8 @@ function collect(dir) {
         if (name) {
             markdownMap[name] = raw;
             var title = parseTitle(raw, entry.name);
-            knownTests.push({ name: name, title: title });
-            console.log('[gen-test-data] ' + name + ' -> ' + title);
+            knownTests.push({ name: name, title: title, category: category || 'functional' });
+            console.log('[gen-test-data] ' + name + ' [' + (category || 'functional') + '] -> ' + title);
         }
     }
 }
@@ -89,7 +89,8 @@ function parseTitle(raw, folderName) {
     return h1m ? h1m[1].trim() : folderName;
 }
 
-collect(TEST_CASES_DIR);
+collect(TEST_CASES_DIR, 'functional');
+collect(path.join(TEST_CASES_DIR, 'smoke'), 'smoke');
 
 // Sort by name
 knownTests.sort(function(a, b) { return a.name.localeCompare(b.name); });

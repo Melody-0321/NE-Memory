@@ -5,6 +5,7 @@
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
 import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
+import { splitStmsIntoContiguousGroups } from '../engine/consolidate.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
 import { executeIncrementalUpdate } from '../engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
@@ -138,6 +139,12 @@ function injectBottomDrawerCSS() {
         '.ne-tr-semantic{margin-top:4px;padding:4px 8px;border-left:3px solid var(--SmartThemeBorderColor);font-size:0.85em;}' +
         '.ne-tr-trace{display:none;margin-top:6px;padding:6px;background:var(--black20a);border-radius:4px;font-family:monospace;font-size:0.75em;white-space:pre-wrap;max-height:300px;overflow-y:auto;}' +
         '.ne-tr-trace.open{display:block;}' +
+        '.ne-tr-smoke-section{border:1px dashed var(--SmartThemeBorderColor);border-radius:6px;padding:6px;margin-bottom:8px;background:var(--black10a);}' +
+        '.ne-tr-smoke-label{font-size:0.85em;font-weight:bold;margin-bottom:4px;color:var(--text);display:flex;align-items:center;gap:4px;}' +
+        '.ne-tr-slider-row{display:flex;align-items:center;gap:8px;margin-bottom:8px;font-size:0.85em;}' +
+        '.ne-tr-slider{flex:1;height:6px;-webkit-appearance:none;appearance:none;background:var(--black30a);border-radius:3px;outline:none;}' +
+        '.ne-tr-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--SmartThemeQuoteColor);cursor:pointer;}' +
+        '.ne-tr-slider-value{min-width:2em;text-align:right;font-weight:bold;}' +
         '.ne-tr-export-bar{display:flex;gap:4px;margin-top:6px;}' +
         '.narrative_ltm_toggle{display:inline-block;transition:transform .2s;font-size:0.7em;color:var(--grey-50);cursor:pointer;}' +
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
@@ -148,6 +155,7 @@ function injectBottomDrawerCSS() {
         '.narrative_ltm_sub_table{width:100%;border-collapse:collapse;font-size:0.85em;margin:4px 0;}' +
         '.narrative_ltm_sub_table tr:nth-child(even){background:var(--black10a);}' +
         '.narrative_ltm_sub_table td{padding:2px 6px;}' +
+        '.ne-orphan-group-row td{border-top:1px dashed var(--SmartThemeBorderColor);border-bottom:1px dashed var(--SmartThemeBorderColor);}' +
         '.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}' +
         '.ne-inline-edit-btn:hover{opacity:1;}' +
         '.ne-inline-row td{padding:2px 4px!important;}' +
@@ -1019,16 +1027,39 @@ async function updateVaultViewerPopout(getChatId) {
     } catch (e) { _logSection('stm-index+selfheal', e); }
 
     // ── Section G: Memory table rendering ──
-    var unconsolidatedSTM = sortStmByMsgOrder(Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : []);
+    var rawSTM = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
+    var freshSTM = rawSTM.filter(function(s) { return s.parent_ltm !== null; });
+    var orphans = rawSTM.filter(function(s) { return s.parent_ltm === null; });
+    var orphanGroups = splitStmsIntoContiguousGroups(orphans, 3);
+
     var ltmEntries = sortLtmByMsgOrder(Array.isArray(c.ltm_entries) ? c.ltm_entries : [], stmIndexMap);
+
+    function getFirstMsgStart(entry, stmIdx) {
+        if (entry._type === 'orphan_group') {
+            return (entry.stms[0] && entry.stms[0].absMsgStart !== undefined) ? entry.stms[0].absMsgStart : Infinity;
+        }
+        var refs = entry.stm_refs || [];
+        var firstStm = stmIdx[refs[0]];
+        return (firstStm && firstStm.absMsgStart !== undefined) ? firstStm.absMsgStart : Infinity;
+    }
+
+    var mergedList = [];
+    ltmEntries.forEach(function(ltm) { mergedList.push(ltm); });
+    orphanGroups.forEach(function(group, gi) {
+        mergedList.push({ _type: 'orphan_group', _id: 'orphan_' + gi, stms: group });
+    });
+    mergedList.sort(function(a, b) {
+        return getFirstMsgStart(a, stmIndexMap) - getFirstMsgStart(b, stmIndexMap);
+    });
+
     var ltmCount = ltmEntries.length;
-    var stmCount = unconsolidatedSTM.length;
+    var stmCount = sortStmByMsgOrder(freshSTM).length;
 
     try {
-        renderMemoryTable('#narrative_vault_panel_ltm_body', ltmEntries, 'ltm', stmIndexMap);
+        renderMemoryTable('#narrative_vault_panel_ltm_body', mergedList, 'ltm', stmIndexMap);
     } catch (e) { _logSection('render-ltm-table', e); }
     try {
-        renderMemoryTable('#narrative_vault_panel_stm_body', unconsolidatedSTM, 'stm');
+        renderMemoryTable('#narrative_vault_panel_stm_body', sortStmByMsgOrder(freshSTM), 'stm');
     } catch (e) { _logSection('render-stm-table', e); }
 
     // ── Section H: Counts + quick index ──
@@ -1177,60 +1208,102 @@ function toggleInlineEdit(row, entryId, entryType) {
     };
 }
 
+function renderStmRow(stm, opts) {
+    var no = opts.no || 0;
+    var fs = opts.fontSize || '0.9em';
+    var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
+    var subScene = stm.scene || '';
+    var msgCount = (stm.msg_ids || []).length;
+    var subAbsMsgStart = stm.absMsgStart;
+    var subAbsMsgEnd = stm.absMsgEnd;
+    var subMsgDisplay;
+    if (subAbsMsgStart !== undefined && subAbsMsgEnd !== undefined && msgCount > 0) {
+        subMsgDisplay = 'Msg ' + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + msgCount + '\u6761';
+    } else if (msgCount > 0) {
+        subMsgDisplay = msgCount + '\u6761';
+    } else {
+        subMsgDisplay = stm.id || '';
+    }
+    var editCell = opts.showEdit
+        ? '<td><span class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" title="Edit">\u270E</span></td>'
+        : '<td></td>';
+    return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + '>'
+        + '<td style="text-align:center;color:#888;width:2em;font-size:' + fs + ';">' + no + '</td>'
+        + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
+        + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'
+        + '<td style="font-size:' + fs + ';max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td>'
+        + '<td style="font-size:' + fs + ';">' + escapeHtml(stm.event || stm.summary || '') + '</td>'
+        + editCell
+        + '</tr>';
+}
+
 export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = qs(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">(empty)</td></tr>'; return; }
     entries.forEach(function (entry, i) {
-        var periodCell = type === 'ltm' ? (entry.time_range || entry.period || '') : (entry.period || '') + (entry.time_label ? '\u00b7' + entry.time_label : '');
-        var idListFull = type === 'ltm'
-            ? (entry.stm_refs || []).join(', ')
-            : (entry.msg_ids || []).join(', ');
-        var idDisplay = '';
-        if (type === 'ltm') {
-            var refs = entry.stm_refs || [];
-            idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
-        } else {
-            var msgCount = (entry.msg_ids || []).length;
-            var absMsgStart = entry.absMsgStart;
-            var absMsgEnd = entry.absMsgEnd;
-            if (absMsgStart !== undefined && absMsgEnd !== undefined && msgCount > 0) {
-                idDisplay = 'Msg ' + absMsgStart + '\u2013' + absMsgEnd + ' / ' + msgCount + '\u6761';
-            } else if (msgCount > 0) {
-                idDisplay = msgCount + '\u6761';
-            }
-        }
-        var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var entryId = entry.id || (type + '_' + i);
-        var toggleBtn = type === 'ltm' ? '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ' : '';
-        var entryNo = type === 'stm' ? parseInt(String(entry.id || '').replace('stm_', ''), 10) || (i + 1) : (i + 1);
-        var titleStyle = type === 'ltm' && entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + entryNo + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (type === 'ltm' && entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="' + type + '" title="Edit">\u270E</span></td></tr>';
-        if (type === 'ltm') {
-            var detailRows = '';
-            var stmRefs = entry.stm_refs || [];
-            stmRefs.forEach(function (stmId, si) {
-                var stm = stmIndexMap && stmIndexMap[stmId];
-                if (stm) {
-                    var subPeriod = (stm.period || '') + (stm.time_label ? '\u00b7' + stm.time_label : '');
-                    var subAbsMsgStart = stm.absMsgStart;
-                    var subAbsMsgEnd = stm.absMsgEnd;
-                    var subMsgCount = (stm.msg_ids || []).length;
-                    var subMsgDisplay;
-                    if (subAbsMsgStart !== undefined && subAbsMsgEnd !== undefined && subMsgCount > 0) {
-                        subMsgDisplay = 'Msg ' + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + subMsgCount + '\u6761';
-                    } else if (subMsgCount > 0) {
-                        subMsgDisplay = subMsgCount + '\u6761';
-                    } else {
-                        subMsgDisplay = stmId;
-                    }
-                    var subNo = parseInt(stmId.replace('stm_', ''), 10) || (si + 1);
-                    detailRows += '<tr><td style="text-align:center;color:#888;width:2em;font-size:0.8em;">' + subNo + '</td><td style="white-space:nowrap;font-size:0.8em;max-width:120px;">' + subPeriod + '</td><td style="font-size:0.8em;max-width:100px;">' + (stm.scene || '') + '</td><td style="font-size:0.8em;max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td><td style="font-size:0.8em;">' + (stm.event || stm.summary || '') + '</td><td></td></tr>';
-                }
-            });
-            if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
+
+        if (type === 'stm') {
+            var stmNo = parseInt(String(entry.id || '').replace('stm_', ''), 10) || (i + 1);
+            tbody.innerHTML += renderStmRow(entry, { showEdit: true, no: stmNo, fontSize: '0.9em' });
+            return;
         }
+
+        if (entry._type === 'orphan_group') {
+            var groupId = entry._id;
+            var groupStms = entry.stms || [];
+            var firstStm = groupStms[0];
+            var lastStm = groupStms[groupStms.length - 1];
+            var msgLabel = (firstStm && lastStm)
+                ? 'Msg ' + (firstStm.absMsgStart || '?') + '\u2013' + (lastStm.absMsgEnd || lastStm.absMsgStart || '?')
+                : 'N/A';
+            var countLabel = groupStms.length + '\u6761';
+            var groupTitle = '[' + t('Unfiled') + '] ' + msgLabel + ' / ' + countLabel;
+            var groupPeriod = (firstStm && firstStm.period) ? firstStm.period : '';
+            var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + groupId + '" title="Toggle STM details">\u25B6</span> ';
+
+            tbody.innerHTML += '<tr data-entry-id="' + groupId + '" class="ne-orphan-group-row">'
+                + '<td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td>'
+                + '<td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + escapeHtml(groupPeriod) + '</td>'
+                + '<td style="font-size:0.85em;max-width:150px;color:#888;">' + escapeHtml(msgLabel) + '</td>'
+                + '<td><div style="font-style:italic;color:#888;">' + escapeHtml(groupTitle) + '</div></td>'
+                + '<td></td>'
+                + '</tr>';
+
+            var detailRows = '';
+            groupStms.forEach(function(stm, si) {
+                detailRows += renderStmRow(stm, { fontSize: '0.8em', no: si + 1 });
+            });
+            if (detailRows) {
+                tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + groupId + '">'
+                    + '<td colspan="5"><div class="narrative_ltm_detail_container">'
+                    + '<table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table>'
+                    + '</div></td></tr>';
+            }
+            return;
+        }
+
+        // LTM entry rendering
+        var periodCell = entry.time_range || entry.period || '';
+        var refs = entry.stm_refs || [];
+        var idListFull = refs.join(', ');
+        var idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
+        var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
+        var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ';
+        var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" title="Edit">\u270E</span></td></tr>';
+
+        var detailRows = '';
+        refs.forEach(function (stmId, si) {
+            var stm = stmIndexMap && stmIndexMap[stmId];
+            if (stm) {
+                var subNo = parseInt(stmId.replace('stm_', ''), 10) || (si + 1);
+                detailRows += renderStmRow(stm, { fontSize: '0.8em', no: subNo });
+            }
+        });
+        if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
     });
     if (type === 'ltm') {
         tbody.querySelectorAll('.narrative_ltm_toggle').forEach(function (el) {
@@ -2543,35 +2616,138 @@ function initTestRunner() {
     var debug = globalThis.__ne_debug;
     var tests = debug && debug.listTests ? debug.listTests() : [];
 
-    container.innerHTML =
-        '<select id="ne-tr-select" class="ne-tr-select">' +
-        (tests.length > 0 ? tests.map(function(t) {
-            return '<option value="' + t.name + '">' + t.title + '</option>';
-        }).join('') : '<option>' + t('No test cases available') + '</option>') +
-        '</select>' +
-        '<div class="ne-tr-actions">' +
-        '<button id="ne-tr-run" class="ne-tr-btn">\u25B6 ' + t('Run') + '</button>' +
-        '<button id="ne-tr-export" class="ne-tr-btn" disabled>' + t('Export') + '</button>' +
-        '</div>' +
+    var smokeTests = tests.filter(function(t) { return t.category === 'smoke'; });
+    var funcTests = tests.filter(function(t) { return t.category !== 'smoke'; });
+
+    var smokeHtml = '';
+    if (smokeTests.length > 0) {
+        smokeHtml =
+            '<div class="ne-tr-smoke-section">' +
+            '<div class="ne-tr-smoke-label">\uD83D\uDD25 ' + t('Smoke Tests') + '</div>' +
+            '<select id="ne-tr-smoke-select" class="ne-tr-select">' +
+            smokeTests.map(function(t) {
+                return '<option value="' + t.name + '">' + t.title + '</option>';
+            }).join('') +
+            '</select>' +
+            '<div class="ne-tr-slider-row">' +
+            '<span>\u2699 ' + t('Max Rounds') + ':</span>' +
+            '<input type="range" id="ne-tr-smoke-slider" class="ne-tr-slider" min="2" max="30" step="2" value="8">' +
+            '<span id="ne-tr-smoke-slider-value" class="ne-tr-slider-value">8</span>' +
+            '</div>' +
+            '<div class="ne-tr-actions">' +
+            '<button id="ne-tr-smoke-run" class="ne-tr-btn">\u25B6 ' + t('Run') + '</button>' +
+            '<button id="ne-tr-smoke-export" class="ne-tr-btn" disabled>' + t('Export') + '</button>' +
+            '</div>' +
+            '</div>';
+    }
+
+    var funcHtml = '';
+    if (funcTests.length > 0) {
+        funcHtml =
+            '<div class="ne-tr-smoke-label" style="margin-top:8px;">\uD83E\uDDEA ' + t('Functional Tests') + '</div>' +
+            '<select id="ne-tr-func-select" class="ne-tr-select">' +
+            funcTests.map(function(t) {
+                return '<option value="' + t.name + '">' + t.title + '</option>';
+            }).join('') +
+            '</select>' +
+            '<div class="ne-tr-actions">' +
+            '<button id="ne-tr-func-run" class="ne-tr-btn">\u25B6 ' + t('Run') + '</button>' +
+            '<button id="ne-tr-func-export" class="ne-tr-btn" disabled>' + t('Export') + '</button>' +
+            '</div>';
+    }
+
+    container.innerHTML = smokeHtml + funcHtml +
         '<div id="ne-tr-status" class="ne-tr-status">' + t('Select a test case and press Run') + '</div>' +
         '<div id="ne-tr-result" class="ne-tr-result" style="display:none;"></div>' +
         '<pre id="ne-tr-trace" class="ne-tr-trace"></pre>';
 
-    byId('ne-tr-run').onclick = function() {
-        var select = byId('ne-tr-select');
-        var name = select.value;
-        if (!name) return;
-        runTestFromUI(name);
-    };
+    setupTestRunnerEvents();
+}
 
-    byId('ne-tr-export').onclick = exportTestResults;
+function setupTestRunnerEvents() {
+    var slider = byId('ne-tr-smoke-slider');
+    var sliderVal = byId('ne-tr-smoke-slider-value');
+    if (slider && sliderVal) {
+        updateSmokeSliderDefault();
+
+        slider.oninput = function() {
+            sliderVal.textContent = slider.value;
+        };
+
+        var smokeSelect = byId('ne-tr-smoke-select');
+        if (smokeSelect) {
+            smokeSelect.onchange = function() {
+                updateSmokeSliderDefault();
+            };
+        }
+    }
+
+    var smokeRun = byId('ne-tr-smoke-run');
+    if (smokeRun) {
+        smokeRun.onclick = function() {
+            var select = byId('ne-tr-smoke-select');
+            var name = select ? select.value : '';
+            if (!name) return;
+            var slider = byId('ne-tr-smoke-slider');
+            var maxRounds = slider ? parseInt(slider.value, 10) : undefined;
+            runTestFromUI(name, maxRounds);
+        };
+    }
+
+    var smokeExport = byId('ne-tr-smoke-export');
+    if (smokeExport) {
+        smokeExport.onclick = function() {
+            var select = byId('ne-tr-smoke-select');
+            _exportTestName = select ? select.value : '';
+            exportTestResults();
+        };
+    }
+
+    var funcRun = byId('ne-tr-func-run');
+    if (funcRun) {
+        funcRun.onclick = function() {
+            var select = byId('ne-tr-func-select');
+            var name = select ? select.value : '';
+            if (!name) return;
+            runTestFromUI(name);
+        };
+    }
+
+    var funcExport = byId('ne-tr-func-export');
+    if (funcExport) {
+        funcExport.onclick = function() {
+            var select = byId('ne-tr-func-select');
+            _exportTestName = select ? select.value : '';
+            exportTestResults();
+        };
+    }
+}
+
+function updateSmokeSliderDefault() {
+    var select = byId('ne-tr-smoke-select');
+    var slider = byId('ne-tr-smoke-slider');
+    var sliderVal = byId('ne-tr-smoke-slider-value');
+    if (!select || !slider || !sliderVal) return;
+
+    var name = select.value;
+    if (!name) return;
+
+    try {
+        var debug = globalThis.__ne_debug;
+        var meta = debug && debug.getTestCaseMetadata ? debug.getTestCaseMetadata(name) : null;
+        if (meta && typeof meta.maxRounds === 'number') {
+            slider.value = meta.maxRounds;
+            sliderVal.textContent = meta.maxRounds;
+        }
+    } catch (e) {}
 }
 
 var _lastTestResult = null;
+var _exportTestName = null;
 
-async function runTestFromUI(name) {
-    var runBtn = byId('ne-tr-run');
-    var exportBtn = byId('ne-tr-export');
+async function runTestFromUI(name, maxRoundsOverride) {
+    var runBtn = byId('ne-tr-smoke-run') || byId('ne-tr-func-run');
+    var exportBtn = byId('ne-tr-smoke-export') || byId('ne-tr-func-export');
     var statusEl = byId('ne-tr-status');
     var resultEl = byId('ne-tr-result');
     var traceEl = byId('ne-tr-trace');
@@ -2585,10 +2761,10 @@ async function runTestFromUI(name) {
     statusEl.className = 'ne-tr-status running';
 
     try {
-        var result = await debug.runTestByName(name);
+        var result = await debug.runTestByName(name, undefined, maxRoundsOverride);
         _lastTestResult = result;
 
-        statusEl.textContent = t('Done') + ' \u2014 ' + (result.roundCount || '?') + t(' rounds, ') + ((result.totalDurationMs || 0) / 1000).toFixed(1) + 's';
+        statusEl.textContent = t('Done') + ' \u2014 ' + (result.roundCount || '?') + ' rounds, ' + ((result.totalDurationMs || 0) / 1000).toFixed(1) + 's';
         statusEl.className = 'ne-tr-status';
 
         renderTestResult(result, resultEl, traceEl);
@@ -2598,6 +2774,7 @@ async function runTestFromUI(name) {
         statusEl.className = 'ne-tr-status';
     } finally {
         runBtn.disabled = false;
+        updateSmokeSliderDefault();
     }
 }
 
@@ -2649,9 +2826,8 @@ async function exportTestResults() {
     }
 
     var ts = new Date().toISOString().replace(/[:.]/g, '-').substring(0, 19);
-    var select = byId('ne-tr-select');
-    var name = select ? select.value : 'test';
-    var folder = select && select.selectedOptions && select.selectedOptions[0] ? select.selectedOptions[0].text : name;
+    var name = _exportTestName || 'test';
+    var folder = name;
 
     try {
         var subDir = await handle.getDirectoryHandle(folder, { create: true });

@@ -3,7 +3,7 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
-import { read, appendSTMEntries, collectAllMsgIds, getCursorState, updateCursorState, sortStmByMsgOrder } from '../vault/store.js';
+import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
 import { formatStateSummary } from '../vault/schema.js';
@@ -11,11 +11,13 @@ import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validat
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { processTurnsInBatches } from './stm-extractor.js';
-import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm, applyLtmDecision, runLtmRebatch } from './consolidate.js';
+import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm } from './consolidate.js';
 import { transitionTo, releasePipeline } from './pipeline-guard.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
 import { writeWithSnapshot } from '../vault/store.js';
+import { vocabularyOverlap } from './text-utils.js';
+import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
 export async function saveVaultWithSnapshot(chatId, vault) {
     vault.version = (vault.version || 0) + 1;
@@ -607,7 +609,7 @@ function buildRetrospectiveContext(content) {
             if (stm.scene) label += ' \u00b7 ' + stm.scene;
             retrospectiveCtx += label + ': ' + (stm.event || '') + '\n';
         }
-        retrospectiveCtx += '\n请使用角色全名。参考往期事件推断当前对话的时间和场景。';
+        retrospectiveCtx += '\n请使用角色全名。往期事件的 period 仅为格式模板（请复用其命名规范），时间可以从对话中线性推进。';
     } else {
         retrospectiveCtx = '\n\n## 时间锚点\n这是故事起始部分，无往期事件可参考。从对话内容和角色卡/世界书中推断时间格式和起始值。';
     }
@@ -730,10 +732,150 @@ export function buildStmOnlyPrompt(turns, vault) {
     var maxTurnLabel = turns.length - 1;
 
     var system = lang === 'en' ?
-        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (20-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. If unsure: \\"-\\"",\n      "scene": "inferred scene. If unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- If no valid events can be extracted, set events to empty array [].') :
-        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（20-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。必须使用与往期事件相同的格式。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 如果无法提取有效事件，将 events 设为空数组 []。');
+        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events as a template. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nWhen to start a NEW event (any ONE condition met):\n1. Time clearly shifts (implied or stated in dialog)\n2. Scene/location changes\n3. A character enters or leaves\n4. Plot goal or action arc changes direction\nIf NONE of these change, adjacent turns MUST be merged into one event.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- Trivial turns (greetings, acknowledgments, filler) merge into the nearest meaningful event. Do NOT fabricate events for them.\n- If the entire batch has no plot content, set events to empty array [].') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。往期事件的 period 仅为格式模板——请复用其命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n新事件的判断标准（满足任意一项即构成新事件）：\n1. 时间有明显推移（对话中暗示或明示）\n2. 场景位置改变\n3. 有新角色入场或旧角色离场\n4. 剧情目标或行动发生转折\n如果以上条件全部未变，相邻 turn 必须合并为一个事件。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 琐碎内容（问候、应答、语气词）直接并入最近的有意义事件，不要为其硬编事件。\n- 如果整个 batch 都没有可提取的有效事件，将 events 设为空数组 []。');
 
     return { system: system, user: userText };
+}
+
+function computeTurnBoundarySignals(turns) {
+    if (!turns || turns.length < 2) return [];
+
+    var signals = [];
+    for (var i = 0; i < turns.length - 1; i++) {
+        var tA = turns[i];
+        var tB = turns[i + 1];
+        var textA = (tA.user ? (tA.user.content || tA.user.mes || '') : '') + ' '
+            + (tA.assistant ? (tA.assistant.content || tA.assistant.mes || '') : '');
+        var textB = (tB.user ? (tB.user.content || tB.user.mes || '') : '') + ' '
+            + (tB.assistant ? (tB.assistant.content || tB.assistant.mes || '') : '');
+
+        var overlap = vocabularyOverlap(textA, textB);
+
+        var msgGap = tB.msgStart - tA.msgEnd;
+        var absGap = (tB.msgStart !== undefined && tA.msgEnd !== undefined)
+            ? tB.msgStart - tA.msgEnd : 0;
+
+        var charA_user = (tA.user && tA.user.name) || '';
+        var charA_asst = (tA.assistant && tA.assistant.name) || '';
+        var charB_user = (tB.user && tB.user.name) || '';
+        var charB_asst = (tB.assistant && tB.assistant.name) || '';
+        var sameChar = (charA_user === charB_user && charA_asst === charB_asst);
+
+        var totalLen = textA.length + textB.length;
+        var isFiller = totalLen < 30;
+
+        signals.push({
+            overlay: overlap,
+            msgGap: msgGap,
+            absGap: absGap,
+            sameChar: sameChar,
+            isFiller: isFiller
+        });
+    }
+    return signals;
+}
+
+var L1_CUT = 'L1_CUT';
+var L2_CUT = 'L2_CUT';
+var L2_KEEP = 'L2_KEEP';
+var L3_ASK = 'L3_ASK';
+
+function classifyBoundary(signal) {
+    if (signal.absGap > 20) return L1_CUT;
+    if (!signal.sameChar) return L1_CUT;
+    if (signal.isFiller) return L2_KEEP;
+    if (signal.overlay >= 0.5) return L2_KEEP;
+    if (signal.overlay <= 0.1) return L2_CUT;
+    return L3_ASK;
+}
+
+async function askBoundaryJudge(turnA, turnB, signal, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+
+    var textA = formatTurnsText([turnA], [0]);
+    var textB = formatTurnsText([turnB], [0]);
+
+    var ctx = '';
+    ctx += '## 系统预判\n';
+    ctx += '词汇重叠率：' + (signal.overlay * 100).toFixed(0) + '%\n';
+    ctx += '消息间隔：' + signal.msgGap + ' 条\n';
+
+    ctx += '\n## Turn A\n' + textA;
+    ctx += '\n## Turn B\n' + textB;
+
+    ctx += '\n只回答 yes 或 no：Turn A 和 Turn B 之间存在事件边界吗？';
+
+    var system = lang === 'en'
+        ? 'You are a story event boundary judge. Given two adjacent turns and pre-computed signals, determine if there is an event boundary between them.\n\nAnswer ONLY "yes" or "no".'
+        : '你是故事事件边界裁判。根据相邻两轮对话和预计算信号，判断它们之间是否存在事件边界。\n\n只回答 yes 或 no。';
+
+    try {
+        var response = await callMemoryPipeline([
+            { role: 'system', content: system },
+            { role: 'user', content: ctx }
+        ], { operation: 'stm_boundary' });
+
+        var trimmed = (response || '').trim().toLowerCase();
+        if (trimmed === 'yes' || trimmed === '是') return true;
+        if (trimmed === 'no' || trimmed === '否') return false;
+        if (trimmed.indexOf('yes') !== -1 || trimmed.indexOf('是') !== -1) return true;
+        return false;
+    } catch (e) {
+        console.warn('[NE] Boundary judge LLM failed:', e);
+        return false;
+    }
+}
+
+async function segmentTurns(turns, vault, callLLM) {
+    if (!turns || turns.length === 0) return [];
+
+    var signals = computeTurnBoundarySignals(turns);
+
+    var cuts = [];
+    for (var i = 0; i < turns.length - 1; i++) {
+        var cls = classifyBoundary(signals[i]);
+        if (cls === L1_CUT || cls === L2_CUT) {
+            cuts[i] = true;
+        } else if (cls === L2_KEEP) {
+            cuts[i] = false;
+        } else {
+            var result = await askBoundaryJudge(turns[i], turns[i + 1], signals[i], vault);
+            cuts[i] = result === true;
+        }
+    }
+
+    var segments = [];
+    var segStart = 0;
+    for (var i = 0; i < turns.length; i++) {
+        if (i === turns.length - 1 || cuts[i]) {
+            segments.push([segStart, i]);
+            segStart = i + 1;
+        }
+    }
+    return segments;
+}
+
+function buildStmSummaryPrompt(segments, turns, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+
+    var segmentsText = '';
+    for (var si = 0; si < segments.length; si++) {
+        var seg = segments[si];
+        var segTurns = [];
+        for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
+        segmentsText += '\n--- 区间 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ') ---\n';
+        segmentsText += formatTurnsText(turns, segTurns);
+        segmentsText += '\n';
+    }
+
+    var system = lang === 'en'
+        ? 'You are a story memory extractor. Each segment below is a contiguous plot segment — create exactly one event entry per segment.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\""\n    }\n  ]\n}\n\nRules:\n- One event per segment. No omissions.\n- Use character proper names only. No pronouns.\n- Trivial segments: still write a minimal event.'
+        : '你是故事记忆提取器。以下每个区间是一段连续剧情——为每个区间生成一条事件条目。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。参考往期事件的命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\""\n    }\n  ]\n}\n\n规则：\n- 每个区间一条事件。不遗漏。\n- 使用角色全名，禁止代词。\n- 琐碎区间：仍然写一条最少的事件。';
+
+    return { system: system, user: segmentsText };
 }
 
 function buildLtmDecisionPrompt(vault, newStmEntries) {
@@ -759,14 +901,17 @@ function buildLtmDecisionPrompt(vault, newStmEntries) {
 
     ltmCtx += '\n## 最近已闭合的叙事弧\n' + closedCatalog + '\n';
 
-    ltmCtx += '\n## 闭合信号（由系统根据时间、场景、实体计算）\n';
+    ltmCtx += '\n## 闭合信号（系统预计算，供参考）\n';
     if (openLtm) {
         var signals = computeClosureSignals(openLtm, []);
         if (signals) {
             ltmCtx += '- 时间：' + signals.timeGap + '\n';
             ltmCtx += '- 场景：' + (signals.openScene || '?') + ' → ' + (signals.newScene || '?') + (signals.sceneChange ? '（切换）' : '（仍在同一场景）') + '\n';
             ltmCtx += '- 实体重叠：' + signals.entityDetail + '\n';
-            ltmCtx += '综合信号：' + signals.signalSummary + '\n';
+            ltmCtx += '系统建议：' + signals.signalSummary + '\n';
+            ltmCtx += '\n你的角色：核实系统信号是否与事件内容一致。仅在以下情况偏离：\n';
+            ltmCtx += '- 新事件内容与信号明显矛盾（如系统建议 close，但新事件是同一场景的延续）\n';
+            ltmCtx += '- 弧的叙事目标在新事件中明确终结\n';
         }
     } else {
         ltmCtx += '无开放 LTM，若本轮有新事件出现，即为新叙事弧的开始。\n';
@@ -781,19 +926,24 @@ function buildLtmDecisionPrompt(vault, newStmEntries) {
     }
 
     ltmCtx += '\n## 判断标准\n';
-    ltmCtx += 'append（追加到当前弧）：当新事件与当前弧在叙事上连续 —— 时间在同一日或紧邻的时区、场景在附近区域或同一活动范围内、至少一个核心角色仍在场。\n';
+    ltmCtx += 'append（追加到当前弧）：当新事件与当前弧在叙事上连续 —— 时间在同一日或紧邻的时区、场景在附近区域或同一活动范围内、至少一个核心角色仍在场。';
+    ltmCtx += 'updated_event 应保留旧摘要的核心信息，仅追加新事件带来的增量变化——不要重写。\n';
     ltmCtx += 'close_and_new（闭合+开启新弧）：叙事弧已自然终结。时间跨日 / 场景根本性变化 / 核心角色离场 / 事件本身是明确终结点。\n';
-    ltmCtx += 'skip（跳过）：本轮事件是短暂的过渡性内容。如果没有 open LTM，不使用 skip。\n';
+    ltmCtx += 'skip（跳过）：本轮事件是过渡性内容，与弧主题不直接相关。事件留在 STM 层等待后续相关事件。仅当开放弧存在时可用 skip。\n';
 
     if (lang === 'en') {
-        ltmCtx += '\nOutput JSON with ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "updated arc label (15-40 chars)",\n    "updated_event": "updated arc summary (80-140 chars)"\n  }\n}\n';
+        ltmCtx += '\nOutput JSON with ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "required only for append / close_and_new (15-40 chars)",\n    "updated_event": "required only for append / close_and_new (80-140 chars)"\n  }\n}\n' +
+            'For skip, omit updated_title and updated_event (arc unchanged).\n' +
+            'For append, updated_event should preserve prior summary core info — only add incremental changes.\n';
         return {
             system: 'You are a narrative arc manager. Given the current arc state and newly extracted story events, decide how to update the arcs.\n\n' +
                 'Only output valid JSON with the ltm_decision field — no surrounding text.\n\n' + ltmCtx,
             user: 'Based on the arc state and new STM events above, output the ltm_decision.'
         };
     }
-    ltmCtx += '\n输出 JSON，包含 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "更新后的弧标签（15-40字）",\n    "updated_event": "更新后的弧摘要（80-140字）"\n  }\n}\n';
+    ltmCtx += '\n输出 JSON，包含 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "仅 append / close_and_new 时需要（15-40字）",\n    "updated_event": "仅 append / close_and_new 时需要（80-140字）"\n  }\n}\n' +
+        'skip 时不需要 updated_title 和 updated_event（弧无变化）。\n' +
+        'append 时 updated_event 保留旧摘要核心信息，仅追加增量——不要重写。';
     return {
         system: '你是叙事弧管理者。根据当前弧状态和新提取的故事事件，决定如何更新叙事弧。\n\n' +
             '只输出包含 ltm_decision 字段的有效 JSON，不要输出任何其他文字。\n\n' + ltmCtx,
@@ -801,7 +951,7 @@ function buildLtmDecisionPrompt(vault, newStmEntries) {
     };
 }
 
-async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
+export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
     var allSTM = (vault.content.unconsolidated_stm || []).concat(vault.content.stm_entries || []);
     var newStmEntries = newStmIds.map(function(id) { return allSTM.find(function(s) { return s.id === id; }); }).filter(Boolean);
     if (newStmEntries.length === 0) return null;
@@ -863,39 +1013,48 @@ function buildStatePrompt_Preset(messages, vault) {
         if (s) currentStateSnapshot += 'Current state (for reference):\n' + s + '\n';
     }
 
-    var stateChangesEn = 'Global fields: time, scene, story_date, main_event — always track!\n' +
-        '\nCharacter cards: state.characters.<name>.* — summary level: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail level(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: number, items: [{name, qty, equipped: true/false, desc}]} — detail level, updated in vault panel\n- power_slots: flat {key:"value"} JSON, no slot definitions in updates\n' +
-        'present_characters is auto-computed — do NOT include it in <state_changes>\n' +
+    var stateChangesEn = 'Fields likely to change in this round:\n' +
+        '- Always track: time, scene, story_date, main_event\n' +
+        '- Character: state.characters.<name>.status — 活跃/非活跃/已死亡/已归隐/已离去\n' +
+        '- If a new character appears, add name, gender_age, occupation, personality\n' +
+        '- If equipment/items change explicitly, update inventory\n' +
+        '- If mood changes noticeably, update current_mood(NPC)\n' +
+        '- Other fields (clothing_build, injuries, power_slots, etc.) only when explicitly mentioned\n' +
+        'present_characters is auto-computed — do NOT include it in state_changes\n' +
         '\nStatus transition rules:\n- 活跃 → 非活跃: when a character leaves the scene or stops appearing in messages\n- 活跃 → 已死亡/已归隐/已离去: permanent departure only\n- 非活跃 → 活跃: when a character re-enters the scene and actively participates\n- Do NOT mark as 活跃 just because a character was mentioned — only if they are actually present\n' +
-        '\nnpc_names: array of character names that are NPCs — list ALL named characters EXCEPT the protagonist. If the story has NO clear single protagonist, list ALL characters here and label NO ONE as protagonist.\n' +
-        '\nFactions: state.factions.<name>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(max 200)\n' +
-        'Quests: state.quests.* — tasks/goals/events with name+status in prompt, detail via quest_lookup\n';
+        '\nnpc_names: only NPCs appearing in THIS round of messages. If no clear single protagonist, list all characters appearing.\n' +
+        '\nFactions: only update when messages involve faction relations\n' +
+        'Quests: only update when messages involve quest progress\n';
 
-    var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — summary级: name, gender_age, occupation, personality, status, clothing_mode, inventory_mode, power_slots, affection(NPC), relationship(NPC), current_mood(NPC); detail级(vault): clothing_build, inventory, injuries, status_effects, power_slot_defs, inner_thoughts(NPC), past_experience(NPC)\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去\n- inventory_mode: 开启/静态/关闭\n- inventory: {gold: 数值, items: [{name, qty, equipped: true/false, desc}]} — detail级，vault面板更新\n- power_slots: 扁平{key:"value"}JSON，更新勿含槽位定义\n' +
-        'present_characters 自动计算 — 请勿在 <state_changes> 中包含\n' +
+    var stateChangesZh = '\n本次仅需关注在本轮消息中可能发生变化的字段：\n' +
+        '- 始终追踪: time, scene, story_date, main_event\n' +
+        '- 角色: state.characters.<角色名>.status — 活跃/非活跃/已死亡/已归隐/已离去\n' +
+        '- 若本轮出现新角色，补充 name, gender_age, occupation, personality（首次出场时）\n' +
+        '- 若消息中有明确的装备/物品变动，更新 inventory\n' +
+        '- 若有情绪明显变化，更新 current_mood(NPC)\n' +
+        '- 其他字段（clothing_build, injuries, power_slots 等）仅在消息中明确提出时更新\n' +
+        'present_characters 自动计算 — 请勿在 state_changes 中包含\n' +
         '\n出场状态转换规则：\n- 活跃 → 非活跃: 角色离开场景或不再出现在消息中\n- 活跃 → 已死亡/已归隐/已离去: 仅限永久退场\n- 非活跃 → 活跃: 角色重新进入场景并活跃参与\n- 不要仅因角色被提及就标为活跃 — 只有实际在场时才标活跃\n' +
-        '\nnpc_names: NPC角色名数组 — 列出除主控角色外的所有具名角色。如果故事中没有明确的单一主控角色，此处列出所有角色名，不要将任何人标记为主控。\n' +
-        '\n势力: state.factions.<名称>.* — name, description, leader, attitude_toward_player(友好/中立/冷淡/敌对), relations, notes(最长200)\n' +
-        '任务: state.quests.* — tasks/goals/events，name+status注入prompt，详情通过quest_lookup获取\n';
+        '\nnpc_names: 仅本轮消息中出现的非主控角色名。如果故事中没有明确的单一主控角色，列出本轮出现的所有角色。\n' +
+        '\n势力: state.factions.<名称>.* — 仅在消息涉及势力关系变化时更新\n' +
+        '任务: state.quests.* — 仅在消息涉及任务进展时更新\n';
 
-    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Omit "state_changes" from the JSON output\n- Output "state_changes": [] (empty array) when nothing changed\n- Miss characters in conversation\n- Include present_characters in any path\n- Omit npc_names or label all characters as protagonist\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 在 JSON 输出中省略 "state_changes" 字段\n- 当无变化时输出 "state_changes": []（空数组）\n- 遗漏对话中明显出现的角色\n- 在任何路径中包含 present_characters\n- 遗漏 npc_names 或将所有角色都标为主控\n============================================================\n';
+    var hardGateEn = '\n============================================================\n【MUST FOLLOW】\n============================================================\n- state_changes must ALWAYS be present in output (even as empty array [])\n- Only output fields that actually changed in this round — do NOT restate unchanged state\n- Include every character that appears in this round and whose state changed\n- Do NOT include present_characters in any path\n- npc_names must be included (list NPCs appearing in this round)\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【必须遵守】\n============================================================\n- state_changes 字段必须始终出现在输出中（即使为空数组 []）\n- 仅输出本轮对话中实际变化的字段 — 不要重述未变化的字段\n- 本轮消息中明确出现且状态有变化的角色必须包含\n- 不要在任何路径中包含 present_characters\n- npc_names 必须包含（列出本轮出现的非主控角色）\n============================================================\n';
 
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker. Track character state changes, quest progress, faction relations.\n\n' +
                 'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "_checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.status", "value": "活跃"},\n    {"path": "characters.Alice.personality", "value": "..."}\n  ]\n}\n\nAlways include: _checkpoints with time/scene/story_date, state_changes for time/scene/story_date/main_event/npc_names and all character changes.\nIf no changes detected, set state_changes to empty array [].\n\n' +
                 stateChangesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and ALL character state changes. Output JSON with _checkpoints and state_changes as shown above.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes from THIS round only. Only output fields that changed — do NOT restate existing state. Output JSON with _checkpoints and state_changes.'
         };
     }
     return {
         system: currentStateSnapshot + '你是故事状态追踪器。追踪角色状态变化、任务进展、势力关系变化。\n\n' +
             '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "_checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.status", "value": "活跃"},\n    {"path": "characters.江岚.personality", "value": "..."}\n  ]\n}\n\n始终包含：_checkpoints（time/scene/story_date）、state_changes（time/scene/story_date/main_event/npc_names 和所有角色变化）。\n如果无变化，state_changes 设为空数组 []。\n\n' +
             stateChangesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和所有角色状态变化。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的故事时间、场景和角色状态变化。仅输出本轮有变化的字段，不要重述已有状态。输出包含 _checkpoints 和 state_changes 的 JSON。'
     };
 }
 
@@ -927,8 +1086,9 @@ function buildStatePrompt_Dynamic(messages, vault) {
         }
     }
 
-    var stateChangesEn = '\nCharacter cards: state.characters.<name>.* — use ONLY discovered fields, NOT preset (name/gender_age/occupation etc).\n' +
+    var stateChangesEn = '\nUse ONLY discovered fields (not preset like name/gender_age/occupation).\n' +
         'Discovered fields:\n' + (dynamicFieldSummary || 'use fields from character cards/world books') + '\n' +
+        'This round focus: track status, time, scene — other discovered fields only when explicitly changed in messages.\n' +
         'Active grouping: status="活跃" → auto-add to present_characters. No status field → all active.\n' +
         'present_characters is auto-computed — do NOT include.\n' +
         '\nStatus transition rules:\n' +
@@ -936,12 +1096,13 @@ function buildStatePrompt_Dynamic(messages, vault) {
         '- Characters who were previously active but have LEFT the scene or aren\'t in the latest messages → status="非活跃"\n' +
         '- Characters who have died, retired, or permanently departed → status="已死亡"/"已归隐"/"已离去"\n' +
         '- Do NOT mark characters as 活跃 just because they were mentioned in passing\n' +
-        '\nnpc_names: array of NPC character names — ALL named characters EXCEPT the protagonist. If NO clear single protagonist → list ALL here, no one is protagonist.\n' +
-        '\nFactions (preset schema): state.factions.<name>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
-        'Quests (preset schema): state.quests.* — tasks/goals/events, name+status in prompt, detail via quest_lookup\n';
+        '\nnpc_names: only NPCs appearing in THIS round. If no clear single protagonist → list all characters appearing.\n' +
+        '\nFactions (preset schema): state.factions.<name>.* — only update when messages involve faction relations\n' +
+        'Quests (preset schema): state.quests.* — only update when messages involve quest progress\n';
 
-    var stateChangesZh = '\n角色卡: state.characters.<角色名>.* — 仅使用动态发现字段，不用预设(name/gender_age/occupation等)。\n' +
+    var stateChangesZh = '\n仅使用动态发现字段（不用预设如 name/gender_age/occupation 等）。\n' +
         '发现字段:\n' + (dynamicFieldSummary || '使用角色卡/世界书发现的字段') + '\n' +
+        '本轮关注：追踪 status、time、scene — 其他发现字段仅在本轮消息中明确提出时更新。\n' +
         '活跃分组: status="活跃"→自动加入present_characters。无status字段→全部活跃。\n' +
         'present_characters 自动计算 — 请勿包含。\n' +
         '\n出场状态转换规则：\n' +
@@ -949,26 +1110,26 @@ function buildStatePrompt_Dynamic(messages, vault) {
         '- 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"\n' +
         '- 已死亡、隐退或永久离去的角色 → status="已死亡"/"已归隐"/"已离去"\n' +
         '- 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标活跃\n' +
-        '\nnpc_names: NPC角色名数组 — 除主控角色外的所有具名角色。如果没有明确的单一主控角色，列出所有角色，不将任何人标为主控。\n' +
-        '\n势力(预设schema): state.factions.<名称>.* — name, description, leader, attitude_toward_player, relations, notes\n' +
-        '任务(预设schema): state.quests.* — tasks/goals/events，name+status注入prompt，详情quest_lookup\n';
+        '\nnpc_names: 仅本轮出现的 NPC 角色名。如果没有明确的单一主控角色，列出本轮出现的所有角色。\n' +
+        '\n势力(预设schema): state.factions.<名称>.* — 仅在消息涉及势力关系变化时更新\n' +
+        '任务(预设schema): state.quests.* — 仅在消息涉及任务进展时更新\n';
 
-    var hardGateEn = '\n============================================================\n【HARD GATE — FORBIDDEN】\n============================================================\n- Omit "state_changes" from the JSON output\n- Output "state_changes": [] (empty array) when nothing changed\n- Use preset fields instead of discovered fields\n- Include present_characters in any path\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【HARD GATE — 绝对禁止】\n============================================================\n- 在 JSON 输出中省略 "state_changes" 字段\n- 当无变化时输出 "state_changes": []（空数组）\n- 使用预设字段而非动态发现字段\n- 在任何路径中包含 present_characters\n============================================================\n';
+    var hardGateEn = '\n============================================================\n【MUST FOLLOW】\n============================================================\n- state_changes must ALWAYS be present in output (even as empty array [])\n- Only output fields that actually changed in this round\n- Use ONLY discovered fields (not preset card fields)\n- Do NOT include present_characters in any path\n============================================================\n';
+    var hardGateZh = '\n============================================================\n【必须遵守】\n============================================================\n- state_changes 字段必须始终出现在输出中（即使为空数组 []）\n- 仅输出本轮实际变化的字段 — 不要重述未变化的字段\n- 仅使用动态发现字段（而非预设角色卡字段）\n- 不要在任何路径中包含 present_characters\n============================================================\n';
 
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Track character state changes using discovered fields from character cards/world books.\n\n' +
-                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "_checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.{field}", "value": "..."}\n  ]\n}\n\nAlways include: _checkpoints with time/scene/story_date, state_changes for time/scene/story_date/main_event/npc_names and all character changes.\nUse ONLY discovered fields (not preset card fields) for character state changes.\nIf no changes detected, set state_changes to empty array [].\n\n' +
+                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "_checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.{field}", "value": "..."}\n  ]\n}\n\nAlways include: _checkpoints with time/scene/story_date. Only output state_changes for fields that changed in this round. Use ONLY discovered fields.\nIf no changes detected, set state_changes to empty array [].\n\n' +
                 stateChangesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes using ONLY discovered fields. Output JSON with _checkpoints and state_changes as shown above.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only — using ONLY discovered fields. Only output fields that changed.'
         };
     }
     return {
         system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用从角色卡/世界书动态发现的字段追踪角色状态变化。\n\n' +
-            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "_checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.{字段}", "value": "..."}\n  ]\n}\n\n始终包含：_checkpoints（time/scene/story_date）、state_changes（time/scene/story_date/main_event/npc_names 和所有角色变化）。\n仅使用动态发现字段（而非预设角色卡字段）进行角色状态变更。\n如果无变化，state_changes 设为空数组 []。\n\n' +
+            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "_checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.{字段}", "value": "..."}\n  ]\n}\n\n始终包含：_checkpoints。仅输出本轮实际变化的字段。仅使用动态发现字段。\n如果无变化，state_changes 设为空数组 []。\n\n' +
             stateChangesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取故事时间、场景和角色状态变化——仅使用上述动态发现字段。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——仅使用动态发现字段，仅输出有变化的字段。'
     };
 }
 
@@ -996,8 +1157,8 @@ function autoDecayStaleCharacters(state, messages) {
     return state;
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress, skipState) {
-    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force + ', skipState=' + !!skipState);
+export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
+    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
     // 给消息打绝对位置标记——使用消息在原始 chat 中的位置 (m.id) 而非 batch 循环下标
@@ -1018,231 +1179,79 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         return { vault: vault, added: 0 };
     }
 
-    // ── 动态字段发现（首次运行时从角色卡/世界书提取状态栏字段）──
-    if (isDynamicStateMode() && !vault.content.dynamic_state) {
-        var discoveryResult = discoverDynamicFields(vault);
-        if (discoveryResult.discovered) {
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) {}
-        }
-    }
-
-    // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
-    ensureStateStructure(vault);
-
-    var stateParsed = null;
-    if (isStateSchemaEnabled() && !skipState) {
-        // ═══════════════════════════════════════════
-        // Pipeline 1: State（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
-        // ═══════════════════════════════════════════
-        var stateChanges = {};
-        var statePrompt = isDynamicStateMode()
-            ? buildStatePrompt_Dynamic(filteredMessages, vault)
-            : buildStatePrompt_Preset(filteredMessages, vault);
-        try {
-            console.log('[NE] State LLM prompt sizes — system=' + statePrompt.system.length + ', user=' + statePrompt.user.length);
-            var stateResponse = await callMemoryPipeline([
-                { role: 'system', content: statePrompt.system },
-                { role: 'user', content: statePrompt.user }
-            ], { operation: 'state_extract' });
-            stateParsed = parseSTMResponse(stateResponse);
-            stateChanges = stateParsed.stateChanges || {};
-            console.log('[NE] State pipeline — response len=' + (stateResponse ? stateResponse.length : 0) + ', _checkpoints=' + !!stateParsed._checkpoints + ', stateChanges keys=' + Object.keys(stateChanges).length);
-            // 始终打印 raw response 前 600 字符用于诊断
-            if (stateResponse && stateResponse.length > 0) {
-                console.log('[NE-DEBUG] State LLM raw response:\n' + stateResponse);
-            }
-            if (isStateSchemaEnabled() && Object.keys(stateChanges).length === 0 && stateResponse && stateResponse.length > 0) {
-                console.log('[NE] State LLM — NO state_changes extracted. Has state_changes key in JSON:', /"state_changes"\s*:/i.test(stateResponse));
-            }
-            if (!stateResponse || stateResponse.length < 10) {
-                console.warn('[NE] State phase returned empty/minimal response (' + (stateResponse ? stateResponse.length : 0) + ' chars) — state not updated');
-            }
-
-            // 1a. 写入 story_time/story_scene，让 cursor 能引用最新状态
-            if (stateParsed._checkpoints) {
-                postFillSTM({ stmEntries: [], _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
-                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State checkpoint save failed:', e); }
-            }
-
-            // 1b. 处理 state_changes（merge、power slots、quests）—— 独立完成
-            console.log('[NE] State pipeline — schemaEnabled=' + isStateSchemaEnabled() + ', hasStateChanges=' + (Object.keys(stateChanges).length > 0) + ', willProcess=' + (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0));
-            if (Object.keys(stateChanges).length > 0) {
-                var schema = vault.content.state_schema || null;
-                var result = validateStateChanges(schema, stateChanges);
-                if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-                var oldState = vault.content.state || {};
-                var oldCharNames = Object.keys(oldState.characters || {});
-                vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
-                handleQuestCompletion(vault.content.state, result.validated);
-                vault.content.state = autoDecayStaleCharacters(vault.content.state, filteredMessages);
-
-                // Power slot init（fire-and-forget，不阻塞 pipeline）
-                var newState = vault.content.state || {};
-                var newCharNames = Object.keys(newState.characters || {});
-                var addedCharNames = newCharNames.filter(function (n) { return oldCharNames.indexOf(n) === -1; });
-                if (addedCharNames.length > 0) {
-                    var existingSlotsForWorld = [];
-                    oldCharNames.forEach(function (name) {
-                        var card = oldState.characters[name];
-                        if (card && card.power_slot_defs && Array.isArray(card.power_slot_defs)) {
-                            card.power_slot_defs.forEach(function (s) {
-                                var found = existingSlotsForWorld.find(function (e) { return e.key === s.key; });
-                                if (!found) existingSlotsForWorld.push(s);
-                            });
-                        }
-                    });
-                    for (var ni = 0; ni < addedCharNames.length; ni++) {
-                        var charName = addedCharNames[ni];
-                        initPowerSlots(charName, existingSlotsForWorld).then(function (slots) {
-                            if (slots && slots.length > 0) {
-                                read(chatId).then(function (freshVault) {
-                                    var st = freshVault.content.state || {};
-                                    if (!st.characters) st.characters = {};
-                                    if (!st.characters[charName]) st.characters[charName] = {};
-                                    st.characters[charName].power_slot_defs = slots;
-                                    var values = {};
-                                    slots.forEach(function (s) { values[s.key] = ''; });
-                                    st.characters[charName].power_slots = values;
-                                    freshVault._meta.last_pipeline_task = 'power_slot_init';
-                                    freshVault._meta.last_pipeline_time = new Date().toISOString();
-                                    saveVaultWithSnapshot(chatId, freshVault).catch(function (e2) {
-                                        console.warn('[NE] Fire-and-forget power slot save failed for', charName, ':', e2);
-                                    });
-                                }).catch(function (e2) {
-                                    console.warn('[NE] Fire-and-forget vault read failed for', charName, ':', e2);
-                                });
-                            }
-                        }).catch(function (e) {
-                            console.warn('[NE] initPowerSlots failed for', charName, ':', e);
-                        });
-                    }
-                }
-
-                if (stateChanges.story_date) {
-                    vault.content.story_date = String(stateChanges.story_date);
-                }
-
-                vault._meta = vault._meta || {};
-                vault._meta.last_pipeline_task = 'state_extract';
-                vault._meta.last_pipeline_time = new Date().toISOString();
-                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] State changes save failed:', e); }
-
-                console.log('[NE] State pipeline — state_changes saved, state keys=' + Object.keys(vault.content.state || {}).length);
-
-                try { await syncStateToWorldBook(vault); } catch (e) { console.warn('[NE] WB sync failed:', e.message); }
-
-                globalThis.__ne_debug_last_state = JSON.parse(JSON.stringify(vault.content.state || {}));
-                globalThis.__ne_debug_last_pipeline = {
-                    changes: JSON.parse(JSON.stringify(stateChanges || {})),
-                    state: JSON.parse(JSON.stringify(vault.content.state || {})),
-                    time: new Date().toISOString()
-                };
-
-                recordTelemetry({
-                    pipeline_task: 'state_extract',
-                    new_state_change_count: Object.keys(stateChanges).length,
-                    parse_error: null
-                }, chatId);
-            }
-        } catch (e) {
-            console.warn('[NE] State pipeline failed:', e);
-        }
-    }
-
     transitionTo('stm');
 
-    // ═══════════════════════════════════════════
-    // Pipeline 2: Cursor（独立 — 自管 LLM 调用 + 结果处理 + 持久化）
-    // ═══════════════════════════════════════════
-    console.log('[NE] Cursor pipeline starting — messages=' + filteredMessages.length);
-    var cursorResult = { vault: vault, cursorState: null, totalAdded: 0 };
+    console.log('[NE] STM pipeline starting — messages=' + filteredMessages.length);
+    var cursorResult = { vault: vault, totalAdded: 0 };
     var newEntries = [];
     try {
-        var buildParams = {
-            callLLM: callMemoryPipeline,
-            postFill: function(parsed, v) { postFillSTM(parsed, v); },
-            appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
-            getCursorState: getCursorState,
-            updateCursorState: updateCursorState,
-            buildBatchPrompt: buildStmOnlyPrompt
-        };
-        cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
+        var turns = groupMessagesIntoTurns(filteredMessages);
+        var segments = await segmentTurns(turns, vault, callMemoryPipeline);
 
-        var totalAdded = cursorResult.totalAdded || 0;
-        if (totalAdded > 0) {
-            var sortedUnc = sortStmByMsgOrder(vault.content.unconsolidated_stm || []);
-            newEntries = sortedUnc.slice(-totalAdded);
-        } else {
-            newEntries = [];
-        }
+        var events = [];
 
-        // Post-fill STM entries with _checkpoints
-        if (totalAdded > 0) {
-            if (stateParsed && stateParsed._checkpoints) {
-                postFillSTM({ stmEntries: newEntries, _checkpoints: stateParsed._checkpoints, stateChanges: {} }, vault);
-            } else {
-                var chk = vault.content.cursor_state && vault.content.cursor_state.stm ? vault.content.cursor_state.stm._checkpoints : null;
-                if (chk) postFillSTM({ stmEntries: newEntries, _checkpoints: chk, stateChanges: {} }, vault);
+        if (segments.length > 0) {
+            var summaryPrompt = buildStmSummaryPrompt(segments, turns, vault);
+            var responseText = '';
+            try {
+                responseText = await callMemoryPipeline([
+                    { role: 'system', content: summaryPrompt.system },
+                    { role: 'user', content: summaryPrompt.user }
+                ], { operation: 'stm_extract' });
+            } catch (e) {
+                console.warn('[NE] Summary LLM failed:', e);
+            }
+
+            if (responseText) {
+                try {
+                    events = JSON.parse(responseText).events || [];
+                } catch (e) {
+                    console.warn('[NE] Summary parse failed:', e);
+                }
+            }
+
+            for (var ei = 0; ei < Math.min(events.length, segments.length); ei++) {
+                var seg = segments[ei];
+                var turnIndices = [];
+                for (var ti = seg[0]; ti <= seg[1]; ti++) turnIndices.push(ti);
+                var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
+                events[ei].msg_ids = msgIds;
+                events[ei].absMsgStart = turns[seg[0]].msgStart;
+                events[ei].absMsgEnd = turns[seg[1]].msgEnd;
+                events[ei].msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
+                events[ei].status = 'closed';
+            }
+
+            if (events.length > 0) {
+                postFillSTM({ stmEntries: events, _checkpoints: {}, stateChanges: {} }, vault);
+                appendSTMEntries(vault, events);
             }
         }
 
-        // Cursor 自主持久化
-        if (cursorResult.totalAdded > 0) {
+        cursorResult.totalAdded = events.length;
+        newEntries = events;
+
+        // Persist
+        if (events.length > 0) {
             vault._meta = vault._meta || {};
             vault._meta.last_pipeline_task = 'stm_extract';
             vault._meta.last_pipeline_time = new Date().toISOString();
-            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] Cursor save failed:', e); }
+            try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
 
             recordTelemetry({
                 pipeline_task: 'stm_extract',
-                new_stm_count: newEntries.length,
+                new_stm_count: events.length,
                 parse_error: null
             }, chatId);
         }
 
         globalThis.__ne_debug_last_stm_events = {
-            events: newEntries.map(function(e) { return { id: e.id, content: (e.content || '').substring(0, 200), tags: e.tags || [] }; }),
-            count: newEntries.length,
+            events: events.map(function(e) { return { id: e.id, content: (e.event || '').substring(0, 200) }; }),
+            count: events.length,
             time: new Date().toISOString()
         };
     } catch (e) {
-        console.warn('[NE] Cursor pipeline failed:', e);
-    }
-
-    transitionTo('ltm');
-
-    console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
-
-    if (newEntries.length > 0 && isLtmEnabled(vault)) {
-        try {
-            var consumedIds = newEntries.map(function(e) { return e.id; }).filter(Boolean);
-            var ltmDecision = await runLtmDecision(vault, consumedIds, callMemoryPipeline);
-            if (ltmDecision) {
-                applyLtmDecision(vault, ltmDecision, consumedIds);
-                try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] LTM save failed:', e); }
-                globalThis.__ne_debug_last_ltm_decision = {
-                    action: ltmDecision.action,
-                    consumed: consumedIds.length,
-                    time: new Date().toISOString()
-                };
-                console.log('[NE] LTM decision applied — action=' + ltmDecision.action + ', consumed=' + consumedIds.length);
-            }
-        } catch (e) {
-            console.warn('[NE] LTM decision pipeline failed:', e);
-        }
-    }
-
-    var orphans = (vault.content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });
-    if (orphans.length >= 3) {
-        try {
-            var rebatchResult = await runLtmRebatch(vault, callMemoryPipeline);
-            if (rebatchResult.consumed > 0) {
-                await saveVaultWithSnapshot(chatId, vault);
-                console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
-            }
-        } catch (e) {
-            console.warn('[NE] LTM rebatch failed:', e);
-        }
+        console.warn('[NE] STM pipeline failed:', e);
     }
 
     return { vault: vault, added: newEntries.length };

@@ -1,14 +1,16 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate, extractStateChangesOnly } from './engine/update.js';
+import { executeIncrementalUpdate, extractStateChangesOnly, runLtmDecision, saveVaultWithSnapshot } from './engine/update.js';
 import { read, write, rollbackByMsgIds } from './vault/store.js';
 import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
 import { detectContradictions } from './engine/contradiction.js';
 import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './ui/vault-panel.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
 import { isStateSchemaEnabled } from './vault/schema.js';
-import { tryAcquire, transitionTo, releasePipeline, releaseInjection, isIdle, getPipelinePhase, getState, reset } from './engine/pipeline-guard.js';
+import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from './engine/consolidate.js';
+import { callMemoryPipeline } from './api/llm.js';
+import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from './engine/pipeline-guard.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆。]',
@@ -31,6 +33,7 @@ let lastMemoryInjectionTokens = 0;
 var consecutiveFailures = 0;
 var _drainContinuationCount = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
+var _isInjecting = false;
 const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
@@ -173,7 +176,7 @@ export async function onMessageReceived(messageIndex) {
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
 
-            if (!isIdle() && getPipelinePhase() !== 'injecting') return;
+            if (!isIdle()) return;
 
             const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
@@ -182,10 +185,11 @@ export async function onMessageReceived(messageIndex) {
                 || totalWords >= getStmWordsThreshold()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
+            if (isStateSchemaEnabled()) {
+                triggerPerRoundExtraction(assistantMsg);
+            }
             if (shouldRunPipeline) {
                 flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
-            } else {
-                triggerPerRoundExtraction(assistantMsg);
             }
         } else {
             console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
@@ -196,9 +200,14 @@ export async function onMessageReceived(messageIndex) {
 }
 
 async function flushPendingMessages() {
-    if (!tryAcquire('state')) {
-        console.log('[NE] flushPendingMessages: blocked by guard — state=' + getState());
-        return;
+    if (!tryAcquire('stm')) {
+        console.log('[NE] flushPendingMessages: waiting for state pipeline — state=' + getState());
+        await waitForPipelineTrackIdle(15000);
+        if (!tryAcquire('stm')) {
+            console.log('[NE] flushPendingMessages: guard still blocked after wait, deferring');
+            return;
+        }
+        console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
     }
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
@@ -246,9 +255,78 @@ async function flushPendingMessages() {
             persistPending();
         }
     } finally {
-        console.log('[NE] Pipeline: releasing guard pipeline');
+        console.log('[NE] Pipeline: releasing guard pipeline (stm)');
         releasePipeline();
         persistPending();
+
+        (async function() {
+            var MAX_LTM_PASSES = 20;
+            var ranLtm = false;
+            for (var ltmPass = 0; ltmPass < MAX_LTM_PASSES; ltmPass++) {
+                var postStmVault = await read(chatId);
+                if (!postStmVault || !postStmVault.content) return;
+
+                var nextId = getNextEligibleStmId(postStmVault);
+                if (nextId === null) break;
+
+                if (!tryAcquire('ltm')) {
+                    console.log('[NE] LTM pass ' + (ltmPass+1) + ': waiting for pipeline track — state=' + getState());
+                    await waitForPipelineTrackIdle(15000);
+                    if (!tryAcquire('ltm')) {
+                        console.log('[NE] LTM: guard still blocked, deferring remaining passes');
+                        break;
+                    }
+                }
+                console.log('[NE-GUARD] acquire ltm (idle → ltm) — pass ' + (ltmPass+1) + ', stm=' + nextId);
+
+                ranLtm = true;
+                try {
+                    var ltmDecision = await runLtmDecision(postStmVault, [nextId], callMemoryPipeline);
+                    if (ltmDecision) {
+                        applyLtmDecision(postStmVault, ltmDecision, [nextId]);
+                        try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                            console.warn('[NE] LTM save failed, rolling back vault');
+                            postStmVault = await read(chatId);
+                        }
+                        globalThis.__ne_debug_last_ltm_decision = {
+                            action: ltmDecision.action,
+                            stmId: nextId,
+                            pass: ltmPass + 1,
+                            time: new Date().toISOString()
+                        };
+                        console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
+                        if (onVaultUpdateCallback) onVaultUpdateCallback(postStmVault);
+                    }
+                } catch (e) {
+                    console.warn('[NE] LTM pass ' + (ltmPass+1) + ' failed:', e);
+                    postStmVault = await read(chatId);
+                } finally {
+                    releasePipeline();
+                    console.log('[NE-GUARD] release pipeline (ltm → idle) — pass ' + (ltmPass+1));
+                }
+
+                var checkVault = await read(chatId);
+                if (getNextEligibleStmId(checkVault) === null) break;
+            }
+
+            try {
+                var rebatchVault = await read(chatId);
+                var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
+                if (orphans.length > 0 && ranLtm && tryAcquire('ltm')) {
+                    console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
+                    var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
+                    if (rebatchResult.consumed > 0) {
+                        await saveVaultWithSnapshot(chatId, rebatchVault);
+                        if (onVaultUpdateCallback) onVaultUpdateCallback(rebatchVault);
+                        console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
+                    }
+                    releasePipeline();
+                }
+            } catch (e) {
+                console.warn('[NE] LTM rebatch failed:', e);
+                releasePipeline();
+            }
+        })().catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
 
         if (pendingMessages.length > 0) {
             (async function() {
@@ -296,10 +374,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
-    if (!tryAcquire('injecting')) {
+    if (_isInjecting) {
         console.log('[NE] onBeforeGenerate: re-entrant call blocked (already running)');
         return;
     }
+    _isInjecting = true;
     try {
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
@@ -357,7 +436,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     } catch (e) {
         console.error('[NE] onBeforeGenerate crashed:', e);
     } finally {
-        releaseInjection();
+        _isInjecting = false;
     }
 }
 

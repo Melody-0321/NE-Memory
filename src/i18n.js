@@ -36,7 +36,7 @@ export const NARRATIVE_I18N = {
         'Restore embedded vault?': 'Restore embedded vault?',
         'Click Confirm to restore, Cancel to skip.': 'Click Confirm to restore, Cancel to skip.',
         'Memory': 'Memory', 'Tools': 'Tools', 'Settings': 'Settings',
-        'Memory List': 'Memory List', 'State Board': 'State Board',
+        'Memory List': 'Memory List', 'Unfiled': 'Unfiled', 'State Board': 'State Board',
         'Global Data': 'Global Data', 'Quests & Events': 'Quests & Events',
         'Operations': 'Operations', 'Data': 'Data', 'Diagnostics': 'Diagnostics',
         'Common Settings': 'Common Settings', 'Advanced Settings': 'Advanced Settings',
@@ -79,6 +79,9 @@ export const NARRATIVE_I18N = {
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': 'STM/State/LTM memory extraction. Lower = more consistent summaries.',
         'Smart retrieval and tool queries. Higher = more creative answers.': 'Smart retrieval and tool queries. Higher = more creative answers.',
         'All messages have already been processed.': 'All messages have already been processed.',
+        'Smoke Tests': 'Smoke Tests',
+        'Functional Tests': 'Functional Tests',
+        'Max Rounds': 'Max Rounds',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -149,6 +152,9 @@ export const NARRATIVE_I18N = {
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': '记忆提取（STM/状态/LTM）。值越低摘要越一致。',
         'Smart retrieval and tool queries. Higher = more creative answers.': '智能检索与工具查询。值越高回答越有创造性。',
         'All messages have already been processed.': '全部消息都已被处理过。',
+        'Smoke Tests': '冒烟测试',
+        'Functional Tests': '功能测试',
+        'Max Rounds': '最大轮数',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -178,7 +184,7 @@ export const NARRATIVE_I18N = {
         'Restore embedded vault?': '檢測到嵌入的記憶資料，要恢復嗎？',
         'Click Confirm to restore, Cancel to skip.': '點擊確定恢復，取消則跳過。',
         'Memory': '記憶', 'Tools': '工具', 'Settings': '設定',
-        'Memory List': '記憶列表', 'State Board': '狀態欄',
+        'Memory List': '記憶列表', 'Unfiled': '未歸檔', 'State Board': '狀態欄',
         'Global Data': '全域資料', 'Quests & Events': '任務與事件',
         'Operations': '操作', 'Data': '資料管理', 'Diagnostics': '診斷',
         'Common Settings': '常用設定', 'Advanced Settings': '進階設定',
@@ -221,6 +227,9 @@ export const NARRATIVE_I18N = {
         'STM/State/LTM memory extraction. Lower = more consistent summaries.': '記憶提取（STM/狀態/LTM）。值越低摘要越一致。',
         'Smart retrieval and tool queries. Higher = more creative answers.': '智能檢索與工具查詢。值越高回答越有創造性。',
         'All messages have already been processed.': '全部訊息都已被處理過。',
+        'Smoke Tests': '冒煙測試',
+        'Functional Tests': '功能測試',
+        'Max Rounds': '最大輪數',
     }
 };
 

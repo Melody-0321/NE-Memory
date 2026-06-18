@@ -220,6 +220,22 @@ export function loadTestCaseByName(name) {
     return parseTestCaseFile(markdown);
 }
 
+export function getTestCaseMetadata(name) {
+    var entry = (__KNOWN_TESTS || []).find(function(t) { return t.name === name; });
+    if (!entry) return null;
+    var markdown = __TEST_MARKDOWN[name];
+    if (!markdown) return { name: name, title: entry.title, category: entry.category || 'functional', maxRounds: 10, minRounds: 0 };
+
+    var raw = parseYamlFrontmatter(markdown);
+    return {
+        name: name,
+        title: entry.title,
+        category: entry.category || 'functional',
+        maxRounds: typeof raw.maxRounds === 'number' ? raw.maxRounds : 10,
+        minRounds: typeof raw.minRounds === 'number' ? raw.minRounds : 0
+    };
+}
+
 export function createTrace(testCase) {
     var lines = [];
     lines.push('# ' + testCase.title + ' — 操作日志');
