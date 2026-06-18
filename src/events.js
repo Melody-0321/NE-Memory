@@ -38,6 +38,20 @@ const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
 
+function countWords(text) {
+    if (!text) return 0;
+    var cjkCount = 0;
+    for (var i = 0; i < text.length; i++) {
+        var code = text.charCodeAt(i);
+        if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3400 && code <= 0x4DBF) || (code >= 0x3000 && code <= 0x303F)) {
+            cjkCount++;
+        }
+    }
+    var nonCjkText = text.replace(/[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F]+/g, ' ').trim();
+    var spaceWords = nonCjkText ? nonCjkText.split(/\s+/).length : 0;
+    return cjkCount + spaceWords;
+}
+
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
 }
@@ -178,7 +192,7 @@ export async function onMessageReceived(messageIndex) {
 
             if (!isIdle()) return;
 
-            const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
+            const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
@@ -210,7 +224,7 @@ async function flushPendingMessages() {
         console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
     }
     if (pendingMessages.length === 0) return;
-    const totalWords = pendingMessages.reduce((sum, m) => sum + (m.content || '').split(/\s+/).length, 0);
+    const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
     var pressureVal = computeContextPressure(pendingTokenCount);
     if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {

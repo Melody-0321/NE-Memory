@@ -67,7 +67,7 @@ function logScale(value, minIn, maxIn, minOut, maxOut) {
 }
 
 export function computeStmBatch(turnsPerEvent) {
-    return Math.max(5, Math.min(25, Math.round(4 * turnsPerEvent)));
+    return Math.max(3, Math.min(6, Math.round(4 * turnsPerEvent)));
 }
 
 export function computeStmMaxTokens(stmBatch) {
