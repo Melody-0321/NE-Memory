@@ -12,6 +12,12 @@ import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, st
 import { evaluateAllStructural, evaluateSemantic } from './assertions.js';
 import { createTrace, appendTraceRound, createReport } from './files.js';
 
+function __ne_waitForPipelineDrain(timeoutMs) {
+    var debug = globalThis.__ne_debug;
+    if (!debug || !debug.waitForPipelineIdle) return;
+    return debug.waitForPipelineIdle(timeoutMs);
+}
+
 export async function runTestLoop(testCase, hostDoc) {
     var doc = hostDoc || document;
 
@@ -92,6 +98,7 @@ export async function runTestLoop(testCase, hostDoc) {
 
         globalThis.__ne_tr_currentRound = round;
         await sendMessageAndWait(userMessage, doc, testCase.timeoutPerRound);
+        await __ne_waitForPipelineDrain(testCase.timeoutPerRound * 3);
 
         var roundData = collectRoundData(round);
         lastAiReply = getLastAiReply();

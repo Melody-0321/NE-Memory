@@ -53,7 +53,6 @@ export async function runStmExtractorCore(turns, params) {
     try {
         var parsed = JSON.parse(responseText);
         rawEvents = parsed.events || [];
-        globalThis.__ne_debug_ltm_decision = parsed.ltm_decision || null;
         if (!Array.isArray(rawEvents)) {
             rawEvents = [];
         }
@@ -64,7 +63,6 @@ export async function runStmExtractorCore(turns, params) {
             try {
                 parsed = JSON.parse(jsonMatch[0]);
                 rawEvents = parsed.events || [];
-                globalThis.__ne_debug_ltm_decision = parsed.ltm_decision || null;
                 if (Array.isArray(rawEvents)) {
                     console.log('[NE] Batch fallback: extracted JSON from mixed output');
                 } else {

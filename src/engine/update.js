@@ -704,6 +704,140 @@ export function buildBatchPrompt(turns, vault) {
     return { system: system, user: userText };
 }
 
+export function buildStmOnlyPrompt(turns, vault) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+    var retrospectiveCtx = buildRetrospectiveContext(content);
+
+    var turnsText = [];
+    for (var ti = 0; ti < turns.length; ti++) {
+        var t = turns[ti];
+        if (!t) continue;
+        turnsText.push('[Turn ' + ti + ']');
+        if (t.user) {
+            var uname = t.user.name ? t.user.name + ': ' : '';
+            turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
+        }
+        if (t.assistant) {
+            var aname = t.assistant.name ? t.assistant.name + ': ' : '';
+            turnsText.push('  assistant: ' + aname + (t.assistant.content || t.assistant.mes || ''));
+        }
+        turnsText.push('');
+    }
+
+    var userText = turnsText.join('\n');
+    var maxTurnLabel = turns.length - 1;
+
+    var system = lang === 'en' ?
+        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (20-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. If unsure: \\"-\\"",\n      "scene": "inferred scene. If unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '"\n    }\n  ]\n}\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- If a turn is continuous with the preceding content and does not form an independent scene, merge it into the adjacent event.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- If no valid events can be extracted, set events to empty array [].') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（20-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。必须使用与往期事件相同的格式。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '"\n    }\n  ]\n}\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 如果某 turn 内容与前文连续且不构成独立剧情，必须并入相邻事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 如果无法提取有效事件，将 events 设为空数组 []。');
+
+    return { system: system, user: userText };
+}
+
+function buildLtmDecisionPrompt(vault, newStmEntries) {
+    var content = vault.content || {};
+    var lang = content.language === 'en' ? 'en' : 'zh';
+
+    var ltmEntries = content.ltm_entries || [];
+    var openLtm = findOpenLtm(vault);
+    var closedCatalog = formatLtmCatalog(ltmEntries);
+
+    var ltmCtx = '';
+
+    ltmCtx += '\n\n## 当前进行中的叙事弧（开放 LTM）\n';
+    if (openLtm) {
+        ltmCtx += 'title: ' + (openLtm.title || '') + '\n';
+        ltmCtx += 'event: ' + (openLtm.event || '').substring(0, 200) + '\n';
+        ltmCtx += 'period: ' + (openLtm.period || '') + '\n';
+        ltmCtx += 'entities: ' + ((openLtm.entities || []).map(function(e) { return e.name; }).join(', ') || '') + '\n';
+        ltmCtx += 'stm_refs 数量: ' + ((openLtm.stm_refs || []).length) + '\n';
+    } else {
+        ltmCtx += '(无)\n';
+    }
+
+    ltmCtx += '\n## 最近已闭合的叙事弧\n' + closedCatalog + '\n';
+
+    ltmCtx += '\n## 闭合信号（由系统根据时间、场景、实体计算）\n';
+    if (openLtm) {
+        var signals = computeClosureSignals(openLtm, []);
+        if (signals) {
+            ltmCtx += '- 时间：' + signals.timeGap + '\n';
+            ltmCtx += '- 场景：' + (signals.openScene || '?') + ' → ' + (signals.newScene || '?') + (signals.sceneChange ? '（切换）' : '（仍在同一场景）') + '\n';
+            ltmCtx += '- 实体重叠：' + signals.entityDetail + '\n';
+            ltmCtx += '综合信号：' + signals.signalSummary + '\n';
+        }
+    } else {
+        ltmCtx += '无开放 LTM，若本轮有新事件出现，即为新叙事弧的开始。\n';
+    }
+
+    ltmCtx += '\n## 新入库的 STM 事件\n';
+    for (var si = 0; si < newStmEntries.length; si++) {
+        var s = newStmEntries[si];
+        ltmCtx += '- ' + (s.id || '?') + ': ' + (s.event || '') + '\n';
+        if (s.period) ltmCtx += '  时间: ' + s.period + '\n';
+        if (s.scene) ltmCtx += '  场景: ' + s.scene + '\n';
+    }
+
+    ltmCtx += '\n## 判断标准\n';
+    ltmCtx += 'append（追加到当前弧）：当新事件与当前弧在叙事上连续 —— 时间在同一日或紧邻的时区、场景在附近区域或同一活动范围内、至少一个核心角色仍在场。\n';
+    ltmCtx += 'close_and_new（闭合+开启新弧）：叙事弧已自然终结。时间跨日 / 场景根本性变化 / 核心角色离场 / 事件本身是明确终结点。\n';
+    ltmCtx += 'skip（跳过）：本轮事件是短暂的过渡性内容。如果没有 open LTM，不使用 skip。\n';
+
+    if (lang === 'en') {
+        ltmCtx += '\nOutput JSON with ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "updated arc label (15-40 chars)",\n    "updated_event": "updated arc summary (80-140 chars)"\n  }\n}\n';
+        return {
+            system: 'You are a narrative arc manager. Given the current arc state and newly extracted story events, decide how to update the arcs.\n\n' +
+                'Only output valid JSON with the ltm_decision field — no surrounding text.\n\n' + ltmCtx,
+            user: 'Based on the arc state and new STM events above, output the ltm_decision.'
+        };
+    }
+    ltmCtx += '\n输出 JSON，包含 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "更新后的弧标签（15-40字）",\n    "updated_event": "更新后的弧摘要（80-140字）"\n  }\n}\n';
+    return {
+        system: '你是叙事弧管理者。根据当前弧状态和新提取的故事事件，决定如何更新叙事弧。\n\n' +
+            '只输出包含 ltm_decision 字段的有效 JSON，不要输出任何其他文字。\n\n' + ltmCtx,
+        user: '根据上述弧状态和新 STM 事件，输出 ltm_decision。'
+    };
+}
+
+async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
+    var allSTM = (vault.content.unconsolidated_stm || []).concat(vault.content.stm_entries || []);
+    var newStmEntries = newStmIds.map(function(id) { return allSTM.find(function(s) { return s.id === id; }); }).filter(Boolean);
+    if (newStmEntries.length === 0) return null;
+
+    var prompt = buildLtmDecisionPrompt(vault, newStmEntries);
+    var responseText = '';
+    try {
+        responseText = await callMemoryPipeline([
+            { role: 'system', content: prompt.system },
+            { role: 'user', content: prompt.user }
+        ], { operation: 'ltm_decision' });
+    } catch (e) {
+        console.warn('[NE] LTM decision LLM failed:', e.message);
+        return null;
+    }
+
+    if (!responseText || !responseText.trim()) {
+        console.warn('[NE] LTM decision LLM returned empty response');
+        return null;
+    }
+
+    try {
+        var parsed = JSON.parse(responseText);
+        return parsed.ltm_decision || null;
+    } catch (e) {
+        var jsonMatch = responseText.match(/\{[\s\S]*?\}/);
+        if (jsonMatch) {
+            try {
+                var parsed2 = JSON.parse(jsonMatch[0]);
+                return parsed2.ltm_decision || null;
+            } catch (e2) {}
+        }
+        console.warn('[NE] LTM decision LLM returned non-JSON response');
+        return null;
+    }
+}
+
 // ── State prompt builders（每种模式专用 prompt）──
 
 function buildStatePrompt_Preset(messages, vault) {
@@ -1027,7 +1161,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             appendEntries: function(v, entries) { appendSTMEntries(v, entries, null, false); },
             getCursorState: getCursorState,
             updateCursorState: updateCursorState,
-            buildBatchPrompt: buildBatchPrompt
+            buildBatchPrompt: buildStmOnlyPrompt
         };
         cursorResult = await processTurnsInBatches(vault, filteredMessages, buildParams, onProgress);
 
@@ -1074,11 +1208,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
 
     console.log('[NE-DIAG] executeIncrementalUpdate EXIT — added=' + newEntries.length + ', unconsolidated_stm=' + (vault.content.unconsolidated_stm || []).length);
 
-    var ltmDecision = globalThis.__ne_debug_ltm_decision;
-    if (ltmDecision && newEntries.length > 0) {
-        var consumedIds = newEntries.map(function(e) { return e.id; }).filter(Boolean);
-        if (consumedIds.length > 0) {
-            try {
+    if (newEntries.length > 0 && isLtmEnabled(vault)) {
+        try {
+            var consumedIds = newEntries.map(function(e) { return e.id; }).filter(Boolean);
+            var ltmDecision = await runLtmDecision(vault, consumedIds, callMemoryPipeline);
+            if (ltmDecision) {
                 applyLtmDecision(vault, ltmDecision, consumedIds);
                 try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] LTM save failed:', e); }
                 globalThis.__ne_debug_last_ltm_decision = {
@@ -1087,11 +1221,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     time: new Date().toISOString()
                 };
                 console.log('[NE] LTM decision applied — action=' + ltmDecision.action + ', consumed=' + consumedIds.length);
-            } catch (e) {
-                console.warn('[NE] LTM decision application failed:', e);
             }
+        } catch (e) {
+            console.warn('[NE] LTM decision pipeline failed:', e);
         }
-        globalThis.__ne_debug_ltm_decision = null;
     }
 
     var orphans = (vault.content.unconsolidated_stm || []).filter(function(s) { return !s.parent_ltm; });

@@ -30,7 +30,9 @@ let lastMemoryInjectionTokens = 0;
 var pipelineRunning = false;
 var statePipelineRunning = false;
 var consecutiveFailures = 0;
+var _drainContinuationCount = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
+const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
 var onBeforeGenerateRunning = false; // 重入守卫：斩断 generateRaw → Generate() → onBeforeGenerate 级联
@@ -248,6 +250,25 @@ async function flushPendingMessages() {
         console.log('[NE] Pipeline: setting pipelineRunning=false');
         pipelineRunning = false;
         persistPending();
+
+        if (pendingMessages.length > 0) {
+            (async function() {
+                var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+                var pressureVal = computeContextPressure(pendingTokenCount);
+                var totalWords = pendingMessages.reduce(function(s, m) { return s + (m.content || '').split(/\s+/).length; }, 0);
+                if ((pendingMessages.length >= await getStmBatchSize()
+                    || totalWords >= getStmWordsThreshold()
+                    || (pressureVal >= 0.50 && pressureVal > 0))
+                    && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
+                    _drainContinuationCount++;
+                    console.log('[NE] Continuation drain #' + _drainContinuationCount + ' — pending=' + pendingMessages.length);
+                    flushPendingMessages().catch(function(e) {
+                        console.warn('[NE] Continuation drain failed:', e);
+                    });
+                }
+                _drainContinuationCount = 0;
+            })().catch(function(e) { console.warn('[NE] Drain check failed:', e); });
+        }
     }
 }
 
@@ -454,4 +475,18 @@ export async function onMessageGenerated(chatId) {
         // 矛盾检测失败时不阻止消息发送
     }
     contradictionRetryCount = 0
+}
+
+export function waitForPipelineIdle(timeoutMs) {
+    timeoutMs = timeoutMs || 30000;
+    return new Promise(function(resolve) {
+        if (!pipelineRunning) { resolve(); return; }
+        var start = Date.now();
+        var check = setInterval(function() {
+            if (!pipelineRunning || Date.now() - start >= timeoutMs) {
+                clearInterval(check);
+                setTimeout(resolve, 500);
+            }
+        }, 150);
+    });
 }

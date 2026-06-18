@@ -6,7 +6,7 @@
  */
 import { read, write } from './vault/store.js';
 import { registerAllTools } from './tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
 import { t, setFieldLocale } from './i18n.js';
 import { renderVaultPanel } from './ui/vault-panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from './vault/schema.js';
@@ -464,7 +464,8 @@ function _buildDebugApi(host) {
             } catch (e) {
                 return 'Error: ' + e.message;
             }
-        }
+        },
+        waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); }
     };
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
