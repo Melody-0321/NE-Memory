@@ -63,6 +63,20 @@ function resolvePeriodFromSnapshots(msgStart, snapshots) {
     return null;
 }
 
+var EVENT_CLOSING_PUNCT = /[.。！？!?\"\”\)\}\]\>\」』）]$/;
+
+function _validateLtmEventText(label, text) {
+    if (!text) return;
+    var len = String(text).length;
+    var trimmed = String(text).trim();
+    if (len > 0 && !EVENT_CLOSING_PUNCT.test(trimmed)) {
+        console.warn('[NE-HARNESS] ' + label + ' updated_event may be truncated — ends with: "' + trimmed.slice(-20) + '" (len=' + len + ')');
+    }
+    if (len < 50) {
+        console.warn('[NE-HARNESS] ' + label + ' updated_event too short — len=' + len + ' text="' + trimmed + '"');
+    }
+}
+
 /**
  * 初始化 c.state 结构（首次对话时，c.state 为空）
  * 只执行一次：c.state 非空后变为 no-op
@@ -869,7 +883,7 @@ function buildStmSummaryPrompt(segments, turns, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
-    var segmentsText = '';
+    var segmentsText = '共有 ' + segments.length + ' 个区间——你必须输出恰好 ' + segments.length + ' 条事件。\n';
     for (var si = 0; si < segments.length; si++) {
         var seg = segments[si];
         var segTurns = [];
@@ -887,8 +901,8 @@ function buildStmSummaryPrompt(segments, turns, vault) {
     }
 
     var system = lang === 'en'
-        ? 'You are a story memory extractor. Each segment below is a contiguous plot segment — create exactly one event entry per segment.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\""\n    }\n  ]\n}\n\nRules:\n- One event per segment. No omissions.\n- Use character proper names only. No pronouns.\n- Trivial segments: still write a minimal event.'
-        : '你是故事记忆提取器。以下每个区间是一段连续剧情——为每个区间生成一条事件条目。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。参考往期事件的命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\""\n    }\n  ]\n}\n\n规则：\n- 每个区间一条事件。不遗漏。\n- 使用角色全名，禁止代词。\n- 琐碎区间：仍然写一条最少的事件。';
+        ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\""\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
+        : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。参考往期事件的命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\""\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
 
     return { system: system, user: segmentsText };
 }
@@ -987,13 +1001,21 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
 
     try {
         var parsed = JSON.parse(responseText);
-        return parsed.ltm_decision || null;
+        var result = parsed.ltm_decision || null;
+        if (result && result.updated_event) {
+            _validateLtmEventText('ltm_decision', result.updated_event);
+        }
+        return result;
     } catch (e) {
         var jsonMatch = responseText.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
             try {
                 var parsed2 = JSON.parse(jsonMatch[0]);
-                return parsed2.ltm_decision || null;
+                var result2 = parsed2.ltm_decision || null;
+                if (result2 && result2.updated_event) {
+                    _validateLtmEventText('ltm_decision', result2.updated_event);
+                }
+                return result2;
             } catch (e2) {}
         }
         console.warn('[NE] LTM decision LLM returned non-JSON response');
@@ -1242,6 +1264,31 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     }
                     if (!events[ei].scene || events[ei].scene === '-' || events[ei].scene === '') {
                         events[ei].scene = periodSnap.scene;
+                    }
+                }
+            }
+
+            var beforeFilter = events.length;
+            events = events.filter(function(e) { return e.msg_ids && e.msg_ids.length > 0; });
+            if (beforeFilter !== events.length) {
+                console.log('[NE-HARNESS] STM events filtered — before=' + beforeFilter + ' after=' + events.length + ' (dropped ' + (beforeFilter - events.length) + ' without msg_ids)');
+            }
+
+            var beforeTextFilter = events.length;
+            events = events.filter(function(e) { return e.event && String(e.event).length >= 3; });
+            if (beforeTextFilter !== events.length) {
+                console.log('[NE-HARNESS] STM events text-filtered — before=' + beforeTextFilter + ' after=' + events.length + ' (dropped ' + (beforeTextFilter - events.length) + ' with short/empty event)');
+            }
+
+            if (events.length >= 2) {
+                events.sort(function(a, b) {
+                    return (a.msgRange ? a.msgRange[0] : 999999) - (b.msgRange ? b.msgRange[0] : 999999);
+                });
+                for (var di = 0; di < events.length - 1; di++) {
+                    var curEnd = events[di].msgRange ? events[di].msgRange[1] : -1;
+                    var nxtStart = events[di + 1].msgRange ? events[di + 1].msgRange[0] : -1;
+                    if (nxtStart <= curEnd && curEnd >= 0) {
+                        console.log('[NE-HARNESS] STM msgRange overlap/gap — events[' + di + '] end=' + curEnd + ' events[' + (di + 1) + '] start=' + nxtStart);
                     }
                 }
             }
