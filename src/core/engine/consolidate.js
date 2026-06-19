@@ -166,8 +166,6 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
         action = 'append';
     }
 
-    if (action === 'skip') return;
-
     if (action === 'append') {
         if (!openLtm) {
             openLtm = {

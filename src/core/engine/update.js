@@ -926,22 +926,19 @@ function buildLtmDecisionPrompt(vault, newStmEntries) {
     ltmCtx += '\n## 判断标准\n';
     ltmCtx += 'append（追加到当前弧）：当新事件与当前弧在叙事上连续 —— 时间在同一日或紧邻的时区、场景在附近区域或同一活动范围内、至少一个核心角色仍在场。';
     ltmCtx += 'updated_event 应保留旧摘要的核心信息，仅追加新事件带来的增量变化——不要重写。\n';
-    ltmCtx += 'close_and_new（闭合+开启新弧）：叙事弧已自然终结。时间跨日 / 场景根本性变化 / 核心角色离场 / 事件本身是明确终结点。\n';
-    ltmCtx += 'skip（跳过）：本轮事件是过渡性内容，与弧主题不直接相关。事件留在 STM 层等待后续相关事件。仅当开放弧存在时可用 skip。\n';
+    ltmCtx += 'close_and_new（闭合+开启新弧）：叙事弧已自然终结。时间跨日 / 场景根本性变化 / 核心角色离场 / 事件本身是明确终结点。若新事件与当前弧无明显关联，也应闭合并开启新弧。\n';
 
     if (lang === 'en') {
-        ltmCtx += '\nOutput JSON with ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "required only for append / close_and_new (15-40 chars)",\n    "updated_event": "required only for append / close_and_new (80-140 chars)"\n  }\n}\n' +
-            'For skip, omit updated_title and updated_event (arc unchanged).\n' +
-            'For append, updated_event should preserve prior summary core info — only add incremental changes.\n';
+        ltmCtx += '\nOutput JSON with ltm_decision field:\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new",\n    "updated_title": "required (15-40 chars)",\n    "updated_event": "required (80-140 chars)"\n  }\n}\n' +
+            'updated_event should preserve prior summary core info — only add incremental changes.\n';
         return {
             system: 'You are a narrative arc manager. Given the current arc state and newly extracted story events, decide how to update the arcs.\n\n' +
                 'Only output valid JSON with the ltm_decision field — no surrounding text.\n\n' + ltmCtx,
             user: 'Based on the arc state and new STM events above, output the ltm_decision.'
         };
     }
-    ltmCtx += '\n输出 JSON，包含 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new" | "skip",\n    "updated_title": "仅 append / close_and_new 时需要（15-40字）",\n    "updated_event": "仅 append / close_and_new 时需要（80-140字）"\n  }\n}\n' +
-        'skip 时不需要 updated_title 和 updated_event（弧无变化）。\n' +
-        'append 时 updated_event 保留旧摘要核心信息，仅追加增量——不要重写。';
+    ltmCtx += '\n输出 JSON，包含 ltm_decision 字段：\n{\n  "ltm_decision": {\n    "action": "append" | "close_and_new",\n    "updated_title": "必填（15-40字）",\n    "updated_event": "必填（80-140字）"\n  }\n}\n' +
+        'updated_event 保留旧摘要核心信息，仅追加增量——不要重写。';
     return {
         system: '你是叙事弧管理者。根据当前弧状态和新提取的故事事件，决定如何更新叙事弧。\n\n' +
             '只输出包含 ltm_decision 字段的有效 JSON，不要输出任何其他文字。\n\n' + ltmCtx,
