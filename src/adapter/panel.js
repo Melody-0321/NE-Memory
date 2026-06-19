@@ -2137,6 +2137,17 @@ export async function renderVaultPanel(getChatId) {
     try {
         if (byId('ne_vault_bottom_overlay')) return;
         _currentGetChatId = getChatId;
+        if (!_vaultChangeBound) {
+            _vaultChangeBound = true;
+            var _vaultRefreshDebounce = null;
+            pdAddEventListener('ne:vault-changed', function() {
+                if (_vaultRefreshDebounce) clearTimeout(_vaultRefreshDebounce);
+                _vaultRefreshDebounce = setTimeout(function() {
+                    _vaultRefreshDebounce = null;
+                    if (_currentGetChatId) updateVaultViewerPopout(_currentGetChatId);
+                }, 300);
+            });
+        }
         _currentChatIdForCollapse = typeof getChatId === 'function' ? getChatId() : getChatId;
         injectPinCSS();
         injectBottomDrawerCSS();

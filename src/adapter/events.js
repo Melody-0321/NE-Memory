@@ -27,7 +27,6 @@ var MEMORY_INJECTION_WRAPPER = [
 
 let getChatIdFn = null;
 let getChatMessagesFn = null;
-let onVaultUpdateCallback = null;
 let lastKnownChatId = null;
 let pendingMessages = [];
 let getContextBudgetFn = null;
@@ -122,7 +121,12 @@ function computeContextPressure(pendingTokenCount) {
     if (usable <= 0) return 1;
     return pendingTokenCount / usable;
 }
-export function onVaultUpdate(cb) { onVaultUpdateCallback = cb; }
+function notifyVaultChanged() {
+    try {
+        var doc = window.parent && window.parent !== window ? window.parent.document : document;
+        doc.dispatchEvent(new CustomEvent('ne:vault-changed'));
+    } catch (e) {}
+}
 
 export function neSyncChatId(chatId) {
     if (chatId !== lastKnownChatId) {
@@ -271,7 +275,7 @@ async function flushPendingMessages() {
         recordChatStat(chatId, 'stm', stmCount);
         recordChatStat(chatId, 'ltm', ltmCount);
 
-        if (onVaultUpdateCallback) onVaultUpdateCallback(latestVault);
+        notifyVaultChanged();
         consecutiveFailures = 0;
         recordChatStat(chatId, 'dur', Date.now() - pipelineStart);
         try { localStorage.removeItem('ne_inflight'); } catch (e) {}
@@ -327,7 +331,7 @@ async function flushPendingMessages() {
                             time: new Date().toISOString()
                         };
                         console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
-                        if (onVaultUpdateCallback) onVaultUpdateCallback(postStmVault);
+                        notifyVaultChanged();
                     }
                 } catch (e) {
                     console.warn('[NE] LTM pass ' + (ltmPass+1) + ' failed:', e);
@@ -349,7 +353,7 @@ async function flushPendingMessages() {
                     var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
                     if (rebatchResult.consumed > 0) {
                         await saveVaultWithSnapshot(chatId, rebatchVault);
-                        if (onVaultUpdateCallback) onVaultUpdateCallback(rebatchVault);
+                        notifyVaultChanged();
                         console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
                     }
                     releasePipeline();
@@ -387,7 +391,7 @@ function triggerPerRoundExtraction(assistantMsg) {
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
     extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
-        if (onVaultUpdateCallback && stateResult && stateResult.vault) onVaultUpdateCallback(stateResult.vault);
+        if (stateResult && stateResult.vault) notifyVaultChanged();
     }).catch(function(e) {
         console.warn('[NE] Per-round state pipeline failed:', e);
     }).finally(function() {
