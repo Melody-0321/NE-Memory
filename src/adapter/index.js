@@ -494,39 +494,11 @@ function _buildDebugApi(host) {
         setReportsDir: async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } },
         waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); },
         dumpVaultKeys: async function() {
-            try {
-                return new Promise(function(resolve, reject) {
-                    var req = indexedDB.open('ne_memory_vault');
-                    req.onsuccess = function() {
-                        var db = req.result;
-                        var tx = db.transaction('vaults', 'readonly');
-                        var store = tx.objectStore('vaults');
-                        var keys = [];
-                        store.openCursor().onsuccess = function(e) {
-                            var cursor = e.target.result;
-                            if (cursor) {
-                                var v = cursor.value;
-                                keys.push({
-                                    key: cursor.key,
-                                    version: v ? v.version : '?',
-                                    stm: v && v.content && Array.isArray(v.content.unconsolidated_stm) ? v.content.unconsolidated_stm.length : 0,
-                                    ltm: v && v.content && Array.isArray(v.content.ltm_entries) ? v.content.ltm_entries.length : 0
-                                });
-                                cursor.continue();
-                            } else {
-                                db.close();
-                                resolve(keys);
-                            }
-                        };
-                        tx.onerror = function() { db.close(); reject(tx.error); };
-                    };
-                    req.onerror = function() { reject(req.error); };
-                });
-            } catch (e) { return 'Error: ' + e.message; }
+            try { return await _dumpVaultKeys(); } catch (e) { return 'Error: ' + e.message; }
         },
         findMyVault: async function() {
             try {
-                var keys = await __ne_debug.dumpVaultKeys();
+                var keys = await _dumpVaultKeys();
                 var currentId = getChatId();
                 console.log('[NE-DEBUG] Current chatId:', currentId);
                 console.table(keys);
@@ -534,6 +506,36 @@ function _buildDebugApi(host) {
             } catch (e) { return 'Error: ' + e.message; }
         }
     };
+}
+
+function _dumpVaultKeys() {
+    return new Promise(function(resolve, reject) {
+        var req = indexedDB.open('ne_memory_vault');
+        req.onsuccess = function() {
+            var db = req.result;
+            var tx = db.transaction('vaults', 'readonly');
+            var store = tx.objectStore('vaults');
+            var keys = [];
+            store.openCursor().onsuccess = function(e) {
+                var cursor = e.target.result;
+                if (cursor) {
+                    var v = cursor.value;
+                    keys.push({
+                        key: cursor.key,
+                        version: v ? v.version : '?',
+                        stm: v && v.content && Array.isArray(v.content.unconsolidated_stm) ? v.content.unconsolidated_stm.length : 0,
+                        ltm: v && v.content && Array.isArray(v.content.ltm_entries) ? v.content.ltm_entries.length : 0
+                    });
+                    cursor.continue();
+                } else {
+                    db.close();
+                    resolve(keys);
+                }
+            };
+            tx.onerror = function() { db.close(); reject(tx.error); };
+        };
+        req.onerror = function() { reject(req.error); };
+    });
 }
 
 document.addEventListener('DOMContentLoaded', function () { bootNE(); });
