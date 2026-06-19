@@ -9,6 +9,8 @@
  *   - dynamic_state 为空   → 固定模式（回退到现有硬编码字段）
  */
 
+import { runtime } from '../runtime.js';
+
 // ─── 常见叙述词，过滤假阳性 ───
 var NARRATIVE_KEYS = [
     '他说', '我说', '你说', '她说', '因为', '然后', '所以', '但是', '不过',
@@ -189,18 +191,9 @@ export function discoverDynamicFields(vault) {
     if (!vault || !vault.content) return { discovered: false };
 
     var dynamicState = null;
-    var ctx = null;
-    try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            ctx = SillyTavern.getContext();
-        }
-    } catch (e) {
-        return { discovered: false };
-    }
-    if (!ctx) return { discovered: false };
 
-    var characters = ctx.characters || [];
-    var worldInfo = ctx.worldInfo;
+    var characters = runtime.getCharacters() || [];
+    var worldInfo = runtime.getWorldInfo();
     var characterNames = [];
     var texts = [];
 
@@ -222,26 +215,19 @@ export function discoverDynamicFields(vault) {
         var enabledBooks = {};
         try {
             var globalSelect = null;
-            // 方法1: ctx.extensionSettings.world_info.globalSelect
-            var extSettings = ctx.extensionSettings || null;
-            if (extSettings && extSettings.world_info && Array.isArray(extSettings.world_info.globalSelect)) {
-                globalSelect = extSettings.world_info.globalSelect;
-                console.log('[NE] Enabled books from extensionSettings:', globalSelect.length);
+            // 方法1: runtime.getWorldInfo().globalSelect
+            var wi = runtime.getWorldInfo();
+            if (wi && wi.globalSelect && Array.isArray(wi.globalSelect)) {
+                globalSelect = wi.globalSelect;
+                console.log('[NE] Enabled books from worldInfo:', globalSelect.length);
             }
-            // 方法2: ctx.powerUserSettings.world_info.globalSelect
-            if (!globalSelect && ctx.powerUserSettings && ctx.powerUserSettings.world_info && Array.isArray(ctx.powerUserSettings.world_info.globalSelect)) {
-                globalSelect = ctx.powerUserSettings.world_info.globalSelect;
-                console.log('[NE] Enabled books from powerUserSettings:', globalSelect.length);
-            }
-            // 方法3: 从 ST 全局变量读取
-            if (!globalSelect && typeof window !== 'undefined') {
-                try {
-                    var wi = window.world_info || (window.__ST && window.__ST.world_info);
-                    if (wi && wi.globalSelect && Array.isArray(wi.globalSelect)) {
-                        globalSelect = wi.globalSelect;
-                        console.log('[NE] Enabled books from window:', globalSelect.length);
-                    }
-                } catch (ww) {}
+            // 方法2: powerUserSettings fallback
+            if (!globalSelect) {
+                var pus = runtime.getPowerUserCfg();
+                if (pus && pus.world_info && Array.isArray(pus.world_info.globalSelect)) {
+                    globalSelect = pus.world_info.globalSelect;
+                    console.log('[NE] Enabled books from powerUserSettings:', globalSelect.length);
+                }
             }
             if (globalSelect) {
                 for (var si = 0; si < globalSelect.length; si++) {

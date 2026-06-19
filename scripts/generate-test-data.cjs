@@ -7,7 +7,7 @@ var fs = require('fs');
 var path = require('path');
 
 var TEST_CASES_DIR = path.join(__dirname, '..', 'test-cases');
-var OUTPUT_FILE = path.join(__dirname, '..', 'src', 'test-runner', 'test-data.generated.js');
+var OUTPUT_FILE = path.join(__dirname, '..', 'src', 'core', 'test-runner', 'test-data.generated.js');
 
 var knownTests = [];
 var markdownMap = {};

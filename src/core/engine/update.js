@@ -3,6 +3,7 @@
  *
  * 核心循环：收集已处理 msg_id → 过滤新消息 → 构建 prompt → 调用 LLM → 解析 STM → 追加
  */
+import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
@@ -44,13 +45,10 @@ function autoEmbedVaultToChat(vault) {
     _embedCounter++;
     if (_embedCounter % 5 !== 0) return;
     try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var metadata = SillyTavern.getContext().chatMetadata;
-            var saveChat = SillyTavern.getContext().saveChat;
-            if (metadata && typeof saveChat === 'function') {
-                metadata.ne_vault = JSON.stringify(vault);
-                saveChat().catch(() => {});
-            }
+        var metadata = runtime.getChatMetadata();
+        if (metadata && metadata.ne_vault !== undefined) {
+            metadata.ne_vault = JSON.stringify(vault);
+            runtime.saveChat().catch(function() {});
         }
     } catch (e) {}
 }

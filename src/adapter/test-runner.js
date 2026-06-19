@@ -10,8 +10,8 @@
  * 测试用例定义在 test-cases/<name>/test-case.md 中，
  * 包含 YAML frontmatter 结构化参数。脚本自动提取和编译。
  */
-import { parseTestCase, loadTestCaseByName, listKnownTests } from './files.js';
-import { runTestLoop, setReportsDir } from './driver.js';
+import { parseTestCase, loadTestCaseByName, listKnownTests } from '../core/test-runner/files.js';
+import { runTestLoop, setReportsDir } from './test-driver.js';
 
 export { setReportsDir };
 

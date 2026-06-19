@@ -1,3 +1,4 @@
+import { runtime } from '../runtime.js';
 import { formatWorldBookGlobal, formatWorldBookCharacterCard, formatWorldBookFactionCard, formatWorldBookQuestCard } from '../vault/schema.js';
 
 var WORLD_BOOK_NAME = 'NE_Memory_State';
@@ -7,39 +8,24 @@ var ENTRY_PREFIX_CHAR = 'NE_Char_';
 var ENTRY_PREFIX_FACTION = 'NE_Faction_';
 var ENTRY_PREFIX_QUEST = 'NE_Quest_';
 
-function getTH() {
-    if (typeof TavernHelper !== 'undefined' && TavernHelper.getLorebookEntries) return TavernHelper;
-    return null;
-}
-
 function getLorebookEntries(bookName) {
-    var th = getTH();
-    if (th) return th.getLorebookEntries(bookName);
-    return Promise.resolve([]);
+    return runtime.getLorebookEntries(bookName);
 }
 
 function setLorebookEntries(bookName, entries) {
-    var th = getTH();
-    if (th) return th.setLorebookEntries(bookName, entries);
-    return Promise.resolve();
+    return runtime.setLorebookEntries(bookName, entries);
 }
 
 function createLorebookEntries(bookName, entries) {
-    var th = getTH();
-    if (th) return th.createLorebookEntries(bookName, entries);
-    return Promise.resolve();
+    return runtime.createLorebookEntries(bookName, entries);
 }
 
 function deleteLorebookEntries(bookName, uids) {
-    var th = getTH();
-    if (th) return th.deleteLorebookEntries(bookName, uids);
-    return Promise.resolve();
+    return runtime.deleteLorebookEntries(bookName, uids);
 }
 
 function getLorebooks() {
-    var th = getTH();
-    if (th && th.getLorebooks) return th.getLorebooks();
-    return Promise.resolve([]);
+    return runtime.getLorebooks();
 }
 
 function findEntryByComment(entries, comment) {

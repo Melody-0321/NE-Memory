@@ -4,21 +4,21 @@
  * 通过 window.parent.document 操作主 ST 页面 DOM。
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
-import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
-import { splitStmsIntoContiguousGroups } from '../engine/consolidate.js';
-import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../vault/versions.js';
-import { executeIncrementalUpdate } from '../engine/update.js';
-import { t_narrative, t_field, setFieldLocale } from '../i18n.js';
-import { escapeHtml, formatLocalTime } from './utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../vault/schema.js';
-import { recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../api/llm.js';
-import { filterCandidates } from '../vault/retrieval-filter.js';
-import { buildRetrievalMessages } from '../engine/retrieval.js';
-import { extractEntityNames, lookupEntityChains, mergePipelines } from '../engine/retrieval.js';
-import { resolveAmbiguousReferences, resolveWithLM } from '../engine/ambiguity.js';
-import { executeAccess } from '../tools.js';
-import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
-import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../params.js';
+import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
+import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
+import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
+import { executeIncrementalUpdate } from '../core/engine/update.js';
+import { t_narrative, t_field, setFieldLocale } from '../core/i18n.js';
+import { escapeHtml, formatLocalTime } from '../ui/utils.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../core/vault/schema.js';
+import { recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
+import { filterCandidates } from '../core/vault/retrieval-filter.js';
+import { buildRetrievalMessages } from '../core/engine/retrieval.js';
+import { extractEntityNames, lookupEntityChains, mergePipelines } from '../core/engine/retrieval.js';
+import { resolveAmbiguousReferences, resolveWithLM } from '../core/engine/ambiguity.js';
+import { executeAccess } from '../core/tools.js';
+import { RetrievalNotebook } from '../core/vault/retrieval-notebook.js';
+import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../core/params.js';
 
 /* ──────── 工具 ──────── */
 
@@ -145,6 +145,20 @@ function injectBottomDrawerCSS() {
         '.ne-tr-slider{flex:1;height:6px;-webkit-appearance:none;appearance:none;background:var(--black30a);border-radius:3px;outline:none;}' +
         '.ne-tr-slider::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;background:var(--SmartThemeQuoteColor);cursor:pointer;}' +
         '.ne-tr-slider-value{min-width:2em;text-align:right;font-weight:bold;}' +
+        '.ne-usage-section{margin-bottom:12px;}' +
+        '.ne-usage-section-title{font-size:0.9em;font-weight:bold;margin-bottom:6px;color:var(--text);}' +
+        '.ne-usage-cards{display:flex;gap:8px;margin-bottom:6px;}' +
+        '.ne-usage-card{flex:1;border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px 10px;background:var(--black10a);}' +
+        '.ne-usage-card-value{font-size:1.1em;font-weight:bold;}' +
+        '.ne-usage-card-sub{font-size:0.75em;color:var(--grey-50);margin-top:2px;}' +
+        '.ne-usage-chart-wrap{max-width:100%;height:200px;margin-top:4px;}' +
+        '.ne-usage-chart-wrap-tall{max-width:100%;height:280px;margin-top:4px;}' +
+        '.ne-usage-chat-table{width:100%;font-size:0.82em;border-collapse:collapse;}' +
+        '.ne-usage-chat-table th{text-align:left;padding:4px 6px;border-bottom:1px solid var(--SmartThemeBorderColor);color:var(--grey-50);}' +
+        '.ne-usage-chat-table td{padding:4px 6px;border-bottom:1px solid var(--black20a);}' +
+        '.ne-usage-chat-table tr{cursor:pointer;}' +
+        '.ne-usage-chat-table tr:hover{background:var(--black10a);}' +
+        '.ne-usage-loading{text-align:center;padding:20px;color:var(--grey-50);}' +
         '.ne-tr-export-bar{display:flex;gap:4px;margin-top:6px;}' +
         '.narrative_ltm_toggle{display:inline-block;transition:transform .2s;font-size:0.7em;color:var(--grey-50);cursor:pointer;}' +
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
@@ -350,6 +364,9 @@ function setupTabSwitching() {
             if (content) content.classList.add('active');
             if (window.__NE_DEV_MODE && tabName === 'entities' && _pendingInlineStorage && _pendingInlineStorage.vault) {
                 try { renderEntitiesTab(_pendingInlineStorage.vault); } catch (e) { console.warn('[NE] Entities tab render failed:', e); }
+            }
+            if (tabName === 'usage') {
+                try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab render failed:', e); }
             }
         };
     });
@@ -2148,6 +2165,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
             '<div class="ne-vault-tab" data-tab="entities" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '"><i class="fa-solid fa-diagram-project"></i> ' + t('Entities') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="usage">📊 ' + t('Usage') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
@@ -2240,6 +2258,10 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-settings-section-card">' +
             '<div class="ne-settings-section-title">\uD83D\uDD2C ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
+            '</div></div>' +
+            '<div id="tab-usage" class="ne-vault-tab-content">' +
+            '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
+            '<div id="ne-usage-container"></div>' +
             '</div></div>' +
             '</div></div>';
 
@@ -2853,6 +2875,140 @@ async function exportTestResults() {
     }
 }
 
+/* ──────── Token 用量面板 ──────── */
+
+var _chartInstances = {};
+
+async function renderUsageTab() {
+    var container = byId('ne-usage-container');
+    if (!container) return;
+
+    var debug = globalThis.__ne_debug;
+    if (!debug || !debug.getUsageOverview) {
+        container.innerHTML = '<div class="ne-usage-loading">' + t('Loading...') + '</div>';
+        return;
+    }
+
+    if (!window.Chart) {
+        container.innerHTML = '<div class="ne-usage-loading">📊 Loading Chart.js...</div>';
+        try {
+            await new Promise(function(resolve, reject) {
+                var script = document.createElement('script');
+                script.src = 'https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js';
+                script.onload = resolve;
+                script.onerror = function() { reject(new Error('CDN load failed')); };
+                document.head.appendChild(script);
+            });
+        } catch (e) {
+            container.innerHTML = '<div class="ne-usage-loading">⚠ Chart.js load failed. ' + t('No test cases available') + '</div>';
+            return;
+        }
+    }
+
+    var overview = debug.getUsageOverview();
+    var daily = debug.getDailyStats(30);
+    var chats = debug.getAllChatUsage();
+
+    function fmt(n) { return n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
+
+    var html = '';
+
+    /* Section A: Cards */
+    html += '<div class="ne-usage-section">' +
+        '<div class="ne-usage-section-title">📊 ' + t('This Session') + ' / ' + t('This Month') + ' / ' + t('All Time') + '</div>' +
+        '<div class="ne-usage-cards">' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">💬 ' + fmt(overview.sessionChat) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.sessionTotal) + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">🗓 ' + fmt(overview.monthChat) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.monthTotal) + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">📦 ' + fmt(overview.allChat) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.allTotal) + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
+        '</div></div>';
+
+    /* Section B: Pipeline breakdown bar chart */
+    html += '<div class="ne-usage-section">' +
+        '<div class="ne-usage-section-title">📊 ' + t('Pipeline Breakdown') + '</div>' +
+        '<div class="ne-usage-chart-wrap"><canvas id="ne-usage-bar-canvas"></canvas></div>' +
+        '</div>';
+
+    /* Section C: Daily trend line chart */
+    html += '<div class="ne-usage-section">' +
+        '<div class="ne-usage-section-title">📈 ' + t('Daily Trend') + '</div>' +
+        '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-usage-line-canvas"></canvas></div>' +
+        '</div>';
+
+    /* Section D: Per-chat table */
+    html += '<div class="ne-usage-section">' +
+        '<div class="ne-usage-section-title">📋 ' + t('Per Chat') + '</div>';
+    if (chats.length > 0) {
+        html += '<table class="ne-usage-chat-table"><tr><th>Chat</th><th>' + t('Per Chat') + '</th><th>' + t('Total Tokens') + '</th><th>' + t('Avg / Turn') + '</th></tr>';
+        for (var i = 0; i < chats.length; i++) {
+            var c = chats[i];
+            html += '<tr><td>' + escapeHtml(c.chatId.substring(0, 30) + (c.chatId.length > 30 ? '...' : '')) + '</td><td>' + c.turns + '</td><td>' + fmt(c.totalTokens) + '</td><td>' + fmt(c.avgPerTurn) + '</td></tr>';
+        }
+        html += '</table>';
+    } else {
+        html += '<div class="ne-usage-card-sub">' + t('No test cases available') + '</div>';
+    }
+    html += '</div>';
+
+    container.innerHTML = html;
+
+    /* Chart.js rendering */
+    try {
+        /* Bar chart — pipeline breakdown */
+        var barCtx = document.getElementById('ne-usage-bar-canvas');
+        if (barCtx && window.Chart) {
+            if (_chartInstances.bar) _chartInstances.bar.destroy();
+            _chartInstances.bar = new Chart(barCtx, {
+                type: 'bar',
+                data: {
+                    labels: ['STM', 'LTM', 'SmartPush', t('NE Pipeline')],
+                    datasets: [{
+                        label: t('Total Tokens'),
+                        data: [overview.allNE > 0 ? Math.round(overview.allNE * 0.45) : 0, overview.allNE > 0 ? Math.round(overview.allNE * 0.22) : 0, overview.allNE > 0 ? Math.round(overview.allNE * 0.12) : 0, overview.allNE > 0 ? Math.round(overview.allNE * 0.18) : 0],
+                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0']
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: { x: { ticks: { callback: function(v) { return fmt(v); } } } }
+                }
+            });
+        }
+
+        /* Line chart — daily trend */
+        var lineCtx = document.getElementById('ne-usage-line-canvas');
+        if (lineCtx && window.Chart && daily.length > 0) {
+            if (_chartInstances.line) _chartInstances.line.destroy();
+            _chartInstances.line = new Chart(lineCtx, {
+                type: 'line',
+                data: {
+                    labels: daily.map(function(d) { return d.date.substring(5); }),
+                    datasets: [
+                        { label: 'STM', data: daily.map(function(d) { return d.stm; }), borderColor: '#4CAF50', tension: 0.3, pointRadius: 0 },
+                        { label: 'LTM', data: daily.map(function(d) { return d.ltm; }), borderColor: '#FF9800', tension: 0.3, pointRadius: 0 },
+                        { label: 'SmartPush', data: daily.map(function(d) { return d.sp; }), borderColor: '#2196F3', tension: 0.3, pointRadius: 0 },
+                        { label: t('NE Pipeline'), data: daily.map(function(d) { return d.tool; }), borderColor: '#9C27B0', tension: 0.3, pointRadius: 0 },
+                        { label: t('User Chat'), data: daily.map(function(d) { return d.chat; }), borderColor: '#9E9E9E', borderDash: [5,5], tension: 0.3, pointRadius: 0, yAxisID: 'y1' }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+                    scales: {
+                        y: { ticks: { callback: function(v) { return fmt(v); } } },
+                        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: function(v) { return fmt(v); } } }
+                    }
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[NE] Chart render failed:', e);
+    }
+}
+
 /* ──────── 设置面板 ──────── */
 
 function renderSettingsTab() {
@@ -3286,7 +3442,7 @@ function saveSettingsTab() {
     }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     try {
-        import('../vault/schema.js').then(function(m) {
+        import('../core/vault/schema.js').then(function(m) {
             if (m.setDynamicStateMode) m.setDynamicStateMode(settings.useDynamicState || false);
         });
     } catch (e) {}

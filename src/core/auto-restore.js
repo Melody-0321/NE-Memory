@@ -32,11 +32,9 @@ export async function checkAndRestoreEmbeddedVault(chatId) {
 
     var neVaultJson = null;
     try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var metadata = SillyTavern.getContext().chatMetadata;
-            if (metadata && typeof metadata.ne_vault === 'string') {
-                neVaultJson = metadata.ne_vault;
-            }
+        var metadata = runtime.getChatMetadata();
+        if (metadata && typeof metadata.ne_vault === 'string') {
+            neVaultJson = metadata.ne_vault;
         }
     } catch (e) {
         return;
@@ -63,12 +61,10 @@ export async function checkAndRestoreEmbeddedVault(chatId) {
     var body = t_narrative('Restore embedded vault?') + '\n\n' +
         t_narrative('Click Confirm to restore, Cancel to skip.');
     try {
-        if (typeof toastr !== 'undefined') {
-            toastr.info(body, t_narrative('NE Memory'), { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false });
-        }
+        runtime.notify(body, t_narrative('NE Memory'), { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false });
     } catch (e) {}
     var confirmed = false;
-    try { confirmed = confirm(body); } catch (e) {}
+    try { confirmed = runtime.confirm(body); } catch (e) {}
 
     if (confirmed) {
         try {
@@ -87,11 +83,9 @@ export async function checkAndRestoreEmbeddedVault(chatId) {
 
 function deleteChatMetadataNeVault() {
     try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var metadata = SillyTavern.getContext().chatMetadata;
-            if (metadata) {
-                delete metadata.ne_vault;
-            }
+        var metadata = runtime.getChatMetadata();
+        if (metadata) {
+            delete metadata.ne_vault;
         }
     } catch (e) {}
 }

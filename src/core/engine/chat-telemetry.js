@@ -5,7 +5,7 @@
  * {
  *   "chat_abc123": {
  *     "turns": [
- *       { "t": 1, "stm": 3, "ltm": 0, "llm": 2, "tool": 0, "tok": 500, "err": 0, "dur": 1200 },
+ *       { "t": 1, "stm": 3, "ltm": 0, "llm": 2, "tool": 0, "tok": 500, "tok_stm": 300, "tok_ltm": 120, "tok_sp": 50, "tok_tool": 30, "tok_chat": 0, "err": 0, "dur": 1200 },
  *       ...
  *     ],
  *     "aggregates": {
@@ -15,6 +15,11 @@
  *       "total_llm_calls": 4,
  *       "total_tool_calls": 1,
  *       "total_tokens": 1300,
+ *       "total_tok_stm": 800,
+ *       "total_tok_ltm": 300,
+ *       "total_tok_sp": 120,
+ *       "total_tok_tool": 80,
+ *       "total_tok_chat": 0,
  *       "total_errors": 0,
  *       "total_smartpush_injections": 2,
  *       "total_pipeline_duration_ms": 2700
@@ -49,7 +54,7 @@ export function incrementChatTurn(chatId) {
     // 超出上限裁剪
     while (turns.length >= MAX_TURNS) turns.shift();
 
-    turns.push({ t: nextTurn, stm: 0, ltm: 0, llm: 0, tool: 0, tok: 0, err: 0, dur: 0 });
+    turns.push({ t: nextTurn, stm: 0, ltm: 0, llm: 0, tool: 0, tok: 0, tok_stm: 0, tok_ltm: 0, tok_sp: 0, tok_tool: 0, tok_chat: 0, err: 0, dur: 0 });
 
     // 重建聚合
     chat.aggregates = rebuildAggregates(turns);
@@ -96,6 +101,18 @@ export function getChatTurnNumber(chatId) {
 }
 
 /**
+ * 按 operation 记录分类 token 消耗
+ * @param {string} chatId
+ * @param {string} tokenOp - 'tok_stm' | 'tok_ltm' | 'tok_sp' | 'tok_tool' | 'tok_chat'
+ * @param {number} value
+ */
+export function recordChatToken(chatId, tokenOp, value) {
+    if (!chatId || !value) return;
+    recordChatStat(chatId, 'tok', value);
+    recordChatStat(chatId, tokenOp, value);
+}
+
+/**
  * 获取某 chat 的完整统计
  */
 export function getChatStats(chatId) {
@@ -129,6 +146,11 @@ function rebuildAggregates(turns) {
         total_llm_calls: 0,
         total_tool_calls: 0,
         total_tokens: 0,
+        total_tok_stm: 0,
+        total_tok_ltm: 0,
+        total_tok_sp: 0,
+        total_tok_tool: 0,
+        total_tok_chat: 0,
         total_errors: 0,
         total_smartpush_injections: 0,
         total_pipeline_duration_ms: 0
@@ -146,6 +168,11 @@ function rebuildAggregates(turns) {
         agg.total_llm_calls += t.llm || 0;
         agg.total_tool_calls += t.tool || 0;
         agg.total_tokens += t.tok || 0;
+        agg.total_tok_stm += t.tok_stm || 0;
+        agg.total_tok_ltm += t.tok_ltm || 0;
+        agg.total_tok_sp += t.tok_sp || 0;
+        agg.total_tok_tool += t.tok_tool || 0;
+        agg.total_tok_chat += t.tok_chat || 0;
         agg.total_errors += t.err || 0;
         agg.total_pipeline_duration_ms += t.dur || 0;
     }

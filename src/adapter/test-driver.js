@@ -8,9 +8,9 @@
  * - 角色设定通过 AI 回复自然呈现（就像真实参与者通过对话认知故事世界）
  * - 测试用例的 conversationGuide 提供足够的方向指导
  */
-import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls, drainOrphanPipelineCalls } from './monitor.js';
-import { evaluateAllStructural, evaluateSemantic } from './assertions.js';
-import { createTrace, appendTraceRound, createReport } from './files.js';
+import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls, drainOrphanPipelineCalls } from '../core/test-runner/monitor.js';
+import { evaluateAllStructural, evaluateSemantic } from '../core/test-runner/assertions.js';
+import { createTrace, appendTraceRound, createReport } from '../core/test-runner/files.js';
 
 function __ne_waitForPipelineDrain(timeoutMs) {
     var debug = globalThis.__ne_debug;

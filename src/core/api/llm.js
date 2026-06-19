@@ -5,7 +5,9 @@
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
 import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
-import { recordChatStat } from '../engine/chat-telemetry.js';
+import { runtime } from '../runtime.js';
+import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
+import { recordDailyToken } from '../engine/token-stats.js';
 
 export let telemetryBuffer = [];
 
@@ -77,7 +79,16 @@ export async function callMemoryLLM(messages, options = {}) {
     if (chatId) {
         recordChatStat(chatId, 'llm', 1);
         var totalTokens = usage ? (usage.total_tokens || 0) : (options.operation !== 'init_power_slots' ? 0 : 0);
-        if (totalTokens > 0) recordChatStat(chatId, 'tok', totalTokens);
+        if (totalTokens > 0) {
+            var op = options.operation || 'memory';
+            var tokenOp = (op === 'stm_extract') ? 'tok_stm'
+                : (op === 'ltm_decision') ? 'tok_ltm'
+                : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
+                : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
+                : 'tok';
+            recordChatToken(chatId, tokenOp, totalTokens);
+            recordDailyToken(tokenOp, totalTokens);
+        }
     }
 
     if (isTelemetryEnabled()) {
@@ -457,9 +468,7 @@ function notifySecondaryApiFailure(reason) {
     if (now - _lastSecondaryApiWarn < 60000) return; // at most once per minute
     _lastSecondaryApiWarn = now;
     try {
-        if (typeof toastr !== 'undefined' && toastr.warning) {
-            toastr.warning('Falling back to main API. ' + (reason || 'Connection failed'), 'Secondary API unreachable', { timeOut: 6000 });
-        }
+        runtime.notify('Falling back to main API. ' + (reason || 'Connection failed'), 'Secondary API unreachable', { timeOut: 6000 });
     } catch (e) {}
 }
 
@@ -595,37 +604,30 @@ async function callTavernHelper(messages, options) {
         ]);
     };
 
-    // 1. Primary: generateQuietPrompt — silent background processing, no chat output
+    // 1. Primary: generateQuiet — silent background processing, no chat output
     try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var ctx = SillyTavern.getContext();
-            if (ctx.generateQuietPrompt) {
-                console.log('[NE] callTavernHelper via generateQuietPrompt, timeout=' + (options.timeout || 120) + 's');
-                var quietResponse = await raceWithTimeout(ctx.generateQuietPrompt(
-                    messages[messages.length - 1].content,
-                    messages[0].content
-                ));
-                return quietResponse || '';
-            }
-        }
+        console.log('[NE] callTavernHelper via generateQuiet, timeout=' + (options.timeout || 120) + 's');
+        var quietResponse = await raceWithTimeout(runtime.generateQuiet(
+            messages[messages.length - 1].content,
+            messages[0].content
+        ));
+        if (quietResponse) return quietResponse;
     } catch (e) {
         console.warn('[NE] Quiet prompt failed:', e);
     }
 
     // 2. Fallback: generateRaw — may produce visible chat output in some ST versions
     try {
-        if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
-            console.log('[NE] callTavernHelper via generateRaw (fallback), timeout=' + (options.timeout || 120) + 's');
-            var rawResponse = await raceWithTimeout(TavernHelper.generateRaw({
-                ordered_prompts: messages,
-                should_stream: false
-            }));
-            return rawResponse || '';
-        }
+        console.log('[NE] callTavernHelper via generateRaw (fallback), timeout=' + (options.timeout || 120) + 's');
+        var rawResponse = await raceWithTimeout(runtime.generateRaw({
+            ordered_prompts: messages,
+            should_stream: false
+        }));
+        if (rawResponse) return rawResponse;
     } catch (e) {
-        console.warn('[NE] TavernHelper.generateRaw failed:', e);
+        console.warn('[NE] generateRaw failed:', e);
     }
-    throw new Error('No LLM backend available. Configure secondary API in NE settings or ensure TavernHelper is loaded.');
+    throw new Error('No LLM backend available. Configure secondary API in NE settings.');
 }
 
 var _powerSlotsInited = {};
@@ -638,55 +640,46 @@ export async function initPowerSlots(characterName, existingSlotsForWorld) {
 
     var contextText = '';
     try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var ctx = SillyTavern.getContext();
-            var chars = ctx.characters || [];
-            var char = chars.find(function (c) { return c.name === characterName; });
-            if (char) {
-                contextText += '=== Character Card ===\n';
-                contextText += 'Name: ' + (char.name || characterName) + '\n';
-                if (char.description) contextText += 'Description: ' + char.description + '\n';
-                if (char.personality) contextText += 'Personality: ' + char.personality + '\n';
-                if (char.scenario) contextText += 'Scenario: ' + char.scenario + '\n';
-            }
-            var worldInfo = ctx.worldInfo;
-            if (worldInfo && worldInfo.entries && Object.keys(worldInfo.entries).length > 0) {
-                // 构建启用的世界书名集合（与 state-discovery.js 相同逻辑）
-                var enabledBooks = {};
-                try {
-                    var globalSelect = null;
-                    var extSettings2 = ctx.extensionSettings || null;
-                    if (extSettings2 && extSettings2.world_info && Array.isArray(extSettings2.world_info.globalSelect)) {
-                        globalSelect = extSettings2.world_info.globalSelect;
+        var chars = runtime.getCharacters() || [];
+        var char = chars.find(function (c) { return c.name === characterName; });
+        if (char) {
+            contextText += '=== Character Card ===\n';
+            contextText += 'Name: ' + (char.name || characterName) + '\n';
+            if (char.description) contextText += 'Description: ' + char.description + '\n';
+            if (char.personality) contextText += 'Personality: ' + char.personality + '\n';
+            if (char.scenario) contextText += 'Scenario: ' + char.scenario + '\n';
+        }
+        var worldInfo = runtime.getWorldInfo();
+        if (worldInfo && worldInfo.entries && Object.keys(worldInfo.entries).length > 0) {
+            var enabledBooks = {};
+            try {
+                var globalSelect = null;
+                var wi2 = runtime.getWorldInfo();
+                if (wi2 && wi2.globalSelect && Array.isArray(wi2.globalSelect)) {
+                    globalSelect = wi2.globalSelect;
+                }
+                if (!globalSelect) {
+                    var pus2 = runtime.getPowerUserCfg();
+                    if (pus2 && pus2.world_info && Array.isArray(pus2.world_info.globalSelect)) {
+                        globalSelect = pus2.world_info.globalSelect;
                     }
-                    if (!globalSelect && ctx.powerUserSettings && ctx.powerUserSettings.world_info && Array.isArray(ctx.powerUserSettings.world_info.globalSelect)) {
-                        globalSelect = ctx.powerUserSettings.world_info.globalSelect;
+                }
+                if (globalSelect) {
+                    for (var si2 = 0; si2 < globalSelect.length; si2++) {
+                        enabledBooks[globalSelect[si2]] = true;
                     }
-                    if (!globalSelect && typeof window !== 'undefined') {
-                        try {
-                            var wi2 = window.world_info || (window.__ST && window.__ST.world_info);
-                            if (wi2 && wi2.globalSelect && Array.isArray(wi2.globalSelect)) {
-                                globalSelect = wi2.globalSelect;
-                            }
-                        } catch (ww) {}
-                    }
-                    if (globalSelect) {
-                        for (var si2 = 0; si2 < globalSelect.length; si2++) {
-                            enabledBooks[globalSelect[si2]] = true;
-                        }
-                    }
-                } catch (e2) {}
-                var hasEnabledFilter2 = Object.keys(enabledBooks).length > 0;
+                }
+            } catch (e2) {}
+            var hasEnabledFilter2 = Object.keys(enabledBooks).length > 0;
 
-                contextText += '\n=== World Book Entries ===\n';
-                Object.keys(worldInfo.entries).forEach(function (key) {
-                    var entry = worldInfo.entries[key];
-                    if (!entry || !entry.content) return;
-                    if (entry.disable) return;
-                    if (hasEnabledFilter2 && entry.world && !enabledBooks[entry.world]) return;
-                    contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
-                });
-            }
+            contextText += '\n=== World Book Entries ===\n';
+            Object.keys(worldInfo.entries).forEach(function (key) {
+                var entry = worldInfo.entries[key];
+                if (!entry || !entry.content) return;
+                if (entry.disable) return;
+                if (hasEnabledFilter2 && entry.world && !enabledBooks[entry.world]) return;
+                contextText += '[' + (entry.key || key) + '] ' + entry.content + '\n';
+            });
         }
     } catch (e) {}
 

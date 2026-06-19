@@ -1,16 +1,18 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate, extractStateChangesOnly, runLtmDecision, saveVaultWithSnapshot } from './engine/update.js';
-import { read, write, rollbackByMsgIds } from './vault/store.js';
-import { incrementChatTurn, recordChatStat } from './engine/chat-telemetry.js';
-import { detectContradictions } from './engine/contradiction.js';
-import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './ui/vault-panel.js';
-import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from './params.js';
-import { isStateSchemaEnabled } from './vault/schema.js';
-import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from './engine/consolidate.js';
-import { callMemoryPipeline } from './api/llm.js';
-import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from './engine/pipeline-guard.js';
+import { executeIncrementalUpdate, extractStateChangesOnly, runLtmDecision, saveVaultWithSnapshot } from '../core/engine/update.js';
+import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
+import { incrementChatTurn, recordChatStat, recordChatToken } from '../core/engine/chat-telemetry.js';
+import { recordDailyToken } from '../core/engine/token-stats.js';
+import { runtime } from '../core/runtime.js';
+import { detectContradictions } from '../core/engine/contradiction.js';
+import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './panel.js';
+import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
+import { isStateSchemaEnabled } from '../core/vault/schema.js';
+import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';
+import { callMemoryPipeline } from '../core/api/llm.js';
+import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆。]',
@@ -113,8 +115,8 @@ export function trackMemoryInjection(tokenCount) {
     lastMemoryInjectionTokens = tokenCount;
 }
 function computeContextPressure(pendingTokenCount) {
-    if (!getContextBudgetFn) return -1;
-    var maxCtx = getContextBudgetFn();
+    if (!runtime.maxContext) return -1;
+    var maxCtx = runtime.maxContext;
     if (!maxCtx || maxCtx <= 0) return -1;
     var usable = maxCtx - 1500 - lastMemoryInjectionTokens;
     if (usable <= 0) return 1;
@@ -136,12 +138,12 @@ export function neSyncChatId(chatId) {
 export function onMessageSent(messageIndex) {
     try {
         closeVaultOverlay();
-        if (!getChatMessagesFn) return;
-        const chat = getChatMessagesFn();
+        if (!runtime.getChat) return;
+        const chat = runtime.getChat();
 
         // 首个消息：追捕所有前序消息（开场白等），仅执行一次
         if (pendingMessages.length === 0 && typeof messageIndex === 'number') {
-            var currentChatId = getChatIdFn ? getChatIdFn() : null;
+            var currentChatId = runtime.getChatId();
             if (currentChatId !== retroCapturedChatId) {
                 retroCapturedChatId = currentChatId;
                 for (var i = 0; i < chat.length; i++) {
@@ -205,6 +207,22 @@ export async function onMessageReceived(messageIndex) {
             if (shouldRunPipeline) {
                 flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
             }
+
+            try {
+                var ctx = globalThis.SillyTavern && globalThis.SillyTavern.getContext();
+                if (ctx && ctx.chat) {
+                    var chatArr = ctx.chat;
+                    var lastMsgIdx = chatArr.length - 1;
+                    if (lastMsgIdx >= 0) {
+                        var lastMsg = chatArr[lastMsgIdx];
+                        var chatTokens = (lastMsg && lastMsg.extra && lastMsg.extra.token_count) || 0;
+                        if (chatTokens > 0) {
+                            recordChatToken(chatId, 'tok_chat', chatTokens);
+                            recordDailyToken('tok_chat', chatTokens);
+                        }
+                    }
+                }
+            } catch (e) {}
         } else {
             console.log('[NE] onMessageReceived: message not found at index=' + messageIndex);
         }
@@ -235,7 +253,7 @@ async function flushPendingMessages() {
     persistPending();
     try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
     console.log('[NE] Pipeline starting: batch=' + batch.length);
-    const chatId = getChatIdFn ? getChatIdFn() : 'default';
+    const chatId = runtime.getChatId() || 'default';
     var pipelineStart = Date.now();
     incrementChatTurn(chatId);
     try {
@@ -412,7 +430,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         const vault = await read(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
-        var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+        var chatMessages = runtime.getChat ? runtime.getChat() : [];
         try {
             var formatted;
             try {
@@ -421,21 +439,14 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);
             }
-            if (formatted && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
+            if (formatted) {
                 var fbMarker = formatted.indexOf('[KB:');
                 var fsMarker = formatted.indexOf('## ');
                 if (fbMarker !== -1 || fsMarker !== -1) {
                     formatted = MEMORY_INJECTION_WRAPPER + '\n\n' + formatted;
                 }
                 globalThis.__ne_debug_last_injection = formatted;
-                TavernHelper.injectPrompts([{
-                    id: 'ne_memory_vault',
-                    position: 'in_chat',
-                    depth: 2,
-                    role: 'system',
-                    content: formatted,
-                    should_scan: false
-                }], { once: false });
+                runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 2, 'system');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
@@ -467,8 +478,7 @@ export async function onMessageDeleted(messageId) {
 }
 
 export async function onMessageSwiped(messageId) {
-    if (!getChatIdFn) return;
-    const chatId = getChatIdFn();
+    const chatId = runtime.getChatId();
     try {
         const vault = await read(chatId);
         rollbackByMsgIds(vault, [messageId]);
@@ -527,7 +537,7 @@ export async function onMessageGenerated(chatId) {
     // 获取 AI 回复文本
     var chat
     try {
-        var chatMessages = getChatMessagesFn()
+        var chatMessages = runtime.getChat()
         chat = chatMessages
     } catch (e) { return }
 
@@ -539,18 +549,12 @@ export async function onMessageGenerated(chatId) {
     if (!aiMessage || aiMessage.trim().length < 20) return
 
     try {
-        var result = await detectContradictions(getChatIdFn(), aiMessage)
+        var result = await detectContradictions(runtime.getChatId(), aiMessage)
         if (result && result.hasContradiction) {
             console.log('[NE] Contradiction detected, triggering regeneration...')
             // 注入证据系统消息
-            if (result.systemMessage && typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
-                TavernHelper.injectPrompts([{
-                    id: 'ne_contradiction_fix',
-                    position: 'in_chat',
-                    depth: 0,
-                    role: 'system',
-                    content: result.systemMessage
-                }], { once: true })
+            if (result.systemMessage) {
+                runtime.injectPrompt('ne_contradiction_fix', result.systemMessage, 'in_chat', 0, 'system');
             }
             contradictionRetryCount++
             // 触发重新生成
