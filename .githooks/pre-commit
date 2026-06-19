@@ -7,5 +7,5 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 # Stage dist/index.js if it changed (build may update it)
-git add dist/index.js src/test-runner/test-data.generated.js
+git add dist/index.js src/core/test-runner/test-data.generated.js
 echo "[NE] pre-commit: OK"
