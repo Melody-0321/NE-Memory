@@ -53,6 +53,16 @@ function autoEmbedVaultToChat(vault) {
     } catch (e) {}
 }
 
+function resolvePeriodFromSnapshots(msgStart, snapshots) {
+    if (!snapshots || snapshots.length === 0) return null;
+    for (var i = snapshots.length - 1; i >= 0; i--) {
+        if (snapshots[i].msgIdx <= msgStart) {
+            return snapshots[i];
+        }
+    }
+    return null;
+}
+
 /**
  * 初始化 c.state 结构（首次对话时，c.state 为空）
  * 只执行一次：c.state 非空后变为 no-op
@@ -869,6 +879,13 @@ function buildStmSummaryPrompt(segments, turns, vault) {
         segmentsText += '\n';
     }
 
+    if (vault.content.story_time || vault.content.story_scene) {
+        segmentsText += '\n## 当前故事状态\n';
+        if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
+        if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
+        segmentsText += '\n';
+    }
+
     var system = lang === 'en'
         ? 'You are a story memory extractor. Each segment below is a contiguous plot segment — create exactly one event entry per segment.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. Use same format as prior events. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\""\n    }\n  ]\n}\n\nRules:\n- One event per segment. No omissions.\n- Use character proper names only. No pronouns.\n- Trivial segments: still write a minimal event.'
         : '你是故事记忆提取器。以下每个区间是一段连续剧情——为每个区间生成一条事件条目。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。参考往期事件的命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\""\n    }\n  ]\n}\n\n规则：\n- 每个区间一条事件。不遗漏。\n- 使用角色全名，禁止代词。\n- 琐碎区间：仍然写一条最少的事件。';
@@ -1205,6 +1222,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 }
             }
 
+            var snapshots = vault.content._state_snapshots;
             for (var ei = 0; ei < Math.min(events.length, segments.length); ei++) {
                 var seg = segments[ei];
                 var turnIndices = [];
@@ -1215,11 +1233,34 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 events[ei].absMsgEnd = turns[seg[1]].msgEnd;
                 events[ei].msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
                 events[ei].status = 'closed';
+
+                var segmentMsgStart = turns[seg[0]].msgStart;
+                var periodSnap = resolvePeriodFromSnapshots(segmentMsgStart, snapshots);
+                if (periodSnap) {
+                    if (!events[ei].period || events[ei].period === '-' || events[ei].period === '') {
+                        events[ei].period = periodSnap.time;
+                    }
+                    if (!events[ei].scene || events[ei].scene === '-' || events[ei].scene === '') {
+                        events[ei].scene = periodSnap.scene;
+                    }
+                }
             }
 
             if (events.length > 0) {
                 postFillSTM({ stmEntries: events, _checkpoints: {}, stateChanges: {} }, vault);
                 appendSTMEntries(vault, events);
+
+                if (snapshots && snapshots.length > 0) {
+                    var maxProcessedMsgIdx = -1;
+                    for (var ei2 = 0; ei2 < events.length; ei2++) {
+                        if (events[ei2].absMsgEnd > maxProcessedMsgIdx) {
+                            maxProcessedMsgIdx = events[ei2].absMsgEnd;
+                        }
+                    }
+                    vault.content._state_snapshots = snapshots.filter(function(s) {
+                        return s.msgIdx > maxProcessedMsgIdx;
+                    });
+                }
             }
         }
 
@@ -1303,6 +1344,21 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (stateChanges.story_date) {
         vault.content.story_date = String(stateChanges.story_date);
+    }
+
+    var latestAssistantId = latestAssistantMsg ? latestAssistantMsg.id : null;
+    if (latestAssistantId != null && (vault.content.story_time || vault.content.story_scene)) {
+        vault.content._state_snapshots = vault.content._state_snapshots || [];
+        var snapshots = vault.content._state_snapshots;
+        var lastSnap = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
+        if (!lastSnap || lastSnap.time !== vault.content.story_time || lastSnap.scene !== vault.content.story_scene) {
+            snapshots.push({
+                msgIdx: Number(latestAssistantId),
+                time: vault.content.story_time || '',
+                scene: vault.content.story_scene || '',
+                date: vault.content.story_date || ''
+            });
+        }
     }
 
     vault._meta = vault._meta || {};
