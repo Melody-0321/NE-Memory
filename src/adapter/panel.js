@@ -2133,6 +2133,7 @@ function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
 /* ──────── 面板初始化 ──────── */
 
 var _currentGetChatId = null;
+var _vaultChangeBound = false;
 
 export async function renderVaultPanel(getChatId) {
     try {
