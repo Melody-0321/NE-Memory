@@ -904,6 +904,7 @@ async function updateVaultViewerPopout(getChatId) {
     try {
         vault = await read(getChatId());
         c = vault.content || {};
+        console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
         _pendingInlineStorage = { vault: vault, getChatId: getChatId };
         lastVaultStateJson = c.state ? JSON.stringify(c.state, null, 2) : '{}';
     } catch (e) {
@@ -2153,6 +2154,7 @@ export async function renderVaultPanel(getChatId) {
         injectBottomDrawerCSS();
         var vault = await read(getChatId());
         var c = vault.content || {};
+        console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
 
         var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
             '<div class="ne-vault-collapse-bar" title="' + t('Collapse memory panel') + '">' +

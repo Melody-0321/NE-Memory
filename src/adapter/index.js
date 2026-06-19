@@ -48,7 +48,9 @@ function getChatFingerprint(ctx) {
             var cachedFp = localStorage.getItem('ne_chat_fp_' + (ctx.characterId || 'x'));
             if (cachedFp) return cachedFp;
         } catch (e) {}
-        return 'ne_' + (ctx.characterId || 'x') + '_' + Date.now();
+        var fallback = 'ne_' + (ctx.characterId || 'x') + '_' + Date.now();
+        try { localStorage.setItem('ne_chat_fp_' + (ctx.characterId || 'x'), fallback); } catch (e) {}
+        return fallback;
     } catch (e) { return ''; }
 }
 
@@ -490,7 +492,47 @@ function _buildDebugApi(host) {
         getDailyStats: function(days) { return getDailyStats(days || 30); },
         getAllChatUsage: function() { return getAllChatUsage(getAllChatStats); },
         setReportsDir: async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } },
-        waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); }
+        waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); },
+        dumpVaultKeys: async function() {
+            try {
+                return new Promise(function(resolve, reject) {
+                    var req = indexedDB.open('ne_memory_vault');
+                    req.onsuccess = function() {
+                        var db = req.result;
+                        var tx = db.transaction('vaults', 'readonly');
+                        var store = tx.objectStore('vaults');
+                        var keys = [];
+                        store.openCursor().onsuccess = function(e) {
+                            var cursor = e.target.result;
+                            if (cursor) {
+                                var v = cursor.value;
+                                keys.push({
+                                    key: cursor.key,
+                                    version: v ? v.version : '?',
+                                    stm: v && v.content && Array.isArray(v.content.unconsolidated_stm) ? v.content.unconsolidated_stm.length : 0,
+                                    ltm: v && v.content && Array.isArray(v.content.ltm_entries) ? v.content.ltm_entries.length : 0
+                                });
+                                cursor.continue();
+                            } else {
+                                db.close();
+                                resolve(keys);
+                            }
+                        };
+                        tx.onerror = function() { db.close(); reject(tx.error); };
+                    };
+                    req.onerror = function() { reject(req.error); };
+                });
+            } catch (e) { return 'Error: ' + e.message; }
+        },
+        findMyVault: async function() {
+            try {
+                var keys = await __ne_debug.dumpVaultKeys();
+                var currentId = getChatId();
+                console.log('[NE-DEBUG] Current chatId:', currentId);
+                console.table(keys);
+                return { currentChatId: currentId, allKeys: keys };
+            } catch (e) { return 'Error: ' + e.message; }
+        }
     };
 }
 
