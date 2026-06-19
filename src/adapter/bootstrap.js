@@ -1,3 +1,4 @@
+import { runtime } from '../core/runtime.js';
 import { read, write } from '../core/vault/store.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
@@ -68,7 +69,7 @@ export async function bootstrapVault(chatId, locale, settings) {
     }
 
     restorePending();
-    await renderVaultPanel(function() { return chatId; });
+    await renderVaultPanel(function() { return runtime.getChatId() || chatId; });
 
     autoConnectSecondaryApi();
     ensureStateWorldBook().catch(function(e) { console.warn('[NE] World book init failed:', e.message); });
