@@ -377,6 +377,15 @@ export function validateStateChanges(stateSchema, changes) {
         var fieldSchema = resolveSchemaPath(stateSchema, path);
 
         if (!fieldSchema) {
+            var parts = path.split('.');
+            if (parts.length >= 3) {
+                var parentPath = parts.slice(0, parts.length - 1).join('.');
+                var parentSchema = resolveSchemaPath(stateSchema, parentPath);
+                if (parentSchema) {
+                    warnings.push({ path: path, warning: 'Unknown sub-field under known parent — dropped: ' + path });
+                    return;
+                }
+            }
             warnings.push({ path: path, warning: 'Field not in schema, passing through: ' + path });
             validated[path] = changes[path];
             return;

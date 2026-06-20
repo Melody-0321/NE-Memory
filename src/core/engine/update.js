@@ -120,14 +120,17 @@ export function ensureStateStructure(vault) {
     } else {
         // 预设模式：从 state_schema 中提取字段结构
         if (!state._initialized) {
-            var schema = vault.content.state_schema;
+            var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
             if (schema) {
                 var extState = initStateFromSchema(schema);
                 Object.keys(extState).forEach(function (ek) {
                     if (state[ek] === undefined) state[ek] = extState[ek];
                 });
+                state._initialized = true;
+                if (!vault.content.state_schema) {
+                    vault.content.state_schema = schema;
+                }
             }
-            state._initialized = true;
         }
     }
 }
@@ -1298,14 +1301,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 appendSTMEntries(vault, events);
 
                 if (snapshots && snapshots.length > 0) {
-                    var maxProcessedMsgIdx = -1;
-                    for (var ei2 = 0; ei2 < events.length; ei2++) {
-                        if (events[ei2].absMsgEnd > maxProcessedMsgIdx) {
-                            maxProcessedMsgIdx = events[ei2].absMsgEnd;
-                        }
-                    }
+                    var minProcessedMsgIdx = events.reduce(function(acc, e) {
+                        return e.absMsgStart != null ? Math.min(acc, e.absMsgStart) : acc;
+                    }, Infinity);
                     vault.content._state_snapshots = snapshots.filter(function(s) {
-                        return s.msgIdx > maxProcessedMsgIdx;
+                        return s.msgIdx >= minProcessedMsgIdx;
                     });
                 }
             }
@@ -1372,12 +1372,18 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var parsed = parseSTMResponse(stateResponse);
     var stateChanges = parsed.stateChanges || {};
 
-    if (parsed._checkpoints) {
-        postFillSTM({ stmEntries: vault.content.stm_entries || [], _checkpoints: parsed._checkpoints, stateChanges: {} }, vault);
+    if (!parsed._checkpoints) {
+        var content = vault.content || {};
+        parsed._checkpoints = {};
+        if (content.story_time) parsed._checkpoints.time = content.story_time;
+        if (content.story_scene) parsed._checkpoints.scene = content.story_scene;
+        if (Object.keys(parsed._checkpoints).length > 0) {
+            console.log('[NE-HARNESS] State LLM did not output _checkpoints — fallback to snapshot values');
+        }
     }
 
-    if (Object.keys(stateChanges).length === 0 && !parsed._checkpoints) {
-        return { vault, changed: false };
+    if (parsed._checkpoints && Object.keys(parsed._checkpoints).length > 0) {
+        postFillSTM({ stmEntries: vault.content.stm_entries || [], _checkpoints: parsed._checkpoints, stateChanges: {} }, vault);
     }
 
     if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
@@ -1385,7 +1391,13 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         var result = validateStateChanges(schema, stateChanges);
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
         vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
+        if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
+            console.warn('[NE-HARNESS] All ' + Object.keys(stateChanges).length + ' stateChanges rejected by validateStateChanges — Schema may be missing');
+        }
         handleQuestCompletion(vault.content.state, result.validated);
+    }
+
+    if (isStateSchemaEnabled()) {
         vault.content.state = autoDecayStaleCharacters(vault.content.state, messages);
     }
 
