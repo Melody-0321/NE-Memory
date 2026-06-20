@@ -134,7 +134,10 @@ export async function runTestLoop(testCase, hostDoc) {
         var semanticQuestions = testCase.semantic;
         if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 3 === 0) {
             try {
-                var semResults = await evaluateSemantic(lastInjection, semanticQuestions, callMemoryApiForEval, round);
+                var semResults = await evaluateSemantic(lastInjection, semanticQuestions, callMemoryApiForEval, round, {
+                    pipelineResponses: roundData.pipelineResponses,
+                    ltmDecision: roundData.ltmDecision
+                });
                 semanticResults = semResults;
                 // 分类结果：明确通过、明确不通过、无法判断
                 var semPassed = semResults.filter(function(r) { return r.passed === true; }).length;
@@ -203,7 +206,10 @@ export async function runTestLoop(testCase, hostDoc) {
             console.log('[NE-TEST] Using loop-collected semantic results (definitive).');
         } else if (lastRound && lastRound.injection) {
             console.log('[NE-TEST] Running final semantic assertions...');
-            semanticResults = await evaluateSemantic(lastRound.injection, testCase.semantic, callMemoryApiForEval, roundDataList.length);
+            semanticResults = await evaluateSemantic(lastRound.injection, testCase.semantic, callMemoryApiForEval, roundDataList.length, {
+                pipelineResponses: lastRound.pipelineResponses,
+                ltmDecision: lastRound.ltmDecision
+            });
         } else {
             semanticResults = [];
         }
@@ -578,8 +584,14 @@ async function callMemoryApiForEval(systemPrompt, userPrompt) {
         var ctx = SillyTavern.getContext();
         if (ctx.generateQuietPrompt) {
             var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
-            return await ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true });
+            var result = await Promise.race([
+                ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true }),
+                new Promise(function(_, reject) { setTimeout(function() { reject(new Error('evaluator timeout')); }, 30000); })
+            ]);
+            return result || '';
         }
-    } catch (e) {}
+    } catch (e) {
+        console.warn('[NE-TEST] Evaluator LLM call failed:', e.message);
+    }
     return '';
 }

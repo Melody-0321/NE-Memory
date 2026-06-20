@@ -328,6 +328,12 @@ export function appendTraceRound(trace, roundData) {
         lines.push('  ' + roundData.injectionPreview);
         lines.push('  ```');
     }
+    if (roundData.smartpushPrompt) {
+        lines.push('- SmartPush Prompt (retrieval LLM system prompt): ' + roundData.smartpushPrompt.length + ' chars');
+        lines.push('  ```');
+        lines.push('  ' + roundData.smartpushPrompt);
+        lines.push('  ```');
+    }
     if (roundData.stmEvents) {
         lines.push('- STM events added: ' + roundData.stmEvents.count);
     }
