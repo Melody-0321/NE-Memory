@@ -10,7 +10,7 @@ import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/ve
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../core/i18n.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema } from '../core/vault/schema.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, setStateSchemaEnabled } from '../core/vault/schema.js';
 import { recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { filterCandidates } from '../core/vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../core/engine/retrieval.js';
@@ -19,6 +19,7 @@ import { resolveAmbiguousReferences, resolveWithLM } from '../core/engine/ambigu
 import { executeAccess } from '../core/tools.js';
 import { RetrievalNotebook } from '../core/vault/retrieval-notebook.js';
 import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../core/params.js';
+import { setRetrievalEnabled } from '../core/settings.js';
 
 /* ──────── 工具 ──────── */
 
@@ -3455,11 +3456,8 @@ function saveSettingsTab() {
         try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
     }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
-    try {
-        import('../core/vault/schema.js').then(function(m) {
-            if (m.setDynamicStateMode) m.setDynamicStateMode(settings.useDynamicState || false);
-        });
-    } catch (e) {}
+    setStateSchemaEnabled(settings.enableStateSchema || false);
+    setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
         url: byId('nes_secondary_url').value.trim(),
         key: byId('nes_secondary_key').value.trim(),
