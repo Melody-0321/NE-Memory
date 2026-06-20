@@ -7,7 +7,6 @@ import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
 import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
-import { formatStateSummary } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
@@ -122,7 +121,15 @@ export function ensureStateStructure(vault) {
         if (!state._initialized) {
             var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
             if (schema) {
-                var extState = initStateFromSchema(schema);
+                var knownCharacterNames = [];
+                var charName = vault.content.character_name || vault.content.current_character;
+                if (charName) knownCharacterNames.push(charName);
+                if (vault.content.dynamic_state && vault.content.dynamic_state.characters) {
+                    Object.keys(vault.content.dynamic_state.characters).forEach(function (n) {
+                        if (knownCharacterNames.indexOf(n) === -1) knownCharacterNames.push(n);
+                    });
+                }
+                var extState = initStateFromSchema(schema, knownCharacterNames);
                 Object.keys(extState).forEach(function (ek) {
                     if (state[ek] === undefined) state[ek] = extState[ek];
                 });
@@ -138,16 +145,35 @@ export function ensureStateStructure(vault) {
 /**
  * 从 schema 定义中递归提取字段路径，生成 { field: '' } 结构
  */
-function initStateFromSchema(schema) {
+function initStateFromSchema(schema, knownKeys) {
     if (!schema || !schema.fields) return {};
     var state = {};
     Object.keys(schema.fields).forEach(function (key) {
         var field = schema.fields[key];
-        if (key === '*' || !field) return;
+        if (!field) return;
         if (field.enabled === false) return;
+        if (key === '*') {
+            if (knownKeys && knownKeys.length > 0 && field.fields) {
+                knownKeys.forEach(function (name) {
+                    state[name] = {};
+                    Object.keys(field.fields).forEach(function (fk) {
+                        var ff = field.fields[fk];
+                        if (fk === '*') return;
+                        if (ff.type === 'boolean') {
+                            state[name][fk] = false;
+                        } else if (ff.type === 'number') {
+                            state[name][fk] = 0;
+                        } else {
+                            state[name][fk] = '';
+                        }
+                    });
+                });
+            }
+            return;
+        }
         if (field.type === 'object') {
             if (field.schema) {
-                state[key] = initStateFromSchema(field.schema);
+                state[key] = initStateFromSchema(field.schema, knownKeys);
             }
             return;
         }
@@ -183,8 +209,16 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
         currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
     }
     if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
-        var s = formatStateSummary(content.state, content.state_schema || null);
-        if (s) currentStateSnapshot += 'Current state (for reference — only change what changes):\n' + s + '\n';
+        var activeChars = [];
+        if (content.state.characters) {
+            Object.keys(content.state.characters).forEach(function (n) {
+                var c = content.state.characters[n];
+                if (c && (c.status === '活跃' || c.status === 'active')) activeChars.push(n);
+            });
+        }
+        if (activeChars.length > 0) {
+            currentStateSnapshot += 'Active characters: ' + activeChars.join(', ') + '\n';
+        }
     }
     // ── 动态字段发现（从角色卡/世界书自动提取的状态栏字段，仅动态模式）──
     var dynamicState = isDynamicStateMode() ? content.dynamic_state : null;
@@ -236,146 +270,8 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
         '- 若为闲聊无实质叙事变化，可合并多条消息到一条。\n' +
         (preGroupHint ? '\n' + preGroupHint + '\n' : '');
 
-    const stateChangesEn = `${dynamicState ? buildDynamicStatePrompt(dynamicState, 'en') : ''}
-Optionally, output a <state_changes> block with a JSON object of state field updates (dot-path keys to new values), e.g.:
-<state_changes>{"scene":"Forest","time":"Dusk"}</state_changes>
-
-${dynamicState ? 'In addition to the dynamic fields above, ' : ''}Character cards are stored under state.characters.<name>.*. Each character has fields:
-- name, gender_age, occupation, clothing_build, personality (always)
-- status: one of 活跃/非活跃/已死亡/已归隐/已离去
-- NPCs additionally have: inner_thoughts, affection(0-100), relationship, current_mood, past_experience
-- inventory_mode: 开启/静态/关闭
-- injuries, status_effects (optional)
-- power_slots (optional): JSON object of {key: "value"} — character power/energy tracker. Each character may have system-defined slots (e.g., vitality/energy/realm) with custom labels (e.g., "气血", "灵力", "境界" for cultivation; "Health", "Stamina", "Status" for modern). If a character has power_slots defined, update values to reflect current state.
-
-Example power_slots update:
-<state_changes>{"characters.张三.power_slots":{"vitality":"轻伤","energy":"充盈","realm":"筑基初期"}}</state_changes>
-
-IMPORTANT: power_slots field stores a flat JSON object of key→value pairs. Do NOT include slot definitions (key/label/description) in updates — those are managed by the system. Only update the current values.
-
-When creating power_slots for a new character, check if other characters in the same world already have power_slots. If they use the same cultivation/power system, reuse their slot labels to maintain naming consistency.
-
-Status transition rules:
-- Characters who SPEAK or are PHYSICALLY PRESENT in the latest messages → status="活跃"
-- Characters who were previously active but have LEFT the scene or aren't in the latest messages → status="非活跃"
-- Characters who have died, retired, or permanently departed → status="已死亡" / "已归隐" / "已离去"
-- Do NOT mark characters as 活跃 just because they were mentioned in passing — only if they are actually present in the scene
-- The system will auto-decay stale characters after multiple rounds of absence, but you should proactively mark departures.
-
-Status examples (right vs wrong):
-✓ RIGHT: "张三走进酒馆坐下" → 张三.status="活跃" (actual scene presence)
-✓ RIGHT: 连续多轮张三未出场 → will be auto-decayed to "非活跃" by system
-✗ WRONG: "听说张三去了京城" → do NOT mark 张三 as 活跃 (mere mention, not present)
-✗ WRONG: setting status="活跃" for a character who only appeared in past-tense narrative or flashback
-
-Examples:
-<state_changes>{"characters.Alice.status":"已死亡","characters.Bob.status":"活跃"}</state_changes>
-<state_changes>{"characters.Charlie.status":"非活跃"}</state_changes>
-
-IMPORTANT: present_characters is a VIRTUAL field auto-rebuilt by code from active character names. Do NOT include present_characters in your <state_changes> block. Only update characters.*.status to change who is present.
-
-Factions are stored under state.factions.<name>.*. Each faction has fields:
-- name, description, leader
-- attitude_toward_player: one of 友好/中立/冷淡/敌对
-- relations: object keyed by target faction name (only record relations that have actually occurred in the story)
-- notes (max 200 chars)
-
-Only track factions that have appeared in the story. Examples:
-<state_changes>{"factions.魔教.attitude_toward_player":"敌对","factions.魔教.relations.正道联盟":"全面战争","factions.正道联盟.leader":"张真人","factions.魔教.notes":"近期在南方活动频繁"}</state_changes>
-
-Quests are stored under state.quests.* with three sub-sections:
-
-=== Tasks (quests.tasks.<name>.*) ===
-- name(always), deadline(always), status: one of 正在进行/已完成/已失败/已过期
-- type: 主线/支线/事件 (detail only, via quest_lookup Tool)
-- issuer, desc(max 200 chars), progress, posted_time, reward, penalty (detail only)
-
-=== Goals (quests.goals.<name>.*) ===
-- name(always), status: one of 进行中/已达成/已放弃
-- desc(max 200 chars), progress, posted_time, completed_time (detail only)
-
-=== World Events (quests.events.<name>.*) ===
-- name(always), status: one of 持续中/已平息/已结束
-- desc(max 300 chars), started_time, ended_time (detail only)
-
-Bi-level exposure: name+deadline/status are always injected into the prompt summary. All detail fields (type, issuer, desc, progress, reward, penalty, posted_time, etc.) are available only via the quest_lookup Tool. The LLM should use quest_lookup when it needs full details about a specific quest.
-
-World event decay: if an event has been 持续中 for many rounds without any update, consider changing its status to 已平息. Events should not linger in 持续中 indefinitely unless actively progressing.
-
-Example quest updates:
-<state_changes>{"quests.tasks.护送商队.status":"已完成","quests.goals.成为剑圣.progress":"已掌握三式剑法，尚需四式","quests.events.兽潮入侵.status":"持续中","quests.events.兽潮入侵.desc":"北方森林的野兽大规模南下，已波及三座村庄"}</state_changes>`;
-
-    const stateChangesZh = `${dynamicState ? buildDynamicStatePrompt(dynamicState, 'zh') : ''}
-可选：输出 <state_changes> 块，包含 JSON 格式的状态字段更新（dot-path 键→新值），如：
-<state_changes>{"scene":"森林","time":"黄昏"}</state_changes>
-
-${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.characters.<角色名>.* 下。每个角色有以下字段：
-- name, gender_age, occupation, clothing_build, personality（始终存在）
-- status: 活跃/非活跃/已死亡/已归隐/已离去 之一
-- NPC 额外拥有: inner_thoughts, affection(0-100), relationship, current_mood, past_experience
-- inventory_mode: 开启/静态/关闭
-- injuries, status_effects（可选）
-- power_slots（可选）：JSON 对象 {key: "value"}——角色战力/能量追踪器。每个角色可能有系统定义的槽位（如 vitality/energy/realm），使用自定义标签（如修仙者的"气血""灵力""境界"；现代背景的"身体状况""精力""社会地位"）。若角色定义了 power_slots，请更新其值以反映当前状态。
-
-示例 power_slots 更新：
-<state_changes>{"characters.张三.power_slots":{"vitality":"轻伤","energy":"充盈","realm":"筑基初期"}}</state_changes>
-
-重要：power_slots 字段存储的是扁平的 key→value JSON 对象。更新时请勿包含槽位定义（key/label/description），这些由系统管理。只更新当前值。
-
-为新角色创建 power_slots 时，请检查同世界其他角色是否已有 power_slots。若他们使用相同的修炼/力量体系，复用其槽位标签以保持命名一致性。
-
-出场状态转换规则：
-- 在最新消息中说话或实际在场的角色 → status="活跃"
-- 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"
-- 已死亡、隐退或永久离去的角色 → status="已死亡" / "已归隐" / "已离去"
-- 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标为活跃
-- 系统会在角色连续多轮缺席后自动衰减其状态，但你应该主动标记离场。
-
-状态判例（正确 vs 错误）：
-✓ 正确: "张三走进酒馆坐下" → 张三.status="活跃"（实际出场）
-✓ 正确: 连续多轮张三未出场 → 系统将自动衰减为"非活跃"
-✗ 错误: "听说张三去了京城" → 不应将张三标为活跃（仅提及，未出场）
-✗ 错误: 将仅出现在过去时叙事或回忆场景中的角色设为"活跃"
-
-要改变在场角色，更新其 status 字段。示例：
-<state_changes>{"characters.爱丽丝.status":"已死亡","characters.鲍勃.status":"活跃"}</state_changes>
-<state_changes>{"characters.小明.status":"非活跃"}</state_changes>
-
-重要：present_characters 是由代码自动从活跃角色名重建的虚拟字段。请勿在 <state_changes> 块中包含 present_characters。只更新 characters.*.status 来改变在场角色。
-
-势力存储在 state.factions.<名称>.* 下。每个势力有以下字段：
-- name, description, leader
-- attitude_toward_player: 友好/中立/冷淡/敌对 之一
-- relations: 以目标势力名为键的对象（只记录故事中实际发生过的关系）
-- notes（最长200字）
-
-只追踪故事中已出现的势力。示例：
-<state_changes>{"factions.魔教.attitude_toward_player":"敌对","factions.魔教.relations.正道联盟":"全面战争","factions.正道联盟.leader":"张真人","factions.魔教.notes":"近期在南方活动频繁"}</state_changes>
-
-任务/目标/世界事件存储在 state.quests.* 下，分三个子区域：
-
-=== 任务 (quests.tasks.<名称>.*) ===
-- name(始终), deadline(始终), status: 正在进行/已完成/已失败/已过期 之一
-- type: 主线/支线/事件（仅详情，通过 quest_lookup 工具获取）
-- issuer, desc(最长200字), progress, posted_time, reward, penalty（仅详情）
-
-=== 目标 (quests.goals.<名称>.*) ===
-- name(始终), status: 进行中/已达成/已放弃 之一
-- desc(最长200字), progress, posted_time, completed_time（仅详情）
-
-=== 世界事件 (quests.events.<名称>.*) ===
-- name(始终), status: 持续中/已平息/已结束 之一
-- desc(最长300字), started_time, ended_time（仅详情）
-
-双层暴露策略：name+deadline/status 始终注入到 prompt 摘要中。所有详情字段（type、issuer、desc、progress、reward、penalty、posted_time 等）仅通过 quest_lookup 工具获取。LLM 在需要任务完整详情时应使用 quest_lookup。
-
-世界事件衰减：如果某个事件持续多轮均为「持续中」而无任何更新，应考虑将其状态改为「已平息」。事件不应无限期停留在「持续中」状态，除非确实在积极进展。
-
-示例：
-<state_changes>{"quests.tasks.护送商队.status":"已完成","quests.goals.成为剑圣.progress":"已掌握三式剑法，尚需四式","quests.events.兽潮入侵.status":"持续中","quests.events.兽潮入侵.desc":"北方森林的野兽大规模南下，已波及三座村庄"}</state_changes>`;
-
-    const userMsgEn = `New conversation messages:\n\n${msgTexts}\n\nExtract key events as JSON array.${schemaEnabled ? ' If state changes are needed, append <state_changes> block.' : ''}`;
-    const userMsgZh = `新对话消息：\n\n${msgTexts}\n\n提取关键事件为 JSON 数组。${schemaEnabled ? '如有状态变化，附加 <state_changes> 块。' : ''}`;
+    const userMsgEn = `New conversation messages:\n\n${msgTexts}\n\nExtract key events as JSON array.`;
+    const userMsgZh = `新对话消息：\n\n${msgTexts}\n\n提取关键事件为 JSON 数组。`;
 
     if (lang === 'en') {
         return {
@@ -392,7 +288,7 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
                 '- "entities": optional — involved entity names with types. Each entry: {"name":"Alice","type":"character"}. Types: character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件). Plain string arrays ["Alice"] are still accepted and default to character. E.g. [{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}].\n' +
                 '\nNote: "period" and "scene" are auto-filled from global state. Do NOT include them in entries.\n' +
                 msgRangeInstructionEn +
-                '\nIf nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.' + (schemaEnabled ? stateChangesEn : ''),
+                '\nIf nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.',
             user: userMsgEn
         };
     }
@@ -410,7 +306,7 @@ ${dynamicState ? '除上述动态字段外，' : ''}角色卡存储在 state.cha
             '- "entities": （可选）事件涉及的实体名称和类型。每条：{"name":"Alice","type":"character"}。类型：character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件)。旧式字符串数组 ["Alice"] 仍被接受，默认视为角色。示例：[{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}]。\n' +
             '\n注意："period" 和 "scene" 会自动从全局数据填充，条目中无需包含。\n' +
             msgRangeInstructionZh +
-            '\n如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。' + (schemaEnabled ? stateChangesZh : ''),
+            '\n如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。',
         user: userMsgZh
     };
 }
@@ -430,14 +326,18 @@ export function parseSTMResponse(llmResponse) {
         checkpoints = parsed._checkpoints || null;
         stmEntries = parsed.stm_entries || [];
 
-        if (parsed.state_changes && Array.isArray(parsed.state_changes)) {
-            var flat = {};
-            parsed.state_changes.forEach(function(item) {
-                if (item && item.path !== undefined) {
-                    flat[item.path] = item.value;
-                }
-            });
-            stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+        if (parsed.state_changes) {
+            if (Array.isArray(parsed.state_changes)) {
+                var flat = {};
+                parsed.state_changes.forEach(function(item) {
+                    if (item && item.path !== undefined) {
+                        flat[item.path] = item.value;
+                    }
+                });
+                stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+            } else if (typeof parsed.state_changes === 'object') {
+                stateChanges = isStateSchemaEnabled() ? parsed.state_changes : whitelistStateChanges(parsed.state_changes);
+            }
         }
     } catch (e) {
         var jsonMatch = text.match(/\{[\s\S]*?\}/);
@@ -446,14 +346,18 @@ export function parseSTMResponse(llmResponse) {
                 var parsed = JSON.parse(jsonMatch[0]);
                 checkpoints = parsed._checkpoints || null;
                 stmEntries = parsed.stm_entries || [];
-                if (parsed.state_changes && Array.isArray(parsed.state_changes)) {
-                    var flat = {};
-                    parsed.state_changes.forEach(function(item) {
-                        if (item && item.path !== undefined) {
-                            flat[item.path] = item.value;
-                        }
-                    });
-                    stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+                if (parsed.state_changes) {
+                    if (Array.isArray(parsed.state_changes)) {
+                        var flat = {};
+                        parsed.state_changes.forEach(function(item) {
+                            if (item && item.path !== undefined) {
+                                flat[item.path] = item.value;
+                            }
+                        });
+                        stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+                    } else if (typeof parsed.state_changes === 'object') {
+                        stateChanges = isStateSchemaEnabled() ? parsed.state_changes : whitelistStateChanges(parsed.state_changes);
+                    }
                 }
                 if (stmEntries.length > 0 || Object.keys(stateChanges).length > 0) {
                     console.log('[NE] State fallback: extracted JSON from mixed output');
@@ -1040,58 +944,54 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var currentStateSnapshot = '';
     if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+        currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
     }
-    if (!content.story_time && !content.story_date && !content.story_scene) {
-        currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
-    }
-    if (content.state && Object.keys(content.state).length > 0) {
-        var s = formatStateSummary(content.state, content.state_schema || null);
-        if (s) currentStateSnapshot += 'Current state (for reference):\n' + s + '\n';
-    }
-
-    var stateChangesEn = 'Fields likely to change in this round:\n' +
-        '- Always track: time, scene, story_date, main_event\n' +
-        '- Character: state.characters.<name>.status — 活跃/非活跃/已死亡/已归隐/已离去\n' +
-        '- If a new character appears, add name, gender_age, occupation, personality\n' +
-        '- If equipment/items change explicitly, update inventory\n' +
-        '- If mood changes noticeably, update current_mood(NPC)\n' +
-        '- Other fields (clothing_build, injuries, power_slots, etc.) only when explicitly mentioned\n' +
-        'present_characters is auto-computed — do NOT include it in state_changes\n' +
-        '\nStatus transition rules:\n- 活跃 → 非活跃: when a character leaves the scene or stops appearing in messages\n- 活跃 → 已死亡/已归隐/已离去: permanent departure only\n- 非活跃 → 活跃: when a character re-enters the scene and actively participates\n- Do NOT mark as 活跃 just because a character was mentioned — only if they are actually present\n' +
-        '\nnpc_names: only NPCs appearing in THIS round of messages. If no clear single protagonist, list all characters appearing.\n' +
-        '\nFactions: only update when messages involve faction relations\n' +
-        'Quests: only update when messages involve quest progress\n';
-
-    var stateChangesZh = '\n本次仅需关注在本轮消息中可能发生变化的字段：\n' +
-        '- 始终追踪: time, scene, story_date, main_event\n' +
-        '- 角色: state.characters.<角色名>.status — 活跃/非活跃/已死亡/已归隐/已离去\n' +
-        '- 若本轮出现新角色，补充 name, gender_age, occupation, personality（首次出场时）\n' +
-        '- 若消息中有明确的装备/物品变动，更新 inventory\n' +
-        '- 若有情绪明显变化，更新 current_mood(NPC)\n' +
-        '- 其他字段（clothing_build, injuries, power_slots 等）仅在消息中明确提出时更新\n' +
-        'present_characters 自动计算 — 请勿在 state_changes 中包含\n' +
-        '\n出场状态转换规则：\n- 活跃 → 非活跃: 角色离开场景或不再出现在消息中\n- 活跃 → 已死亡/已归隐/已离去: 仅限永久退场\n- 非活跃 → 活跃: 角色重新进入场景并活跃参与\n- 不要仅因角色被提及就标为活跃 — 只有实际在场时才标活跃\n' +
-        '\nnpc_names: 仅本轮消息中出现的非主控角色名。如果故事中没有明确的单一主控角色，列出本轮出现的所有角色。\n' +
-        '\n势力: state.factions.<名称>.* — 仅在消息涉及势力关系变化时更新\n' +
-        '任务: state.quests.* — 仅在消息涉及任务进展时更新\n';
-
-    var hardGateEn = '\n============================================================\n【MUST FOLLOW】\n============================================================\n- state_changes must ALWAYS be present in output (even as empty array [])\n- Only output fields that actually changed in this round — do NOT restate unchanged state\n- Include every character that appears in this round and whose state changed\n- Do NOT include present_characters in any path\n- npc_names must be included (list NPCs appearing in this round)\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【必须遵守】\n============================================================\n- state_changes 字段必须始终出现在输出中（即使为空数组 []）\n- 仅输出本轮对话中实际变化的字段 — 不要重述未变化的字段\n- 本轮消息中明确出现且状态有变化的角色必须包含\n- 不要在任何路径中包含 present_characters\n- npc_names 必须包含（列出本轮出现的非主控角色）\n============================================================\n';
 
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + 'You are a story state tracker. Track character state changes, quest progress, faction relations.\n\n' +
-                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "_checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.status", "value": "活跃"},\n    {"path": "characters.Alice.personality", "value": "..."}\n  ]\n}\n\nAlways include: _checkpoints with time/scene/story_date, state_changes for time/scene/story_date/main_event/npc_names and all character changes.\nIf no changes detected, set state_changes to empty array [].\n\n' +
-                stateChangesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract story time, scene, and character state changes from THIS round only. Only output fields that changed — do NOT restate existing state. Output JSON with _checkpoints and state_changes.'
+            system: currentStateSnapshot + 'You are a story state tracker. Output JSON with _checkpoints and state_changes.\n\n' +
+                'Output schema:\n' +
+                '{"_checkpoints":{"time":"REQUIRED","scene":"REQUIRED"},"state_changes":{}}\n\n' +
+                'Rules:\n' +
+                '- _checkpoints MUST ALWAYS be present. time and scene are REQUIRED (even if unchanged).\n' +
+                '- state_changes: flat object of dot-path keys to new values. ONLY include fields that ACTUALLY changed this round.\n' +
+                '  e.g. {"main_event":"Entering the forest","story_date":"Day 3","characters.Bob.status":"活跃"}\n' +
+                '- If nothing changed, output state_changes: {}\n' +
+                '- Character fields are pre-allocated by the system. You only need to fill in the values.\n' +
+                '  To flag a new character appearing, just write: "characters.NewName.status":"活跃"\n' +
+                '  The system will automatically create the full character template.\n' +
+                '- present_characters is auto-generated. Do NOT output it.\n' +
+                '- Never invent field names. Only use paths that the system has allocated.\n' +
+                '- status values: 活跃/非活跃/已死亡/已归隐/已离去.\n' +
+                '  Mention≠presence: "听说张三去了京城" → do NOT mark 张三 as 活跃.\n' +
+                '\nZero-change example:\n' +
+                '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
+                '\nWith changes example:\n' +
+                '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"story_date":"Day 3","main_event":"出发前往京城","characters.张三.status":"非活跃"}}',
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only. Output JSON with _checkpoints and state_changes.'
         };
     }
     return {
-        system: currentStateSnapshot + '你是故事状态追踪器。追踪角色状态变化、任务进展、势力关系变化。\n\n' +
-            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "_checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.status", "value": "活跃"},\n    {"path": "characters.江岚.personality", "value": "..."}\n  ]\n}\n\n始终包含：_checkpoints（time/scene/story_date）、state_changes（time/scene/story_date/main_event/npc_names 和所有角色变化）。\n如果无变化，state_changes 设为空数组 []。\n\n' +
-            stateChangesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的故事时间、场景和角色状态变化。仅输出本轮有变化的字段，不要重述已有状态。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        system: currentStateSnapshot + '你是故事状态追踪器。输出包含 _checkpoints 和 state_changes 的 JSON。\n\n' +
+            '输出格式：\n' +
+            '{"_checkpoints":{"time":"必填","scene":"必填"},"state_changes":{}}\n\n' +
+            '规则：\n' +
+            '- _checkpoints 必须始终输出。time 和 scene 为必填（即使未变化也要输出）。\n' +
+            '- state_changes: flat object，dot-path key→新值。仅包含本轮实际变化的字段。\n' +
+            '  例：{"main_event":"进入森林","story_date":"Day 3","characters.张三.status":"活跃"}\n' +
+            '- 若无变化，输出 state_changes: {}\n' +
+            '- 角色字段已由系统预分配。你只需输出字段的值。\n' +
+            '  有新角色出现时，只需写："characters.新名字.status":"活跃"\n' +
+            '  系统会自动创建完整角色模板。\n' +
+            '- present_characters 由系统自动生成。不要输出。\n' +
+            '- 请勿创造新字段名。仅使用系统已分配的路径。\n' +
+            '- status 取值: 活跃/非活跃/已死亡/已归隐/已离去。\n' +
+            '  提及≠在场："听说张三去了京城"→不要标张三为活跃。\n' +
+            '\n零变化示例：\n' +
+            '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
+            '\n有变化示例：\n' +
+            '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"story_date":"Day 3","main_event":"出发前往京城","characters.张三.status":"非活跃"}}',
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化。输出包含 _checkpoints 和 state_changes 的 JSON。'
     };
 }
 
@@ -1108,65 +1008,59 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     var currentStateSnapshot = '';
     if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
-    }
-    if (!content.story_time && !content.story_date && !content.story_scene) {
-        currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
+        currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
     }
 
     var dynamicFieldSummary = '';
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
         var dsText = formatDynamicStateSummary(ds);
         if (dsText) {
-            currentStateSnapshot += dsText;
+            currentStateSnapshot += '\nDiscovered fields to track:\n' + dsText + '\n';
             dynamicFieldSummary = dsText;
         }
     }
 
-    var stateChangesEn = '\nUse ONLY discovered fields (not preset like name/gender_age/occupation).\n' +
-        'Discovered fields:\n' + (dynamicFieldSummary || 'use fields from character cards/world books') + '\n' +
-        'This round focus: track status, time, scene — other discovered fields only when explicitly changed in messages.\n' +
-        'Active grouping: status="活跃" → auto-add to present_characters. No status field → all active.\n' +
-        'present_characters is auto-computed — do NOT include.\n' +
-        '\nStatus transition rules:\n' +
-        '- Characters who SPEAK or are PHYSICALLY PRESENT in the latest messages → status="活跃"\n' +
-        '- Characters who were previously active but have LEFT the scene or aren\'t in the latest messages → status="非活跃"\n' +
-        '- Characters who have died, retired, or permanently departed → status="已死亡"/"已归隐"/"已离去"\n' +
-        '- Do NOT mark characters as 活跃 just because they were mentioned in passing\n' +
-        '\nnpc_names: only NPCs appearing in THIS round. If no clear single protagonist → list all characters appearing.\n' +
-        '\nFactions (preset schema): state.factions.<name>.* — only update when messages involve faction relations\n' +
-        'Quests (preset schema): state.quests.* — only update when messages involve quest progress\n';
-
-    var stateChangesZh = '\n仅使用动态发现字段（不用预设如 name/gender_age/occupation 等）。\n' +
-        '发现字段:\n' + (dynamicFieldSummary || '使用角色卡/世界书发现的字段') + '\n' +
-        '本轮关注：追踪 status、time、scene — 其他发现字段仅在本轮消息中明确提出时更新。\n' +
-        '活跃分组: status="活跃"→自动加入present_characters。无status字段→全部活跃。\n' +
-        'present_characters 自动计算 — 请勿包含。\n' +
-        '\n出场状态转换规则：\n' +
-        '- 在最新消息中说话或实际在场的角色 → status="活跃"\n' +
-        '- 之前活跃但已离开场景或未在最新消息中出现的角色 → status="非活跃"\n' +
-        '- 已死亡、隐退或永久离去的角色 → status="已死亡"/"已归隐"/"已离去"\n' +
-        '- 不要仅因角色被提及就将其标为活跃 — 只有实际在场时才标活跃\n' +
-        '\nnpc_names: 仅本轮出现的 NPC 角色名。如果没有明确的单一主控角色，列出本轮出现的所有角色。\n' +
-        '\n势力(预设schema): state.factions.<名称>.* — 仅在消息涉及势力关系变化时更新\n' +
-        '任务(预设schema): state.quests.* — 仅在消息涉及任务进展时更新\n';
-
-    var hardGateEn = '\n============================================================\n【MUST FOLLOW】\n============================================================\n- state_changes must ALWAYS be present in output (even as empty array [])\n- Only output fields that actually changed in this round\n- Use ONLY discovered fields (not preset card fields)\n- Do NOT include present_characters in any path\n============================================================\n';
-    var hardGateZh = '\n============================================================\n【必须遵守】\n============================================================\n- state_changes 字段必须始终出现在输出中（即使为空数组 []）\n- 仅输出本轮实际变化的字段 — 不要重述未变化的字段\n- 仅使用动态发现字段（而非预设角色卡字段）\n- 不要在任何路径中包含 present_characters\n============================================================\n';
-
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Track character state changes using discovered fields from character cards/world books.\n\n' +
-                'Output JSON with this exact schema:\n{\n  "analysis": "Step-by-step reasoning about time/scene/character changes (free text, will be ignored for extraction)",\n  "_checkpoints": {\n    "time": "Evening",\n    "scene": "Mansion Living Room",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "Evening"},\n    {"path": "scene", "value": "Mansion Living Room"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "Arriving at the mansion"},\n    {"path": "npc_names", "value": ["Bob"]},\n    {"path": "characters.Alice.{field}", "value": "..."}\n  ]\n}\n\nAlways include: _checkpoints with time/scene/story_date. Only output state_changes for fields that changed in this round. Use ONLY discovered fields.\nIf no changes detected, set state_changes to empty array [].\n\n' +
-                stateChangesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only — using ONLY discovered fields. Only output fields that changed.'
+            system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Use discovered fields from character cards.\n\n' +
+                'Output schema:\n' +
+                '{"_checkpoints":{"time":"REQUIRED","scene":"REQUIRED"},"state_changes":{}}\n\n' +
+                'Rules:\n' +
+                '- _checkpoints MUST ALWAYS be present. time and scene are REQUIRED (even if unchanged).\n' +
+                '- state_changes: flat object of dot-path keys to new values. ONLY include fields that ACTUALLY changed this round.\n' +
+                '- Use ONLY discovered fields (listed above).\n' +
+                '- If nothing changed, output state_changes: {}\n' +
+                '- Character fields are pre-allocated by the system. You only need to fill in the values.\n' +
+                '  To flag a new character, just write: "characters.NewName.status":"活跃"\n' +
+                '  The system will automatically create the full character template.\n' +
+                '- present_characters is auto-generated. Do NOT output it.\n' +
+                '- Never invent field names. Only use paths that the system has allocated.\n' +
+                '\nZero-change example:\n' +
+                '{"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n' +
+                '\nWith changes example:\n' +
+                '{"_checkpoints":{"time":"Dawn","scene":"Mountain Road"},"state_changes":{"main_event":"Setting out for the capital"}}',
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only — using discovered fields. Output JSON with _checkpoints and state_changes.'
         };
     }
     return {
-        system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用从角色卡/世界书动态发现的字段追踪角色状态变化。\n\n' +
-            '输出 JSON，schema 如下：\n{\n  "analysis": "关于时间/场景/角色变化的逐步推理（自由文本，不会用于提取）",\n  "_checkpoints": {\n    "time": "傍晚",\n    "scene": "洋馆客厅",\n    "story_date": "Day 1"\n  },\n  "state_changes": [\n    {"path": "time", "value": "傍晚"},\n    {"path": "scene", "value": "洋馆客厅"},\n    {"path": "story_date", "value": "Day 1"},\n    {"path": "main_event", "value": "抵达洋馆"},\n    {"path": "npc_names", "value": ["紫瞳女孩"]},\n    {"path": "characters.江岚.{字段}", "value": "..."}\n  ]\n}\n\n始终包含：_checkpoints。仅输出本轮实际变化的字段。仅使用动态发现字段。\n如果无变化，state_changes 设为空数组 []。\n\n' +
-            stateChangesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——仅使用动态发现字段，仅输出有变化的字段。'
+        system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用角色卡发现的字段。\n\n' +
+            '输出格式：\n' +
+            '{"_checkpoints":{"time":"必填","scene":"必填"},"state_changes":{}}\n\n' +
+            '规则：\n' +
+            '- _checkpoints 必须始终输出。time 和 scene 为必填（即使未变化也要输出）。\n' +
+            '- state_changes: flat object，dot-path key→新值。仅包含本轮实际变化的字段。\n' +
+            '- 仅使用动态发现字段（上文列出的字段）。\n' +
+            '- 若无变化，输出 state_changes: {}\n' +
+            '- 角色字段已由系统预分配。你只需输出字段的值。\n' +
+            '  有新角色出现时，只需写："characters.新名字.status":"活跃"\n' +
+            '  系统会自动创建完整角色模板。\n' +
+            '- present_characters 由系统自动生成。不要输出。\n' +
+            '- 请勿创造新字段名。仅使用系统已分配的路径。\n' +
+            '\n零变化示例：\n' +
+            '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
+            '\n有变化示例：\n' +
+            '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"main_event":"出发前往京城"}}',
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——仅使用动态发现字段。输出包含 _checkpoints 和 state_changes 的 JSON。'
     };
 }
 

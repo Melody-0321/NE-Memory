@@ -89,9 +89,18 @@ export const DEFAULT_GLOBAL_SCHEMA = {
         story_date: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
         main_event: { type: 'string', max_length: 120, expose_level: 'summary', update_rule: 'replace' },
         present_characters: { type: 'string', max_length: 80, expose_level: 'summary', update_rule: 'replace' },
+        characters: {
+            type: 'object',
+            schema: {
+                type: 'object',
+                fields: {
+                    '*': DEFAULT_CHARACTER_SCHEMA.npc
+                }
+            }
+        },
         factions: {
             type: 'object',
-            enabled: false,
+            enabled: true,
             schema: {
                 type: 'object',
                 fields: {
@@ -111,7 +120,7 @@ export const DEFAULT_GLOBAL_SCHEMA = {
         },
         quests: {
             type: 'object',
-            enabled: false,
+            enabled: true,
             schema: {
                 type: 'object',
                 fields: {
@@ -418,6 +427,25 @@ export function rebuildPresentCharacters(state) {
     return state;
 }
 
+export function ensureCharacterTemplate(state, name) {
+    if (!state.characters) state.characters = {};
+    if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
+
+    var template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    state.characters[name] = {};
+    Object.keys(template).forEach(function (fk) {
+        var field = template[fk];
+        if (field.type === 'boolean') {
+            state.characters[name][fk] = false;
+        } else if (field.type === 'number') {
+            state.characters[name][fk] = 0;
+        } else {
+            state.characters[name][fk] = '';
+        }
+    });
+    state.characters[name].name = name;
+}
+
 // mergeStateChanges — 按 dot-path 深度合并到状态对象
 // 每次合并后自动重建 present_characters
 export function mergeStateChanges(state, validatedChanges) {
@@ -426,6 +454,14 @@ export function mergeStateChanges(state, validatedChanges) {
     var hasChanges = false;
     Object.keys(validatedChanges).forEach(function (path) {
         var parts = path.split('.');
+
+        if (parts[0] === 'characters' && parts.length >= 2) {
+            var charName = parts[1];
+            if (charName && charName !== '*') {
+                ensureCharacterTemplate(newState, charName);
+            }
+        }
+
         var current = newState;
 
         for (var i = 0; i < parts.length - 1; i++) {
