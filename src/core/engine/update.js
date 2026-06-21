@@ -132,6 +132,31 @@ export function ensureStateStructure(vault) {
             Object.keys(extState).forEach(function (ek) {
                 if (state[ek] === undefined) state[ek] = extState[ek];
             });
+
+            // 已有角色字段完整性：补齐模板中缺失的字段（覆盖中途新增模板字段 / 旧 vault）
+            if (state.characters && schema.fields && schema.fields.characters) {
+                var charSchema = schema.fields.characters.schema;
+                if (charSchema && charSchema.fields && charSchema.fields['*']) {
+                    var template = charSchema.fields['*'].fields;
+                    Object.keys(state.characters).forEach(function (name) {
+                        var ch = state.characters[name];
+                        if (!ch || typeof ch !== 'object') {
+                            state.characters[name] = {};
+                            ch = state.characters[name];
+                        }
+                        Object.keys(template).forEach(function (fk) {
+                            if (fk === '*') return;
+                            if (ch[fk] === undefined) {
+                                var ff = template[fk];
+                                if (ff.type === 'boolean') ch[fk] = false;
+                                else if (ff.type === 'number') ch[fk] = 0;
+                                else ch[fk] = '';
+                            }
+                        });
+                    });
+                }
+            }
+
             if (!vault.content.state_schema) {
                 vault.content.state_schema = schema;
             }
