@@ -193,15 +193,17 @@ export async function onMessageReceived(messageIndex) {
         if (message) {
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
 
-            // 提取 Main LLM 开头的状态块 [场景, 时间, 在场：角色]
+            // 提取 Main LLM 开头的状态块 [场景, 时间, 第N天, 事件摘要, 在场：角色]
             var stateBlockMatch = (message.mes || '').match(
-                /^\[([^，,]+)[，,\s]*([^，,]*?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
+                /^\[([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*([^，,]*?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
             );
             if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
                     scene: (stateBlockMatch[1] || '').trim(),
                     time: (stateBlockMatch[2] || '').trim(),
-                    present: (stateBlockMatch[3] || '').trim().split(/[、，,\s]+/).filter(Boolean)
+                    day: (stateBlockMatch[3] || '').trim(),
+                    event: (stateBlockMatch[4] || '').trim(),
+                    present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
             }
 
@@ -467,8 +469,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
             // State block instruction — Main LLM output current state at reply start
             if (isStateSchemaEnabled()) {
-                var stateBlockInstr = '在回复开头用方括号注明当前场景与时间，以及本轮出现角色的名字。\n' +
-                    '格式：[场景，时间，在场：角色1、角色2]\n' +
+                var stateBlockInstr = '在回复开头用方括号注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
+                    '格式：[场景，时间，第N天，事件摘要，在场：角色1、角色2]\n' +
+                    '时间用自然语言（清晨/午前/午后/傍晚/深夜）；天数用阿拉伯数字（第1天、第2天等）；' +
+                    '事件摘要用一句话概括本段发生的主要事件。\n' +
                     '仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
             }

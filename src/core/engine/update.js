@@ -1247,6 +1247,12 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (pendingBlock) {
         if (pendingBlock.time) vault.content.story_time = pendingBlock.time;
         if (pendingBlock.scene) vault.content.story_scene = pendingBlock.scene;
+        if (pendingBlock.day) vault.content.story_date = '第' + pendingBlock.day + '天';
+        if (pendingBlock.event) {
+            var stateGlobal = vault.content.state || {};
+            stateGlobal.main_event = pendingBlock.event;
+            vault.content.state = stateGlobal;
+        }
         if (pendingBlock.present && pendingBlock.present.length > 0) {
             var state = vault.content.state || {};
             var chars = state.characters || {};

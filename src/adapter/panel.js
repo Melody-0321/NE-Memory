@@ -195,9 +195,12 @@ function injectBottomDrawerCSS() {
         '.ne-state-badge.hostile{background:rgba(244,67,54,.12);color:#ef5350;border:1px solid rgba(244,67,54,.3);}' +
         '.ne-state-badge.neutral{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
         '.ne-affection-bar{display:inline-block;width:80px;height:8px;background:var(--black50a);border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:4px;}' +
-        '.ne-affection-bar>div{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef5350,#ffeb3b,#66bb6a);}' +
-        '.ne-char-card{margin:4px 0;padding:6px 8px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
-        '.ne-char-card-header{display:flex;align-items:center;gap:6px;cursor:pointer;}' +
+        '.ne-affection-bar>div{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef5350,#ffeb3b,#66bb6a);transition:width 0.3s ease;}' +
+        '.ne-char-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
+        '.ne-char-card.status-active{border-left-color:#4caf50;}' +
+        '.ne-char-card.status-inactive{border-left-color:#ff9800;}' +
+        '.ne-char-card.status-departed{border-left-color:#f44336;}' +
+        '.ne-char-card-header{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.92em;}' +
         '.ne-char-card-header .ne-char-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}' +
         '.ne-char-card.open>.ne-char-card-header .ne-char-toggle{transform:rotate(90deg);}' +
         '.ne-char-card-body{padding-top:4px;}' +
@@ -208,13 +211,25 @@ function injectBottomDrawerCSS() {
         '.ne-state-global-block .ne-state-global-table{width:100%;border-collapse:collapse;font-size:0.88em;}' +
         '.ne-state-global-block .ne-state-global-table td{padding:3px 6px;vertical-align:middle;}' +
         '.ne-state-global-block .ne-state-global-table td:first-child{color:var(--grey-50);width:80px;text-align:right;white-space:nowrap;}' +
-        '.ne-faction-card{margin:4px 0;padding:6px 8px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
+        '.ne-faction-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
+        '.ne-faction-card.attitude-friendly{border-left-color:#4caf50;}' +
+        '.ne-faction-card.attitude-hostile{border-left-color:#f44336;}' +
+        '.ne-faction-card.attitude-neutral{border-left-color:#ff9800;}' +
         '.ne-faction-card-header{display:flex;align-items:center;gap:6px;cursor:pointer;}' +
         '.ne-faction-card-header .ne-faction-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}' +
         '.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle{transform:rotate(90deg);}' +
         '.ne-faction-card-body{padding-top:4px;}' +
         '.ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
         '.ne-faction-card.open>.ne-faction-card-detail{display:block;}' +
+        '.ne-quest-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
+        '.ne-quest-card.status-progress{border-left-color:#2196f3;}' +
+        '.ne-quest-card.status-done{border-left-color:#4caf50;}' +
+        '.ne-quest-card.status-failed{border-left-color:#f44336;}' +
+        '.ne-quest-card.status-expired{border-left-color:#ff9800;}' +
+        '.ne-quest-header{display:flex;align-items:center;gap:6px;}' +
+        '.ne-quest-toggle{font-size:0.8em;}' +
+        '.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
+        '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
         '.ne-settings-save-btn:hover{background:var(--black70a);}' +
         '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
@@ -245,6 +260,10 @@ function injectBottomDrawerCSS() {
         '.ne-entity-summary-bar{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:0.82em;}' +
         '.ne-entity-summary-bar summary{cursor:pointer;color:var(--grey-60);font-weight:bold;}' +
         '.ne-entity-summary-bar summary:hover{color:var(--text);}' +
+        '.ne-state-global-summary{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:0.82em;}' +
+        '.ne-state-global-summary summary{cursor:pointer;color:var(--grey-60);font-weight:bold;}' +
+        '.ne-state-global-summary summary:hover{color:var(--text);}' +
+        '.ne-state-global-summary-detail .ne-state-global-block{border:none;padding:4px 0 0 0;background:transparent;}' +
         '.ne-entity-chain-tag{display:inline-block;padding:1px 6px;border-radius:3px;margin:2px 4px 2px 0;font-size:0.8em;white-space:nowrap;}' +
         '.ne-entity-chain-tag.short{background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid rgba(76,175,80,.3);}' +
         '.ne-entity-chain-tag.long{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
@@ -270,6 +289,8 @@ function injectBottomDrawerCSS() {
         '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
         '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
         '.ne-state-time{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
+        '.ne-state-day{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
+        '.ne-state-event{margin-top:2px;font-size:12px;color:var(--grey-60,#888);font-style:italic;}' +
         '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
         '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
         '.ne-state-banner-missing{font-style:italic;color:var(--grey-50);font-size:12px;}';
@@ -608,18 +629,21 @@ function renderCharacterCard(name, card, schema, cardType) {
     }
 
     var hasDetail = detailRows.length > 0 || equipmentHtml;
-    var html = '<div class="ne-char-card">' +
-        '<div class="ne-char-card-header" onclick="var p=this.parentElement;p.classList.toggle(\'open\');">' +
-        '<span class="ne-char-toggle">\u25B6</span>' +
-        '<b>' + escapeHtml(name) + '</b>' +
-        '<span class="ne-state-badge ' + statusCls + '">' + escapeHtml(statusStr) + '</span>' +
-        '<span style="font-size:0.75em;color:var(--grey-50);">' + (cardType === 'npc' ? 'NPC' : 'PC') + '</span>' +
-        '</div>' +
-        '<div class="ne-char-card-body">' +
-        '<table class="ne-state-card-table">' + summaryRows.join('') + affectionHtml + '</table>' +
-        powerSlotBar +
-        (hasDetail ? '<div class="ne-char-card-detail">' + equipmentHtml + detailRows.join('') + '</div>' : '') +
-        '</div></div>';
+    var html = `
+<div class="ne-char-card status-${statusCls}">
+  <div class="ne-char-card-header"
+       onclick="this.parentElement.classList.toggle('open')">
+    <span class="ne-char-toggle">▶</span>
+    <b>${escapeHtml(name)}</b>
+    <span class="ne-state-badge ${statusCls}">${escapeHtml(statusStr)}</span>
+    <span style="font-size:0.75em;color:var(--grey-50);">${cardType === 'npc' ? 'NPC' : 'PC'}</span>
+  </div>
+  <div class="ne-char-card-body">
+    <table class="ne-state-card-table">${summaryRows.join('')}${affectionHtml}</table>
+    ${powerSlotBar}
+    ${hasDetail ? '<div class="ne-char-card-detail">' + equipmentHtml + detailRows.join('') + '</div>' : ''}
+  </div>
+</div>`;
 
     return html;
 }
@@ -709,16 +733,19 @@ function renderFactionCard(name, faction) {
     }
 
     var hasDetail = detailLines.length > 0;
-    var html = '<div class="ne-faction-card">' +
-        '<div class="ne-faction-card-header" onclick="var p=this.parentElement;p.classList.toggle(\'open\');">' +
-        '<span class="ne-faction-toggle">\u25B6</span>' +
-        '<b>' + escapeHtml(name) + '</b>' +
-        '<span class="ne-state-badge ' + attitudeCls + '">' + escapeHtml(attitude) + '</span>' +
-        '</div>' +
-        '<div class="ne-faction-card-body">' +
-        '<table class="ne-state-card-table">' + summaryRows.join('') + '</table>' +
-        (hasDetail ? '<div class="ne-faction-card-detail">' + detailLines.join('') + '</div>' : '') +
-        '</div></div>';
+    var html = `
+<div class="ne-faction-card attitude-${attitudeCls}">
+  <div class="ne-faction-card-header"
+       onclick="this.parentElement.classList.toggle('open')">
+    <span class="ne-faction-toggle">▶</span>
+    <b>${escapeHtml(name)}</b>
+    <span class="ne-state-badge ${attitudeCls}">${escapeHtml(attitude)}</span>
+  </div>
+  <div class="ne-faction-card-body">
+    <table class="ne-state-card-table">${summaryRows.join('')}</table>
+    ${hasDetail ? '<div class="ne-faction-card-detail">' + detailLines.join('') + '</div>' : ''}
+  </div>
+</div>`;
 
     return html;
 }
@@ -772,7 +799,6 @@ function formatActiveFactionSummary(state) {
 }
 
 function renderQuestCard(key, entry, sectionType) {
-    var cardId = 'ne_quest_' + sectionType + '_' + key.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g, '_');
     var statusLabel = entry.status || '未知';
 
     var statusColors = { '已完成': '#4caf50', '已达成': '#4caf50', '已失败': '#f44336', '已过期': '#ff9800', '正在进行': '#2196f3', '进行中': '#2196f3', '已放弃': '#888', '持续中': '#ff9800', '已平息': '#4caf50', '已结束': '#888' };
@@ -785,6 +811,12 @@ function renderQuestCard(key, entry, sectionType) {
     };
     var icons = iconMap[sectionType] || iconMap.task;
     var isCompleted = statusLabel === '已完成' || statusLabel === '已达成' || statusLabel === '已放弃' || statusLabel === '已失败' || statusLabel === '已过期' || statusLabel === '已平息' || statusLabel === '已结束';
+    var statusCls;
+    if (isCompleted) {
+        statusCls = (statusLabel === '已失败') ? 'failed' : ((statusLabel === '已过期' || statusLabel === '已放弃') ? 'expired' : 'done');
+    } else {
+        statusCls = 'progress';
+    }
     var iconChar = isCompleted ? icons.closed : icons.open;
     var iconColor = isCompleted ? '#4caf50' : '#888';
 
@@ -815,17 +847,19 @@ function renderQuestCard(key, entry, sectionType) {
         if (entry.ended_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('ended_time') + ': ' + escapeHtml(String(entry.ended_time)) + '</div>');
     }
 
-    var html = '<div class="ne_quest_card" style="margin:4px 0;padding:6px 8px;background:var(--black30a);border-radius:4px;cursor:pointer;">' +
-        '<div class="ne_quest_header" data-card-id="' + cardId + '" style="display:flex;align-items:center;gap:6px;">' +
-        '<span class="ne_quest_toggle" style="font-size:0.8em;">\u25B6</span>' +
-        '<span style="color:' + iconColor + ';">' + iconChar + '</span>' +
-        '<b>' + escapeHtml(displayName) + '</b>' +
-        '<span style="font-size:0.8em;color:' + statusColor + ';">[' + escapeHtml(statusText) + ']</span>' +
-        '</div>' +
-        '<div class="ne_quest_detail" id="' + cardId + '_detail" style="display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;">' +
-        detailLines.join('') +
-        '</div>' +
-        '</div>';
+    var html = `
+<div class="ne-quest-card status-${statusCls}">
+  <div class="ne-quest-header"
+       onclick="var p=this.parentElement;p.classList.toggle('open');var d=p.querySelector('.ne-quest-detail');if(d)d.style.display=d.style.display==='block'?'none':'block';">
+    <span class="ne-quest-toggle">▶</span>
+    <span style="color:${iconColor};">${iconChar}</span>
+    <b>${escapeHtml(displayName)}</b>
+    <span class="ne-state-badge" style="color:${statusColor};border-color:${statusColor};">${escapeHtml(statusText)}</span>
+  </div>
+  <div class="ne-quest-detail">
+    ${detailLines.join('')}
+  </div>
+</div>`;
 
     return html;
 }
@@ -981,7 +1015,20 @@ async function updateVaultViewerPopout(getChatId) {
                         stateRows += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(val) + '</td></tr>';
                     });
                 }
+
+                var summaryDate = c.story_date || '';
+                var summaryEvent = (c.state && c.state.main_event) ? c.state.main_event : '';
+                var summaryText = '';
+                if (summaryDate || summaryEvent) {
+                    summaryText = (summaryDate ? '\uD83D\uDCC5 ' + summaryDate : '') +
+                        (summaryDate && summaryEvent ? ' \u00B7 ' : '') +
+                        (summaryEvent ? '\u26A1 ' + summaryEvent : '');
+                }
+
                 stateContainer.innerHTML =
+                    '<details class="ne-state-global-summary" open>' +
+                    '<summary><span class="ne-state-global-summary-text">' + (summaryText || t_narrative('State')) + '</span></summary>' +
+                    '<div class="ne-state-global-summary-detail" style="margin-top:6px;">' +
                     '<div class="ne-inline-state-view">' +
                     '<div class="ne-state-global-block">' +
                     '<table class="ne-state-global-table">' + stateRows + '</table>' +
@@ -995,7 +1042,8 @@ async function updateVaultViewerPopout(getChatId) {
                     '<div style="margin-top:4px;display:flex;gap:4px;">' +
                     '<button class="ne-state-edit-save menu_button" style="font-size:0.85em;padding:2px 8px;background:#4caf50;color:#fff;border:none;">' + t('Save') + '</button>' +
                     '<button class="ne-state-edit-cancel menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Cancel') + '</button>' +
-                    '</div></div>';
+                    '</div></div>' +
+                    '</div></details>';
             } else {
                 stateContainer.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No state data') + ')</div>';
             }
@@ -2160,9 +2208,14 @@ function injectStateBanner(messageId) {
     var mainPart = sceneTime[0] || '';
     var presentPart = sceneTime[1] || '';
 
-    var parts = mainPart.split(/[，,]\s*/);
+    var dateMatch = mainPart.match(/第(\d+)天/);
+    var day = dateMatch ? dateMatch[1] : '';
+    var mainWithoutDay = day ? mainPart.replace(/第\d+天/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
+
+    var parts = mainWithoutDay.split(/[，,]\s*/);
     var scene = parts[0] || '';
     var time = parts[1] || '';
+    var eventPart = parts[2] || '';
     var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
 
     textEl.innerHTML = html.replace(/^\s*(<br\s*\/?\s*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>)?/, '');
@@ -2173,8 +2226,16 @@ function injectStateBanner(messageId) {
     var topLine = doc.createElement('div');
     topLine.className = 'ne-state-banner-top';
     topLine.innerHTML = '<span class="ne-state-scene">\uD83D\uDCCD ' + scene + '</span>' +
-        (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '');
+        (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '') +
+        (day ? ' <span class="ne-state-day">\uD83D\uDCC5 ' + t_narrative('Day') + ' ' + day + '</span>' : '');
     banner.appendChild(topLine);
+
+    if (eventPart) {
+        var eventLine = doc.createElement('div');
+        eventLine.className = 'ne-state-event';
+        eventLine.innerHTML = '\u26A1 ' + eventPart;
+        banner.appendChild(eventLine);
+    }
 
     if (names.length > 0) {
         var charLine = doc.createElement('div');
@@ -2621,15 +2682,15 @@ export async function renderVaultPanel(getChatId) {
                 return;
             }
             // Quest card toggle
-            var questHeader = e.target.closest('.ne_quest_header');
+            var questHeader = e.target.closest('.ne-quest-header');
             if (questHeader) {
-                var qCardId = questHeader.getAttribute('data-card-id');
-                var qDetail = byId(qCardId + '_detail');
-                var qToggle = questHeader.querySelector('.ne_quest_toggle');
-                if (qDetail) {
-                    var qVis = qDetail.style.display !== 'none';
-                    qDetail.style.display = qVis ? 'none' : '';
-                    if (qToggle) qToggle.textContent = qVis ? '\u25B6' : '\u25BC';
+                var qCard = questHeader.closest('.ne-quest-card');
+                var qDetail = qCard ? qCard.querySelector('.ne-quest-detail') : null;
+                var qToggle = questHeader.querySelector('.ne-quest-toggle');
+                if (qDetail && qCard) {
+                    qCard.classList.toggle('open');
+                    qDetail.style.display = qCard.classList.contains('open') ? 'block' : 'none';
+                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '▾' : '▶';
                 }
                 return;
             }
