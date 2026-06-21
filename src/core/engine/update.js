@@ -117,26 +117,23 @@ export function ensureStateStructure(vault) {
             }
         }
     } else {
-        // 预设模式：从 state_schema 中提取字段结构
-        if (!state._initialized) {
-            var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
-            if (schema) {
-                var knownCharacterNames = [];
-                var charName = vault.content.character_name || vault.content.current_character;
-                if (charName) knownCharacterNames.push(charName);
-                if (vault.content.dynamic_state && vault.content.dynamic_state.characters) {
-                    Object.keys(vault.content.dynamic_state.characters).forEach(function (n) {
-                        if (knownCharacterNames.indexOf(n) === -1) knownCharacterNames.push(n);
-                    });
-                }
-                var extState = initStateFromSchema(schema, knownCharacterNames);
-                Object.keys(extState).forEach(function (ek) {
-                    if (state[ek] === undefined) state[ek] = extState[ek];
+        // 预设模式：每轮校验 state 结构完整性，缺失的字段/子结构从 schema 注入
+        var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
+        if (schema) {
+            var knownCharacterNames = [];
+            var charName = vault.content.character_name || vault.content.current_character;
+            if (charName) knownCharacterNames.push(charName);
+            if (vault.content.dynamic_state && vault.content.dynamic_state.characters) {
+                Object.keys(vault.content.dynamic_state.characters).forEach(function (n) {
+                    if (knownCharacterNames.indexOf(n) === -1) knownCharacterNames.push(n);
                 });
-                state._initialized = true;
-                if (!vault.content.state_schema) {
-                    vault.content.state_schema = schema;
-                }
+            }
+            var extState = initStateFromSchema(schema, knownCharacterNames);
+            Object.keys(extState).forEach(function (ek) {
+                if (state[ek] === undefined) state[ek] = extState[ek];
+            });
+            if (!vault.content.state_schema) {
+                vault.content.state_schema = schema;
             }
         }
     }
