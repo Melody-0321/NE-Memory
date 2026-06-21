@@ -2148,6 +2148,10 @@ export async function renderVaultPanel(getChatId) {
                 _vaultRefreshDebounce = setTimeout(function() {
                     _vaultRefreshDebounce = null;
                     if (_currentGetChatId) updateVaultViewerPopout(_currentGetChatId);
+                    var usageTab = document.querySelector('.ne-vault-tab.active[data-tab="usage"]');
+                    if (usageTab) {
+                        try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
+                    }
                 }, 300);
             });
         }
