@@ -265,7 +265,14 @@ function injectBottomDrawerCSS() {
         '#tab-entities .ne-chain-entry:last-child{border-bottom:none;}' +
         '#tab-entities .ne-chain-time{color:var(--grey-50);white-space:nowrap;min-width:90px;}' +
         '#tab-entities .ne-chain-scene{color:var(--grey-60);}' +
-        '#tab-entities .ne-empty-hint{color:var(--grey-50);font-size:0.85em;padding:20px;text-align:center;}';
+        '#tab-entities .ne-empty-hint{color:var(--grey-50);font-size:0.85em;padding:20px;text-align:center;}' +
+        '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
+        '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
+        '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
+        '.ne-state-time{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
+        '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
+        '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
+        '.ne-state-banner-missing{font-style:italic;color:var(--grey-50);font-size:12px;}';
     pdHead().appendChild(style);
 }
 
@@ -2136,6 +2143,54 @@ function prefetchOriginalTexts(notebook, chatMessages, visibleWindow, topK) {
 var _currentGetChatId = null;
 var _vaultChangeBound = false;
 
+function injectStateBanner(messageId) {
+    var doc = PD;
+    var mesEl = doc.querySelector('.mes[mesid="' + messageId + '"]');
+    if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
+
+    var textEl = mesEl.querySelector('.mes_text');
+    if (!textEl) return;
+
+    var html = textEl.innerHTML;
+    var match = html.match(/^\s*(<br\s*\/?\s*>)?\s*\[([^\]]+)\]\s*(<br\s*\/?\s*>)?/);
+    if (!match) return;
+
+    var rawBlock = match[2];
+    var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
+    var mainPart = sceneTime[0] || '';
+    var presentPart = sceneTime[1] || '';
+
+    var parts = mainPart.split(/[，,]\s*/);
+    var scene = parts[0] || '';
+    var time = parts[1] || '';
+    var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
+
+    textEl.innerHTML = html.replace(/^\s*(<br\s*\/?\s*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>)?/, '');
+
+    var banner = doc.createElement('div');
+    banner.className = 'ne-state-banner';
+
+    var topLine = doc.createElement('div');
+    topLine.className = 'ne-state-banner-top';
+    topLine.innerHTML = '<span class="ne-state-scene">\uD83D\uDCCD ' + scene + '</span>' +
+        (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '');
+    banner.appendChild(topLine);
+
+    if (names.length > 0) {
+        var charLine = doc.createElement('div');
+        charLine.className = 'ne-state-chars';
+        charLine.innerHTML = names.map(function(n) {
+            return '<span class="ne-state-char-pill">\uD83D\uDC64 ' + n + '</span>';
+        }).join('');
+        banner.appendChild(charLine);
+    }
+
+    var block = mesEl.querySelector('.mes_block');
+    if (block) {
+        block.insertBefore(banner, block.firstChild);
+    }
+}
+
 export async function renderVaultPanel(getChatId) {
     try {
         if (byId('ne_vault_bottom_overlay')) return;
@@ -2153,6 +2208,13 @@ export async function renderVaultPanel(getChatId) {
                         try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
                     }
                 }, 300);
+            });
+            // 监听消息渲染事件，为角色回复注入状态栏卡片
+            pdAddEventListener('character_message_rendered', function(evt) {
+                var messageId = evt && evt.detail ? evt.detail.message_id : (evt && evt.message_id);
+                if (messageId !== undefined && messageId !== null) {
+                    injectStateBanner(Number(messageId));
+                }
             });
         }
         _currentChatIdForCollapse = typeof getChatId === 'function' ? getChatId() : getChatId;
