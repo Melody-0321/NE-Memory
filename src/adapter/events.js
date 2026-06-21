@@ -192,6 +192,19 @@ export async function onMessageReceived(messageIndex) {
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
+
+            // 提取 Main LLM 开头的状态块 [场景, 时间, 在场：角色]
+            var stateBlockMatch = (message.mes || '').match(
+                /^\[([^，,]+)[，,\s]*([^，,]*?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
+            );
+            if (stateBlockMatch) {
+                globalThis.__ne_pending_state_block = {
+                    scene: (stateBlockMatch[1] || '').trim(),
+                    time: (stateBlockMatch[2] || '').trim(),
+                    present: (stateBlockMatch[3] || '').trim().split(/[、，,\s]+/).filter(Boolean)
+                };
+            }
+
             pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
@@ -451,6 +464,13 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 }
                 globalThis.__ne_debug_last_injection = formatted;
                 runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 2, 'system');
+            }
+            // State block instruction — Main LLM output current state at reply start
+            if (isStateSchemaEnabled()) {
+                var stateBlockInstr = '在回复开头用方括号注明当前场景与时间，以及本轮出现角色的名字。\n' +
+                    '格式：[场景，时间，在场：角色1、角色2]\n' +
+                    '仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
+                runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;

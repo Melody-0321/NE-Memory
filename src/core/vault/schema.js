@@ -562,8 +562,9 @@ export function formatCoreStateSummary(state) {
 
 var STATE_INJECTION_CHAR_FIELDS = ['status', 'gender_age', 'occupation', 'personality'];
 var STATE_INJECTION_CHAR_OPTIONAL = ['current_mood', 'affection', 'relationship', 'injuries', 'status_effects'];
+var STATE_INJECTION_FOLDED_FIELDS = ['status', 'affection', 'relationship', 'current_mood', 'personality', 'injuries', 'status_effects'];
 
-export function buildStateInjectionTable(state) {
+export function buildStateInjectionTable(state, messages) {
     if (!state) return '';
     var parts = [];
 
@@ -578,28 +579,68 @@ export function buildStateInjectionTable(state) {
     parts.push('');
 
     if (state.characters && typeof state.characters === 'object') {
-        parts.push('=== Characters ===');
         var charNames = Object.keys(state.characters);
-        if (charNames.length === 0) {
-            parts.push('(none)');
-        } else {
-            charNames.forEach(function (name) {
-                var card = state.characters[name];
-                if (!card || typeof card !== 'object') return;
+        var activeCards = [];
+        var inactiveCards = [];
+
+        // Build a set of names mentioned in this round's messages (for auto-expand)
+        var mentionedNames = {};
+        if (messages && messages.length > 0) {
+            var msgText = messages.map(function(m) { return m.content || ''; }).join(' ');
+            charNames.forEach(function(name) {
+                if (msgText.indexOf(name) !== -1) mentionedNames[name] = true;
+            });
+        }
+
+        charNames.forEach(function(name) {
+            var card = state.characters[name];
+            if (!card || typeof card !== 'object') return;
+            var isActive = card.status === '活跃' || mentionedNames[name];
+            if (isActive) {
+                activeCards.push({ name: name, card: card });
+            } else {
+                inactiveCards.push({ name: name, card: card });
+            }
+        });
+
+        // Active characters (full expansion)
+        if (activeCards.length > 0) {
+            parts.push('=== Characters (Active) ===');
+            activeCards.forEach(function(item) {
                 var fields = [];
                 for (var i = 0; i < STATE_INJECTION_CHAR_FIELDS.length; i++) {
                     var fk = STATE_INJECTION_CHAR_FIELDS[i];
-                    fields.push(fk + ': ' + (card[fk] !== undefined ? card[fk] : ''));
+                    fields.push(fk + ': ' + (item.card[fk] !== undefined ? item.card[fk] : ''));
                 }
                 for (var j = 0; j < STATE_INJECTION_CHAR_OPTIONAL.length; j++) {
                     var ok = STATE_INJECTION_CHAR_OPTIONAL[j];
-                    var ov = card[ok];
+                    var ov = item.card[ok];
                     if (ov !== undefined && ov !== null && ov !== '') {
                         fields.push(ok + ': ' + ov);
                     }
                 }
-                parts.push('[' + name + '] ' + fields.join(', '));
+                parts.push('[' + item.name + '] ' + fields.join(', '));
             });
+        }
+
+        // Inactive characters (folded summary)
+        if (inactiveCards.length > 0) {
+            parts.push('');
+            var foldedLines = [];
+            inactiveCards.forEach(function(item) {
+                var fields = [];
+                for (var fi = 0; fi < STATE_INJECTION_FOLDED_FIELDS.length; fi++) {
+                    var fk = STATE_INJECTION_FOLDED_FIELDS[fi];
+                    var fv = item.card[fk];
+                    if (fk === 'status') {
+                        fields.push(fk + ': ' + (fv || ''));
+                    } else if (fv !== undefined && fv !== null && fv !== '' && !(fk === 'affection' && Number(fv) === 0)) {
+                        fields.push(fk + ': ' + fv);
+                    }
+                }
+                foldedLines.push('[' + item.name + '] ' + fields.join(', '));
+            });
+            parts.push('  Non-active: ' + foldedLines.join(' | '));
         }
         parts.push('');
     }

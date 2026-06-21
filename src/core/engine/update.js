@@ -298,9 +298,8 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
     if (lang === 'en') {
         return {
             system: currentStateSnapshot + partialCtx + 'You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.\n' +
-                '\nYOUR OUTPUT MUST START with a _checkpoints block:\n' +
+                '\nOutput a JSON object with an "stm_entries" array:\n' +
                 '{\n' +
-                '  "_checkpoints": { "time": "current story time (REQUIRED, even if unchanged)", "scene": "current scene/location (REQUIRED, even if unchanged)" },\n' +
                 '  "stm_entries": [...]\n' +
                 '}\n' +
                 '\nEach stm_entries item must have:\n' +
@@ -308,17 +307,16 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
                 '- "time_label": optional — only set if the event\'s time differs from the implied time. Otherwise omit.\n' +
                 '- "translation": Chinese translation of the event (max 200 chars) for cross-lingual search. Provides key terms in Chinese for BM25 token matching.\n' +
                 '- "entities": optional — involved entity names with types. Each entry: {"name":"Alice","type":"character"}. Types: character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件). Plain string arrays ["Alice"] are still accepted and default to character. E.g. [{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}].\n' +
-                '\nNote: "period" and "scene" are auto-filled from global state. Do NOT include them in entries.\n' +
+                '\nNote: "period" and "scene" are auto-filled from global state snapshots. Do NOT include them in entries.\n' +
                 msgRangeInstructionEn +
-                '\nIf nothing of narrative significance happened, output {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}.',
+                '\nIf nothing of narrative significance happened, output {"stm_entries": []}.',
             user: userMsgEn
         };
     }
     return {
         system: currentStateSnapshot + partialCtx + '你是故事记忆提取器。从对话中提取关键事件到短期记忆中。\n' +
-            '\n输出必须以 _checkpoints 块开头：\n' +
+            '\n输出一个包含 "stm_entries" 数组的 JSON 对象：\n' +
             '{\n' +
-            '  "_checkpoints": { "time": "当前故事时间（必填，即使未变化）", "scene": "当前场景/地点（必填，即使未变化）" },\n' +
             '  "stm_entries": [...]\n' +
             '}\n' +
             '\n每个 stm_entries 条目包含：\n' +
@@ -326,9 +324,9 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
             '- "time_label": （可选）仅当事件时间与当前时间不同时填写，否则省略。\n' +
             '- "translation": 事件的英文翻译（最长200字符），用于跨语言检索。提供英文关键词以供 BM25 词项匹配。\n' +
             '- "entities": （可选）事件涉及的实体名称和类型。每条：{"name":"Alice","type":"character"}。类型：character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件)。旧式字符串数组 ["Alice"] 仍被接受，默认视为角色。示例：[{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}]。\n' +
-            '\n注意："period" 和 "scene" 会自动从全局数据填充，条目中无需包含。\n' +
+            '\n注意："period" 和 "scene" 会自动从全局状态快照填充，条目中无需包含。\n' +
             msgRangeInstructionZh +
-            '\n如果没有叙事意义的事件，输出 {"_checkpoints": {"time": "...", "scene": "..."}, "stm_entries": []}。',
+            '\n如果没有叙事意义的事件，输出 {"stm_entries": []}。',
         user: userMsgZh
     };
 }
@@ -336,16 +334,14 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
 export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
     if (!text) {
-        return { stmEntries: [], stateChanges: {}, _checkpoints: null };
+        return { stmEntries: [], stateChanges: {} };
     }
 
     var stmEntries = [];
-    var checkpoints = null;
     var stateChanges = {};
 
     try {
         var parsed = JSON.parse(text);
-        checkpoints = parsed._checkpoints || null;
         stmEntries = parsed.stm_entries || [];
 
         if (parsed.state_changes) {
@@ -365,20 +361,19 @@ export function parseSTMResponse(llmResponse) {
         var jsonMatch = text.match(/\{[\s\S]*?\}/);
         if (jsonMatch) {
             try {
-                var parsed = JSON.parse(jsonMatch[0]);
-                checkpoints = parsed._checkpoints || null;
-                stmEntries = parsed.stm_entries || [];
-                if (parsed.state_changes) {
-                    if (Array.isArray(parsed.state_changes)) {
-                        var flat = {};
-                        parsed.state_changes.forEach(function(item) {
+                var parsed2 = JSON.parse(jsonMatch[0]);
+                stmEntries = parsed2.stm_entries || [];
+                if (parsed2.state_changes) {
+                    if (Array.isArray(parsed2.state_changes)) {
+                        var flat2 = {};
+                        parsed2.state_changes.forEach(function(item) {
                             if (item && item.path !== undefined) {
-                                flat[item.path] = item.value;
+                                flat2[item.path] = item.value;
                             }
                         });
-                        stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
-                    } else if (typeof parsed.state_changes === 'object') {
-                        stateChanges = isStateSchemaEnabled() ? parsed.state_changes : whitelistStateChanges(parsed.state_changes);
+                        stateChanges = isStateSchemaEnabled() ? flat2 : whitelistStateChanges(flat2);
+                    } else if (typeof parsed2.state_changes === 'object') {
+                        stateChanges = isStateSchemaEnabled() ? parsed2.state_changes : whitelistStateChanges(parsed2.state_changes);
                     }
                 }
                 if (stmEntries.length > 0 || Object.keys(stateChanges).length > 0) {
@@ -386,10 +381,10 @@ export function parseSTMResponse(llmResponse) {
                 }
              } catch (e2) {}
          }
-         if (stmEntries.length === 0 && Object.keys(stateChanges).length === 0 && !checkpoints) {
+         if (stmEntries.length === 0 && Object.keys(stateChanges).length === 0) {
             console.warn('[NE] State LLM response is not valid JSON:', e.message);
             console.warn('[NE] Raw response:', text);
-            return { stmEntries: [], stateChanges: {}, _checkpoints: null };
+            return { stmEntries: [], stateChanges: {} };
         }
     }
 
@@ -415,7 +410,7 @@ export function parseSTMResponse(llmResponse) {
         }
     }
 
-    return { stmEntries: stmEntries, stateChanges: stateChanges, _checkpoints: checkpoints };
+    return { stmEntries: stmEntries, stateChanges: stateChanges };
 }
 
 export function handleQuestCompletion(state, validatedChanges) {
@@ -964,35 +959,35 @@ function buildStatePrompt_Preset(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var stateTable = buildStateInjectionTable(content.state || {});
+    var stateTable = buildStateInjectionTable(content.state || {}, messages);
 
     var rulesEn = '\nRules:\n' +
-        '- _checkpoints: time and scene are REQUIRED (even if unchanged).\n' +
         '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- time and scene: output as state_changes.time / state_changes.scene when they change.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
-        '\nZero-change example: {"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n\n';
+        '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
-        '- _checkpoints: time 和 scene 必填（即使未变化也要输出）。\n' +
         '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- time 和 scene 变化时通过 state_changes.time / state_changes.scene 输出。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
-        '\n零变化示例: {"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n\n';
+        '\n零变化示例: {"state_changes":{}}\n\n';
 
     if (lang === 'en') {
         return {
             system: stateTable + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with _checkpoints and state_changes. Only output changed fields.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Only output changed fields.'
         };
     }
     return {
         system: stateTable + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 _checkpoints 和 state_changes 的 JSON。仅输出本轮变化字段。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。仅输出本轮变化字段。'
     };
 }
 
@@ -1007,7 +1002,7 @@ function buildStatePrompt_Dynamic(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var stateTable = buildStateInjectionTable(content.state || {});
+    var stateTable = buildStateInjectionTable(content.state || {}, messages);
 
     var dynamicExtra = '';
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
@@ -1018,30 +1013,30 @@ function buildStatePrompt_Dynamic(messages, vault) {
     }
 
     var rulesEn = '\nRules:\n' +
-        '- _checkpoints: time and scene are REQUIRED (even if unchanged).\n' +
         '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- time and scene: output as state_changes.time / state_changes.scene when they change.\n' +
         '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
         '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
-        '\nZero-change example: {"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n\n';
+        '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
-        '- _checkpoints: time 和 scene 必填（即使未变化也要输出）。\n' +
         '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- time 和 scene 变化时通过 state_changes.time / state_changes.scene 输出。\n' +
         '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
         '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
-        '\n零变化示例: {"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n\n';
+        '\n零变化示例: {"state_changes":{}}\n\n';
 
     if (lang === 'en') {
         return {
             system: stateTable + dynamicExtra + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with _checkpoints and state_changes.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with state_changes.'
         };
     }
     return {
         system: stateTable + dynamicExtra + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 state_changes 的 JSON。'
     };
 }
 
@@ -1172,7 +1167,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
 
             if (events.length > 0) {
-                postFillSTM({ stmEntries: events, _checkpoints: {}, stateChanges: {} }, vault);
+                postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
                 appendSTMEntries(vault, events);
 
                 if (snapshots && snapshots.length > 0) {
@@ -1247,18 +1242,36 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var parsed = parseSTMResponse(stateResponse);
     var stateChanges = parsed.stateChanges || {};
 
-    if (!parsed._checkpoints) {
-        var content = vault.content || {};
-        parsed._checkpoints = {};
-        if (content.story_time) parsed._checkpoints.time = content.story_time;
-        if (content.story_scene) parsed._checkpoints.scene = content.story_scene;
-        if (Object.keys(parsed._checkpoints).length > 0) {
-            console.log('[NE-HARNESS] State LLM did not output _checkpoints — fallback to snapshot values');
+    // 优先：Main LLM 状态块 — 解析后直接写入 vault 全局数据 + 更新 status
+    var pendingBlock = globalThis.__ne_pending_state_block;
+    if (pendingBlock) {
+        if (pendingBlock.time) vault.content.story_time = pendingBlock.time;
+        if (pendingBlock.scene) vault.content.story_scene = pendingBlock.scene;
+        if (pendingBlock.present && pendingBlock.present.length > 0) {
+            var state = vault.content.state || {};
+            var chars = state.characters || {};
+            var presentSet = {};
+            pendingBlock.present.forEach(function(n) { presentSet[n.trim()] = true; });
+            Object.keys(presentSet).forEach(function(name) {
+                if (chars[name] && typeof chars[name] === 'object') {
+                    chars[name].status = '活跃';
+                } else {
+                    if (!chars[name]) chars[name] = {};
+                    chars[name].status = '活跃';
+                }
+            });
+            state.characters = chars;
+            vault.content.state = state;
         }
+        globalThis.__ne_pending_state_block = null;
     }
 
-    if (parsed._checkpoints && Object.keys(parsed._checkpoints).length > 0) {
-        postFillSTM({ stmEntries: vault.content.stm_entries || [], _checkpoints: parsed._checkpoints, stateChanges: {} }, vault);
+    // 回退：State LLM 的 state_changes.time / state_changes.scene
+    if (stateChanges.time) {
+        vault.content.story_time = String(stateChanges.time);
+    }
+    if (stateChanges.scene) {
+        vault.content.story_scene = String(stateChanges.scene);
     }
 
     if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {

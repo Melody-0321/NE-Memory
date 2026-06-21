@@ -165,7 +165,7 @@ export async function runStmExtractorCore(turns, params) {
     for (var ei2 = 0; ei2 < processedEntries.length; ei2++) {
         var e = processedEntries[ei2];
         try {
-            postFill({ stmEntries: [e], _checkpoints: null }, vault);
+            postFill({ stmEntries: [e] }, vault);
             if (!e.event || e.event.length < 3) {
                 console.warn('[NE] Entry rejected — event too short:', e.event);
                 continue;
