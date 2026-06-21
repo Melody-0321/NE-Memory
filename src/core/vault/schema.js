@@ -560,6 +560,114 @@ export function formatCoreStateSummary(state) {
     return lines.join('\n');
 }
 
+var STATE_INJECTION_CHAR_FIELDS = ['status', 'gender_age', 'occupation', 'personality'];
+var STATE_INJECTION_CHAR_OPTIONAL = ['current_mood', 'affection', 'relationship', 'injuries', 'status_effects'];
+
+export function buildStateInjectionTable(state) {
+    if (!state) return '';
+    var parts = [];
+
+    parts.push('=== Current State ===');
+    parts.push('');
+
+    parts.push('[World]');
+    parts.push('time: ' + (state.time || ''));
+    parts.push('scene: ' + (state.scene || ''));
+    parts.push('story_date: ' + (state.story_date || ''));
+    parts.push('main_event: ' + (state.main_event || ''));
+    parts.push('');
+
+    if (state.characters && typeof state.characters === 'object') {
+        parts.push('=== Characters ===');
+        var charNames = Object.keys(state.characters);
+        if (charNames.length === 0) {
+            parts.push('(none)');
+        } else {
+            charNames.forEach(function (name) {
+                var card = state.characters[name];
+                if (!card || typeof card !== 'object') return;
+                var fields = [];
+                for (var i = 0; i < STATE_INJECTION_CHAR_FIELDS.length; i++) {
+                    var fk = STATE_INJECTION_CHAR_FIELDS[i];
+                    fields.push(fk + ': ' + (card[fk] !== undefined ? card[fk] : ''));
+                }
+                for (var j = 0; j < STATE_INJECTION_CHAR_OPTIONAL.length; j++) {
+                    var ok = STATE_INJECTION_CHAR_OPTIONAL[j];
+                    var ov = card[ok];
+                    if (ov !== undefined && ov !== null && ov !== '') {
+                        fields.push(ok + ': ' + ov);
+                    }
+                }
+                parts.push('[' + name + '] ' + fields.join(', '));
+            });
+        }
+        parts.push('');
+    }
+
+    if (state.factions && typeof state.factions === 'object') {
+        var factionNames = Object.keys(state.factions);
+        if (factionNames.length === 0) {
+            parts.push('=== Factions ===');
+            parts.push('(available paths: factions.<Name>.name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], relations, notes)');
+            parts.push('(empty — create via factions.<Name>.attitude_toward_player)');
+            parts.push('');
+        } else {
+            parts.push('=== Factions ===');
+            factionNames.forEach(function (name) {
+                var f = state.factions[name];
+                if (!f || typeof f !== 'object') return;
+                var fields = [];
+                ['name', 'leader', 'attitude_toward_player', 'notes'].forEach(function (fk) {
+                    if (f[fk] !== undefined && f[fk] !== '') {
+                        fields.push(fk + ': ' + f[fk]);
+                    }
+                });
+                parts.push('[' + name + '] ' + fields.join(', '));
+            });
+            parts.push('');
+        }
+    }
+
+    if (state.quests && typeof state.quests === 'object') {
+        var hasQuests = false;
+        ['tasks', 'goals', 'events'].forEach(function (cat) {
+            if (state.quests[cat] && typeof state.quests[cat] === 'object' && Object.keys(state.quests[cat]).length > 0) {
+                hasQuests = true;
+            }
+        });
+        if (!hasQuests) {
+            parts.push('=== Quests ===');
+            parts.push('(available paths:');
+            parts.push('  quests.tasks.<Name>.name, deadline, status[正在进行/已完成/已失败/已过期], progress');
+            parts.push('  quests.goals.<Name>.name, status[进行中/已达成/已放弃], progress');
+            parts.push('  quests.events.<Name>.name, status[持续中/已平息/已结束], desc)');
+            parts.push('(empty — create via quests.tasks.<Name>.status)');
+            parts.push('');
+        } else {
+            parts.push('=== Quests ===');
+            ['tasks', 'goals', 'events'].forEach(function (cat) {
+                var catObj = state.quests[cat];
+                if (!catObj || typeof catObj !== 'object') return;
+                var names = Object.keys(catObj);
+                names.forEach(function (name) {
+                    var q = catObj[name];
+                    if (!q || typeof q !== 'object') return;
+                    var fields = [];
+                    ['name', 'status', 'deadline', 'progress', 'desc'].forEach(function (fk) {
+                        if (q[fk] !== undefined && q[fk] !== '') {
+                            fields.push(fk + ': ' + q[fk]);
+                        }
+                    });
+                    parts.push('[' + cat + '.' + name + '] ' + fields.join(', '));
+                });
+            });
+            parts.push('');
+        }
+    }
+
+    return parts.join('\n');
+}
+
 /**
  * 从 dynamic_state 构建与 renderCharacterCard / formatCharacterSummary 兼容的字符 schema。
  * 返回 { protagonist: { fields: {...} }, npc: { fields: {...} } } 格式，或 null。

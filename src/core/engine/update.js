@@ -6,7 +6,7 @@
 import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable } from '../vault/schema.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
@@ -952,67 +952,6 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
     }
 }
 
-// ── State prompt helpers：field catalog + current snapshot ──
-
-function buildStateFieldCatalog(lang) {
-    if (lang === 'en') {
-        return 'Available fields (pre-allocated, dot-path→value):\n' +
-            '  Global: time, scene, story_date, main_event\n' +
-            '  characters.<name>.{status, current_mood, personality, affection, relationship, gender_age, occupation, clothing_build, inner_thoughts, past_experience, injuries, status_effects, inventory, power_slots}\n' +
-            '  factions.<name>.{attitude_toward_player, leader, description, relations, notes}\n' +
-            '  quests.tasks.<name>.{status, deadline} / quests.goals.<name>.{status, progress} / quests.events.<name>.{status, desc}\n' +
-            'status values: 活跃/非活跃/已死亡/已归隐/已离去';
-    }
-    return '可用字段（已预分配，dot-path→值）:\n' +
-        '  全局: time, scene, story_date, main_event\n' +
-        '  characters.<角色名>.{status, current_mood, personality, affection, relationship, gender_age, occupation, clothing_build, inner_thoughts, past_experience, injuries, status_effects, inventory, power_slots}\n' +
-        '  factions.<势力名>.{attitude_toward_player, leader, description, relations, notes}\n' +
-        '  quests.tasks.<任务名>.{status, deadline} / quests.goals.<目标名>.{status, progress} / quests.events.<事件名>.{status, desc}\n' +
-        'status 取值: 活跃/非活跃/已死亡/已归隐/已离去';
-}
-
-function buildCurrentStateSnapshot(state, lang) {
-    var lines = [];
-    var hasContent = false;
-
-    if (state && state.characters && typeof state.characters === 'object') {
-        var chars = [];
-        Object.keys(state.characters).forEach(function (name) {
-            var c = state.characters[name];
-            var status = (c && c.status) || '?';
-            chars.push(name + '(' + status + ')');
-        });
-        if (chars.length > 0) {
-            lines.push(lang === 'en' ? 'Tracked characters: ' + chars.join(', ') : '已追踪角色: ' + chars.join(', '));
-            hasContent = true;
-        }
-    }
-
-    if (state && state.factions && typeof state.factions === 'object') {
-        var factionNames = Object.keys(state.factions);
-        if (factionNames.length > 0) {
-            lines.push(lang === 'en' ? 'Factions: ' + factionNames.join(', ') : '势力: ' + factionNames.join(', '));
-            hasContent = true;
-        }
-    }
-
-    if (state && state.quests && typeof state.quests === 'object') {
-        var taskNames = state.quests.tasks ? Object.keys(state.quests.tasks) : [];
-        var goalNames = state.quests.goals ? Object.keys(state.quests.goals) : [];
-        var eventNames = state.quests.events ? Object.keys(state.quests.events) : [];
-        if (taskNames.length > 0 || goalNames.length > 0 || eventNames.length > 0) {
-            var parts = [];
-            if (taskNames.length > 0) parts.push(lang === 'en' ? 'Tasks: ' + taskNames.join(', ') : '任务: ' + taskNames.join(', '));
-            if (goalNames.length > 0) parts.push(lang === 'en' ? 'Goals: ' + goalNames.join(', ') : '目标: ' + goalNames.join(', '));
-            if (eventNames.length > 0) parts.push(lang === 'en' ? 'Events: ' + eventNames.join(', ') : '事件: ' + eventNames.join(', '));
-            lines.push(parts.join('; '));
-            hasContent = true;
-        }
-    }
-
-    return hasContent ? '\n' + lines.join('\n') + '\n' : '';
-}
-
 // ── State prompt builders（每种模式专用 prompt）──
 
 function buildStatePrompt_Preset(messages, vault) {
@@ -1025,58 +964,35 @@ function buildStatePrompt_Preset(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
-    }
-    currentStateSnapshot += buildCurrentStateSnapshot(content.state, lang);
-    var fieldCatalog = buildStateFieldCatalog(lang);
+    var stateTable = buildStateInjectionTable(content.state || {});
+
+    var rulesEn = '\nRules:\n' +
+        '- _checkpoints: time and scene are REQUIRED (even if unchanged).\n' +
+        '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
+        '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
+        '- Do NOT output present_characters (auto-generated).\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
+        '\nZero-change example: {"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n\n';
+
+    var rulesZh = '\n规则：\n' +
+        '- _checkpoints: time 和 scene 必填（即使未变化也要输出）。\n' +
+        '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
+        '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
+        '- 不要输出 present_characters（自动生成）。\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
+        '\n零变化示例: {"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n\n';
 
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + '\n' + fieldCatalog + '\n\nYou are a story state tracker. Output JSON with _checkpoints and state_changes.\n\n' +
-                'Output schema:\n' +
-                '{"_checkpoints":{"time":"REQUIRED","scene":"REQUIRED"},"state_changes":{}}\n\n' +
-                'Rules:\n' +
-                '- _checkpoints MUST ALWAYS be present. time and scene are REQUIRED (even if unchanged).\n' +
-                '- state_changes: flat object of dot-path keys to new values. ONLY include fields that ACTUALLY changed this round.\n' +
-                '  e.g. {"main_event":"Entering the forest","story_date":"Day 3","characters.Bob.status":"活跃"}\n' +
-                '- If nothing changed, output state_changes: {}\n' +
-                '- Character fields are pre-allocated by the system. You only need to fill in the values.\n' +
-                '  To flag a new character appearing, just write: "characters.NewName.status":"活跃"\n' +
-                '  The system will automatically create the full character template.\n' +
-                '- present_characters is auto-generated. Do NOT output it.\n' +
-                '- Never invent field names. Only use paths that the system has allocated.\n' +
-                '- status values: 活跃/非活跃/已死亡/已归隐/已离去.\n' +
-                '  Mention≠presence: "听说张三去了京城" → do NOT mark 张三 as 活跃.\n' +
-                '\nZero-change example:\n' +
-                '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
-                '\nWith changes example:\n' +
-                '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"story_date":"Day 3","main_event":"出发前往京城","characters.张三.status":"非活跃"}}',
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only. Output JSON with _checkpoints and state_changes.'
+            system: stateTable + rulesEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with _checkpoints and state_changes. Only output changed fields.'
         };
     }
     return {
-        system: currentStateSnapshot + '\n' + fieldCatalog + '\n\n你是故事状态追踪器。输出包含 _checkpoints 和 state_changes 的 JSON。\n\n' +
-            '输出格式：\n' +
-            '{"_checkpoints":{"time":"必填","scene":"必填"},"state_changes":{}}\n\n' +
-            '规则：\n' +
-            '- _checkpoints 必须始终输出。time 和 scene 为必填（即使未变化也要输出）。\n' +
-            '- state_changes: flat object，dot-path key→新值。仅包含本轮实际变化的字段。\n' +
-            '  例：{"main_event":"进入森林","story_date":"Day 3","characters.张三.status":"活跃"}\n' +
-            '- 若无变化，输出 state_changes: {}\n' +
-            '- 角色字段已由系统预分配。你只需输出字段的值。\n' +
-            '  有新角色出现时，只需写："characters.新名字.status":"活跃"\n' +
-            '  系统会自动创建完整角色模板。\n' +
-            '- present_characters 由系统自动生成。不要输出。\n' +
-            '- 请勿创造新字段名。仅使用系统已分配的路径。\n' +
-            '- status 取值: 活跃/非活跃/已死亡/已归隐/已离去。\n' +
-            '  提及≠在场："听说张三去了京城"→不要标张三为活跃。\n' +
-            '\n零变化示例：\n' +
-            '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
-            '\n有变化示例：\n' +
-            '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"story_date":"Day 3","main_event":"出发前往京城","characters.张三.status":"非活跃"}}',
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        system: stateTable + rulesZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 _checkpoints 和 state_changes 的 JSON。仅输出本轮变化字段。'
     };
 }
 
@@ -1091,59 +1007,41 @@ function buildStatePrompt_Dynamic(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
-    }
-    currentStateSnapshot += buildCurrentStateSnapshot(content.state, lang);
+    var stateTable = buildStateInjectionTable(content.state || {});
+
+    var dynamicExtra = '';
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
         var dsText = formatDynamicStateSummary(ds);
         if (dsText) {
-            currentStateSnapshot += '\nDiscovered fields to track:\n' + dsText + '\n';
+            dynamicExtra = '\nDiscovered fields to track:\n' + dsText + '\n';
         }
     }
 
+    var rulesEn = '\nRules:\n' +
+        '- _checkpoints: time and scene are REQUIRED (even if unchanged).\n' +
+        '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
+        '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
+        '- Do NOT output present_characters (auto-generated).\n' +
+        '\nZero-change example: {"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n\n';
+
+    var rulesZh = '\n规则：\n' +
+        '- _checkpoints: time 和 scene 必填（即使未变化也要输出）。\n' +
+        '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
+        '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
+        '- 不要输出 present_characters（自动生成）。\n' +
+        '\n零变化示例: {"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n\n';
+
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + 'You are a story state tracker (Dynamic Mode). Use discovered fields from character cards.\n\n' +
-                'Output schema:\n' +
-                '{"_checkpoints":{"time":"REQUIRED","scene":"REQUIRED"},"state_changes":{}}\n\n' +
-                'Rules:\n' +
-                '- _checkpoints MUST ALWAYS be present. time and scene are REQUIRED (even if unchanged).\n' +
-                '- state_changes: flat object of dot-path keys to new values. ONLY include fields that ACTUALLY changed this round.\n' +
-                '- Use ONLY discovered fields (listed above).\n' +
-                '- If nothing changed, output state_changes: {}\n' +
-                '- Character fields are pre-allocated by the system. You only need to fill in the values.\n' +
-                '  To flag a new character, just write: "characters.NewName.status":"活跃"\n' +
-                '  The system will automatically create the full character template.\n' +
-                '- present_characters is auto-generated. Do NOT output it.\n' +
-                '- Never invent field names. Only use paths that the system has allocated.\n' +
-                '\nZero-change example:\n' +
-                '{"_checkpoints":{"time":"Evening","scene":"Tavern"},"state_changes":{}}\n' +
-                '\nWith changes example:\n' +
-                '{"_checkpoints":{"time":"Dawn","scene":"Mountain Road"},"state_changes":{"main_event":"Setting out for the capital"}}',
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract time, scene, and character state changes from THIS round only — using discovered fields. Output JSON with _checkpoints and state_changes.'
+            system: stateTable + dynamicExtra + rulesEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with _checkpoints and state_changes.'
         };
     }
     return {
-        system: currentStateSnapshot + '你是故事状态追踪器（动态模式）。使用角色卡发现的字段。\n\n' +
-            '输出格式：\n' +
-            '{"_checkpoints":{"time":"必填","scene":"必填"},"state_changes":{}}\n\n' +
-            '规则：\n' +
-            '- _checkpoints 必须始终输出。time 和 scene 为必填（即使未变化也要输出）。\n' +
-            '- state_changes: flat object，dot-path key→新值。仅包含本轮实际变化的字段。\n' +
-            '- 仅使用动态发现字段（上文列出的字段）。\n' +
-            '- 若无变化，输出 state_changes: {}\n' +
-            '- 角色字段已由系统预分配。你只需输出字段的值。\n' +
-            '  有新角色出现时，只需写："characters.新名字.status":"活跃"\n' +
-            '  系统会自动创建完整角色模板。\n' +
-            '- present_characters 由系统自动生成。不要输出。\n' +
-            '- 请勿创造新字段名。仅使用系统已分配的路径。\n' +
-            '\n零变化示例：\n' +
-            '{"_checkpoints":{"time":"傍晚","scene":"酒馆"},"state_changes":{}}\n' +
-            '\n有变化示例：\n' +
-            '{"_checkpoints":{"time":"黎明","scene":"山路"},"state_changes":{"main_event":"出发前往京城"}}',
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——仅使用动态发现字段。输出包含 _checkpoints 和 state_changes 的 JSON。'
+        system: stateTable + dynamicExtra + rulesZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 _checkpoints 和 state_changes 的 JSON。'
     };
 }
 
