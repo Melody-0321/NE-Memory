@@ -952,6 +952,67 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
     }
 }
 
+// ── State prompt helpers：field catalog + current snapshot ──
+
+function buildStateFieldCatalog(lang) {
+    if (lang === 'en') {
+        return 'Available fields (pre-allocated, dot-path→value):\n' +
+            '  Global: time, scene, story_date, main_event\n' +
+            '  characters.<name>.{status, current_mood, personality, affection, relationship, gender_age, occupation, clothing_build, inner_thoughts, past_experience, injuries, status_effects, inventory, power_slots}\n' +
+            '  factions.<name>.{attitude_toward_player, leader, description, relations, notes}\n' +
+            '  quests.tasks.<name>.{status, deadline} / quests.goals.<name>.{status, progress} / quests.events.<name>.{status, desc}\n' +
+            'status values: 活跃/非活跃/已死亡/已归隐/已离去';
+    }
+    return '可用字段（已预分配，dot-path→值）:\n' +
+        '  全局: time, scene, story_date, main_event\n' +
+        '  characters.<角色名>.{status, current_mood, personality, affection, relationship, gender_age, occupation, clothing_build, inner_thoughts, past_experience, injuries, status_effects, inventory, power_slots}\n' +
+        '  factions.<势力名>.{attitude_toward_player, leader, description, relations, notes}\n' +
+        '  quests.tasks.<任务名>.{status, deadline} / quests.goals.<目标名>.{status, progress} / quests.events.<事件名>.{status, desc}\n' +
+        'status 取值: 活跃/非活跃/已死亡/已归隐/已离去';
+}
+
+function buildCurrentStateSnapshot(state, lang) {
+    var lines = [];
+    var hasContent = false;
+
+    if (state && state.characters && typeof state.characters === 'object') {
+        var chars = [];
+        Object.keys(state.characters).forEach(function (name) {
+            var c = state.characters[name];
+            var status = (c && c.status) || '?';
+            chars.push(name + '(' + status + ')');
+        });
+        if (chars.length > 0) {
+            lines.push(lang === 'en' ? 'Tracked characters: ' + chars.join(', ') : '已追踪角色: ' + chars.join(', '));
+            hasContent = true;
+        }
+    }
+
+    if (state && state.factions && typeof state.factions === 'object') {
+        var factionNames = Object.keys(state.factions);
+        if (factionNames.length > 0) {
+            lines.push(lang === 'en' ? 'Factions: ' + factionNames.join(', ') : '势力: ' + factionNames.join(', '));
+            hasContent = true;
+        }
+    }
+
+    if (state && state.quests && typeof state.quests === 'object') {
+        var taskNames = state.quests.tasks ? Object.keys(state.quests.tasks) : [];
+        var goalNames = state.quests.goals ? Object.keys(state.quests.goals) : [];
+        var eventNames = state.quests.events ? Object.keys(state.quests.events) : [];
+        if (taskNames.length > 0 || goalNames.length > 0 || eventNames.length > 0) {
+            var parts = [];
+            if (taskNames.length > 0) parts.push(lang === 'en' ? 'Tasks: ' + taskNames.join(', ') : '任务: ' + taskNames.join(', '));
+            if (goalNames.length > 0) parts.push(lang === 'en' ? 'Goals: ' + goalNames.join(', ') : '目标: ' + goalNames.join(', '));
+            if (eventNames.length > 0) parts.push(lang === 'en' ? 'Events: ' + eventNames.join(', ') : '事件: ' + eventNames.join(', '));
+            lines.push(parts.join('; '));
+            hasContent = true;
+        }
+    }
+
+    return hasContent ? '\n' + lines.join('\n') + '\n' : '';
+}
+
 // ── State prompt builders（每种模式专用 prompt）──
 
 function buildStatePrompt_Preset(messages, vault) {
@@ -968,10 +1029,12 @@ function buildStatePrompt_Preset(messages, vault) {
     if (content.story_time || content.story_scene || content.story_date) {
         currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
     }
+    currentStateSnapshot += buildCurrentStateSnapshot(content.state, lang);
+    var fieldCatalog = buildStateFieldCatalog(lang);
 
     if (lang === 'en') {
         return {
-            system: currentStateSnapshot + 'You are a story state tracker. Output JSON with _checkpoints and state_changes.\n\n' +
+            system: currentStateSnapshot + '\n' + fieldCatalog + '\n\nYou are a story state tracker. Output JSON with _checkpoints and state_changes.\n\n' +
                 'Output schema:\n' +
                 '{"_checkpoints":{"time":"REQUIRED","scene":"REQUIRED"},"state_changes":{}}\n\n' +
                 'Rules:\n' +
@@ -994,7 +1057,7 @@ function buildStatePrompt_Preset(messages, vault) {
         };
     }
     return {
-        system: currentStateSnapshot + '你是故事状态追踪器。输出包含 _checkpoints 和 state_changes 的 JSON。\n\n' +
+        system: currentStateSnapshot + '\n' + fieldCatalog + '\n\n你是故事状态追踪器。输出包含 _checkpoints 和 state_changes 的 JSON。\n\n' +
             '输出格式：\n' +
             '{"_checkpoints":{"time":"必填","scene":"必填"},"state_changes":{}}\n\n' +
             '规则：\n' +
@@ -1032,13 +1095,11 @@ function buildStatePrompt_Dynamic(messages, vault) {
     if (content.story_time || content.story_scene || content.story_date) {
         currentStateSnapshot = 'Current anchors:\n  time: ' + (content.story_time || '-') + '\n  scene: ' + (content.story_scene || '-') + '\n  date: ' + (content.story_date || '-') + '\n';
     }
-
-    var dynamicFieldSummary = '';
+    currentStateSnapshot += buildCurrentStateSnapshot(content.state, lang);
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
         var dsText = formatDynamicStateSummary(ds);
         if (dsText) {
             currentStateSnapshot += '\nDiscovered fields to track:\n' + dsText + '\n';
-            dynamicFieldSummary = dsText;
         }
     }
 
