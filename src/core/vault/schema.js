@@ -81,6 +81,48 @@ export const POWER_SLOTS_TEMPLATES = {
     }
 };
 
+export const DEFAULT_CHARACTER_SCHEMA = {
+    protagonist: {
+        fields: {
+            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
+            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
+            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
+            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
+            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
+            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
+            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
+            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
+            inventory: { type: 'object', expose_level: 'detail', required: false },
+            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
+            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
+            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
+            power_slots: { type: 'object', expose_level: 'summary', required: false }
+        }
+    },
+    npc: {
+        fields: {
+            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
+            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
+            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
+            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
+            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
+            inner_thoughts: { type: 'string', max_length: 120, expose_level: 'detail', required: true },
+            affection: { type: 'number', min: 0, max: 100, expose_level: 'summary', required: true },
+            relationship: { type: 'string', max_length: 50, expose_level: 'summary', required: true },
+            current_mood: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
+            past_experience: { type: 'string', max_length: 200, expose_level: 'detail', required: false },
+            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
+            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
+            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
+            inventory: { type: 'object', expose_level: 'detail', required: false },
+            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
+            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
+            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
+            power_slots: { type: 'object', expose_level: 'summary', required: false }
+        }
+    }
+};
+
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
     fields: {
@@ -206,48 +248,6 @@ export const DEFAULT_FACTION_SCHEMA = {
                     notes: { type: 'string', max_length: 200, expose_level: 'detail' }
                 }
             }
-        }
-    }
-};
-
-export const DEFAULT_CHARACTER_SCHEMA = {
-    protagonist: {
-        fields: {
-            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
-            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
-            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
-            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
-            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
-            inventory: { type: 'object', expose_level: 'detail', required: false },
-            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
-            power_slots: { type: 'object', expose_level: 'summary', required: false }
-        }
-    },
-    npc: {
-        fields: {
-            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
-            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
-            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
-            inner_thoughts: { type: 'string', max_length: 120, expose_level: 'detail', required: true },
-            affection: { type: 'number', min: 0, max: 100, expose_level: 'summary', required: true },
-            relationship: { type: 'string', max_length: 50, expose_level: 'summary', required: true },
-            current_mood: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            past_experience: { type: 'string', max_length: 200, expose_level: 'detail', required: false },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
-            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
-            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
-            inventory: { type: 'object', expose_level: 'detail', required: false },
-            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
-            power_slots: { type: 'object', expose_level: 'summary', required: false }
         }
     }
 };
