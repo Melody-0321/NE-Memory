@@ -2681,16 +2681,6 @@ async function renderHistory(getChatId) {
 
 /* ──────── 测试运行器 ──────── */
 
-var _trSmokeRoundsOverrides = {};
-try {
-    var _trSaved = sessionStorage.getItem('_ne_tr_smoke_rounds');
-    if (_trSaved) { _trSmokeRoundsOverrides = JSON.parse(_trSaved); }
-} catch (e) {}
-
-function _trSaveSmokeRounds() {
-    try { sessionStorage.setItem('_ne_tr_smoke_rounds', JSON.stringify(_trSmokeRoundsOverrides)); } catch (e) {}
-}
-
 function initTestRunner() {
     if (!window.__NE_DEV_MODE) return;
     var container = byId('ne-tr-container');
@@ -2755,11 +2745,6 @@ function setupTestRunnerEvents() {
 
         slider.oninput = function() {
             sliderVal.textContent = slider.value;
-            var s = byId('ne-tr-smoke-select');
-            if (s && s.value) {
-                _trSmokeRoundsOverrides[s.value] = parseInt(slider.value, 10);
-                _trSaveSmokeRounds();
-            }
         };
 
         var smokeSelect = byId('ne-tr-smoke-select');
@@ -2819,13 +2804,6 @@ function updateSmokeSliderDefault() {
 
     var name = select.value;
     if (!name) return;
-
-    var override = _trSmokeRoundsOverrides[name];
-    if (typeof override === 'number') {
-        slider.value = override;
-        sliderVal.textContent = override;
-        return;
-    }
 
     try {
         var debug = globalThis.__ne_debug;
