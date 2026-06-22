@@ -1542,7 +1542,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         return buildStateOnlyInjection(vault);
     }
 
-    if (allSTM.length < SMART_PUSH_MIN_STM && allLTM.length === 0) {
+    if (allSTM.length < SMART_PUSH_MIN_STM) {
         return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 

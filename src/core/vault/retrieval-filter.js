@@ -277,6 +277,34 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
 
     if (totalDocs === 0 && allLTM.length === 0) return [];
 
+    // 池太小：BM25 无法产生有意义的过滤，直接返回全量 + LTM 目录
+    if (totalDocs > 0 && totalDocs <= minResults) {
+        var allResults = [];
+        for (var i = 0; i < entries.length; i++) {
+            var e = entries[i];
+            var r = e._entry;
+            if (r == null) r = { id: e._id || 'unknown', event: '(data missing)' };
+            else if (typeof r !== 'object') r = { id: e._id || 'unknown', event: String(r) };
+            r.__type = e._type;
+            r.__id = e._id;
+            allResults.push(r);
+        }
+        // LTM directory append
+        if (allLTM.length > 0) {
+            var ltmSorted = allLTM.slice().sort(function(a, b) {
+                return (b.timestamp || '').localeCompare(a.timestamp || '');
+            });
+            var ltmDirCount = Math.min(ltmSorted.length, 20);
+            for (var i = 0; i < ltmDirCount; i++) {
+                var ltm = ltmSorted[i];
+                ltm.__type = 'ltm';
+                ltm.__id = ltm.id;
+                allResults.push(ltm);
+            }
+        }
+        return allResults;
+    }
+
     var docFreq = {};
     var totalTokens = 0;
 
