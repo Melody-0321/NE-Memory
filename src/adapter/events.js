@@ -195,9 +195,9 @@ export async function onMessageReceived(messageIndex) {
 
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
 
-            // 提取 Main LLM 开头的状态块 <!--NE-STATE:场景，时间，第N天，事件摘要，在场：角色-->
+            // 提取 Main LLM 开头的状态栏 HTML（data-* 属性携带结构化数据）
             var stateBlockMatch = (message.mes || '').match(
-                /<!--NE-STATE:([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*(.+?)(?:[，,]\s*在场[：:]\s*([^-]+?))?\s*-->/
+                /<!--NE-BANNER--><div class="ne-state-banner" data-scene="([^"]*)" data-time="([^"]*)" data-day="(\d*)" data-event="([^"]*)" data-chars="([^"]*)"/
             );
             if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
@@ -210,7 +210,6 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
             }
 
-            // 注入状态栏卡片（DOM 渲染后由 character_message_rendered 事件触发）
             pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
@@ -423,8 +422,7 @@ function _ensureBannerCSS() {
     if (_bannerCssInjected) return;
     _bannerCssInjected = true;
     try {
-        var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
-        var style = parentDoc.createElement('style');
+        var style = document.createElement('style');
         style.textContent =
             '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
             '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
@@ -434,91 +432,49 @@ function _ensureBannerCSS() {
             '.ne-state-event{margin-top:2px;font-size:12px;color:var(--grey-60,#888);font-style:italic;}' +
             '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
             '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}';
-        parentDoc.head.appendChild(style);
+        document.head.appendChild(style);
     } catch (e) {}
 }
 
-function injectStateBanner(messageId) {
+var _globalBannerRegexRegistered = false;
+function registerGlobalBannerRegex() {
+    if (_globalBannerRegexRegistered) return;
+    _globalBannerRegexRegistered = true;
     try {
-        var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
-        var mesEl = parentDoc.querySelector('.mes[mesid="' + messageId + '"]') || parentDoc.querySelector('.mes[data-mesid="' + messageId + '"]');
-        if (!mesEl) {
-            var allMes = parentDoc.querySelectorAll('.mes');
-            for (var mi = 0; mi < allMes.length; mi++) {
-                if ((allMes[mi].getAttribute('mesid') || allMes[mi].getAttribute('data-mesid') || '') === String(messageId)) {
-                    mesEl = allMes[mi];
-                    break;
-                }
-            }
+        var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        if (!ctx || !ctx.extensionSettings) return;
+        var es = ctx.extensionSettings;
+        es.regex = Array.isArray(es.regex) ? es.regex : [];
+        for (var i = 0; i < es.regex.length; i++) {
+            if (es.regex[i].id === 'ne-memory-state-banner') return;
         }
-        if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
-
-        var textEl = mesEl.querySelector('.mes_text');
-        if (!textEl) return;
-
-        var html = textEl.innerHTML;
-        var prefix = '<!--NE-STATE:';
-        var idx = html.indexOf(prefix);
-        if (idx === -1) return;
-        var endIdx = html.indexOf('-->', idx + prefix.length);
-        if (endIdx === -1) return;
-
-        var rawBlock = html.substring(idx + prefix.length, endIdx).trim();
-        var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
-        var mainPart = sceneTime[0] || '';
-        var presentPart = sceneTime[1] || '';
-
-        var dateMatch = mainPart.match(/第(\d+)天/);
-        var day = dateMatch ? dateMatch[1] : '';
-        var mainWithoutDay = day ? mainPart.replace(/第\d+天[，,\s]*/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
-
-        var parts = mainWithoutDay.split(/[，,]\s*/);
-        var scene = parts[0] || '';
-        var time = parts[1] || '';
-        var eventPart = parts[2] || '';
-        var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
-
-        textEl.innerHTML = html.substring(0, idx) + html.substring(endIdx + 3);
-
-        var banner = parentDoc.createElement('div');
-        banner.className = 'ne-state-banner';
-
-        var topLine = parentDoc.createElement('div');
-        topLine.className = 'ne-state-banner-top';
-        topLine.innerHTML = '<span class="ne-state-scene">\uD83D\uDCCD ' + scene + '</span>' +
-            (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '') +
-            (day ? ' <span class="ne-state-day">\uD83D\uDCC5 ' + t_narrative('Day') + ' ' + day + '</span>' : '');
-        banner.appendChild(topLine);
-
-        if (eventPart) {
-            var eventLine = parentDoc.createElement('div');
-            eventLine.className = 'ne-state-event';
-            eventLine.innerHTML = '\u26A1 ' + eventPart;
-            banner.appendChild(eventLine);
+        es.regex.push({
+            id: 'ne-memory-state-banner',
+            scriptName: 'NE Memory State Banner',
+            findRegex: '<!--NE-BANNER-->([\\s\\S]*?)<!--\\/NE-BANNER-->\\s*',
+            replaceString: '$1',
+            placement: [2],
+            substituteRegex: 0,
+            minDepth: null,
+            maxDepth: null,
+            onlyLongerThan: null,
+            onlyShorterThan: null,
+            enabled: true,
+            runOnEdit: false,
+            markdownOnly: false,
+            promptOnly: false,
+            trimStrings: [],
+        });
+        if (typeof ctx.saveSettingsDebounced === 'function') {
+            ctx.saveSettingsDebounced();
         }
-
-        if (names.length > 0) {
-            var charLine = parentDoc.createElement('div');
-            charLine.className = 'ne-state-chars';
-            charLine.innerHTML = names.map(function(n) {
-                return '<span class="ne-state-char-pill">\uD83D\uDC64 ' + n + '</span>';
-            }).join('');
-            banner.appendChild(charLine);
-        }
-
-        var block = mesEl.querySelector('.mes_block');
-        if (block) {
-            block.insertBefore(banner, block.firstChild);
-        } else {
-            mesEl.insertBefore(banner, mesEl.querySelector('.mes_text'));
-        }
-        console.log('[NE-BANNER] injected for id=' + messageId + ' scene=' + scene);
+        console.log('[NE-BANNER] Global regex registered');
     } catch (e) {
-        console.warn('[NE-BANNER] exception:', e);
+        console.warn('[NE-BANNER] Failed to register global regex:', e);
     }
 }
 
-globalThis.__ne_injectStateBanner = injectStateBanner;
+export { registerGlobalBannerRegex };
 
 export async function onBeforeGenerate(type, _options, dryRun) {
     // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)
@@ -573,7 +529,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 globalThis.__ne_debug_last_injection = formatted;
                 runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 2, 'system');
             }
-            // State block instruction — Main LLM output current state at reply start
+            // State block instruction — Main LLM outputs pre-built banner HTML at reply start
             if (isStateSchemaEnabled()) {
                 var dayInfo = vault.content.story_date || '第1天';
                 var timeInfo = vault.content.story_time || '';
@@ -585,14 +541,14 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     (sceneInfo ? '，' + sceneInfo : '') + '\n';
 
                 var stateBlockInstr = currentState +
-                    '在回复开头用HTML注释注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
-                    '格式：<!--NE-STATE:场景，时间，第N天，事件摘要，在场：角色1、角色2-->\n' +
-                    '必须紧贴回复最开头（无前置空行），注释前不加任何符号。\n' +
-                    '注释独占一行，正文从注释后开始。\n' +
-                    '场景仅在切换时更新，否则沿用。时间按自然节奏递进。' +
-                    '时间从深夜递进到清晨时天数+1；否则保持当前天数。\n' +
-                    '事件摘要用一句话概括本段发生的主要事件。\n' +
-                    '仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
+                    '在回复最开头输出以下格式的状态栏（紧贴开头，独占一行，正文从下一行开始）。\n' +
+                    '格式：<!--NE-BANNER--><div class="ne-state-banner" data-scene="场景名" data-time="时间" data-day="天数" data-event="事件摘要" data-chars="角色1、角色2"><div class="ne-state-banner-top"><span class="ne-state-scene">📍 场景名</span> <span class="ne-state-time">☀️ 时间</span> <span class="ne-state-day">📅 Day N</span></div><div class="ne-state-event">⚡ 事件摘要</div><div class="ne-state-chars"><span class="ne-state-char-pill">👤 角色1</span><span class="ne-state-char-pill">👤 角色2</span></div></div><!--/NE-BANNER-->\n' +
+                    '要求：\n' +
+                    '- data-* 属性值必须与 span 显示内容完全一致，不含双引号。\n' +
+                    '- 场景仅在切换时更新，否则沿用。时间按自然节奏递进。\n' +
+                    '- 时间从深夜递进到清晨时天数+1；否则保持当前天数。\n' +
+                    '- 事件摘要用一句话概括本段发生的主要事件。\n' +
+                    '- 仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
                 console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
             }
@@ -646,18 +602,6 @@ export async function onMessageUpdated(messageId) {
     } catch (e) {
         console.warn('[NE] Rollback on message update failed:', e);
     }
-}
-
-export function onCharacterMessageRendered(messageId, _type) {
-    try {
-        if (!getChatMessagesFn) return;
-        var chat = getChatMessagesFn();
-        var message = chat[messageId];
-        if (!message) return;
-        var bannerMsgId = message.mes_id !== undefined ? message.mes_id : messageId;
-        _ensureBannerCSS();
-        injectStateBanner(bannerMsgId);
-    } catch (e) {}
 }
 
 /* ──────── 矛盾检测（容器C）──────── */
