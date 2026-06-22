@@ -263,6 +263,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
 
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
+        if (!stm || !stm.id) continue;
         var text = buildSearchableText(stm, aliasesMap);
         entries.push({
             _tokens: tokenize(text),
@@ -325,7 +326,12 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         if (e._score <= 0) {
             if (results.length >= minResults) break;
         }
-        var result = JSON.parse(JSON.stringify(e._entry));
+        var result;
+        if (e._entry != null) {
+            try { result = JSON.parse(JSON.stringify(e._entry)); } catch (_) { result = e._entry; }
+        } else {
+            result = { id: e._id || 'unknown', event: '(data missing)' };
+        }
         result.__type = e._type;
         result.__id = e._id;
         results.push(result);
