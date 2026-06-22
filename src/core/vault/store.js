@@ -59,6 +59,11 @@ export async function read(chatId) {
             const result = req.result;
             if (result) {
                 const vault = result.vault;
+                if (!vault || typeof vault !== 'object' || !vault.chat_id) {
+                    console.warn('[NE] IndexedDB vault record corrupted for', chatId, '→ reinitializing');
+                    resolve(emptyVault(chatId));
+                    return;
+                }
                 migrateTimeRange(vault);
                 ensureCursorState(vault);
                 if (!vault._meta) {

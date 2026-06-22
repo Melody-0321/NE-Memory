@@ -514,10 +514,11 @@ function _dumpVaultKeys() {
             store.openCursor().onsuccess = function(e) {
                 var cursor = e.target.result;
                 if (cursor) {
-                    var v = cursor.value;
+                    var row = cursor.value;
+                    var v = row && row.vault;
                     keys.push({
                         key: cursor.key,
-                        version: v ? v.version : '?',
+                        version: v ? v.version : (row ? '(empty row)' : '(gone)'),
                         stm: v && v.content && Array.isArray(v.content.unconsolidated_stm) ? v.content.unconsolidated_stm.length : 0,
                         ltm: v && v.content && Array.isArray(v.content.ltm_entries) ? v.content.ltm_entries.length : 0
                     });
