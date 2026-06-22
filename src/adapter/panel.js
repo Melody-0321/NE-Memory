@@ -10,7 +10,7 @@ import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/ve
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../core/i18n.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, formatCoreStateSummary, getEffectiveSchema, buildDynamicCharacterSchema, setStateSchemaEnabled } from '../core/vault/schema.js';
+import { formatStateSummary, DEFAULT_CHARACTER_SCHEMA, formatCharacterSummary, formatActiveCharacterSummary, DEFAULT_FACTION_SCHEMA, formatQuestSummary, isStateSchemaEnabled, isDynamicStateMode, getEffectiveSchema, buildDynamicCharacterSchema, setStateSchemaEnabled } from '../core/vault/schema.js';
 import { recordTelemetry, callMemoryRetrieval, callMemoryRetrievalWithTools, testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { filterCandidates } from '../core/vault/retrieval-filter.js';
 import { buildRetrievalMessages } from '../core/engine/retrieval.js';
@@ -359,7 +359,7 @@ function setupAccordionHandlers(chatId) {
     });
 }
 
-function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, hasState, chatId) {
+function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
     var idx = byId('ne_quick_index');
     if (!idx) return;
     var html = '';
@@ -370,7 +370,6 @@ function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCoun
     };
     addItem('ne-acc-stm', 'STM', stmCount, true);
     addItem('ne-acc-ltm', 'LTM', ltmCount, true);
-    addItem('ne-acc-global', '全局', null, hasState);
     addItem('ne-acc-characters', '角色', charCount, true);
     addItem('ne-acc-quests', '任务', questCount, true);
     addItem('ne-acc-factions', '势力', factionCount, true);
@@ -992,63 +991,6 @@ async function updateVaultViewerPopout(getChatId) {
     qsa('.narrative_faction_block').forEach(function (el) { el.remove(); });
     qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
     qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
-
-    // ── Section B: State block ──
-    try {
-        var stateContainer = byId('ne_state_block_container');
-        if (stateContainer) {
-            var stateHtml = '';
-            if (c.state && Object.keys(c.state).length > 0) {
-                if (isStateSchemaEnabled()) {
-                    stateHtml = formatStateSummary(c.state, c.state_schema || getEffectiveSchema(vault));
-                } else {
-                    stateHtml = formatCoreStateSummary(c.state);
-                }
-                var stateRows = '';
-                if (stateHtml) {
-                    var lines = stateHtml.split(', ');
-                    lines.forEach(function (line) {
-                        var idx = line.indexOf('=');
-                        if (idx === -1) { stateRows += '<tr><td colspan="2">' + escapeHtml(line) + '</td></tr>'; return; }
-                        var key = line.substring(0, idx);
-                        var val = line.substring(idx + 1);
-                        stateRows += '<tr><td>' + escapeHtml(key) + '</td><td>' + escapeHtml(val) + '</td></tr>';
-                    });
-                }
-
-                var summaryDate = c.story_date || '';
-                var summaryEvent = (c.state && c.state.main_event) ? c.state.main_event : '';
-                var summaryText = '';
-                if (summaryDate || summaryEvent) {
-                    summaryText = (summaryDate ? '\uD83D\uDCC5 ' + summaryDate : '') +
-                        (summaryDate && summaryEvent ? ' \u00B7 ' : '') +
-                        (summaryEvent ? '\u26A1 ' + summaryEvent : '');
-                }
-
-                stateContainer.innerHTML =
-                    '<details class="ne-state-global-summary" open>' +
-                    '<summary><span class="ne-state-global-summary-text">' + (summaryText || t_narrative('State')) + '</span></summary>' +
-                    '<div class="ne-state-global-summary-detail" style="margin-top:6px;">' +
-                    '<div class="ne-inline-state-view">' +
-                    '<div class="ne-state-global-block">' +
-                    '<table class="ne-state-global-table">' + stateRows + '</table>' +
-                    '</div>' +
-                    '<div style="margin-top:4px;display:flex;gap:4px;align-items:center;">' +
-                    '<span class="ne-inline-state-edit-btn fa-solid fa-pen-to-square" title="' + t('Edit State') + '" style="font-size:0.75em;opacity:0.5;cursor:pointer;"></span>' +
-                    '<button class="narrative_clear_state_btn menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;color:#f44336;">' + t_narrative('Clear') + '</button>' +
-                    '</div></div>' +
-                    '<div class="ne-inline-state-edit-area">' +
-                    '<textarea id="ne_state_edit_textarea" style="width:100%;min-height:120px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);padding:6px 10px;border-radius:4px;font-family:monospace;font-size:0.85em;">' + escapeHtml(JSON.stringify(c.state, null, 2)) + '</textarea>' +
-                    '<div style="margin-top:4px;display:flex;gap:4px;">' +
-                    '<button class="ne-state-edit-save menu_button" style="font-size:0.85em;padding:2px 8px;background:#4caf50;color:#fff;border:none;">' + t('Save') + '</button>' +
-                    '<button class="ne-state-edit-cancel menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Cancel') + '</button>' +
-                    '</div></div>' +
-                    '</div></details>';
-            } else {
-                stateContainer.innerHTML = '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No state data') + ')</div>';
-            }
-        }
-    } catch (e) { _logSection('state-block', e); }
 
     // ── Section C: Character block ──
     try {
@@ -2337,11 +2279,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion open" id="ne-acc-state-board">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('State Board') + '</div>' +
             '<div class="ne-accordion-body">' +
-            '<div class="ne-accordion open" id="ne-acc-global">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Global Data') + '</div>' +
-            '<div class="ne-accordion-body">' +
-            '<div id="ne_state_block_container"></div>' +
-            '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-characters">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +

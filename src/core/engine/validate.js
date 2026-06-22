@@ -29,8 +29,6 @@ export function postFillSTM(parsed, vault) {
         if (stmEntries.length > 0) {
             var firstPeriod = stmEntries[0].period;
             if (firstPeriod && firstPeriod !== '-' && firstPeriod !== '未知') {
-                var dtMatch = firstPeriod.match(/(\d{4}-\d{2}-\d{2})/);
-                if (dtMatch) content.story_date = dtMatch[1];
                 content.story_time = firstPeriod;
             } else {
                 content.story_time = 'Day 1';

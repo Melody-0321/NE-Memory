@@ -196,7 +196,7 @@ export async function onMessageReceived(messageIndex) {
 
             // 提取 Main LLM 开头的状态块 [场景, 时间, 第N天, 事件摘要, 在场：角色]
             var stateBlockMatch = (message.mes || '').match(
-                /^\[([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*([^，,]*?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
+                /^\[([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*(.+?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
             );
             if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
