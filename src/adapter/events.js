@@ -452,13 +452,13 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-memory-state-banner') {
+            if (es.regex[i].id === 'ne-state-banner-v1') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
         }
         es.regex.push({
-            id: 'ne-memory-state-banner',
+            id: 'ne-state-banner-v1',
             scriptName: 'NE Memory State Banner',
             findRegex: '<!--NE-BANNER-->([\\s\\S]*?)<!--\\/NE-BANNER-->\\s*',
             replaceString: '$1',
