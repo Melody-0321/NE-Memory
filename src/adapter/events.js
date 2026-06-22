@@ -424,14 +424,15 @@ function _ensureBannerCSS() {
     try {
         var style = document.createElement('style');
         style.textContent =
-            '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
-            '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
-            '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
-            '.ne-state-time{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
-            '.ne-state-day{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
-            '.ne-state-event{margin-top:2px;font-size:12px;color:var(--grey-60,#888);font-style:italic;}' +
-            '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
-            '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}';
+            '.ne-state-banner{position:relative;margin:4px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.08) 0%,rgba(125,73,64,.03) 50%,rgba(155,109,94,.05) 100%);border:1px solid rgba(155,109,94,.15);box-shadow:0 1px 4px rgba(0,0,0,.04);font-size:13px;line-height:1.55;overflow:hidden;}' +
+            '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.35),rgba(155,109,94,.08));border-radius:3px 0 0 3px;}' +
+            '.ne-state-banner-top{display:flex;gap:10px;align-items:baseline;margin-bottom:3px;}' +
+            '.ne-state-scene{font-size:14px;font-weight:700;color:var(--SmartThemeBodyColor,#c1b9ad);letter-spacing:.01em;}' +
+            '.ne-state-time{font-size:11px;color:var(--SmartThemeEmColor,#9e978e);padding:2px 7px;border-radius:4px;background:rgba(155,109,94,.06);white-space:nowrap;}' +
+            '.ne-state-day{font-size:11px;color:var(--SmartThemeEmColor,#9e978e);padding:2px 7px;border-radius:4px;background:rgba(155,109,94,.06);white-space:nowrap;}' +
+            '.ne-state-event{margin-top:5px;font-size:12px;color:var(--grey-60,#9e978e);line-height:1.5;padding-left:2px;}' +
+            '.ne-state-chars{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;}' +
+            '.ne-state-char-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 10px;border-radius:12px;background:rgba(155,109,94,.07);border:1px solid rgba(155,109,94,.1);font-size:11px;color:var(--SmartThemeBodyColor,#c1b9ad);transition:background .15s;}';
         document.head.appendChild(style);
     } catch (e) {}
 }
@@ -452,7 +453,7 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v3') {
+            if (es.regex[i].id === 'ne-state-banner-v4') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
