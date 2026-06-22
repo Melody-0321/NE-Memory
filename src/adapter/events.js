@@ -451,7 +451,7 @@ function registerGlobalBannerRegex() {
 
         var DISPLAY_ID = 'ne-state-banner';
         var PROMPT_ID = 'ne-state-banner-prompt';
-        var _BANNER_VERSION = 1;
+        var _BANNER_VERSION = '1.0';
         var DISPLAY_NAME = 'NE State Banner v' + _BANNER_VERSION;
         var PROMPT_NAME = 'NE State Banner (prompt strip) v' + _BANNER_VERSION;
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
