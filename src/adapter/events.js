@@ -13,6 +13,7 @@ import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
+import { t_narrative } from '../core/i18n.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆。]',
@@ -207,6 +208,20 @@ export async function onMessageReceived(messageIndex) {
                     present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
             }
+
+            // 注入状态栏卡片（DOM 渲染后）
+            var bannerMsgId = message.mes_id !== undefined ? message.mes_id : messageIndex;
+            _ensureBannerCSS();
+            var _tryInject = function(retry) {
+                globalThis.__ne_injectStateBanner(bannerMsgId);
+                // 重试一次：ST 可能在事件触发后异步渲染 DOM
+                if (retry && typeof retry === 'number' && retry > 0) {
+                    setTimeout(function() { _tryInject(retry - 1); }, 200);
+                }
+            };
+            requestAnimationFrame(function() {
+                _tryInject(3);
+            });
 
             pendingMessages.push(assistantMsg);
             persistPending();
@@ -414,6 +429,100 @@ function triggerPerRoundExtraction(assistantMsg) {
         releasePipeline();
     });
 }
+
+var _bannerCssInjected = false;
+function _ensureBannerCSS() {
+    if (_bannerCssInjected) return;
+    _bannerCssInjected = true;
+    try {
+        var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
+        var style = parentDoc.createElement('style');
+        style.textContent =
+            '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
+            '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
+            '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
+            '.ne-state-time{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
+            '.ne-state-day{font-size:12px;color:var(--SmartThemeEmColor,#9e978e);}' +
+            '.ne-state-event{margin-top:2px;font-size:12px;color:var(--grey-60,#888);font-style:italic;}' +
+            '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
+            '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}';
+        parentDoc.head.appendChild(style);
+    } catch (e) {}
+}
+
+function injectStateBanner(messageId) {
+    try {
+        var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
+        var mesEl = parentDoc.querySelector('.mes[mesid="' + messageId + '"]');
+        if (!mesEl) {
+            var allMes = parentDoc.querySelectorAll('.mes');
+            for (var mi = 0; mi < allMes.length; mi++) {
+                if ((allMes[mi].getAttribute('mesid') || '') === String(messageId)) {
+                    mesEl = allMes[mi];
+                    break;
+                }
+            }
+        }
+        if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
+
+        var textEl = mesEl.querySelector('.mes_text');
+        if (!textEl) return;
+
+        var html = textEl.innerHTML;
+        var match = html.match(/^\s*(<br\s*\/?\s*>)?\s*\[([^\]]+)\]\s*(<br\s*\/?\s*>)?/);
+        if (!match) return;
+
+        var rawBlock = match[2];
+        var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
+        var mainPart = sceneTime[0] || '';
+        var presentPart = sceneTime[1] || '';
+
+        var dateMatch = mainPart.match(/第(\d+)天/);
+        var day = dateMatch ? dateMatch[1] : '';
+        var mainWithoutDay = day ? mainPart.replace(/第\d+天[，,\s]*/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
+
+        var parts = mainWithoutDay.split(/[，,]\s*/);
+        var scene = parts[0] || '';
+        var time = parts[1] || '';
+        var eventPart = parts[2] || '';
+        var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
+
+        textEl.innerHTML = html.replace(/^\s*(<br\s*\/?\s*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>)?/, '');
+
+        var banner = parentDoc.createElement('div');
+        banner.className = 'ne-state-banner';
+
+        var topLine = parentDoc.createElement('div');
+        topLine.className = 'ne-state-banner-top';
+        topLine.innerHTML = '<span class="ne-state-scene">\uD83D\uDCCD ' + scene + '</span>' +
+            (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '') +
+            (day ? ' <span class="ne-state-day">\uD83D\uDCC5 ' + t_narrative('Day') + ' ' + day + '</span>' : '');
+        banner.appendChild(topLine);
+
+        if (eventPart) {
+            var eventLine = parentDoc.createElement('div');
+            eventLine.className = 'ne-state-event';
+            eventLine.innerHTML = '\u26A1 ' + eventPart;
+            banner.appendChild(eventLine);
+        }
+
+        if (names.length > 0) {
+            var charLine = parentDoc.createElement('div');
+            charLine.className = 'ne-state-chars';
+            charLine.innerHTML = names.map(function(n) {
+                return '<span class="ne-state-char-pill">\uD83D\uDC64 ' + n + '</span>';
+            }).join('');
+            banner.appendChild(charLine);
+        }
+
+        var block = mesEl.querySelector('.mes_block');
+        if (block) {
+            block.insertBefore(banner, block.firstChild);
+        }
+    } catch (e) {}
+}
+
+globalThis.__ne_injectStateBanner = injectStateBanner;
 
 export async function onBeforeGenerate(type, _options, dryRun) {
     // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)

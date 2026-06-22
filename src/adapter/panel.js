@@ -2167,63 +2167,8 @@ var _currentGetChatId = null;
 var _vaultChangeBound = false;
 
 function injectStateBanner(messageId) {
-    var doc = PD;
-    var mesEl = doc.querySelector('.mes[mesid="' + messageId + '"]');
-    if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
-
-    var textEl = mesEl.querySelector('.mes_text');
-    if (!textEl) return;
-
-    var html = textEl.innerHTML;
-    var match = html.match(/^\s*(<br\s*\/?\s*>)?\s*\[([^\]]+)\]\s*(<br\s*\/?\s*>)?/);
-    if (!match) return;
-
-    var rawBlock = match[2];
-    var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
-    var mainPart = sceneTime[0] || '';
-    var presentPart = sceneTime[1] || '';
-
-    var dateMatch = mainPart.match(/第(\d+)天/);
-    var day = dateMatch ? dateMatch[1] : '';
-    var mainWithoutDay = day ? mainPart.replace(/第\d+天[，,\s]*/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
-
-    var parts = mainWithoutDay.split(/[，,]\s*/);
-    var scene = parts[0] || '';
-    var time = parts[1] || '';
-    var eventPart = parts[2] || '';
-    var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
-
-    textEl.innerHTML = html.replace(/^\s*(<br\s*\/?\s*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>)?/, '');
-
-    var banner = doc.createElement('div');
-    banner.className = 'ne-state-banner';
-
-    var topLine = doc.createElement('div');
-    topLine.className = 'ne-state-banner-top';
-    topLine.innerHTML = '<span class="ne-state-scene">\uD83D\uDCCD ' + scene + '</span>' +
-        (time ? ' <span class="ne-state-time">\u2600\uFE0F ' + time + '</span>' : '') +
-        (day ? ' <span class="ne-state-day">\uD83D\uDCC5 ' + t_narrative('Day') + ' ' + day + '</span>' : '');
-    banner.appendChild(topLine);
-
-    if (eventPart) {
-        var eventLine = doc.createElement('div');
-        eventLine.className = 'ne-state-event';
-        eventLine.innerHTML = '\u26A1 ' + eventPart;
-        banner.appendChild(eventLine);
-    }
-
-    if (names.length > 0) {
-        var charLine = doc.createElement('div');
-        charLine.className = 'ne-state-chars';
-        charLine.innerHTML = names.map(function(n) {
-            return '<span class="ne-state-char-pill">\uD83D\uDC64 ' + n + '</span>';
-        }).join('');
-        banner.appendChild(charLine);
-    }
-
-    var block = mesEl.querySelector('.mes_block');
-    if (block) {
-        block.insertBefore(banner, block.firstChild);
+    if (globalThis.__ne_injectStateBanner) {
+        globalThis.__ne_injectStateBanner(messageId);
     }
 }
 
@@ -2244,13 +2189,6 @@ export async function renderVaultPanel(getChatId) {
                         try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
                     }
                 }, 300);
-            });
-            // 监听消息渲染事件，为角色回复注入状态栏卡片
-            pdAddEventListener('character_message_rendered', function(evt) {
-                var messageId = evt && evt.detail ? evt.detail.message_id : (evt && evt.message_id);
-                if (messageId !== undefined && messageId !== null) {
-                    injectStateBanner(Number(messageId));
-                }
             });
         }
         _currentChatIdForCollapse = typeof getChatId === 'function' ? getChatId() : getChatId;
