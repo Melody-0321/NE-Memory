@@ -449,52 +449,54 @@ function registerGlobalBannerRegex() {
         }
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
+
+        var DISPLAY_ID = 'ne-state-banner-v7';
+        var DISPLAY_NAME = 'NE State Banner v7';
+        var PROMPT_ID = 'ne-state-banner-prompt-v7';
+        var PROMPT_NAME = 'NE State Banner (prompt strip) v7';
+        var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
+        var REPLACE_HTML = '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>';
+        var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
+
+        var displayEntry = null;
+        var promptEntry = null;
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v6') {
-                _globalBannerRegexRegistered = true;
-                return true;
-            }
+            if (es.regex[i].id === DISPLAY_ID) displayEntry = es.regex[i];
+            if (es.regex[i].id === PROMPT_ID) promptEntry = es.regex[i];
         }
-        es.regex.push({
-            id: 'ne-state-banner-v6',
-            scriptName: 'NE Memory State Banner',
-            findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
-            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>',
-            placement: [2],
-            substituteRegex: 0,
-            minDepth: null,
-            maxDepth: null,
-            onlyLongerThan: null,
-            onlyShorterThan: null,
-            enabled: true,
-            runOnEdit: false,
-            markdownOnly: false,
-            promptOnly: false,
-            trimStrings: [],
-        });
-        es.regex.push({
-            id: 'ne-state-banner-prompt-v6',
-            scriptName: 'NE State Banner (prompt strip)',
-            findRegex: '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*',
-            replaceString: '',
-            placement: [2],
-            substituteRegex: 0,
-            minDepth: null,
-            maxDepth: null,
-            onlyLongerThan: null,
-            onlyShorterThan: null,
-            enabled: true,
-            runOnEdit: false,
-            markdownOnly: false,
-            promptOnly: true,
-            trimStrings: [],
-        });
-        if (typeof ctx.saveSettingsDebounced === 'function') {
+
+        var changed = false;
+        if (!displayEntry) {
+            displayEntry = { id: DISPLAY_ID, enabled: true, runOnEdit: false, markdownOnly: false, promptOnly: false, placement: [2], substituteRegex: 0, minDepth: null, maxDepth: null, onlyLongerThan: null, onlyShorterThan: null, trimStrings: [] };
+            es.regex.push(displayEntry);
+            changed = true;
+        }
+        if (displayEntry.scriptName !== DISPLAY_NAME || displayEntry.findRegex !== FIND_PIPE || displayEntry.replaceString !== REPLACE_HTML || !displayEntry.enabled) {
+            displayEntry.scriptName = DISPLAY_NAME;
+            displayEntry.findRegex = FIND_PIPE;
+            displayEntry.replaceString = REPLACE_HTML;
+            displayEntry.enabled = true;
+            changed = true;
+        }
+        if (!promptEntry) {
+            promptEntry = { id: PROMPT_ID, enabled: true, runOnEdit: false, markdownOnly: false, promptOnly: true, placement: [2], substituteRegex: 0, minDepth: null, maxDepth: null, onlyLongerThan: null, onlyShorterThan: null, trimStrings: [] };
+            es.regex.push(promptEntry);
+            changed = true;
+        }
+        if (promptEntry.scriptName !== PROMPT_NAME || promptEntry.findRegex !== FIND_PROMPT || promptEntry.replaceString !== '' || !promptEntry.enabled) {
+            promptEntry.scriptName = PROMPT_NAME;
+            promptEntry.findRegex = FIND_PROMPT;
+            promptEntry.replaceString = '';
+            promptEntry.enabled = true;
+            changed = true;
+        }
+
+        if (changed && typeof ctx.saveSettingsDebounced === 'function') {
             ctx.saveSettingsDebounced();
         }
         _ensureBannerCSS();
         _globalBannerRegexRegistered = true;
-        console.log('[NE-BANNER] Global regex registered');
+        console.log('[NE-BANNER] Global regex ' + (changed ? 'registered' : 'verified'));
         return true;
     } catch (e) {
         console.warn('[NE-BANNER] Failed to register global regex:', e);
