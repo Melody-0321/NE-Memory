@@ -207,6 +207,7 @@ export async function onMessageReceived(messageIndex) {
                     event: (stateBlockMatch[4] || '').trim(),
                     present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
+                console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
             }
 
             // 注入状态栏卡片（DOM 渲染后）
@@ -453,24 +454,36 @@ function _ensureBannerCSS() {
 function injectStateBanner(messageId) {
     try {
         var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
-        var mesEl = parentDoc.querySelector('.mes[mesid="' + messageId + '"]');
+
+        var mesEl = parentDoc.querySelector('.mes[mesid="' + messageId + '"]') || parentDoc.querySelector('.mes[data-mesid="' + messageId + '"]');
         if (!mesEl) {
             var allMes = parentDoc.querySelectorAll('.mes');
             for (var mi = 0; mi < allMes.length; mi++) {
-                if ((allMes[mi].getAttribute('mesid') || '') === String(messageId)) {
+                if ((allMes[mi].getAttribute('mesid') || allMes[mi].getAttribute('data-mesid') || '') === String(messageId)) {
                     mesEl = allMes[mi];
                     break;
                 }
             }
         }
-        if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
+        if (!mesEl) {
+            console.warn('[NE-BANNER] .mes not found for id=' + messageId + ' (total .mes=' + (parentDoc.querySelectorAll('.mes').length) + ')');
+            return;
+        }
+        if (mesEl.querySelector('.ne-state-banner')) {
+            return;
+        }
 
         var textEl = mesEl.querySelector('.mes_text');
-        if (!textEl) return;
+        if (!textEl) {
+            console.warn('[NE-BANNER] .mes_text not found inside .mes id=' + messageId);
+            return;
+        }
 
         var html = textEl.innerHTML;
         var match = html.match(/^\s*(<br\s*\/?\s*>)?\s*\[([^\]]+)\]\s*(<br\s*\/?\s*>)?/);
-        if (!match) return;
+        if (!match) {
+            return;
+        }
 
         var rawBlock = match[2];
         var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
@@ -518,8 +531,13 @@ function injectStateBanner(messageId) {
         var block = mesEl.querySelector('.mes_block');
         if (block) {
             block.insertBefore(banner, block.firstChild);
+        } else {
+            mesEl.insertBefore(banner, mesEl.querySelector('.mes_text'));
         }
-    } catch (e) {}
+        console.log('[NE-BANNER] injected for id=' + messageId + ' scene=' + scene);
+    } catch (e) {
+        console.warn('[NE-BANNER] exception:', e);
+    }
 }
 
 globalThis.__ne_injectStateBanner = injectStateBanner;
@@ -596,6 +614,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '事件摘要用一句话概括本段发生的主要事件。\n' +
                     '仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
+                console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
