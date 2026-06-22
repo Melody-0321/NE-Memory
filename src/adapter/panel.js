@@ -965,6 +965,15 @@ async function updateVaultViewerPopout(getChatId) {
             if (ts) verText += ' \u00b7 ' + ts;
             verEl.textContent = verText;
         }
+        var sceneEl = byId('narrative_vault_panel_scene');
+        if (sceneEl) {
+            var sceneParts = [];
+            if (c.story_time) sceneParts.push(c.story_time);
+            if (c.story_scene) sceneParts.push(c.story_scene);
+            if (c.story_date) sceneParts.push(c.story_date);
+            if (c.state && c.state.main_event) sceneParts.push(c.state.main_event);
+            sceneEl.textContent = sceneParts.join(' ─ ');
+        }
         var apiStatus = byId('narrative_secondary_api_status');
         if (apiStatus) {
             try {
@@ -2235,6 +2244,7 @@ export async function renderVaultPanel(getChatId) {
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
             '<span id="narrative_vault_activity" style="font-size:0.8em;color:#888;">\u25CF</span>' +
             '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
+            '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="font-size:0.75em;color:#666;cursor:help;" title=""></span>' +
             '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
