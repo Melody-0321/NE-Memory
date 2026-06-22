@@ -1536,14 +1536,8 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []));
     var allLTM = content.ltm_entries || [];
 
-    var SMART_PUSH_MIN_STM = 5;
-
     if (allSTM.length === 0 && allLTM.length === 0) {
         return buildStateOnlyInjection(vault);
-    }
-
-    if (allSTM.length < SMART_PUSH_MIN_STM) {
-        return buildFullDumpInjection(vault, allSTM, allLTM);
     }
 
     // ── 可见窗口计算 ──
@@ -1613,28 +1607,61 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     var smartPushStart = Date.now();
     var bm25Start = Date.now();
-
-    // ── 提取 entity aliases 用于 BM25 搜索 ──
-    var aliasesMap = {};
-    var characters = state.characters || {};
-    Object.keys(characters).forEach(function(name) {
-        var aliases = characters[name].aliases;
-        if (aliases && Array.isArray(aliases) && aliases.length > 0) {
-            aliasesMap[name] = aliases;
-        }
-    });
+    var BM25_MIN_STM = 15;
 
     var topCandidates;
-    try {
-        topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
-    } catch (e) {
-        console.warn('[NE] BM25 filter failed, falling back to full dump injection:', e);
-        return buildFullDumpInjection(vault, allSTM, allLTM);
+    if (allSTM.length < BM25_MIN_STM) {
+        // 池太小，BM25 无过滤价值 — Memory LLM 直接看全量
+        topCandidates = [];
+        for (var si = 0; si < allSTM.length; si++) {
+            var s = allSTM[si];
+            if (!s || !s.id) continue;
+            var sc = {};
+            Object.keys(s).forEach(function(k) { sc[k] = s[k]; });
+            sc.__type = 'stm';
+            sc.__id = s.id;
+            topCandidates.push(sc);
+        }
+        for (var lj = 0; lj < allLTM.length; lj++) {
+            var lt = allLTM[lj];
+            if (!lt || !lt.id) continue;
+            var lc = {};
+            Object.keys(lt).forEach(function(k) { lc[k] = lt[k]; });
+            lc.__type = 'ltm';
+            lc.__id = lt.id;
+            topCandidates.push(lc);
+        }
+        bm25Ms = 0;
+    } else {
+        var aliasesMap = {};
+        var characters = state.characters || {};
+        Object.keys(characters).forEach(function(name) {
+            var aliases = characters[name].aliases;
+            if (aliases && Array.isArray(aliases) && aliases.length > 0) {
+                aliasesMap[name] = aliases;
+            }
+        });
+
+        try {
+            topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
+        } catch (e) {
+            console.warn('[NE] BM25 filter failed, falling back to all entries:', e);
+            topCandidates = [];
+            for (var si = 0; si < allSTM.length; si++) {
+                var s = allSTM[si];
+                if (!s || !s.id) continue;
+                var sc = {};
+                Object.keys(s).forEach(function(k) { sc[k] = s[k]; });
+                sc.__type = 'stm';
+                sc.__id = s.id;
+                topCandidates.push(sc);
+            }
+        }
     }
     var bm25Ms = Date.now() - bm25Start;
 
     if (!topCandidates || topCandidates.length === 0) {
-        return buildFullDumpInjection(vault, allSTM, allLTM);
+        return buildStateOnlyInjection(vault);
     }
 
     // ── 合并管线: BM25 + 实体链 + LTM 分组 → unified Map ──
