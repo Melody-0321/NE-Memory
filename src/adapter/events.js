@@ -477,6 +477,7 @@ function registerGlobalBannerRegex() {
         if (typeof ctx.saveSettingsDebounced === 'function') {
             ctx.saveSettingsDebounced();
         }
+        _ensureBannerCSS();
         _globalBannerRegexRegistered = true;
         console.log('[NE-BANNER] Global regex registered');
         return true;
