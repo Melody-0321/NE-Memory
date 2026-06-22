@@ -428,7 +428,7 @@ function _ensureBannerCSS() {
             '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
             '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
             '.ne-state-banner-icon{flex-shrink:0;width:18px;text-align:center;font-size:12px;opacity:.7;}' +
-            '.ne-state-banner-label{flex-shrink:0;width:32px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
+            '.ne-state-banner-label{flex-shrink:0;width:44px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
             '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;}';
         document.head.appendChild(style);
     } catch (e) {}
@@ -450,16 +450,16 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v5') {
+            if (es.regex[i].id === 'ne-state-banner-v6') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
         }
         es.regex.push({
-            id: 'ne-state-banner-v5',
+            id: 'ne-state-banner-v6',
             scriptName: 'NE Memory State Banner',
             findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
-            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">场景</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">事件</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场</span><span class="ne-state-banner-value">$5</span></div></div>',
+            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色</span><span class="ne-state-banner-value">$5</span></div></div>',
             placement: [2],
             substituteRegex: 0,
             minDepth: null,
@@ -473,7 +473,7 @@ function registerGlobalBannerRegex() {
             trimStrings: [],
         });
         es.regex.push({
-            id: 'ne-state-banner-prompt-v5',
+            id: 'ne-state-banner-prompt-v6',
             scriptName: 'NE State Banner (prompt strip)',
             findRegex: '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*',
             replaceString: '',
