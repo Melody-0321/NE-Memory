@@ -928,10 +928,14 @@ function buildStatePrompt_Preset(messages, vault) {
           '- factions.*.leader: leader name\n' +
           '- factions.*.relations: object of faction-name → relation\n' +
           '- factions.*.notes: faction notes\n' +
-          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃/已达成/已平息/已结束\n' +
-          '- quests.*.desc: quest description\n' +
-          '- quests.*.details: quest details\n' +
-          '- quests.*.progress: progress description\n'
+          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
+          '- quests.tasks.*.progress: progress description\n' +
+          '- quests.tasks.*.desc: task description\n' +
+          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
+          '- quests.goals.*.progress: progress description\n' +
+          '- quests.goals.*.desc: goal description\n' +
+          '- quests.events.*.status: 持续中/已平息/已结束\n' +
+          '- quests.events.*.desc: event description\n'
         : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
           '- main_event: 事件摘要，一句话\n' +
           '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
@@ -949,10 +953,14 @@ function buildStatePrompt_Preset(messages, vault) {
           '- factions.*.leader: 首领名称\n' +
           '- factions.*.relations: 对象，势力名→关系\n' +
           '- factions.*.notes: 势力备注\n' +
-          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃/已达成/已平息/已结束\n' +
-          '- quests.*.desc: 任务描述\n' +
-          '- quests.*.details: 任务详情\n' +
-          '- quests.*.progress: 进度描述\n';
+          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
+          '- quests.tasks.*.progress: 进度描述\n' +
+          '- quests.tasks.*.desc: 任务描述\n' +
+          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
+          '- quests.goals.*.progress: 进度描述\n' +
+          '- quests.goals.*.desc: 目标描述\n' +
+          '- quests.events.*.status: 持续中/已平息/已结束\n' +
+          '- quests.events.*.desc: 事件描述\n';
 
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
@@ -1009,9 +1017,11 @@ function buildStatePrompt_Dynamic(messages, vault) {
           '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
           '- factions.*.leader: leader name\n' +
           '- factions.*.notes: faction notes\n' +
-          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃\n' +
-          '- quests.*.desc: quest description\n' +
-          '- quests.*.progress: progress description\n'
+          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
+          '- quests.tasks.*.desc: task description\n' +
+          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
+          '- quests.goals.*.desc: goal description\n' +
+          '- quests.events.*.status: 持续中/已平息/已结束\n'
         : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
           '- main_event: 事件摘要，一句话\n' +
           '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
@@ -1025,9 +1035,11 @@ function buildStatePrompt_Dynamic(messages, vault) {
           '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
           '- factions.*.leader: 首领名称\n' +
           '- factions.*.notes: 势力备注\n' +
-          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃\n' +
-          '- quests.*.desc: 任务描述\n' +
-          '- quests.*.progress: 进度描述\n';
+          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
+          '- quests.tasks.*.desc: 任务描述\n' +
+          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
+          '- quests.goals.*.desc: 目标描述\n' +
+          '- quests.events.*.status: 持续中/已平息/已结束\n';
 
     var dynamicExtra = '';
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {

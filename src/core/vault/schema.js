@@ -455,6 +455,12 @@ export function mergeStateChanges(state, validatedChanges) {
             }
         }
 
+        // 兼容旧 prompt 的 flat quest 路径 quests.<name>.<field> → quests.tasks.<name>.<field>
+        if (parts[0] === 'quests' && parts.length >= 3 && parts[1] !== 'tasks' && parts[1] !== 'goals' && parts[1] !== 'events') {
+            parts.splice(1, 0, 'tasks');
+            console.warn('[NE] Remapped legacy quest path:', path, '→', parts.join('.'));
+        }
+
         var current = newState;
 
         for (var i = 0; i < parts.length - 1; i++) {
