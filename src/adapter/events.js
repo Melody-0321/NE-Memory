@@ -417,18 +417,18 @@ function triggerPerRoundExtraction(assistantMsg) {
     });
 }
 
-var _bannerCssInjected = false;
 function _ensureBannerCSS() {
-    if (_bannerCssInjected) return;
-    _bannerCssInjected = true;
     try {
+        var old = document.getElementById('ne-state-banner-css');
+        if (old) old.remove();
         var style = document.createElement('style');
+        style.id = 'ne-state-banner-css';
         style.textContent =
             '.ne-state-banner{position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.5;overflow:hidden;display:flex;flex-direction:column;gap:4px;}' +
             '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
             '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
             '.ne-state-banner-icon{flex-shrink:0;width:18px;text-align:center;font-size:12px;opacity:.7;}' +
-            '.ne-state-banner-label{flex-shrink:0;width:44px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
+            '.ne-state-banner-label{flex-shrink:0;width:56px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
             '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;}';
         document.head.appendChild(style);
     } catch (e) {}
@@ -459,7 +459,7 @@ function registerGlobalBannerRegex() {
             id: 'ne-state-banner-v6',
             scriptName: 'NE Memory State Banner',
             findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
-            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色</span><span class="ne-state-banner-value">$5</span></div></div>',
+            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>',
             placement: [2],
             substituteRegex: 0,
             minDepth: null,
