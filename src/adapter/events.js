@@ -458,19 +458,44 @@ function registerGlobalBannerRegex() {
         var REPLACE_HTML = '\n<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>\n';
         var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
 
+        // ── 迁移：扫描所有历史版本（id 以 ne-state-banner / ne-state-banner-prompt 开头，
+        //     可以是精确匹配也可以是带 -vN 后缀），归一化为永久 id，删掉多余的 ──
+        var BANNER_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
+        var PROMPT_PATTERN = /^ne-state-banner-prompt(?:-v\d+)?$/;
+
+        var displayCandidates = [];
+        var promptCandidates = [];
+        for (var i = 0; i < es.regex.length; i++) {
+            var rid = es.regex[i].id || '';
+            if (BANNER_PATTERN.test(rid)) displayCandidates.push(i);
+            if (PROMPT_PATTERN.test(rid)) promptCandidates.push(i);
+        }
+
+        // 只保留最后一个 display 候选，删除其余（从高索引删起避免 shift）
+        for (var d = displayCandidates.length - 2; d >= 0; d--) {
+            es.regex.splice(displayCandidates[d], 1);
+        }
+        // 只保留最后一个 prompt 候选，删除其余
+        for (var p = promptCandidates.length - 2; p >= 0; p--) {
+            es.regex.splice(promptCandidates[p], 1);
+        }
+
+        // 重新扫描唯一条目
         var displayEntry = null;
         var promptEntry = null;
-        for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === DISPLAY_ID) displayEntry = es.regex[i];
-            if (es.regex[i].id === PROMPT_ID) promptEntry = es.regex[i];
+        for (var j = 0; j < es.regex.length; j++) {
+            var jid = es.regex[j].id || '';
+            if (BANNER_PATTERN.test(jid)) displayEntry = es.regex[j];
+            if (PROMPT_PATTERN.test(jid)) promptEntry = es.regex[j];
         }
 
         var updatedCount = 0;
-        if (!displayEntry || displayEntry._neVersion !== _BANNER_VERSION) {
+        if (!displayEntry || displayEntry.id !== DISPLAY_ID || displayEntry._neVersion !== _BANNER_VERSION) {
             if (!displayEntry) {
                 displayEntry = { id: DISPLAY_ID };
                 es.regex.push(displayEntry);
             }
+            displayEntry.id = DISPLAY_ID;
             displayEntry.scriptName = DISPLAY_NAME;
             displayEntry.findRegex = FIND_PIPE;
             displayEntry.replaceString = REPLACE_HTML;
@@ -488,11 +513,12 @@ function registerGlobalBannerRegex() {
             displayEntry._neVersion = _BANNER_VERSION;
             updatedCount++;
         }
-        if (!promptEntry || promptEntry._neVersion !== _BANNER_VERSION) {
+        if (!promptEntry || promptEntry.id !== PROMPT_ID || promptEntry._neVersion !== _BANNER_VERSION) {
             if (!promptEntry) {
                 promptEntry = { id: PROMPT_ID };
                 es.regex.push(promptEntry);
             }
+            promptEntry.id = PROMPT_ID;
             promptEntry.scriptName = PROMPT_NAME;
             promptEntry.findRegex = FIND_PROMPT;
             promptEntry.replaceString = '';
@@ -511,13 +537,18 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
-        if (updatedCount > 0 && typeof ctx.saveSettingsDebounced === 'function') {
+        if (updatedCount > 0) {
             ctx.saveSettingsDebounced();
+            if (ctx.eventSource && ctx.eventTypes && ctx.eventTypes.SETTINGS_LOADED) {
+                ctx.eventSource.once(ctx.eventTypes.SETTINGS_LOADED, function() {
+                    ctx.saveSettingsDebounced();
+                });
+            }
         }
         _ensureBannerCSS();
         _globalBannerRegexRegistered = true;
         if (updatedCount > 0) {
-            var msg = 'NE State Banner 已更新到 v' + _BANNER_VERSION;
+            var msg = 'NE State Banner \u5df2\u66f4\u65b0\u5230 v' + _BANNER_VERSION;
             if (typeof toastr !== 'undefined' && toastr.success) {
                 toastr.success(msg, '', { timeOut: 3000 });
             }
@@ -525,7 +556,7 @@ function registerGlobalBannerRegex() {
         }
         return true;
     } catch (e) {
-        console.warn('[NE-BANNER] Failed to register global regex:', e);
+        console.error('[NE-BANNER] Failed to register global regex:', e);
         return false;
     }
 }
