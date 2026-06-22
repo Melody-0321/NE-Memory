@@ -195,9 +195,9 @@ export async function onMessageReceived(messageIndex) {
 
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
 
-            // 提取 Main LLM 开头的状态栏 HTML（data-* 属性携带结构化数据）
+            // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = (message.mes || '').match(
-                /<!--NE-BANNER--><div class="ne-state-banner" data-scene="([^"]*)" data-time="([^"]*)" data-day="(\d*)" data-event="([^"]*)" data-chars="([^"]*)"/
+                /<!--NE-BANNER-->([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)<!--\/NE-BANNER-->/
             );
             if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
@@ -452,16 +452,16 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v1') {
+            if (es.regex[i].id === 'ne-state-banner-v2') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
         }
         es.regex.push({
-            id: 'ne-state-banner-v1',
+            id: 'ne-state-banner-v2',
             scriptName: 'NE Memory State Banner',
-            findRegex: '<!--NE-BANNER-->([\\s\\S]*?)<!--\\/NE-BANNER-->\\s*',
-            replaceString: '$1',
+            findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
+            replaceString: '<div class="ne-state-banner" data-scene="$1" data-time="$2" data-day="$3" data-event="$4" data-chars="$5"><div class="ne-state-banner-top"><span class="ne-state-scene">\uD83D\uDCCD $1</span> <span class="ne-state-time">\u2600\uFE0F $2</span> <span class="ne-state-day">\uD83D\uDCC5 Day $3</span></div><div class="ne-state-event">\u26A1 $4</div><div class="ne-state-chars"><span class="ne-state-char-pill">\uD83D\uDC64 $5</span></div></div>',
             placement: [2],
             substituteRegex: 0,
             minDepth: null,
@@ -555,9 +555,9 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 
                 var stateBlockInstr = currentState +
                     '在回复最开头输出以下格式的状态栏（紧贴开头，独占一行，正文从下一行开始）。\n' +
-                    '格式：<!--NE-BANNER--><div class="ne-state-banner" data-scene="场景名" data-time="时间" data-day="天数" data-event="事件摘要" data-chars="角色1、角色2"><div class="ne-state-banner-top"><span class="ne-state-scene">📍 场景名</span> <span class="ne-state-time">☀️ 时间</span> <span class="ne-state-day">📅 Day N</span></div><div class="ne-state-event">⚡ 事件摘要</div><div class="ne-state-chars"><span class="ne-state-char-pill">👤 角色1</span><span class="ne-state-char-pill">👤 角色2</span></div></div><!--/NE-BANNER-->\n' +
+                    '格式：<!--NE-BANNER-->场景|时间|天数|事件摘要|角色1、角色2<!--/NE-BANNER-->\n' +
+                    '各部分用 | 分隔，天数只写数字（如 1），角色用中文顿号(、)分隔。不要用 || 连接。\n' +
                     '要求：\n' +
-                    '- data-* 属性值必须与 span 显示内容完全一致，不含双引号。\n' +
                     '- 场景仅在切换时更新，否则沿用。时间按自然节奏递进。\n' +
                     '- 时间从深夜递进到清晨时天数+1；否则保持当前天数。\n' +
                     '- 事件摘要用一句话概括本段发生的主要事件。\n' +

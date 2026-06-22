@@ -2,25 +2,23 @@
 name: pipeline-state-02
 folder: pipeline-state-02
 title: State Banner 指令格式 + 提取完整性
-objective: 验证 NE-BANNER 指令格式引入、Main LLM 能输出 data-* 标记的 banner HTML、onMessageReceived 正确提取
+objective: 验证 NE-BANNER 管道格式指令引入、Main LLM 能输出 | 分隔的状态数据、onMessageReceived 正确提取，全局正则静态 HTML 包装正确
 preconditions:
   - NE-Memory 已初始化，State Schema 已开启
   - 副 API 可用
-  - build 含 NE-BANNER 格式（commit 514c991 及之后）
+  - build 含管道格式（commit 之后）
 structural:
   - { op: exists, target: state_block_instruction }
   - { op: contains, target: state_block_instruction, value: "<!--NE-BANNER-->" }
   - { op: contains, target: state_block_instruction, value: "<!--/NE-BANNER-->" }
-  - { op: contains, target: state_block_instruction, value: "data-scene" }
-  - { op: contains, target: state_block_instruction, value: "data-time" }
-  - { op: contains, target: state_block_instruction, value: "data-day" }
-  - { op: contains, target: state_block_instruction, value: "data-event" }
-  - { op: contains, target: state_block_instruction, value: "data-chars" }
+  - { op: contains, target: state_block_instruction, value: "|" }
+  - { op: contains, target: state_block_instruction, value: "场景|" }
+  - { op: contains, target: state_block_instruction, value: "天数只写数字" }
   - { op: exists, target: pipeline_changes }
   - { op: not_contains, target: pipeline_changes, value: "error" }
 semantic:
-  - "Main LLM 的回复是否包含 <!--NE-BANNER--> 格式的 banner HTML（带 data-scene / data-time / data-day / data-event / data-chars 属性）？"
-  - "onMessageReceived 的 data-* 提取正则是否正确提取了 scene/time/day/event/chars？"
+  - "Main LLM 是否在回复开头输出了 <!--NE-BANNER-->...<!--/NE-BANNER--> 管道格式的状态数据？"
+  - "onMessageReceived 的管道正则是否正确提取了 scene/time/day/event/chars？"
   - "pipeline_changes 是否记录了状态更新（验证 pending_state_block → vault 链路未断裂）？"
 minRounds: 3
 maxRounds: 8
@@ -31,13 +29,14 @@ timeoutPerRound: 120000
 # pipeline-state-02: State Banner 指令格式 + 提取完整性
 
 ## 目标
-切换 `<!--NE-STATE:场景,时间,...-->` → `<!--NE-BANNER--><div data-scene="...">...</div><!--/NE-BANNER-->`
-后，验证 LLM 收到的指令格式正确，且 onMessageReceived 的 data-* 提取正则正常工作。
+LLM 输出管道格式 `<!--NE-BANNER-->场景|时间|天数|事件|角色<!--/NE-BANNER-->`，
+ST 全局正则（replaceString 静态 HTML 模板）自动包装为完整 banner HTML，
+自然渲染到 `.mes_text`，`onMessageReceived` 从管道路提取结构化数据。
 
 ## 前置条件
 - NE-Memory 已初始化，State Schema 已开启
 - 副 API 可用
-- 全局正则 `ne-state-banner-v1` 已注册（首次刷新自动完成）
+- 全局正则 `ne-state-banner-v2` 已注册（id v2=管道格式；旧 v1 为孤儿）
 - 角色卡包含至少 1-2 个角色
 
 ## 对话设计（给 LLM Driver 的指导）
@@ -51,19 +50,17 @@ Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
 | # | 断言 | 含义 |
 |---|------|------|
 | 1 | `exists: state_block_instruction` | onBeforeGenerate 注入了指令 |
-| 2 | `contains: <!--NE-BANNER-->` | 格式标记存在 |
+| 2 | `contains: <!--NE-BANNER-->` | 开始标记存在 |
 | 3 | `contains: <!--/NE-BANNER-->` | 闭合标记存在 |
-| 4 | `contains: data-scene` | 场景属性存在 |
-| 5 | `contains: data-time` | 时间属性存在 |
-| 6 | `contains: data-day` | 天数属性存在 |
-| 7 | `contains: data-event` | 事件属性存在 |
-| 8 | `contains: data-chars` | 角色属性存在 |
-| 9 | `exists: pipeline_changes` | State 管线执行过 |
-| 10 | `not_contains: "error"` | 无报错 |
+| 4 | `contains: \|` | 管道分隔符存在 |
+| 5 | `contains: 场景\|` | 格式提示包含场景字段 |
+| 6 | `contains: 天数只写数字` | 天数格式约束存在 |
+| 7 | `exists: pipeline_changes` | State 管线执行过 |
+| 8 | `not_contains: "error"` | 无报错 |
 
 ### 语义性断言（LLM 评估 trace）
-1. Main LLM 的回复是否包含 `<!--NE-BANNER-->` 格式的 banner HTML？
-2. `onMessageReceived` 的 data-* 提取正则是否正确提取了结构化数据？
+1. Main LLM 是否在回复开头输出了 `<!--NE-BANNER-->...<!--/NE-BANNER-->` 管道格式的状态数据？
+2. `onMessageReceived` 的管道正则是否正确提取了结构化数据？
 3. `pipeline_changes` 是否记录了状态更新？
 
 ## 运行参数
@@ -74,13 +71,19 @@ Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
 
 ## 说明
 
-本测试验证 commit 514c991 及之后版本中 NE-BANNER 格式的完整性：
-- `registerGlobalBannerRegex` 已向 `extensionSettings.regex` 写入全局正则
-- `onBeforeGenerate` 注入的 LLM 指令使用 `<!--NE-BANNER-->...<!--/NE-BANNER-->` 格式
-- `onMessageReceived` 的正则匹配 `data-scene="..."` 等属性
+管道格式设计：
+```
+LLM 输出:  <!--NE-BANNER-->公寓阳台|2024-05-21 21:35|1|稿费争执|安然、江岚<!--/NE-BANNER-->
+          ↓ ST 全局正则（messageFormatting，文本阶段）
+          ↓ replaceString 静态 HTML 模板（$1-$5 替换捕获组）
+          ↓
+渲染:     <div class="ne-state-banner" data-scene="公寓阳台" data-time="..."
+          <span class="ne-state-scene">📍 公寓阳台</span> ...
+```
 
-在 ST 实际环境中验证时，还需目视确认 banner 卡片在消息气泡内正确渲染
-（`_ensureBannerCSS` 注入样式正确，全局正则解包注释正确）。
+LLM 只需输出 ~50-80 字符管道数据，正则负责完整 ~500 字符 HTML 包装。
+
+在 ST 实际环境中，需目视确认 banner 卡片正确渲染（CSS 样式 + 全局正则解包）。
 
 ## 调用方式
 
