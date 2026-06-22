@@ -487,7 +487,7 @@ function _buildDebugApi(host) {
         },
         getLastReport: function() { return globalThis.__ne_debug._lastTestReport; },
         runTest: async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } },
-        runTestByName: async function(name) { try { return await runTestByName(name, hostDoc); } catch (e) { return { error: e.message }; } },
+        runTestByName: async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } },
         listTests: function() { return listTests(); },
         getTestCaseMetadata: function(name) { return getTestCaseMetadata(name); },
         getUsageOverview: function() { return getUsageOverview(getAllChatStats); },
