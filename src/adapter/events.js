@@ -480,7 +480,8 @@ function injectStateBanner(messageId) {
         }
 
         var html = textEl.innerHTML;
-        var match = html.match(/^\s*(<br\s*\/?\s*>)?\s*\[([^\]]+)\]\s*(<br\s*\/?\s*>)?/);
+        var text = textEl.textContent || '';
+        var match = text.replace(/^\s+/, '').match(/^\[([^\]]+)\]/);
         if (!match) {
             return;
         }
@@ -500,7 +501,11 @@ function injectStateBanner(messageId) {
         var eventPart = parts[2] || '';
         var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
 
-        textEl.innerHTML = html.replace(/^\s*(<br\s*\/?\s*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>)?/, '');
+        textEl.innerHTML = html.replace(/^\s*(<[^>]*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>[ \t]*)?/, function(full) {
+            if (full.indexOf('<') === -1) return '';
+            var tagMatch = full.match(/^\s*(<[^>]*>)/);
+            return tagMatch ? tagMatch[1] : '';
+        });
 
         var banner = parentDoc.createElement('div');
         banner.className = 'ne-state-banner';
