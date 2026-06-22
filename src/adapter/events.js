@@ -219,7 +219,7 @@ export async function onMessageReceived(messageIndex) {
                     setTimeout(function() { _tryInject(retry - 1); }, 200);
                 }
             };
-            setTimeout(function() { _tryInject(4); }, 50);
+            setTimeout(function() { console.log('[NE-BANNER] setTimeout fired, bannerMsgId=' + bannerMsgId); _tryInject(4); }, 50);
 
             pendingMessages.push(assistantMsg);
             persistPending();
@@ -449,6 +449,7 @@ function _ensureBannerCSS() {
 }
 
 function injectStateBanner(messageId) {
+    console.log('[NE-BANNER] injectStateBanner called with id=' + messageId);
     try {
         var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
 
