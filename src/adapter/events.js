@@ -219,7 +219,7 @@ export async function onMessageReceived(messageIndex) {
                     setTimeout(function() { _tryInject(retry - 1); }, 200);
                 }
             };
-            setTimeout(function() { console.log('[NE-BANNER] setTimeout fired, bannerMsgId=' + bannerMsgId); _tryInject(4); }, 50);
+            setTimeout(function() { _tryInject(4); }, 50);
 
             pendingMessages.push(assistantMsg);
             persistPending();
@@ -449,7 +449,6 @@ function _ensureBannerCSS() {
 }
 
 function injectStateBanner(messageId) {
-    console.log('[NE-BANNER] injectStateBanner called with id=' + messageId);
     try {
         var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
 
@@ -463,28 +462,17 @@ function injectStateBanner(messageId) {
                 }
             }
         }
-        if (!mesEl) {
-            console.warn('[NE-BANNER] .mes not found for id=' + messageId + ' (total .mes=' + (parentDoc.querySelectorAll('.mes').length) + ')');
-            return;
-        }
-        if (mesEl.querySelector('.ne-state-banner')) {
-            return;
-        }
+        if (!mesEl || mesEl.querySelector('.ne-state-banner')) return;
 
         var textEl = mesEl.querySelector('.mes_text');
-        if (!textEl) {
-            console.warn('[NE-BANNER] .mes_text not found inside .mes id=' + messageId);
-            return;
-        }
+        if (!textEl) return;
 
         var html = textEl.innerHTML;
         var text = textEl.textContent || '';
-        var match = text.replace(/^\s+/, '').match(/^\[([^\]]+)\]/);
-        if (!match) {
-            return;
-        }
+        var match = text.match(/^\s*\[([^\]]+)\]/);
+        if (!match) return;
 
-        var rawBlock = match[2];
+        var rawBlock = match[1];
         var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
         var mainPart = sceneTime[0] || '';
         var presentPart = sceneTime[1] || '';
