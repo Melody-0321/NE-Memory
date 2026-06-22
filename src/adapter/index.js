@@ -286,6 +286,22 @@ function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
     setTimeout(function () { registerToolsWithRetry(getChatId, getChatMessages, retryCount + 1); }, delay);
 }
 
+var _bannerRegexRetryTimer = null;
+function _tryRegisterBannerRegex(retryCount) {
+    retryCount = retryCount || 0;
+    var ok = registerGlobalBannerRegex();
+    if (ok) {
+        if (_bannerRegexRetryTimer) { clearTimeout(_bannerRegexRetryTimer); _bannerRegexRetryTimer = null; }
+        return;
+    }
+    if (retryCount >= 10) {
+        console.error('[NE-BANNER] Banner regex registration failed after 10 retries');
+        return;
+    }
+    var delay = Math.min(1000 * Math.pow(2, retryCount), 30000);
+    _bannerRegexRetryTimer = setTimeout(function () { _tryRegisterBannerRegex(retryCount + 1); }, delay);
+}
+
 function setupEventListeners(retryCount) {
     retryCount = retryCount || 0;
 
@@ -321,7 +337,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
-            registerGlobalBannerRegex();
+            _tryRegisterBannerRegex(0);
             console.log('[NE] Event listeners registered via eventSource');
         }
         return;

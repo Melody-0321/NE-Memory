@@ -438,15 +438,24 @@ function _ensureBannerCSS() {
 
 var _globalBannerRegexRegistered = false;
 function registerGlobalBannerRegex() {
-    if (_globalBannerRegexRegistered) return;
-    _globalBannerRegexRegistered = true;
+    if (_globalBannerRegexRegistered) return true;
     try {
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
-        if (!ctx || !ctx.extensionSettings) return;
+        if (!ctx) {
+            console.warn('[NE-BANNER] SillyTavern.getContext() returned null');
+            return false;
+        }
+        if (!ctx.extensionSettings) {
+            console.warn('[NE-BANNER] ctx.extensionSettings not available yet');
+            return false;
+        }
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-memory-state-banner') return;
+            if (es.regex[i].id === 'ne-memory-state-banner') {
+                _globalBannerRegexRegistered = true;
+                return true;
+            }
         }
         es.regex.push({
             id: 'ne-memory-state-banner',
@@ -468,9 +477,12 @@ function registerGlobalBannerRegex() {
         if (typeof ctx.saveSettingsDebounced === 'function') {
             ctx.saveSettingsDebounced();
         }
+        _globalBannerRegexRegistered = true;
         console.log('[NE-BANNER] Global regex registered');
+        return true;
     } catch (e) {
         console.warn('[NE-BANNER] Failed to register global regex:', e);
+        return false;
     }
 }
 
