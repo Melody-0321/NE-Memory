@@ -418,20 +418,19 @@ function triggerPerRoundExtraction(assistantMsg) {
 }
 
 function _ensureBannerCSS() {
-    try {
-        var old = document.getElementById('ne-state-banner-css');
-        if (old) old.remove();
-        var style = document.createElement('style');
-        style.id = 'ne-state-banner-css';
-        style.textContent =
-            '.ne-state-banner{position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.5;overflow:hidden;display:flex;flex-direction:column;gap:4px;}' +
-            '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
-            '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
-            '.ne-state-banner-icon{flex-shrink:0;width:18px;text-align:center;font-size:12px;opacity:.7;}' +
-            '.ne-state-banner-label{flex-shrink:0;width:56px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
-            '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;}';
-        document.head.appendChild(style);
-    } catch (e) {}
+    var old = document.getElementById('ne-state-banner-css');
+    if (old) old.remove();
+    var style = document.createElement('style');
+    style.id = 'ne-state-banner-css';
+    style.textContent =
+        '.ne-state-banner{position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.5;overflow:hidden;display:flex;flex-direction:column;gap:4px;}' +
+        '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
+        '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
+        '.ne-state-banner-icon{flex-shrink:0;width:20px;text-align:center;font-size:13px;opacity:.85;}' +
+        '.ne-state-banner-label{flex-shrink:0;width:58px;font-size:11px;font-weight:500;color:var(--SmartThemeEmColor,#9e978e);opacity:.8;}' +
+        '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;line-height:1.45;}';
+    document.head.appendChild(style);
+    console.log('[NE-BANNER] CSS injected, rules=' + style.sheet.cssRules.length);
 }
 
 var _globalBannerRegexRegistered = false;
