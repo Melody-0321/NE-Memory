@@ -195,9 +195,9 @@ export async function onMessageReceived(messageIndex) {
 
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
 
-            // 提取 Main LLM 开头的状态块 [场景, 时间, 第N天, 事件摘要, 在场：角色]
+            // 提取 Main LLM 开头的状态块 <!--NE-STATE:场景，时间，第N天，事件摘要，在场：角色-->
             var stateBlockMatch = (message.mes || '').match(
-                /^\[([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*(.+?)(?:[，,]\s*在场[：:]\s*([^\]]+))?\]/
+                /<!--NE-STATE:([^，,]+)[，,\s]*([^，,]*?)[，,\s]*第(\d+)天[，,\s]*(.+?)(?:[，,]\s*在场[：:]\s*([^-]+?))?\s*-->/
             );
             if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
@@ -451,7 +451,6 @@ function _ensureBannerCSS() {
 function injectStateBanner(messageId) {
     try {
         var parentDoc = window.parent && window.parent !== window ? window.parent.document : document;
-
         var mesEl = parentDoc.querySelector('.mes[mesid="' + messageId + '"]') || parentDoc.querySelector('.mes[data-mesid="' + messageId + '"]');
         if (!mesEl) {
             var allMes = parentDoc.querySelectorAll('.mes');
@@ -468,11 +467,13 @@ function injectStateBanner(messageId) {
         if (!textEl) return;
 
         var html = textEl.innerHTML;
-        var text = textEl.textContent || '';
-        var match = text.match(/^\s*\[([^\]]+)\]/);
-        if (!match) return;
+        var prefix = '<!--NE-STATE:';
+        var idx = html.indexOf(prefix);
+        if (idx === -1) return;
+        var endIdx = html.indexOf('-->', idx + prefix.length);
+        if (endIdx === -1) return;
 
-        var rawBlock = match[1];
+        var rawBlock = html.substring(idx + prefix.length, endIdx).trim();
         var sceneTime = rawBlock.split(/[，,]\s*在场[：:]/);
         var mainPart = sceneTime[0] || '';
         var presentPart = sceneTime[1] || '';
@@ -487,11 +488,7 @@ function injectStateBanner(messageId) {
         var eventPart = parts[2] || '';
         var names = presentPart ? presentPart.split(/[、，,\s]+/).filter(Boolean) : [];
 
-        textEl.innerHTML = html.replace(/^\s*(<[^>]*>)?\s*\[[^\]]+\]\s*(<br\s*\/?\s*>[ \t]*)?/, function(full) {
-            if (full.indexOf('<') === -1) return '';
-            var tagMatch = full.match(/^\s*(<[^>]*>)/);
-            return tagMatch ? tagMatch[1] : '';
-        });
+        textEl.innerHTML = html.substring(0, idx) + html.substring(endIdx + 3);
 
         var banner = parentDoc.createElement('div');
         banner.className = 'ne-state-banner';
@@ -598,8 +595,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     (sceneInfo ? '，' + sceneInfo : '') + '\n';
 
                 var stateBlockInstr = currentState +
-                    '在回复开头用方括号注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
-                    '格式：[场景，时间，第N天，事件摘要，在场：角色1、角色2]\n' +
+                    '在回复开头用HTML注释注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
+                    '格式：<!--NE-STATE:场景，时间，第N天，事件摘要，在场：角色1、角色2-->\n' +
+                    '必须紧贴回复最开头（无前置空行），注释前不加任何符号。\n' +
+                    '注释独占一行，正文从注释后开始。\n' +
                     '场景仅在切换时更新，否则沿用。时间按自然节奏递进。' +
                     '时间从深夜递进到清晨时天数+1；否则保持当前天数。\n' +
                     '事件摘要用一句话概括本段发生的主要事件。\n' +
