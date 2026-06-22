@@ -485,11 +485,20 @@ function _buildDebugApi(host) {
         },
         findMyVault: async function() {
             try {
-                var keys = await _dumpVaultKeys();
+                var data = await _dumpVaultKeys();
+                var keys = data.vaults || data; // fallback for old format
+                var snaps = data.snapshots || [];
                 var currentId = getChatId();
                 console.log('[NE-DEBUG] Current chatId:', currentId);
+                console.log('[NE-DEBUG] Vaults:');
                 console.table(keys);
-                return { currentChatId: currentId, allKeys: keys };
+                if (snaps.length > 0) {
+                    console.log('[NE-DEBUG] Snapshots (' + snaps.length + ' total):');
+                    console.table(snaps);
+                } else {
+                    console.log('[NE-DEBUG] No snapshots found in IndexedDB.');
+                }
+                return { currentChatId: currentId, allKeys: keys, snapshots: snaps };
             } catch (e) { return 'Error: ' + e.message; }
         }
     };
@@ -500,10 +509,14 @@ function _dumpVaultKeys() {
         var req = indexedDB.open('ne_memory_vault');
         req.onsuccess = function() {
             var db = req.result;
-            var tx = db.transaction('vaults', 'readonly');
-            var store = tx.objectStore('vaults');
+            var vaultTx = db.transaction('vaults', 'readonly');
+            var vaultStore = vaultTx.objectStore('vaults');
             var keys = [];
-            store.openCursor().onsuccess = function(e) {
+            var vaultDone = false;
+            var snapDone = false;
+            var snapKeys = [];
+
+            vaultStore.openCursor().onsuccess = function(e) {
                 var cursor = e.target.result;
                 if (cursor) {
                     var row = cursor.value;
@@ -516,11 +529,35 @@ function _dumpVaultKeys() {
                     });
                     cursor.continue();
                 } else {
-                    db.close();
-                    resolve(keys);
+                    vaultDone = true;
+                    if (snapDone) finish();
                 }
             };
-            tx.onerror = function() { db.close(); reject(tx.error); };
+            vaultTx.onerror = function() { db.close(); reject(vaultTx.error); };
+
+            var snapTx = db.transaction('snapshots', 'readonly');
+            var snapStore = snapTx.objectStore('snapshots');
+            snapStore.openCursor().onsuccess = function(e) {
+                var cursor = e.target.result;
+                if (cursor) {
+                    var s = cursor.value;
+                    snapKeys.push({
+                        chat_id: s.chat_id || '(unknown)',
+                        version: s.version,
+                        id: cursor.key
+                    });
+                    cursor.continue();
+                } else {
+                    snapDone = true;
+                    if (vaultDone) finish();
+                }
+            };
+            snapTx.onerror = function() { snapDone = true; if (vaultDone) finish(); };
+
+            function finish() {
+                db.close();
+                resolve({ vaults: keys, snapshots: snapKeys });
+            }
         };
         req.onerror = function() { reject(req.error); };
     });
