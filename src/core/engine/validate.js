@@ -25,7 +25,23 @@ export function postFillSTM(parsed, vault) {
     var content = vault && vault.content || {};
     var stmEntries = parsed.stmEntries || [];
 
-    if (!content.story_time) { content.story_time = 'Day 1'; }
+    if (!content.story_time) {
+        if (stmEntries.length > 0) {
+            var firstPeriod = stmEntries[0].period;
+            if (firstPeriod && firstPeriod !== '-' && firstPeriod !== '未知') {
+                var dtMatch = firstPeriod.match(/(\d{4}-\d{2}-\d{2})/);
+                if (dtMatch) content.story_date = dtMatch[1];
+                content.story_time = firstPeriod;
+            } else {
+                content.story_time = 'Day 1';
+            }
+        } else {
+            content.story_time = 'Day 1';
+        }
+    }
+    if (!content.story_date && content.story_time && content.story_time !== 'Day 1') {
+        content.story_date = 'Day 1';
+    }
     if (!content.story_scene) { content.story_scene = '未知'; }
 
     return parsed;

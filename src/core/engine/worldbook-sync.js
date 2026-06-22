@@ -129,7 +129,7 @@ export async function syncStateToWorldBook(vault) {
     }
 
     try {
-        await syncGlobal(state, entries);
+        await syncGlobal(state, entries, vault.content);
     } catch (e) { console.warn('[NE] WB syncGlobal failed:', e.message); }
 
     try {
@@ -145,8 +145,8 @@ export async function syncStateToWorldBook(vault) {
     } catch (e) { console.warn('[NE] WB syncQuests failed:', e.message); }
 }
 
-async function syncGlobal(state, entries) {
-    var content = formatWorldBookGlobal(state);
+async function syncGlobal(state, entries, world) {
+    var content = formatWorldBookGlobal(state, world);
     if (content) {
         await upsertEntry(WORLD_BOOK_NAME, entries, ENTRY_PREFIX_GLOBAL, content, {
             constant: true,

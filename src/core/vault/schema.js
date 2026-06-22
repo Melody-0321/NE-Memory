@@ -38,15 +38,10 @@ export function setDynamicStateMode(val) {
 
 export const CORE_SCHEMA = {
     type: 'object',
-    fields: {
-        time: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
-        scene: { type: 'string', max_length: 60, expose_level: 'summary', update_rule: 'replace' },
-        story_date: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' }
-    }
+    fields: {}
 };
 
 export const CORE_STATE_FIELDS = Object.keys(CORE_SCHEMA.fields);
-// ['time', 'scene', 'story_date']
 
 export const POWER_SLOTS_TEMPLATES = {
     cultivation: {
@@ -126,9 +121,6 @@ export const DEFAULT_CHARACTER_SCHEMA = {
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
     fields: {
-        scene: { type: 'string', max_length: 60, expose_level: 'summary', update_rule: 'replace' },
-        time: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
-        story_date: { type: 'string', max_length: 40, expose_level: 'summary', update_rule: 'replace' },
         main_event: { type: 'string', max_length: 120, expose_level: 'summary', update_rule: 'replace' },
         present_characters: { type: 'string', max_length: 80, expose_level: 'summary', update_rule: 'replace' },
         characters: {
@@ -564,17 +556,19 @@ var STATE_INJECTION_CHAR_FIELDS = ['status', 'gender_age', 'occupation', 'person
 var STATE_INJECTION_CHAR_OPTIONAL = ['current_mood', 'affection', 'relationship', 'injuries', 'status_effects'];
 var STATE_INJECTION_FOLDED_FIELDS = ['status', 'affection', 'relationship', 'current_mood', 'personality', 'injuries', 'status_effects'];
 
-export function buildStateInjectionTable(state, messages) {
+export function buildStateInjectionTable(state, messages, maxItems, world) {
     if (!state) return '';
+    maxItems = maxItems || { characters: Infinity, factions: Infinity, quests: Infinity };
+    world = world || {};
     var parts = [];
 
     parts.push('=== Current State ===');
     parts.push('');
 
     parts.push('[World]');
-    parts.push('time: ' + (state.time || ''));
-    parts.push('scene: ' + (state.scene || ''));
-    parts.push('story_date: ' + (state.story_date || ''));
+    parts.push('time: ' + (world.story_time || ''));
+    parts.push('scene: ' + (world.story_scene || ''));
+    parts.push('story_date: ' + (world.story_date || ''));
     parts.push('main_event: ' + (state.main_event || ''));
     parts.push('');
 
@@ -895,7 +889,8 @@ export function formatStateSummary(state, stateSchema) {
 }
 
 // formatQuestSummary — bi-level: only name + status/deadline, no detail fields
-export function formatQuestSummary(state) {
+export function formatQuestSummary(state, currentTime) {
+    currentTime = currentTime || '';
     if (!state || !state.quests) return '';
     var quests = state.quests;
     var sections = [];
@@ -915,8 +910,6 @@ export function formatQuestSummary(state) {
             return diffDays > 0 ? diffDays + '天' : (diffDays === 0 ? '今天' : '');
         } catch (e) { return ''; }
     }
-
-    var currentTime = state.time || '';
 
     // Tasks
     if (quests.tasks && typeof quests.tasks === 'object') {
@@ -985,12 +978,13 @@ function stringifyVal(val) {
     return String(val);
 }
 
-export function formatWorldBookGlobal(state) {
+export function formatWorldBookGlobal(state, world) {
+    world = world || {};
     if (!state) return '';
     var lines = [];
-    if (state.time) lines.push('Time: ' + state.time);
-    if (state.scene) lines.push('Scene: ' + state.scene);
-    if (state.story_date) lines.push('Story Date: ' + state.story_date);
+    if (world.story_time) lines.push('Time: ' + world.story_time);
+    if (world.story_scene) lines.push('Scene: ' + world.story_scene);
+    if (world.story_date) lines.push('Story Date: ' + world.story_date);
     if (state.main_event) lines.push('Main Event: ' + state.main_event);
     if (state.present_characters) lines.push('Present Characters: ' + state.present_characters);
     if (lines.length === 0) return '';

@@ -152,10 +152,11 @@ export function classifyQuery(query, state, content) {
     }
 
     // Scene query: query contains current scene name
-    if (state && state.scene) {
-        var sceneKey = state.scene.toLowerCase().substring(0, 4);
+    var story_scene = content.story_scene || '';
+    if (story_scene) {
+        var sceneKey = story_scene.toLowerCase().substring(0, 4);
         if (q.indexOf(sceneKey) !== -1) {
-            return { type: 'scene', scene: state.scene };
+            return { type: 'scene', scene: story_scene };
         }
     }
 
@@ -440,7 +441,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
     var timeParts = [];
-    if (state.time || content.story_time) timeParts.push(state.time || content.story_time);
+    if (content.story_time) timeParts.push(content.story_time);
     if (content.story_date) timeParts.push(content.story_date);
     var currentTime = timeParts.join(' ─ ');
 
@@ -643,7 +644,7 @@ async function buildRetrievalPromptLegacy(query, candidates, vault, budget, isSu
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
     var timeParts = [];
-    if (state.time || content.story_time) timeParts.push(state.time || content.story_time);
+    if (content.story_time) timeParts.push(content.story_time);
     if (content.story_date) timeParts.push(content.story_date);
     var currentTime = timeParts.join(' ─ ');
 

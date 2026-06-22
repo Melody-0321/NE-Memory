@@ -6,7 +6,8 @@
 import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
+import { safeJsonParse } from './json-fallback.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
@@ -340,52 +341,23 @@ export function parseSTMResponse(llmResponse) {
     var stmEntries = [];
     var stateChanges = {};
 
-    try {
-        var parsed = JSON.parse(text);
+    var parsed = safeJsonParse(text);
+    if (parsed) {
         stmEntries = parsed.stm_entries || [];
-
         if (parsed.state_changes) {
             if (Array.isArray(parsed.state_changes)) {
                 var flat = {};
                 parsed.state_changes.forEach(function(item) {
-                    if (item && item.path !== undefined) {
-                        flat[item.path] = item.value;
-                    }
+                    if (item && item.path !== undefined) flat[item.path] = item.value;
                 });
                 stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
             } else if (typeof parsed.state_changes === 'object') {
                 stateChanges = isStateSchemaEnabled() ? parsed.state_changes : whitelistStateChanges(parsed.state_changes);
             }
         }
-    } catch (e) {
-        var jsonMatch = text.match(/\{[\s\S]*?\}/);
-        if (jsonMatch) {
-            try {
-                var parsed2 = JSON.parse(jsonMatch[0]);
-                stmEntries = parsed2.stm_entries || [];
-                if (parsed2.state_changes) {
-                    if (Array.isArray(parsed2.state_changes)) {
-                        var flat2 = {};
-                        parsed2.state_changes.forEach(function(item) {
-                            if (item && item.path !== undefined) {
-                                flat2[item.path] = item.value;
-                            }
-                        });
-                        stateChanges = isStateSchemaEnabled() ? flat2 : whitelistStateChanges(flat2);
-                    } else if (typeof parsed2.state_changes === 'object') {
-                        stateChanges = isStateSchemaEnabled() ? parsed2.state_changes : whitelistStateChanges(parsed2.state_changes);
-                    }
-                }
-                if (stmEntries.length > 0 || Object.keys(stateChanges).length > 0) {
-                    console.log('[NE] State fallback: extracted JSON from mixed output');
-                }
-             } catch (e2) {}
-         }
-         if (stmEntries.length === 0 && Object.keys(stateChanges).length === 0) {
-            console.warn('[NE] State LLM response is not valid JSON:', e.message);
-            console.warn('[NE] Raw response:', text);
-            return { stmEntries: [], stateChanges: {} };
-        }
+    } else {
+        console.warn('[NE] State LLM response is not valid JSON');
+        return { stmEntries: [], stateChanges: {} };
     }
 
     // 确保每条 entry 有 msgRange、status 和 entities 默认值
@@ -413,9 +385,9 @@ export function parseSTMResponse(llmResponse) {
     return { stmEntries: stmEntries, stateChanges: stateChanges };
 }
 
-export function handleQuestCompletion(state, validatedChanges) {
+export function handleQuestCompletion(state, validatedChanges, currentTime) {
     if (!state || !validatedChanges) return;
-    var currentTime = state.time || '';
+    currentTime = currentTime || '';
     if (!currentTime) return;
 
     Object.keys(validatedChanges).forEach(function (path) {
@@ -761,7 +733,7 @@ async function askBoundaryJudge(turnA, turnB, signal, vault) {
         var response = await callMemoryPipeline([
             { role: 'system', content: system },
             { role: 'user', content: ctx }
-        ], { operation: 'stm_boundary' });
+        ], { operation: 'stm_boundary' }, vault.id);
 
         var trimmed = (response || '').trim().toLowerCase();
         if (trimmed === 'yes' || trimmed === '是') return true;
@@ -817,8 +789,9 @@ function buildStmSummaryPrompt(segments, turns, vault) {
         segmentsText += '\n';
     }
 
-    if (vault.content.story_time || vault.content.story_scene) {
+    if (vault.content.story_date || vault.content.story_time || vault.content.story_scene) {
         segmentsText += '\n## 当前故事状态\n';
+        if (vault.content.story_date) segmentsText += '天数: ' + vault.content.story_date + '\n';
         if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
         if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
         segmentsText += '\n';
@@ -912,7 +885,7 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
         responseText = await callMemoryPipeline([
             { role: 'system', content: prompt.system },
             { role: 'user', content: prompt.user }
-        ], { operation: 'ltm_decision' });
+        ], { operation: 'ltm_decision' }, vault.id);
     } catch (e) {
         console.warn('[NE] LTM decision LLM failed:', e.message);
         return null;
@@ -923,28 +896,16 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
         return null;
     }
 
-    try {
-        var parsed = JSON.parse(responseText);
+    var parsed = safeJsonParse(responseText);
+    if (parsed) {
         var result = parsed.ltm_decision || null;
         if (result && result.updated_event) {
             _validateLtmEventText('ltm_decision', result.updated_event);
         }
         return result;
-    } catch (e) {
-        var jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-        if (jsonMatch) {
-            try {
-                var parsed2 = JSON.parse(jsonMatch[0]);
-                var result2 = parsed2.ltm_decision || null;
-                if (result2 && result2.updated_event) {
-                    _validateLtmEventText('ltm_decision', result2.updated_event);
-                }
-                return result2;
-            } catch (e2) {}
-        }
-        console.warn('[NE] LTM decision LLM returned non-JSON response');
-        return null;
     }
+    console.warn('[NE] LTM decision LLM returned non-JSON response');
+    return null;
 }
 
 // ── State prompt builders（每种模式专用 prompt）──
@@ -959,11 +920,54 @@ function buildStatePrompt_Preset(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var stateTable = buildStateInjectionTable(content.state || {}, messages);
+    var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
+
+    var schemaDesc = lang === 'en'
+        ? '\n## Field Reference (paths available in state_changes)\n' +
+          '- main_event: event summary, one sentence\n' +
+          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
+          '- characters.*.affection: fondness [0, 100]\n' +
+          '- characters.*.relationship: relationship with protagonist\n' +
+          '- characters.*.current_mood: current mood\n' +
+          '- characters.*.inner_thoughts: inner thoughts about the protagonist\n' +
+          '- characters.*.injuries: injury description\n' +
+          '- characters.*.status_effects: status effects\n' +
+          '- characters.*.past_experience: incrementally appended past experience\n' +
+          '- characters.*.personality: personality traits\n' +
+          '- characters.*.occupation: role/job\n' +
+          '- characters.*.clothing_build: clothing and build description\n' +
+          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
+          '- factions.*.leader: leader name\n' +
+          '- factions.*.relations: object of faction-name → relation\n' +
+          '- factions.*.notes: faction notes\n' +
+          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃/已达成/已平息/已结束\n' +
+          '- quests.*.desc: quest description\n' +
+          '- quests.*.details: quest details\n' +
+          '- quests.*.progress: progress description\n'
+        : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
+          '- main_event: 事件摘要，一句话\n' +
+          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
+          '- characters.*.affection: 好感度 [0, 100]，支持增量（如 "+5" 或 "-3"）\n' +
+          '- characters.*.relationship: 与主角的关系描述\n' +
+          '- characters.*.current_mood: 当前心情\n' +
+          '- characters.*.inner_thoughts: 对主角的内心想法\n' +
+          '- characters.*.injuries: 受伤情况\n' +
+          '- characters.*.status_effects: 状态效果\n' +
+          '- characters.*.past_experience: 过往经历（增量追加）\n' +
+          '- characters.*.personality: 性格特质\n' +
+          '- characters.*.occupation: 职业/身份\n' +
+          '- characters.*.clothing_build: 衣着体态描述\n' +
+          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
+          '- factions.*.leader: 首领名称\n' +
+          '- factions.*.relations: 对象，势力名→关系\n' +
+          '- factions.*.notes: 势力备注\n' +
+          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃/已达成/已平息/已结束\n' +
+          '- quests.*.desc: 任务描述\n' +
+          '- quests.*.details: 任务详情\n' +
+          '- quests.*.progress: 进度描述\n';
 
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
-        '- time and scene: output as state_changes.time / state_changes.scene when they change.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
@@ -972,7 +976,6 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var rulesZh = '\n规则：\n' +
         '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
-        '- time 和 scene 变化时通过 state_changes.time / state_changes.scene 输出。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
@@ -981,12 +984,12 @@ function buildStatePrompt_Preset(messages, vault) {
 
     if (lang === 'en') {
         return {
-            system: stateTable + rulesEn,
+            system: stateTable + schemaDesc + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Only output changed fields.'
         };
     }
     return {
-        system: stateTable + rulesZh,
+        system: stateTable + schemaDesc + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。仅输出本轮变化字段。'
     };
 }
@@ -1002,7 +1005,41 @@ function buildStatePrompt_Dynamic(messages, vault) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var stateTable = buildStateInjectionTable(content.state || {}, messages);
+    var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
+
+    var schemaDesc = lang === 'en'
+        ? '\n## Field Reference (paths available in state_changes)\n' +
+          '- main_event: event summary, one sentence\n' +
+          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
+          '- characters.*.affection: fondness [0, 100]\n' +
+          '- characters.*.relationship: relationship with protagonist\n' +
+          '- characters.*.current_mood: current mood\n' +
+          '- characters.*.inner_thoughts: inner thoughts\n' +
+          '- characters.*.injuries: injury description\n' +
+          '- characters.*.status_effects: status effects\n' +
+          '- characters.*.past_experience: incrementally appended past experience\n' +
+          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
+          '- factions.*.leader: leader name\n' +
+          '- factions.*.notes: faction notes\n' +
+          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃\n' +
+          '- quests.*.desc: quest description\n' +
+          '- quests.*.progress: progress description\n'
+        : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
+          '- main_event: 事件摘要，一句话\n' +
+          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
+          '- characters.*.affection: 好感度 [0, 100]，支持增量（如 "+5" 或 "-3"）\n' +
+          '- characters.*.relationship: 与主角的关系描述\n' +
+          '- characters.*.current_mood: 当前心情\n' +
+          '- characters.*.inner_thoughts: 对主角的内心想法\n' +
+          '- characters.*.injuries: 受伤情况\n' +
+          '- characters.*.status_effects: 状态效果\n' +
+          '- characters.*.past_experience: 过往经历（增量追加）\n' +
+          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
+          '- factions.*.leader: 首领名称\n' +
+          '- factions.*.notes: 势力备注\n' +
+          '- quests.*.status: 进行中/已完成/已失败/已过期/已放弃\n' +
+          '- quests.*.desc: 任务描述\n' +
+          '- quests.*.progress: 进度描述\n';
 
     var dynamicExtra = '';
     if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
@@ -1014,7 +1051,6 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
-        '- time and scene: output as state_changes.time / state_changes.scene when they change.\n' +
         '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
         '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
@@ -1022,7 +1058,6 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     var rulesZh = '\n规则：\n' +
         '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
-        '- time 和 scene 变化时通过 state_changes.time / state_changes.scene 输出。\n' +
         '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
         '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
@@ -1030,12 +1065,12 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     if (lang === 'en') {
         return {
-            system: stateTable + dynamicExtra + rulesEn,
+            system: stateTable + dynamicExtra + schemaDesc + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with state_changes.'
         };
     }
     return {
-        system: stateTable + dynamicExtra + rulesZh,
+        system: stateTable + dynamicExtra + schemaDesc + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 state_changes 的 JSON。'
     };
 }
@@ -1104,17 +1139,14 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 responseText = await callMemoryPipeline([
                     { role: 'system', content: summaryPrompt.system },
                     { role: 'user', content: summaryPrompt.user }
-                ], { operation: 'stm_extract' });
+                ], { operation: 'stm_extract' }, chatId);
             } catch (e) {
                 console.warn('[NE] Summary LLM failed:', e);
             }
 
             if (responseText) {
-                try {
-                    events = JSON.parse(responseText).events || [];
-                } catch (e) {
-                    console.warn('[NE] Summary parse failed:', e);
-                }
+                var summaryParsed = safeJsonParse(responseText);
+                if (summaryParsed) events = summaryParsed.events || [];
             }
 
             var snapshots = vault.content._state_snapshots;
@@ -1233,7 +1265,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         stateResponse = await callMemoryPipeline([
             { role: 'system', content: statePrompt.system },
             { role: 'user', content: statePrompt.user }
-        ], { operation: 'state_extract' });
+        ], { operation: 'state_extract' }, chatId);
     } catch (e) {
         console.warn('[NE] Per-round state extraction failed:', e);
         return { vault, changed: false };
@@ -1284,19 +1316,20 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         var schema = vault.content.state_schema || null;
         var result = validateStateChanges(schema, stateChanges);
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-        vault.content.state = mergeStateChanges(vault.content.state || {}, result.validated);
+        var newState = mergeStateChanges(vault.content.state || {}, result.validated);
+        if (JSON.stringify(newState) === JSON.stringify(vault.content.state || {})) {
+            console.log('[NE] State unchanged, skipping write');
+        } else {
+            vault.content.state = newState;
+            handleQuestCompletion(vault.content.state, result.validated, vault.content.story_time);
+        }
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
             console.warn('[NE-HARNESS] All ' + Object.keys(stateChanges).length + ' stateChanges rejected by validateStateChanges — Schema may be missing');
         }
-        handleQuestCompletion(vault.content.state, result.validated);
     }
 
     if (isStateSchemaEnabled()) {
         vault.content.state = autoDecayStaleCharacters(vault.content.state, messages);
-    }
-
-    if (stateChanges.story_date) {
-        vault.content.story_date = String(stateChanges.story_date);
     }
 
     var latestAssistantId = latestAssistantMsg ? latestAssistantMsg.id : null;
@@ -1325,6 +1358,12 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         new_state_change_count: Object.keys(stateChanges).length,
         parse_error: null
     }, chatId);
+
+    globalThis.__ne_debug_last_pipeline = {
+        changes: stateChanges || {},
+        mergedState: vault.content.state || null,
+        time: new Date().toISOString()
+    };
 
     return { vault, changed: true };
 }

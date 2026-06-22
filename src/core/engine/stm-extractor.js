@@ -8,6 +8,7 @@
  * with simple cursor advancement — no carry-forward / deferred.
  */
 
+import { safeJsonParse } from './json-fallback.js';
 import { groupMessagesIntoTurns, collectMsgIdsFromTurns } from './turn-segmenter.js';
 
 var DEFAULT_MAX_TURNS = 10;
@@ -50,33 +51,12 @@ export async function runStmExtractorCore(turns, params) {
         return [];
     }
 
-    try {
-        var parsed = JSON.parse(responseText);
+    var parsed = safeJsonParse(responseText);
+    if (parsed) {
         rawEvents = parsed.events || [];
-        if (!Array.isArray(rawEvents)) {
-            rawEvents = [];
-        }
-    } catch (e) {
-        // Fallback: try to extract JSON from mixed output
-        var jsonMatch = responseText.match(/\{[\s\S]*?\}/);
-        if (jsonMatch) {
-            try {
-                parsed = JSON.parse(jsonMatch[0]);
-                rawEvents = parsed.events || [];
-                if (Array.isArray(rawEvents)) {
-                    console.log('[NE] Batch fallback: extracted JSON from mixed output');
-                } else {
-                    rawEvents = [];
-                }
-            } catch (e2) {
-                rawEvents = [];
-            }
-        }
-        if (rawEvents.length === 0) {
-            console.warn('[NE] Batch LLM returned non-JSON response, no events');
-            console.warn('[NE] Raw response:', responseText);
-            return [];
-        }
+        if (!Array.isArray(rawEvents)) rawEvents = [];
+    } else {
+        rawEvents = [];
     }
 
     // 过滤无效事件

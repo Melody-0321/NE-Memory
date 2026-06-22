@@ -1441,7 +1441,7 @@ export async function formatVaultForPrompt(vault, chatMessages) {
                 parts.push('## ' + t('Factions') + '\n' + factionSummary);
                 parts.push('---');
             }
-            var questSummary = formatQuestSummary(content.state);
+            var questSummary = formatQuestSummary(content.state, content.story_time);
             if (questSummary) {
                 parts.push('## ' + t('Quests') + '\n' + questSummary);
                 parts.push('---');
@@ -1477,7 +1477,7 @@ export async function formatVaultForPrompt(vault, chatMessages) {
             }
             if (!query) {
                 var state = content.state || {};
-                query = (state.time || '') + ' ' + (state.scene || '') + ' ' + (state.main_event || '');
+                query = (content.story_time || '') + ' ' + (content.story_scene || '') + ' ' + (state.main_event || '');
                 if (!query.trim()) query = 'recent events';
             }
 
@@ -1639,8 +1639,6 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         if (content.story_time) queryParts.push(content.story_time);
         if (content.story_date) queryParts.push(content.story_date);
         if (content.story_scene) queryParts.push(content.story_scene);
-        if (state.time) queryParts.push(state.time);
-        if (state.scene) queryParts.push(state.scene);
         if (state.main_event) queryParts.push(state.main_event);
         query = queryParts.length > 0 ? queryParts.join(' · ') : 'recent events';
     }
@@ -2108,10 +2106,10 @@ function formatMinimalState(vault) {
     var content = vault.content || {};
     var state = content.state || {};
     var lines = [];
-    if (content.story_time || content.story_date || state.time || content.story_scene || state.scene) {
-        lines.push('Scene: ' + (state.scene || content.story_scene || ''));
+    if (content.story_time || content.story_date || content.story_scene) {
+        lines.push('Scene: ' + (content.story_scene || ''));
         var minTimeParts = [];
-        if (content.story_time || state.time) minTimeParts.push(state.time || content.story_time);
+        if (content.story_time) minTimeParts.push(content.story_time);
         if (content.story_date) minTimeParts.push(content.story_date);
         if (minTimeParts.length > 0) lines.push('Time: ' + minTimeParts.join(' ─ '));
     }
@@ -2210,7 +2208,7 @@ function injectStateBanner(messageId) {
 
     var dateMatch = mainPart.match(/第(\d+)天/);
     var day = dateMatch ? dateMatch[1] : '';
-    var mainWithoutDay = day ? mainPart.replace(/第\d+天/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
+    var mainWithoutDay = day ? mainPart.replace(/第\d+天[，,\s]*/, '').replace(/^[，,\s]+|[，,\s]+$/g, '') : mainPart;
 
     var parts = mainWithoutDay.split(/[，,]\s*/);
     var scene = parts[0] || '';

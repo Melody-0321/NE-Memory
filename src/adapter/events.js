@@ -191,6 +191,8 @@ export async function onMessageReceived(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
+            if (!message.is_assistant && !message.is_output) return;
+
             var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态块 [场景, 时间, 第N天, 事件摘要, 在场：角色]
@@ -469,9 +471,20 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
             // State block instruction — Main LLM output current state at reply start
             if (isStateSchemaEnabled()) {
-                var stateBlockInstr = '在回复开头用方括号注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
+                var dayInfo = vault.content.story_date || '第1天';
+                var timeInfo = vault.content.story_time || '';
+                var sceneInfo = vault.content.story_scene || '';
+                var timePreview = timeInfo.match(/^\d{4}-\d{2}-\d{2}/) ? '' : timeInfo;
+
+                var currentState = '当前状态：' + dayInfo +
+                    (timePreview ? '，' + timePreview : '') +
+                    (sceneInfo ? '，' + sceneInfo : '') + '\n';
+
+                var stateBlockInstr = currentState +
+                    '在回复开头用方括号注明当前场景、时间、天数、本段事件摘要和在场角色。\n' +
                     '格式：[场景，时间，第N天，事件摘要，在场：角色1、角色2]\n' +
-                    '时间用自然语言（清晨/午前/午后/傍晚/深夜）；天数用阿拉伯数字（第1天、第2天等）；' +
+                    '场景仅在切换时更新，否则沿用。时间按自然节奏递进。' +
+                    '时间从深夜递进到清晨时天数+1；否则保持当前天数。\n' +
                     '事件摘要用一句话概括本段发生的主要事件。\n' +
                     '仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
