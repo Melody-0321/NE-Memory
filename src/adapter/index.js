@@ -315,10 +315,6 @@ function setupEventListeners(retryCount) {
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await read(chatId2);
-                    if (vault.version === 0) {
-                        vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
-                        await write(chatId2, vault);
-                    }
                     await migrateVaultIfNeeded(chatId2, vault);
                     checkAndRestoreEmbeddedVault(chatId2);
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
@@ -348,10 +344,6 @@ function setupEventListeners(retryCount) {
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await read(chatId2b);
-                    if (vault.version === 0) {
-                        vault.content.language = getLocale().includes('zh') ? 'zh' : 'en';
-                        await write(chatId2b, vault);
-                    }
                     await migrateVaultIfNeeded(chatId2b, vault);
                     checkAndRestoreEmbeddedVault(chatId2b);
                 });
