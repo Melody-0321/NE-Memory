@@ -452,13 +452,13 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v2') {
+            if (es.regex[i].id === 'ne-state-banner-v3') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
         }
         es.regex.push({
-            id: 'ne-state-banner-v2',
+            id: 'ne-state-banner-v3',
             scriptName: 'NE Memory State Banner',
             findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
             replaceString: '<div class="ne-state-banner" data-scene="$1" data-time="$2" data-day="$3" data-event="$4" data-chars="$5"><div class="ne-state-banner-top"><span class="ne-state-scene">\uD83D\uDCCD $1</span> <span class="ne-state-time">\u2600\uFE0F $2</span> <span class="ne-state-day">\uD83D\uDCC5 Day $3</span></div><div class="ne-state-event">\u26A1 $4</div><div class="ne-state-chars"><span class="ne-state-char-pill">\uD83D\uDC64 $5</span></div></div>',
@@ -472,6 +472,23 @@ function registerGlobalBannerRegex() {
             runOnEdit: false,
             markdownOnly: false,
             promptOnly: false,
+            trimStrings: [],
+        });
+        es.regex.push({
+            id: 'ne-state-banner-prompt-v3',
+            scriptName: 'NE State Banner (prompt strip)',
+            findRegex: '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*',
+            replaceString: '',
+            placement: [2],
+            substituteRegex: 0,
+            minDepth: null,
+            maxDepth: null,
+            onlyLongerThan: null,
+            onlyShorterThan: null,
+            enabled: true,
+            runOnEdit: false,
+            markdownOnly: false,
+            promptOnly: true,
             trimStrings: [],
         });
         if (typeof ctx.saveSettingsDebounced === 'function') {
