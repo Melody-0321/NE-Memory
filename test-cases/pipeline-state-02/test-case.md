@@ -1,83 +1,86 @@
 ---
 name: pipeline-state-02
 folder: pipeline-state-02
-title: State 预分配 + flat object 格式验证
-objective: 验证 State 管线输出使用 flat object 格式（非 array）、_checkpoints 始终出现、LLM 不自创字段名
+title: State Banner 指令格式 + 提取完整性
+objective: 验证 NE-BANNER 指令格式引入、Main LLM 能输出 data-* 标记的 banner HTML、onMessageReceived 正确提取
 preconditions:
-  - NE-Memory 已初始化，SmartPush 启用
+  - NE-Memory 已初始化，State Schema 已开启
   - 副 API 可用
-  - State Schema 已开启
+  - build 含 NE-BANNER 格式（commit 514c991 及之后）
 structural:
+  - { op: exists, target: state_block_instruction }
+  - { op: contains, target: state_block_instruction, value: "<!--NE-BANNER-->" }
+  - { op: contains, target: state_block_instruction, value: "<!--/NE-BANNER-->" }
+  - { op: contains, target: state_block_instruction, value: "data-scene" }
+  - { op: contains, target: state_block_instruction, value: "data-time" }
+  - { op: contains, target: state_block_instruction, value: "data-day" }
+  - { op: contains, target: state_block_instruction, value: "data-event" }
+  - { op: contains, target: state_block_instruction, value: "data-chars" }
   - { op: exists, target: pipeline_changes }
-  - { op: min_length, target: pipeline_changes, value: 1 }
   - { op: not_contains, target: pipeline_changes, value: "error" }
-  - { op: not_contains, target: pipeline_changes, value: '"path"' }
-  - { op: not_contains, target: pipeline_changes, value: '"value"' }
-  - { op: exists, target: pipeline_responses }
-  - { op: not_contains, target: pipeline_responses, value: "undefined" }
-  - { op: exists, target: stm_events }
 semantic:
-  - "State 管线的输出中，_checkpoints 是否始终出现（即使在 state_changes 为空的轮次）？"
-  - "state_changes 是否使用了 flat object 格式（如 {\"time\":\"黎明\",\"scene\":\"山路\"}）而非 [{\"path\":...,\"value\":...}] 数组格式？"
-  - "提取的字段路径是否都是系统预分配的字段名（如 time, scene, story_date, main_event, characters.xxx.status 等），没有 LLM 自创的字段名？"
-  - "state_changes 中是否没有出现 present_characters（应由系统自动生成）？"
-minRounds: 4
-maxRounds: 10
-expectedRounds: "5-7"
+  - "Main LLM 的回复是否包含 <!--NE-BANNER--> 格式的 banner HTML（带 data-scene / data-time / data-day / data-event / data-chars 属性）？"
+  - "onMessageReceived 的 data-* 提取正则是否正确提取了 scene/time/day/event/chars？"
+  - "pipeline_changes 是否记录了状态更新（验证 pending_state_block → vault 链路未断裂）？"
+minRounds: 3
+maxRounds: 8
+expectedRounds: "4-6"
 timeoutPerRound: 120000
 ---
 
-# pipeline-state-02: State 预分配 + flat object 格式验证
+# pipeline-state-02: State Banner 指令格式 + 提取完整性
 
 ## 目标
-验证 State 管线在预分配架构下正确工作：
-1. LLM 输出的 `state_changes` 使用 flat object 格式（不再是 `[{"path":...,"value":...}]` 数组）
-2. `_checkpoints` 始终出现（即使在 state_changes 为空的轮次）
-3. LLM 不创造新的字段名（只使用系统预分配的路径）
-4. `present_characters` 不会出现在 state_changes 中
+切换 `<!--NE-STATE:场景,时间,...-->` → `<!--NE-BANNER--><div data-scene="...">...</div><!--/NE-BANNER-->`
+后，验证 LLM 收到的指令格式正确，且 onMessageReceived 的 data-* 提取正则正常工作。
 
 ## 前置条件
-- NE-Memory 已初始化，SmartPush 启用
+- NE-Memory 已初始化，State Schema 已开启
 - 副 API 可用
-- **State Schema 已开启**（预设模式）
-- 角色卡加载完毕（确保 vault 已初始化，state 结构已预分配）
+- 全局正则 `ne-state-banner-v1` 已注册（首次刷新自动完成）
+- 角色卡包含至少 1-2 个角色
 
 ## 对话设计（给 LLM Driver 的指导）
 Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
 
-轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。
-
-引导策略：跟随 AI 故事，让 Driver 进行正常互动。每 1-2 轮发生一个自然的小变化（换场景、情绪波动、新人物短暂出现等），让 State 管线有 state_changes 可输出。注意至少有几轮 state_changes 为空（无变化），以验证 _checkpoints 在零变化轮次也能正确输出。不需要复杂剧情——2-3 个角色的自然日常即可。
+引导策略：自然推进 4-6 轮对话，给 State 管线时间提取变化。当 `pipeline_changes` 有内容且 `state_block_instruction` 存在后即可结束。
 
 ## 断言
 
 ### 结构性断言（代码自动检查）
 | # | 断言 | 含义 |
 |---|------|------|
-| 1 | `exists: pipeline_changes` | State 管线执行过 |
-| 2 | `min_length: pipeline_changes >= 1` | 有变化输出 |
-| 3 | `not_contains: pipeline_changes [error]` | 无报错 |
-| 4 | `not_contains: pipeline_changes ["path"]` | **不使用旧的 array 格式**（`[{"path":...}]` 格式会包含字符串 `"path"`） |
-| 5 | `not_contains: pipeline_changes ["value"]` | **同上，旧格式的 `"value"` 键不应出现** |
-| 6 | `exists: pipeline_responses` | pipeline 响应完整 |
-| 7 | `not_contains: pipeline_responses [undefined]` | 响应无破碎 |
-| 8 | `exists: stm_events` | STM 管线独立正常运行（state_changes 已从 STM prompt 移除） |
+| 1 | `exists: state_block_instruction` | onBeforeGenerate 注入了指令 |
+| 2 | `contains: <!--NE-BANNER-->` | 格式标记存在 |
+| 3 | `contains: <!--/NE-BANNER-->` | 闭合标记存在 |
+| 4 | `contains: data-scene` | 场景属性存在 |
+| 5 | `contains: data-time` | 时间属性存在 |
+| 6 | `contains: data-day` | 天数属性存在 |
+| 7 | `contains: data-event` | 事件属性存在 |
+| 8 | `contains: data-chars` | 角色属性存在 |
+| 9 | `exists: pipeline_changes` | State 管线执行过 |
+| 10 | `not_contains: "error"` | 无报错 |
 
 ### 语义性断言（LLM 评估 trace）
-1. State 管线的输出中，`_checkpoints` 是否始终出现（即使在 `state_changes` 为空的轮次）？
-2. `state_changes` 是否使用了 flat object 格式（如 `{"time":"黎明","scene":"山路"}`）而非 `[{"path":...,"value":...}]` 数组格式？
-3. 提取的字段路径是否都是系统预分配的字段名（如 `time`, `scene`, `story_date`, `main_event`, `characters.xxx.status` 等），没有 LLM 自创的字段名？
-4. `state_changes` 中是否没有出现 `present_characters`（应由系统自动生成）？
+1. Main LLM 的回复是否包含 `<!--NE-BANNER-->` 格式的 banner HTML？
+2. `onMessageReceived` 的 data-* 提取正则是否正确提取了结构化数据？
+3. `pipeline_changes` 是否记录了状态更新？
 
 ## 运行参数
-- minRounds: 4
-- maxRounds: 10
-- expectedRounds: 5-7
+- minRounds: 3
+- maxRounds: 8
+- expectedRounds: 4-6
 - timeoutPerRound: 120000
 
-## 与 pipeline-state-01 的区别
-- pipeline-state-01：验证 State 管线**能否运行**（基础健康检查）
-- pipeline-state-02：验证 State 管线**输出格式正确**（flat object、_checkpoints、不自创字段）
+## 说明
+
+本测试验证 commit 514c991 及之后版本中 NE-BANNER 格式的完整性：
+- `registerGlobalBannerRegex` 已向 `extensionSettings.regex` 写入全局正则
+- `onBeforeGenerate` 注入的 LLM 指令使用 `<!--NE-BANNER-->...<!--/NE-BANNER-->` 格式
+- `onMessageReceived` 的正则匹配 `data-scene="..."` 等属性
+
+在 ST 实际环境中验证时，还需目视确认 banner 卡片在消息气泡内正确渲染
+（`_ensureBannerCSS` 注入样式正确，全局正则解包注释正确）。
 
 ## 调用方式
 

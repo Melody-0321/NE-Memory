@@ -60,6 +60,7 @@ export function collectRoundData(roundTag) {
         ltmState: globalThis.__ne_debug_last_ltm_state || null,
         cursor: globalThis.__ne_debug_last_cursor || null,
         smartpushPrompt: globalThis.__ne_debug_last_smartpush_prompt || null,
+        stateBlockInstruction: globalThis.__ne_debug_last_state_block_instruction || null,
         pipelineResponses: globalThis.__ne_debug_all_pipeline_responses || null,
         vault: null,
         timestamp: new Date().toISOString()

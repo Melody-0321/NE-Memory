@@ -124,6 +124,7 @@ function resolveTarget(collected, targetName) {
     case 'pipeline_responses': return collected.pipelineResponses || globalThis.__ne_debug_all_pipeline_responses || '';
     case 'ltm_decision': return collected.ltmDecision ? JSON.stringify(collected.ltmDecision) : '';
     case 'ltm_state': return collected.ltmState ? JSON.stringify(collected.ltmState) : '';
+    case 'state_block_instruction': return collected.stateBlockInstruction || '';
     default: return '';
     }
 }

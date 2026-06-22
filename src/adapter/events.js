@@ -563,6 +563,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- 事件摘要用一句话概括本段发生的主要事件。\n' +
                     '- 仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
+                globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
                 console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
             }
             // Log SmartPush injection to LLM log
