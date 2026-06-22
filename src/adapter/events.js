@@ -423,12 +423,12 @@ function _ensureBannerCSS() {
     var style = document.createElement('style');
     style.id = 'ne-state-banner-css';
     style.textContent =
-        '.ne-state-banner{position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.5;overflow:hidden;display:flex;flex-direction:column;gap:4px;}' +
-        '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
-        '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
-        '.ne-state-banner-icon{flex-shrink:0;width:20px;text-align:center;font-size:13px;opacity:.85;}' +
-        '.ne-state-banner-label{flex-shrink:0;width:58px;font-size:11px;font-weight:500;color:var(--SmartThemeEmColor,#9e978e);opacity:.8;}' +
-        '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;line-height:1.45;}';
+        'pre:has(> code[class*="language-banner"]){background:none!important;border:none!important;padding:0!important;margin:0!important;}' +
+        'code[class*="language-banner"]{display:block;position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.55;overflow:hidden;font-family:inherit;color:inherit;text-decoration:none;white-space:pre-wrap;}' +
+        'code[class*="language-banner"]::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
+        '.ne-state-banner-icon{display:inline-block;width:20px;text-align:center;opacity:.85;}' +
+        '.ne-state-banner-label{opacity:.7;}' +
+        '.ne-state-banner-value{}';
     document.head.appendChild(style);
     console.log('[NE-BANNER] CSS injected, rules=' + style.sheet.cssRules.length);
 }
@@ -451,11 +451,17 @@ function registerGlobalBannerRegex() {
 
         var DISPLAY_ID = 'ne-state-banner';
         var PROMPT_ID = 'ne-state-banner-prompt';
-        var _BANNER_VERSION = '1.0';
+        var _BANNER_VERSION = '1.1';
         var DISPLAY_NAME = 'NE State Banner v' + _BANNER_VERSION;
         var PROMPT_NAME = 'NE State Banner (prompt strip) v' + _BANNER_VERSION;
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
-        var REPLACE_HTML = '\n<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>\n';
+        var REPLACE_HTML = '\n```banner\n' +
+            '\uD83D\uDCCD \u5730\u70B9\uFF1A$1\n' +
+            '\u2600\uFE0F \u65F6\u95F4\uFF1A$2\n' +
+            '\uD83D\uDCC5 \u5929\u6570\uFF1ADay $3\n' +
+            '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
+            '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
+            '```\n';
         var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
 
         // ── 迁移：扫描所有历史版本（id 以 ne-state-banner / ne-state-banner-prompt 开头，
