@@ -210,17 +210,7 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
             }
 
-            // 注入状态栏卡片（DOM 渲染后）
-            var bannerMsgId = message.mes_id !== undefined ? message.mes_id : messageIndex;
-            _ensureBannerCSS();
-            var _tryInject = function(retry) {
-                globalThis.__ne_injectStateBanner(bannerMsgId);
-                if (retry && typeof retry === 'number' && retry > 0) {
-                    setTimeout(function() { _tryInject(retry - 1); }, 200);
-                }
-            };
-            setTimeout(function() { _tryInject(4); }, 50);
-
+            // 注入状态栏卡片（DOM 渲染后由 character_message_rendered 事件触发）
             pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
@@ -656,6 +646,18 @@ export async function onMessageUpdated(messageId) {
     } catch (e) {
         console.warn('[NE] Rollback on message update failed:', e);
     }
+}
+
+export function onCharacterMessageRendered(messageId, _type) {
+    try {
+        if (!getChatMessagesFn) return;
+        var chat = getChatMessagesFn();
+        var message = chat[messageId];
+        if (!message) return;
+        var bannerMsgId = message.mes_id !== undefined ? message.mes_id : messageId;
+        _ensureBannerCSS();
+        injectStateBanner(bannerMsgId);
+    } catch (e) {}
 }
 
 /* ──────── 矛盾检测（容器C）──────── */

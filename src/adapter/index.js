@@ -6,7 +6,7 @@
 import { runtime } from '../core/runtime.js';
 import { read, write } from '../core/vault/store.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onCharacterMessageRendered, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
@@ -321,6 +321,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
+            try { eventSource.on('character_message_rendered', onCharacterMessageRendered); } catch (e) {}
             console.log('[NE] Event listeners registered via eventSource');
         }
         return;
