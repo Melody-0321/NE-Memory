@@ -449,12 +449,12 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
 
-        var DISPLAY_ID = 'ne-state-banner-v8';
-        var DISPLAY_NAME = 'NE State Banner v8';
-        var PROMPT_ID = 'ne-state-banner-prompt-v8';
-        var PROMPT_NAME = 'NE State Banner (prompt strip) v8';
+        var DISPLAY_ID = 'ne-state-banner-v9';
+        var DISPLAY_NAME = 'NE State Banner v9';
+        var PROMPT_ID = 'ne-state-banner-prompt-v9';
+        var PROMPT_NAME = 'NE State Banner (prompt strip) v9';
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
-        var REPLACE_HTML = '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>';
+        var REPLACE_HTML = '\n<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>\n';
         var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
 
         var displayEntry = null;
