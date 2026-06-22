@@ -424,15 +424,12 @@ function _ensureBannerCSS() {
     try {
         var style = document.createElement('style');
         style.textContent =
-            '.ne-state-banner{position:relative;margin:4px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.08) 0%,rgba(125,73,64,.03) 50%,rgba(155,109,94,.05) 100%);border:1px solid rgba(155,109,94,.15);box-shadow:0 1px 4px rgba(0,0,0,.04);font-size:13px;line-height:1.55;overflow:hidden;}' +
-            '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.35),rgba(155,109,94,.08));border-radius:3px 0 0 3px;}' +
-            '.ne-state-banner-top{display:flex;gap:10px;align-items:baseline;margin-bottom:3px;}' +
-            '.ne-state-scene{font-size:14px;font-weight:700;color:var(--SmartThemeBodyColor,#c1b9ad);letter-spacing:.01em;}' +
-            '.ne-state-time{font-size:11px;color:var(--SmartThemeEmColor,#9e978e);padding:2px 7px;border-radius:4px;background:rgba(155,109,94,.06);white-space:nowrap;}' +
-            '.ne-state-day{font-size:11px;color:var(--SmartThemeEmColor,#9e978e);padding:2px 7px;border-radius:4px;background:rgba(155,109,94,.06);white-space:nowrap;}' +
-            '.ne-state-event{margin-top:5px;font-size:12px;color:var(--grey-60,#9e978e);line-height:1.5;padding-left:2px;}' +
-            '.ne-state-chars{margin-top:5px;display:flex;flex-wrap:wrap;gap:5px;}' +
-            '.ne-state-char-pill{display:inline-flex;align-items:center;gap:3px;padding:2px 10px;border-radius:12px;background:rgba(155,109,94,.07);border:1px solid rgba(155,109,94,.1);font-size:11px;color:var(--SmartThemeBodyColor,#c1b9ad);transition:background .15s;}';
+            '.ne-state-banner{position:relative;margin:6px 0 10px 0;padding:10px 14px;border-radius:8px;background:linear-gradient(135deg,rgba(155,109,94,.07) 0%,rgba(125,73,64,.02) 50%,rgba(155,109,94,.04) 100%);border:1px solid rgba(155,109,94,.12);box-shadow:0 1px 3px rgba(0,0,0,.03);font-size:12px;line-height:1.5;overflow:hidden;display:flex;flex-direction:column;gap:4px;}' +
+            '.ne-state-banner::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:linear-gradient(180deg,rgba(155,109,94,.3),rgba(155,109,94,.06));border-radius:3px 0 0 3px;}' +
+            '.ne-state-banner-row{display:flex;align-items:baseline;gap:6px;}' +
+            '.ne-state-banner-icon{flex-shrink:0;width:18px;text-align:center;font-size:12px;opacity:.7;}' +
+            '.ne-state-banner-label{flex-shrink:0;width:32px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;color:var(--SmartThemeEmColor,#9e978e);opacity:.7;}' +
+            '.ne-state-banner-value{flex:1;color:var(--SmartThemeBodyColor,#c1b9ad);font-size:12px;}';
         document.head.appendChild(style);
     } catch (e) {}
 }
@@ -453,16 +450,16 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
         for (var i = 0; i < es.regex.length; i++) {
-            if (es.regex[i].id === 'ne-state-banner-v4') {
+            if (es.regex[i].id === 'ne-state-banner-v5') {
                 _globalBannerRegexRegistered = true;
                 return true;
             }
         }
         es.regex.push({
-            id: 'ne-state-banner-v3',
+            id: 'ne-state-banner-v5',
             scriptName: 'NE Memory State Banner',
             findRegex: '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->',
-            replaceString: '<div class="ne-state-banner" data-scene="$1" data-time="$2" data-day="$3" data-event="$4" data-chars="$5"><div class="ne-state-banner-top"><span class="ne-state-scene">\uD83D\uDCCD $1</span> <span class="ne-state-time">\u2600\uFE0F $2</span> <span class="ne-state-day">\uD83D\uDCC5 Day $3</span></div><div class="ne-state-event">\u26A1 $4</div><div class="ne-state-chars"><span class="ne-state-char-pill">\uD83D\uDC64 $5</span></div></div>',
+            replaceString: '<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">场景</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">事件</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场</span><span class="ne-state-banner-value">$5</span></div></div>',
             placement: [2],
             substituteRegex: 0,
             minDepth: null,
@@ -476,7 +473,7 @@ function registerGlobalBannerRegex() {
             trimStrings: [],
         });
         es.regex.push({
-            id: 'ne-state-banner-prompt-v3',
+            id: 'ne-state-banner-prompt-v5',
             scriptName: 'NE State Banner (prompt strip)',
             findRegex: '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*',
             replaceString: '',

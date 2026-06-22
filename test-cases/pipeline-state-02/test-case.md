@@ -36,7 +36,7 @@ ST 全局正则（replaceString 静态 HTML 模板）自动包装为完整 banne
 ## 前置条件
 - NE-Memory 已初始化，State Schema 已开启
 - 副 API 可用
-- 全局正则 `ne-state-banner-v2` 已注册（id v2=管道格式；旧 v1 为孤儿）
+- 全局正则 `ne-state-banner-v5` 已注册（icon+label 行布局，v5=卡片式 UI）
 - 角色卡包含至少 1-2 个角色
 
 ## 对话设计（给 LLM Driver 的指导）
