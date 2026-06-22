@@ -449,10 +449,11 @@ function registerGlobalBannerRegex() {
         var es = ctx.extensionSettings;
         es.regex = Array.isArray(es.regex) ? es.regex : [];
 
-        var DISPLAY_ID = 'ne-state-banner-v9';
-        var DISPLAY_NAME = 'NE State Banner v9';
-        var PROMPT_ID = 'ne-state-banner-prompt-v9';
-        var PROMPT_NAME = 'NE State Banner (prompt strip) v9';
+        var DISPLAY_ID = 'ne-state-banner';
+        var PROMPT_ID = 'ne-state-banner-prompt';
+        var _BANNER_VERSION = 1;
+        var DISPLAY_NAME = 'NE State Banner v' + _BANNER_VERSION;
+        var PROMPT_NAME = 'NE State Banner (prompt strip) v' + _BANNER_VERSION;
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
         var REPLACE_HTML = '\n<div class="ne-state-banner"><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCCD</span><span class="ne-state-banner-label">地点：</span><span class="ne-state-banner-value">$1</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u2600\uFE0F</span><span class="ne-state-banner-label">时间：</span><span class="ne-state-banner-value">$2</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDCC5</span><span class="ne-state-banner-label">天数：</span><span class="ne-state-banner-value">Day $3</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\u26A1</span><span class="ne-state-banner-label">场景描述：</span><span class="ne-state-banner-value">$4</span></div><div class="ne-state-banner-row"><span class="ne-state-banner-icon">\uD83D\uDC64</span><span class="ne-state-banner-label">在场角色：</span><span class="ne-state-banner-value">$5</span></div></div>\n';
         var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
@@ -464,38 +465,64 @@ function registerGlobalBannerRegex() {
             if (es.regex[i].id === PROMPT_ID) promptEntry = es.regex[i];
         }
 
-        var changed = false;
-        if (!displayEntry) {
-            displayEntry = { id: DISPLAY_ID, enabled: true, runOnEdit: false, markdownOnly: true, promptOnly: false, placement: [2], substituteRegex: 0, minDepth: null, maxDepth: null, onlyLongerThan: null, onlyShorterThan: null, trimStrings: [] };
-            es.regex.push(displayEntry);
-            changed = true;
-        }
-        if (displayEntry.scriptName !== DISPLAY_NAME || displayEntry.findRegex !== FIND_PIPE || displayEntry.replaceString !== REPLACE_HTML || !displayEntry.enabled) {
+        var updatedCount = 0;
+        if (!displayEntry || displayEntry._neVersion !== _BANNER_VERSION) {
+            if (!displayEntry) {
+                displayEntry = { id: DISPLAY_ID };
+                es.regex.push(displayEntry);
+            }
             displayEntry.scriptName = DISPLAY_NAME;
             displayEntry.findRegex = FIND_PIPE;
             displayEntry.replaceString = REPLACE_HTML;
             displayEntry.enabled = true;
-            changed = true;
+            displayEntry.runOnEdit = false;
+            displayEntry.markdownOnly = true;
+            displayEntry.promptOnly = false;
+            displayEntry.placement = [2];
+            displayEntry.substituteRegex = 0;
+            displayEntry.minDepth = null;
+            displayEntry.maxDepth = null;
+            displayEntry.onlyLongerThan = null;
+            displayEntry.onlyShorterThan = null;
+            displayEntry.trimStrings = [];
+            displayEntry._neVersion = _BANNER_VERSION;
+            updatedCount++;
         }
-        if (!promptEntry) {
-            promptEntry = { id: PROMPT_ID, enabled: true, runOnEdit: false, markdownOnly: false, promptOnly: true, placement: [2], substituteRegex: 0, minDepth: null, maxDepth: null, onlyLongerThan: null, onlyShorterThan: null, trimStrings: [] };
-            es.regex.push(promptEntry);
-            changed = true;
-        }
-        if (promptEntry.scriptName !== PROMPT_NAME || promptEntry.findRegex !== FIND_PROMPT || promptEntry.replaceString !== '' || !promptEntry.enabled) {
+        if (!promptEntry || promptEntry._neVersion !== _BANNER_VERSION) {
+            if (!promptEntry) {
+                promptEntry = { id: PROMPT_ID };
+                es.regex.push(promptEntry);
+            }
             promptEntry.scriptName = PROMPT_NAME;
             promptEntry.findRegex = FIND_PROMPT;
             promptEntry.replaceString = '';
             promptEntry.enabled = true;
-            changed = true;
+            promptEntry.runOnEdit = false;
+            promptEntry.markdownOnly = false;
+            promptEntry.promptOnly = true;
+            promptEntry.placement = [2];
+            promptEntry.substituteRegex = 0;
+            promptEntry.minDepth = null;
+            promptEntry.maxDepth = null;
+            promptEntry.onlyLongerThan = null;
+            promptEntry.onlyShorterThan = null;
+            promptEntry.trimStrings = [];
+            promptEntry._neVersion = _BANNER_VERSION;
+            updatedCount++;
         }
 
-        if (changed && typeof ctx.saveSettingsDebounced === 'function') {
+        if (updatedCount > 0 && typeof ctx.saveSettingsDebounced === 'function') {
             ctx.saveSettingsDebounced();
         }
         _ensureBannerCSS();
         _globalBannerRegexRegistered = true;
-        console.log('[NE-BANNER] Global regex ' + (changed ? 'registered' : 'verified'));
+        if (updatedCount > 0) {
+            var msg = 'NE State Banner 已更新到 v' + _BANNER_VERSION;
+            if (typeof toastr !== 'undefined' && toastr.success) {
+                toastr.success(msg, '', { timeOut: 3000 });
+            }
+            console.log('[NE-BANNER] ' + msg + ' (' + updatedCount + ' entries)');
+        }
         return true;
     } catch (e) {
         console.warn('[NE-BANNER] Failed to register global regex:', e);
