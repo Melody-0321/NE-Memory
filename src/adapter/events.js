@@ -215,14 +215,11 @@ export async function onMessageReceived(messageIndex) {
             _ensureBannerCSS();
             var _tryInject = function(retry) {
                 globalThis.__ne_injectStateBanner(bannerMsgId);
-                // 重试一次：ST 可能在事件触发后异步渲染 DOM
                 if (retry && typeof retry === 'number' && retry > 0) {
                     setTimeout(function() { _tryInject(retry - 1); }, 200);
                 }
             };
-            requestAnimationFrame(function() {
-                _tryInject(3);
-            });
+            setTimeout(function() { _tryInject(4); }, 50);
 
             pendingMessages.push(assistantMsg);
             persistPending();
