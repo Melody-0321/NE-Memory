@@ -10,7 +10,7 @@ import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, o
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
-import { checkAndRestoreEmbeddedVault } from '../core/auto-restore.js';
+import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { ensureStateWorldBook } from '../core/engine/worldbook-sync.js';
@@ -314,9 +314,8 @@ function setupEventListeners(retryCount) {
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await read(chatId2);
+                    var vault = await loadVault(chatId2);
                     await migrateVaultIfNeeded(chatId2, vault);
-                    checkAndRestoreEmbeddedVault(chatId2);
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
             }); } catch (e) {}
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
@@ -343,9 +342,8 @@ function setupEventListeners(retryCount) {
                     setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await read(chatId2b);
+                    var vault = await loadVault(chatId2b);
                     await migrateVaultIfNeeded(chatId2b, vault);
-                    checkAndRestoreEmbeddedVault(chatId2b);
                 });
             }
             if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);

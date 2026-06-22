@@ -16,6 +16,7 @@ import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm } fr
 import { transitionTo, releasePipeline } from './pipeline-guard.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
 import { syncStateToWorldBook } from './worldbook-sync.js';
+import { persistVaultToChatFile } from '../auto-restore.js';
 import { writeWithSnapshot } from '../vault/store.js';
 import { vocabularyOverlap } from './text-utils.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
@@ -34,23 +35,10 @@ export async function saveVaultWithSnapshot(chatId, vault) {
         await writeWithSnapshot(chatId, vault, snapshotEntry);
         // Prune snapshots beyond limit 30 (oldest first)
         try { await pruneSnapshotsForChat(chatId); } catch (e) { console.warn('[NE] pruneSnapshots error:', e); }
-        autoEmbedVaultToChat(vault);
+        persistVaultToChatFile(vault);
     } catch (e) {
         console.error('[NE] saveVaultWithSnapshot failed:', e);
     }
-}
-
-var _embedCounter = 0;
-function autoEmbedVaultToChat(vault) {
-    _embedCounter++;
-    if (_embedCounter % 5 !== 0) return;
-    try {
-        var metadata = runtime.getChatMetadata();
-        if (metadata && metadata.ne_vault !== undefined) {
-            metadata.ne_vault = JSON.stringify(vault);
-            runtime.saveChat().catch(function() {});
-        }
-    } catch (e) {}
 }
 
 function resolvePeriodFromSnapshots(msgStart, snapshots) {

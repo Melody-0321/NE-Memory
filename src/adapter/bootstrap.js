@@ -1,5 +1,6 @@
 import { runtime } from '../core/runtime.js';
 import { read, write } from '../core/vault/store.js';
+import { loadVault, persistVaultToChatFile } from '../core/auto-restore.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
@@ -41,6 +42,7 @@ export async function migrateVaultIfNeeded(chatId, currentVault) {
         console.log('[NE] Migrating vault from "default" to fingerprint: ' + chatId);
         defaultVault.chat_id = chatId;
         await write(chatId, defaultVault);
+        persistVaultToChatFile(defaultVault);
         await write('default', { chat_id: 'default', version: -1, content: {} });
         console.log('[NE] Vault migration complete');
         return defaultVault;
@@ -59,13 +61,14 @@ export async function bootstrapVault(chatId, locale, settings) {
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
 
     console.log('[NE] Engine initializing — chatId=' + chatId);
-    var vault = await read(chatId);
+    var vault = await loadVault(chatId);
     vault = await migrateVaultIfNeeded(chatId, vault);
     if (vault.version === 0 && !vault.content.language) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
         vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
         vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;
         await write(chatId, vault);
+        persistVaultToChatFile(vault);
     }
 
     restorePending();

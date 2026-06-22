@@ -1,9 +1,8 @@
 import { read, write } from './vault/store.js';
 import { discoverDynamicFields } from './engine/state-discovery.js';
 import { isDynamicStateMode } from './vault/schema.js';
-import { t_narrative } from './i18n.js';
 
-var _restoredChatIds = {};
+var _loadedChatIds = {};
 
 async function _discoverIfNeeded(chatId, vault) {
     try {
@@ -19,73 +18,89 @@ async function _discoverIfNeeded(chatId, vault) {
     }
 }
 
-var _restoredChatIds = {};
-
-export async function checkAndRestoreEmbeddedVault(chatId) {
-    if (_restoredChatIds[chatId]) return;
-    // Cap at 50 entries to prevent unbounded growth
-    var keys = Object.keys(_restoredChatIds);
-    if (keys.length >= 50) {
-        keys.slice(0, 10).forEach(function (k) { delete _restoredChatIds[k]; });
-    }
-    _restoredChatIds[chatId] = true;
-
-    var neVaultJson = null;
+function _getChatMetadataNeVault() {
     try {
         var metadata = runtime.getChatMetadata();
-        if (metadata && typeof metadata.ne_vault === 'string') {
-            neVaultJson = metadata.ne_vault;
-        }
-    } catch (e) {
-        return;
-    }
-    if (!neVaultJson) {
-        // No embedded vault — check existing vault for dynamic state discovery
-        try {
-            var existingVault = await read(chatId);
-            if (existingVault) await _discoverIfNeeded(chatId, existingVault);
-        } catch (e) {}
-        return;
-    }
-
-    try {
-        var existingVault = await read(chatId);
-        if (existingVault && existingVault.version > 0) {
-            deleteChatMetadataNeVault();
-            await _discoverIfNeeded(chatId, existingVault);
-            return;
+        if (metadata && typeof metadata.ne_vault === 'string' && metadata.ne_vault.length > 0) {
+            return metadata.ne_vault;
         }
     } catch (e) {}
-
-    // Use ST toastr instead of blocking confirm()
-    var body = t_narrative('Restore embedded vault?') + '\n\n' +
-        t_narrative('Click Confirm to restore, Cancel to skip.');
-    try {
-        runtime.notify(body, t_narrative('NE Memory'), { timeOut: 0, extendedTimeOut: 0, closeButton: true, tapToDismiss: false });
-    } catch (e) {}
-    var confirmed = false;
-    try { confirmed = runtime.confirm(body); } catch (e) {}
-
-    if (confirmed) {
-        try {
-            var vault = JSON.parse(neVaultJson);
-            await write(chatId, vault);
-            deleteChatMetadataNeVault();
-            console.log('[NE] Vault restored from chat_metadata for', chatId);
-            await _discoverIfNeeded(chatId, vault);
-        } catch (e) {
-            console.error('[NE] Failed to restore embedded vault:', e);
-        }
-    } else {
-        deleteChatMetadataNeVault();
-    }
+    return null;
 }
 
-function deleteChatMetadataNeVault() {
+function _setChatMetadataNeVault(vault) {
     try {
         var metadata = runtime.getChatMetadata();
         if (metadata) {
-            delete metadata.ne_vault;
+            metadata.ne_vault = JSON.stringify(vault);
         }
     } catch (e) {}
+}
+
+function _saveChatFile() {
+    try {
+        runtime.saveChat().catch(function() {});
+    } catch (e) {}
+}
+
+export function persistVaultToChatFile(vault) {
+    _setChatMetadataNeVault(vault);
+    _saveChatFile();
+}
+
+/**
+ * loadVault — 分层加载：聊天文件优先，IndexedDB 兜底 + 自动回填
+ *
+ * 优先级：
+ *   1. chat_metadata.ne_vault（聊天文件）
+ *   2. IndexedDB vaults store（浏览器缓存）
+ *
+ * 兼容旧版本：
+ *   - 仅有 IndexedDB 无 chat_metadata → 自动回填到聊天文件
+ *   - 仅有 chat_metadata 无 IndexedDB → 自动恢复到 IndexedDB
+ *   - 两者都有 → 取 version 更高的
+ */
+export async function loadVault(chatId) {
+    var neVaultJson = _getChatMetadataNeVault();
+    var chatVault = null;
+    if (neVaultJson) {
+        try { chatVault = JSON.parse(neVaultJson); } catch (e) {}
+    }
+
+    var dbVault = null;
+    try { dbVault = await read(chatId); } catch (e) {}
+
+    var effectiveVersion = (dbVault && dbVault.version) || 0;
+    var chatVersion = (chatVault && chatVault.version) || 0;
+
+    if (chatVersion > 0 && chatVersion >= effectiveVersion) {
+        // 聊天文件为主 → 同步到 IndexedDB，返回
+        try { await write(chatId, chatVault); } catch (e) {}
+        await _discoverIfNeeded(chatId, chatVault);
+        return chatVault;
+    }
+
+    if (effectiveVersion > 0 && effectiveVersion > chatVersion) {
+        // IndexedDB 更新 → 回填到聊天文件，返回
+        persistVaultToChatFile(dbVault);
+        await _discoverIfNeeded(chatId, dbVault);
+        return dbVault;
+    }
+
+    // 两者都为空 → 新 vault
+    await _discoverIfNeeded(chatId, dbVault);
+    return dbVault;
+}
+
+/**
+ * 兼容旧调用方的别名（不再弹窗，静默加载）
+ */
+export async function checkAndRestoreEmbeddedVault(chatId) {
+    if (_loadedChatIds[chatId]) return;
+    var keys = Object.keys(_loadedChatIds);
+    if (keys.length >= 50) {
+        keys.slice(0, 10).forEach(function (k) { delete _loadedChatIds[k]; });
+    }
+    _loadedChatIds[chatId] = true;
+    await loadVault(chatId);
 }

@@ -5,6 +5,7 @@
  * Drawer HTML 结构与 v0.1.0 完全一致。
  */
 import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
+import { loadVault } from '../core/auto-restore.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
@@ -943,7 +944,7 @@ async function updateVaultViewerPopout(getChatId) {
 
     var vault, c;
     try {
-        vault = await read(getChatId());
+        vault = await loadVault(getChatId());
         c = vault.content || {};
         console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
         _pendingInlineStorage = { vault: vault, getChatId: getChatId };
@@ -2230,7 +2231,7 @@ export async function renderVaultPanel(getChatId) {
         _currentChatIdForCollapse = typeof getChatId === 'function' ? getChatId() : getChatId;
         injectPinCSS();
         injectBottomDrawerCSS();
-        var vault = await read(getChatId());
+        var vault = await loadVault(getChatId());
         var c = vault.content || {};
         console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
 
@@ -2567,7 +2568,7 @@ export async function renderVaultPanel(getChatId) {
                         alert(t('Embed into Chat') + ': Cannot access SillyTavern chat API.');
                         return;
                     }
-                    var vault = await read(getChatId());
+                    var vault = await loadVault(getChatId());
                     ctx.chatMetadata.ne_vault = JSON.stringify(vault);
                     await ctx.saveChat();
                     alert(t('Embed into Chat') + ' ' + t('Done') + ' — ' + t('Vault is now embedded in chat_metadata. Export or backup will carry it.'));
