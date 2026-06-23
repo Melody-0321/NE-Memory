@@ -1,6 +1,8 @@
 var DAILY_KEY = 'ne_token_daily';
 var MAX_DAILY_DAYS = 90;
 
+var _sessionSnapshot = null;
+
 function loadDaily() {
     try { return JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); } catch (e) { return {}; }
 }
@@ -30,17 +32,24 @@ export function getUsageOverview(getChatStatsFn) {
     var now = new Date();
     var thisMonth = now.toISOString().substring(0, 7);
 
-    var sessionChat = 0, sessionNE = 0, sessionTurns = 0;
     var allChat = 0, allNE = 0, allTurns = 0;
+    var allStm = 0, allLtm = 0, allSp = 0, allTool = 0;
     var monthChat = 0, monthNE = 0, monthDays = 0;
 
     Object.keys(stats).forEach(function(cid) {
         var chat = stats[cid];
         var agg = chat.aggregates || {};
         var tokChat = agg.total_tok_chat || 0;
-        var tokNE = (agg.total_tok_stm || 0) + (agg.total_tok_ltm || 0) + (agg.total_tok_sp || 0) + (agg.total_tok_tool || 0);
+        var tokStm = agg.total_tok_stm || 0;
+        var tokLtm = agg.total_tok_ltm || 0;
+        var tokSp = agg.total_tok_sp || 0;
+        var tokTool = agg.total_tok_tool || 0;
         allChat += tokChat;
-        allNE += tokNE;
+        allStm += tokStm;
+        allLtm += tokLtm;
+        allSp += tokSp;
+        allTool += tokTool;
+        allNE += tokStm + tokLtm + tokSp + tokTool;
         allTurns += agg.total_turns || 0;
     });
 
@@ -53,15 +62,21 @@ export function getUsageOverview(getChatStatsFn) {
         }
     });
 
-    sessionChat = allChat;
-    sessionNE = allNE;
-    sessionTurns = allTurns;
+    if (!_sessionSnapshot) {
+        _sessionSnapshot = { chat: allChat, ne: allNE, turns: allTurns };
+    }
+
+    var sessionChat = allChat - _sessionSnapshot.chat;
+    var sessionNE = allNE - _sessionSnapshot.ne;
+    var sessionTurns = allTurns - _sessionSnapshot.turns;
+
+    var totalDays = Object.keys(daily).length;
 
     return {
         sessionChat: sessionChat,
         sessionNE: sessionNE,
         sessionTotal: sessionChat + sessionNE,
-        sessionAvgPerTurn: allTurns > 0 ? Math.round((sessionChat + sessionNE) / allTurns) : 0,
+        sessionAvgPerTurn: sessionTurns > 0 ? Math.round((sessionChat + sessionNE) / sessionTurns) : 0,
         monthChat: monthChat,
         monthNE: monthNE,
         monthTotal: monthChat + monthNE,
@@ -69,7 +84,13 @@ export function getUsageOverview(getChatStatsFn) {
         allChat: allChat,
         allNE: allNE,
         allTotal: allChat + allNE,
-        allAvgPerDay: monthDays > 0 ? Math.round((allChat + allNE) / Math.max(1, monthDays)) : 0
+        allAvgPerDay: totalDays > 0 ? Math.round((allChat + allNE) / totalDays) : 0,
+        breakdown: {
+            stm: allStm,
+            ltm: allLtm,
+            sp: allSp,
+            tool: allTool
+        }
     };
 }
 

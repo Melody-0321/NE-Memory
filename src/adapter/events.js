@@ -7,7 +7,8 @@ import { incrementChatTurn, recordChatStat, recordChatToken } from '../core/engi
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
-import { closeVaultOverlay, formatSmartContext, buildStateOnlyInjection } from './panel.js';
+import { closeVaultOverlay } from './panel.js';
+import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';

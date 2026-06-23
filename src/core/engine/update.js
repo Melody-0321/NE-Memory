@@ -1239,6 +1239,12 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         console.warn('[NE] STM pipeline failed:', e);
     }
 
+    try {
+        await syncStateToWorldBook(vault);
+    } catch (e) {
+        console.warn('[NE] World book sync failed:', e.message);
+    }
+
     return { vault: vault, added: newEntries.length };
 }
 
