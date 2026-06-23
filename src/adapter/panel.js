@@ -179,6 +179,7 @@ function injectBottomDrawerCSS() {
         '.ne-inline-save,.ne-inline-cancel,.ne-inline-delete{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}' +
         '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
         '.ne-settings-section{margin-bottom:8px;}' +
+        '#tab-settings{overflow-y:auto;max-height:100%;}' +
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
         '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
         '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
