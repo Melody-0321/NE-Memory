@@ -9,6 +9,8 @@ import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
+import { formatContextMemory } from '../core/engine/context-window.js';
+import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';
@@ -211,6 +213,24 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
             }
 
+            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-->(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
+            var charBlockMatch;
+            var newCharBlocks = [];
+            while ((charBlockMatch = charBlockRegex.exec(message.mes || '')) !== null) {
+                var charName = (charBlockMatch[1] || '').trim();
+                var charJson = (charBlockMatch[2] || '').trim();
+                try {
+                    var charData = JSON.parse(charJson);
+                    newCharBlocks.push({ name: charName, fields: charData });
+                    console.log('[NE-CHAR] new character block detected:', charName, Object.keys(charData).join(', '));
+                } catch (e) {
+                    console.warn('[NE-CHAR] invalid JSON in char block for:', charName, e.message);
+                }
+            }
+            if (newCharBlocks.length > 0) {
+                globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
+            }
+
             pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
@@ -218,7 +238,7 @@ export async function onMessageReceived(messageIndex) {
             if (!isIdle()) return;
 
             const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
-            var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+            var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || totalWords >= getStmWordsThreshold()
@@ -266,7 +286,7 @@ async function flushPendingMessages() {
     }
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
-    var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+    var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var pressureVal = computeContextPressure(pendingTokenCount);
     if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {
         console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
@@ -385,7 +405,7 @@ async function flushPendingMessages() {
 
         if (pendingMessages.length > 0) {
             (async function() {
-                var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + Math.round((m.content || '').length / 3.5); }, 0);
+                var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
                 var pressureVal = computeContextPressure(pendingTokenCount);
                 var totalWords = pendingMessages.reduce(function(s, m) { return s + (m.content || '').split(/\s+/).length; }, 0);
                 if ((pendingMessages.length >= await getStmBatchSize()
@@ -544,6 +564,42 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
+        var CHAR_FIND = '<!--NE-CHAR:[^-]+-->\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->';
+        var CHAR_ID = 'ne-char-block-strip';
+        var CHAR_NAME = 'NE Character Block Strip';
+        var CHAR_VERSION = '1.0';
+        var charStripPattern = /^ne-char-block-strip$/;
+        var charEntry = null;
+        for (var cj = 0; cj < es.regex.length; cj++) {
+            if (charStripPattern.test(es.regex[cj].id || '')) {
+                charEntry = es.regex[cj];
+                break;
+            }
+        }
+        if (!charEntry || charEntry._neVersion !== CHAR_VERSION) {
+            if (!charEntry) {
+                charEntry = { id: CHAR_ID };
+                es.regex.push(charEntry);
+            }
+            charEntry.id = CHAR_ID;
+            charEntry.scriptName = CHAR_NAME;
+            charEntry.findRegex = CHAR_FIND;
+            charEntry.replaceString = '';
+            charEntry.enabled = true;
+            charEntry.runOnEdit = false;
+            charEntry.markdownOnly = false;
+            charEntry.promptOnly = true;
+            charEntry.placement = [2];
+            charEntry.substituteRegex = 0;
+            charEntry.minDepth = null;
+            charEntry.maxDepth = null;
+            charEntry.onlyLongerThan = null;
+            charEntry.onlyShorterThan = null;
+            charEntry.trimStrings = [];
+            charEntry._neVersion = CHAR_VERSION;
+            updatedCount++;
+        }
+
         if (updatedCount > 0) {
             ctx.saveSettingsDebounced();
             if (ctx.eventSource && ctx.eventTypes && ctx.eventTypes.SETTINGS_LOADED) {
@@ -606,6 +662,22 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
+        var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        var protagonistName = (ctx && ctx.name2) || null;
+        if (protagonistName && vault.content.state) {
+            vault.content.state.protagonist_name = protagonistName;
+        }
+        var neSettings = {};
+        try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}
+        var contextWindowRounds = neSettings.contextWindowRounds || 30;
+        var contextMemory = formatContextMemory(vault, chatMessages, contextWindowRounds);
+        if (contextMemory) {
+            runtime.injectPrompt('ne_context_memory', contextMemory, 'in_chat', 1, 'system');
+            var cmCharEstimate = countTokens(contextMemory);
+            if (chatId && cmCharEstimate > 0) {
+                recordChatToken(chatId, 'tok_chat', cmCharEstimate);
+            }
+        }
         try {
             var formatted;
             try {
@@ -646,13 +718,22 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
                 globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
                 console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
+
+                var charBlockInstr = '当你的回复中首次引入新角色（之前对话中未出现过的角色）时，在回复任意位置输出角色信息块。\n' +
+                    '格式：<!--NE-CHAR:角色名-->{"gender_age":"描述","occupation":"职业","personality":"性格","clothing_build":"外貌衣着",' +
+                    '"affection":50,"relationship":"与主角的关系","current_mood":"心情","inner_thoughts":"内心想法"}<!--/NE-CHAR-->\n' +
+                    '- 所有字段均为可选——仅输出你能从世界书或角色设定中确定的字段。不确定就省略该字段。\n' +
+                    '- affection: 好感度 0-100（50=中性，<30=反感，>70=好感）。\n' +
+                    '- 已有角色的字段变化不要用此格式——该格式仅用于首次引入新角色。\n' +
+                    '- 同一角色只输出一次此块。';
+                runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log
-            var charEstimate = formatted ? Math.round(formatted.length / 3.5) : 0;
+            var charEstimate = formatted ? countTokens(formatted) : 0;
             trackMemoryInjection(charEstimate);
             // Record per-chat token injection
             if (chatId && charEstimate > 0) {
-                recordChatStat(chatId, 'tok', charEstimate);
+                recordChatToken(chatId, 'tok_chat', charEstimate);
             }
         } catch (e) {
             console.warn('[NE] Prompt injection failed:', e);

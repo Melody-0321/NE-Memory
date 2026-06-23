@@ -5,6 +5,7 @@ import { resolveAmbiguousReferences } from './ambiguity.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { callMemoryRetrievalWithTools, recordTelemetry } from '../api/llm.js';
 import { executeAccess } from '../tools.js';
+import { countTokens } from './text-utils.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -62,7 +63,7 @@ function computeVisibleWindow(chatMessages, maxContext) {
     for (var i = chatMessages.length - 1; i >= 0; i--) {
         var m = chatMessages[i];
         var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
-        var tokens = Math.round(text.length / 3.5) + 10;
+        var tokens = countTokens(text) + 10;
         if (accumulated + tokens > available) break;
         accumulated += tokens;
         m._msg_id = String(i);

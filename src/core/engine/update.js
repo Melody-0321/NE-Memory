@@ -6,7 +6,7 @@
 import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA, ensureCharacterTemplate } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -963,17 +963,34 @@ function buildStatePrompt_Preset(messages, vault) {
           '- quests.events.*.desc: 事件描述\n';
 
     var rulesEn = '\nRules:\n' +
-        '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- state_changes: flat object of dot-path → new-value.\n' +
+        '- Field levels (see table markers above):\n' +
+        '  ▲ Required·Inferrable → [NEW] character: fill from dialogue context. Existing character: only output if changed.\n' +
+        '  △ Required·Suggest → [NEW] character: fill if you have clues, leave empty if unsure. Existing character: only output if changed.\n' +
+        '  ○ Optional → Only fill if explicitly mentioned in dialogue.\n' +
+        '  ◆ Incremental → Only append new content, do NOT overwrite existing.\n' +
+        '- [NEW] character: all ▲ fields are unfilled. MUST output all ▲/△ fields you can infer from dialogue.\n' +
+        '  If no information exists for a field, output "" (leave empty) — do NOT fabricate.\n' +
+        '  Empty fields will be shown again in future rounds for filling when new info appears.\n' +
+        '- Existing character: only output fields that ACTUALLY changed this round.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
-        '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
-        '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- state_changes: flat object，dot-path → 新值。\n' +
+        '- 字段分级（见上方表格标记）：\n' +
+        '  ▲ 必填·可推断 → [NEW]角色：尽量从对话中推断并填写。已有角色：仅变化时输出。\n' +
+        '  △ 必填·建议填 → [NEW]角色：有线索就填，无则留空。已有角色：仅变化时输出。\n' +
+        '  ○ 选填       → 仅在对话中明确提及时填写。\n' +
+        '  ◆ 增量追加   → 仅输出新增内容，不要覆盖已有内容。\n' +
+        '- [NEW]角色：所有 ▲ 字段均未填充的新角色。\n' +
+        '  必须输出所有 ▲/△ 字段中可从对话推断的值。无法推断的字段输出 ""（留空）。\n' +
+        '  【禁止编造】如果对话中没有信息，输出 "" —— 不要猜测或编造字段值。\n' +
+        '  留空的字段下一轮会继续展示，你可以在新信息出现后填写。\n' +
+        '- 已有角色：仅输出本轮发生变化的字段。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
-        '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
@@ -1050,16 +1067,24 @@ function buildStatePrompt_Dynamic(messages, vault) {
     }
 
     var rulesEn = '\nRules:\n' +
-        '- state_changes: flat object of dot-path → new-value. ONLY fields that ACTUALLY changed.\n' +
+        '- state_changes: flat object of dot-path → new-value.\n' +
+        '- ▲ Required fields: [NEW] character fill all, existing character only if changed.\n' +
+        '- △ Suggest fields: [NEW] fill if clues exist, existing only if changed.\n' +
+        '- ○ Optional / ◆ Incremental: only if explicitly mentioned / only append new.\n' +
+        '- [NEW] char: all ▲ unfilled → MUST output inferrable ▲/△ fields. Leave empty if unsure. Do NOT fabricate.\n' +
+        '- Existing char: only output fields that actually changed this round.\n' +
         '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
-        '- New character: write "characters.Name.status":"活跃" — system auto-creates the full template.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
-        '- state_changes: flat object，dot-path → 新值。仅本轮实际变化的字段。\n' +
+        '- state_changes: flat object，dot-path → 新值。\n' +
+        '- ▲ 必填字段：[NEW]角色尽量推断填写，已有角色仅变化时输出。\n' +
+        '- △ 建议字段：[NEW]有线索就填，已有角色仅变化时输出。\n' +
+        '- ○ 选填 / ◆ 增量：仅明确提及时填写 / 仅追加新内容。\n' +
+        '- [NEW]角色：所有 ▲ 未填 → 必须输出可推断的 ▲/△ 字段。无法推断就留空。禁止编造。\n' +
+        '- 已有角色：仅输出本轮实际变化的字段。\n' +
         '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
-        '- 新角色: 写 "characters.名字.status":"活跃" — 系统自动创建完整模板。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
@@ -1083,16 +1108,29 @@ function autoDecayStaleCharacters(state, messages) {
     if (!state || !state.characters || !messages || !messages.length) return state;
     var msgText = messages.map(function (m) { return (m.content || '') + ' ' + (m.name || ''); }).join(' ');
     var changed = false;
+    var pending = state._decay_pending || {};
     Object.keys(state.characters).forEach(function (name) {
         var card = state.characters[name];
         if (card && card.status === '活跃') {
             if (msgText.indexOf(name) === -1) {
-                card.status = '非活跃';
-                changed = true;
-                console.log('[NE] Auto-decayed inactive character:', name);
+                if (pending[name]) {
+                    card.status = '非活跃';
+                    changed = true;
+                    console.log('[NE] Auto-decayed (2-round buffer expired):', name);
+                    delete pending[name];
+                } else {
+                    pending[name] = true;
+                    console.log('[NE] Decay pending (round 1):', name);
+                }
+            } else {
+                if (pending[name]) {
+                    delete pending[name];
+                    console.log('[NE] Decay pending cleared (reappeared):', name);
+                }
             }
         }
     });
+    state._decay_pending = Object.keys(pending).length > 0 ? pending : undefined;
     if (changed) {
         state = rebuildPresentCharacters(state);
     }
@@ -1301,6 +1339,8 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     chars[name].status = '活跃';
                 } else {
                     if (!chars[name]) chars[name] = {};
+                    ensureCharacterTemplate(state, name);
+                    chars = state.characters;
                     chars[name].status = '活跃';
                 }
             });
@@ -1332,6 +1372,29 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
             console.warn('[NE-HARNESS] All ' + Object.keys(stateChanges).length + ' stateChanges rejected by validateStateChanges — Schema may be missing');
         }
+    }
+
+    var pendingCharBlocks = globalThis.__ne_pending_char_blocks;
+    if (pendingCharBlocks && pendingCharBlocks.length > 0) {
+        var charState = vault.content.state || {};
+        var chars = charState.characters || {};
+        pendingCharBlocks.forEach(function(cb) {
+            if (!cb.name || !cb.fields) return;
+            ensureCharacterTemplate(charState, cb.name);
+            chars = charState.characters;
+            if (!chars[cb.name]) chars[cb.name] = {};
+            Object.keys(cb.fields).forEach(function(fk) {
+                var existing = chars[cb.name][fk];
+                if (existing === undefined || existing === '' || existing === 0 || existing === false) {
+                    chars[cb.name][fk] = cb.fields[fk];
+                }
+            });
+            chars[cb.name].status = '活跃';
+            console.log('[NE-CHAR] merged character:', cb.name, Object.keys(cb.fields).join(', '));
+        });
+        charState.characters = chars;
+        vault.content.state = charState;
+        globalThis.__ne_pending_char_blocks = null;
     }
 
     if (isStateSchemaEnabled()) {

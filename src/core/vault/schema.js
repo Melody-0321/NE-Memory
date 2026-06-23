@@ -559,8 +559,20 @@ export function formatCoreStateSummary(state) {
     return lines.join('\n');
 }
 
-var STATE_INJECTION_CHAR_FIELDS = ['status', 'gender_age', 'occupation', 'personality'];
-var STATE_INJECTION_CHAR_OPTIONAL = ['current_mood', 'affection', 'relationship', 'injuries', 'status_effects'];
+var STATE_INJECTION_CHAR_FIELDS = [
+    { key: 'status',        flag: '\u25b2', desc: 'enum: \u6d3b\u8dc3/\u975e\u6d3b\u8dc3/\u5df2\u6b7b\u4ea1/\u5df2\u5f52\u9690/\u5df2\u79bb\u53bb' },
+    { key: 'gender_age',    flag: '\u25b2', desc: 'string' },
+    { key: 'occupation',    flag: '\u25b2', desc: 'string' },
+    { key: 'personality',   flag: '\u25b2', desc: 'string' },
+    { key: 'affection',     flag: '\u25b3', desc: '0-100' },
+    { key: 'relationship',  flag: '\u25b3', desc: 'string' },
+    { key: 'current_mood',  flag: '\u25b3', desc: 'string' },
+    { key: 'inner_thoughts',flag: '\u25b3', desc: 'string' },
+    { key: 'clothing_build',flag: '\u25cb', desc: 'string' },
+    { key: 'injuries',      flag: '\u25cb', desc: 'string' },
+    { key: 'status_effects',flag: '\u25cb', desc: 'string' },
+    { key: 'past_experience',flag: '\u25c6', desc: '\u589e\u91cf\u8ffd\u52a0' }
+];
 var STATE_INJECTION_FOLDED_FIELDS = ['status', 'affection', 'relationship', 'current_mood', 'personality', 'injuries', 'status_effects'];
 
 export function buildStateInjectionTable(state, messages, maxItems, world) {
@@ -604,23 +616,32 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             }
         });
 
-        // Active characters (full expansion)
+        // Active characters (template expansion)
         if (activeCards.length > 0) {
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
-                var fields = [];
+                var isNew = true;
                 for (var i = 0; i < STATE_INJECTION_CHAR_FIELDS.length; i++) {
-                    var fk = STATE_INJECTION_CHAR_FIELDS[i];
-                    fields.push(fk + ': ' + (item.card[fk] !== undefined ? item.card[fk] : ''));
-                }
-                for (var j = 0; j < STATE_INJECTION_CHAR_OPTIONAL.length; j++) {
-                    var ok = STATE_INJECTION_CHAR_OPTIONAL[j];
-                    var ov = item.card[ok];
-                    if (ov !== undefined && ov !== null && ov !== '') {
-                        fields.push(ok + ': ' + ov);
+                    var fk = STATE_INJECTION_CHAR_FIELDS[i].key;
+                    if (fk !== 'status') {
+                        var fv = item.card[fk];
+                        if (fv !== undefined && fv !== '' && fv !== 0 && fv !== false) {
+                            isNew = false;
+                            break;
+                        }
                     }
                 }
-                parts.push('[' + item.name + '] ' + fields.join(', '));
+                var prefix = isNew ? '[NEW] [' : '[';
+                parts.push(prefix + item.name + ']');
+                for (var j = 0; j < STATE_INJECTION_CHAR_FIELDS.length; j++) {
+                    var field = STATE_INJECTION_CHAR_FIELDS[j];
+                    var fk = field.key;
+                    var fv = item.card[fk] !== undefined ? item.card[fk] : '';
+                    var valStr = String(fv);
+                    if (isNew && fk === 'status' && !valStr) valStr = '\u6d3b\u8dc3';
+                    var suffix = field.desc ? ' (' + field.desc + ')' : '';
+                    parts.push('  ' + field.flag + ' ' + fk + ': ' + valStr + suffix);
+                }
             });
         }
 

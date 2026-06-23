@@ -4,7 +4,7 @@
   "description": "SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern Helper) 运行。",
   "type": "module",
   "scripts": {
-    "build": "node scripts/generate-test-data.cjs && rollup -c && node scripts/copy-to-st.cjs",
+    "build": "node scripts/generate-test-data.cjs && rollup -c",
     "watch": "rollup -c -w",
     "prepare": "git config core.hooksPath .githooks || true"
   },
@@ -19,5 +19,8 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.0",
     "rollup": "^4.60.4"
+  },
+  "dependencies": {
+    "gpt-tokenizer": "^3.4.0"
   }
 }

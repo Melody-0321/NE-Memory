@@ -8,6 +8,7 @@ import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { runtime } from '../runtime.js';
 import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
 import { recordDailyToken } from '../engine/token-stats.js';
+import { countTokens } from '../engine/text-utils.js';
 
 export let telemetryBuffer = [];
 
@@ -78,7 +79,7 @@ export async function callMemoryLLM(messages, options = {}) {
 
     if (chatId) {
         recordChatStat(chatId, 'llm', 1);
-        var totalTokens = usage ? (usage.total_tokens || 0) : (options.operation !== 'init_power_slots' ? 0 : 0);
+        var totalTokens = usage ? (usage.total_tokens || 0) : 0;
         if (totalTokens > 0) {
             var op = options.operation || 'memory';
             var tokenOp = (op === 'stm_extract') ? 'tok_stm'
@@ -88,6 +89,19 @@ export async function callMemoryLLM(messages, options = {}) {
                 : 'tok';
             recordChatToken(chatId, tokenOp, totalTokens);
             recordDailyToken(tokenOp, totalTokens);
+        } else if (response) {
+            var responseText = typeof response === 'string' ? response : (response.content || '');
+            var estimated = countTokens(responseText);
+            if (estimated > 0) {
+                var op = options.operation || 'memory';
+                var tokenOp = (op === 'stm_extract') ? 'tok_stm'
+                    : (op === 'ltm_decision') ? 'tok_ltm'
+                    : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
+                    : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
+                    : 'tok';
+                recordChatToken(chatId, tokenOp, estimated);
+                recordDailyToken(tokenOp, estimated);
+            }
         }
     }
 

@@ -1,3 +1,10 @@
+import { countTokens as gptCountTokens } from 'gpt-tokenizer';
+
+export function countTokens(text) {
+    if (!text || typeof text !== 'string') return 0;
+    return gptCountTokens(text);
+}
+
 function isCJK(ch) {
     var code = ch.charCodeAt(0);
     return (code >= 0x4E00 && code <= 0x9FFF)

@@ -521,9 +521,7 @@ var ACTIVE_STATUSES = ['活跃'];
 var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
 
 function getCharacterCardType(name, state) {
-    var npcNames = state && state.npc_names;
-    if (npcNames && Array.isArray(npcNames) && npcNames.indexOf(name) !== -1) return 'npc';
-    // 默认 NPC：如果不存在明确的主控角色标记，不应滥发 PC 标签
+    if (state && state.protagonist_name && name === state.protagonist_name) return 'protagonist';
     return 'npc';
 }
 
@@ -2272,6 +2270,9 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Context Window Rounds') + '</span><span class="range-val" id="nes_context_window_val">' + (settings.contextWindowRounds || 30) + '</span></div>' +
+        '<input type="range" id="nes_context_window_rounds" min="10" max="100" step="5" value="' + (settings.contextWindowRounds || 30) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Recent rounds appear as full text in chat. Earlier events are supplemented with memory summaries.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
@@ -2385,6 +2386,8 @@ function renderSettingsTab() {
     if (sbEl) { sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
     var suEl = byId('nes_stm_max_unconsolidated');
     if (suEl) { suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
+    var cwEl = byId('nes_context_window_rounds');
+    if (cwEl) { cwEl.oninput = function () { var v = byId('nes_context_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     // Checkboxes — save on change
     var chkState = byId('nes_enable_state_schema');
     if (chkState) chkState.onchange = function () { saveSettingsTab(); };
@@ -2643,6 +2646,7 @@ function saveSettingsTab() {
         memoryBudget: Number(byId('nes_memory_budget').value),
         stmBatch: (byId('nes_stm_batch_auto') && byId('nes_stm_batch_auto').checked) ? 'auto' : Number(byId('nes_stm_batch').value),
         stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
+        contextWindowRounds: Number(byId('nes_context_window_rounds').value),
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
             retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
