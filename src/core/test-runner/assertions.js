@@ -125,6 +125,7 @@ function resolveTarget(collected, targetName) {
     case 'ltm_decision': return collected.ltmDecision ? JSON.stringify(collected.ltmDecision) : '';
     case 'ltm_state': return collected.ltmState ? JSON.stringify(collected.ltmState) : '';
     case 'state_block_instruction': return collected.stateBlockInstruction || '';
+    case 'context_memory': return collected.contextMemory || '';
     default: return '';
     }
 }

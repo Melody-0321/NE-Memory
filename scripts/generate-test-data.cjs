@@ -2,6 +2,10 @@
  * 构建时脚本：扫描 test-cases/ 目录，提取所有 test-case.md，
  * 生成 src/test-runner/test-data.generated.js（嵌入 test-case.md 原始内容）。
  * 在 rollup 构建前运行。
+ *
+ * 目录结构:
+ *   test-cases/{category}/{test-folder}/test-case.md
+ * category 取子目录名（pipeline / retrieval / smoke 等）。
  */
 var fs = require('fs');
 var path = require('path');
@@ -11,13 +15,29 @@ var OUTPUT_FILE = path.join(__dirname, '..', 'src', 'core', 'test-runner', 'test
 
 var knownTests = [];
 var markdownMap = {};
+var ABANDONED = ['smartpush-group-a'];
 
-function collect(dir, category) {
+function collectTestFolder(folderPath, folderName, category) {
+    var mdPath = path.join(folderPath, 'test-case.md');
+    if (!fs.existsSync(mdPath)) return;
+
+    var raw = fs.readFileSync(mdPath, 'utf-8');
+    var name = parseName(raw, folderName);
+
+    if (name) {
+        markdownMap[name] = raw;
+        var title = parseTitle(raw, folderName);
+        knownTests.push({ name: name, title: title, category: category || 'functional' });
+        console.log('[gen-test-data] ' + name + ' [' + (category || 'functional') + '] -> ' + title);
+    }
+}
+
+function scanCategory(categoryDir, category) {
     var entries;
     try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
+        entries = fs.readdirSync(categoryDir, { withFileTypes: true });
     } catch (e) {
-        console.warn('[gen-test-data] Warning: cannot read ' + dir + ': ' + e.message);
+        console.warn('[gen-test-data] Warning: cannot read ' + categoryDir + ': ' + e.message);
         return;
     }
 
@@ -25,25 +45,12 @@ function collect(dir, category) {
         var entry = entries[ei];
         if (!entry.isDirectory()) continue;
 
-        // Skip abandoned/obsolete directories
-        var skipDirs = ['smartpush-group-a'];
-        if (skipDirs.indexOf(entry.name) !== -1) {
+        if (ABANDONED.indexOf(entry.name) !== -1) {
             console.log('[gen-test-data] Skipping obsolete directory: ' + entry.name);
             continue;
         }
 
-        var mdPath = path.join(dir, entry.name, 'test-case.md');
-        if (!fs.existsSync(mdPath)) continue;
-
-        var raw = fs.readFileSync(mdPath, 'utf-8');
-        var name = parseName(raw, entry.name);
-
-        if (name) {
-            markdownMap[name] = raw;
-            var title = parseTitle(raw, entry.name);
-            knownTests.push({ name: name, title: title, category: category || 'functional' });
-            console.log('[gen-test-data] ' + name + ' [' + (category || 'functional') + '] -> ' + title);
-        }
+        collectTestFolder(path.join(categoryDir, entry.name), entry.name, category);
     }
 }
 
@@ -60,7 +67,6 @@ function parseName(raw, folderName) {
             }
         }
     }
-    // fallback: use folder name
     return folderName;
 }
 
@@ -84,13 +90,40 @@ function parseTitle(raw, folderName) {
             }
         }
     }
-    // fallback: find first heading
     var h1m = raw.match(/^#\s+(.+)/m);
     return h1m ? h1m[1].trim() : folderName;
 }
 
-collect(TEST_CASES_DIR, 'functional');
-collect(path.join(TEST_CASES_DIR, 'smoke'), 'smoke');
+// 扫描各分类子目录
+var topEntries;
+try {
+    topEntries = fs.readdirSync(TEST_CASES_DIR, { withFileTypes: true });
+} catch (e) {
+    console.error('[gen-test-data] Cannot read test-cases directory: ' + e.message);
+    process.exit(1);
+}
+
+for (var ti = 0; ti < topEntries.length; ti++) {
+    var topEntry = topEntries[ti];
+    if (!topEntry.isDirectory()) continue;
+
+    var topPath = path.join(TEST_CASES_DIR, topEntry.name);
+
+    // 检测是分类目录还是遗留的扁平测试目录
+    // 分类目录: 不包含 test-case.md，子目录中才包含
+    // 遗留目录: 直接包含 test-case.md
+    if (fs.existsSync(path.join(topPath, 'test-case.md'))) {
+        // 遗留扁平结构，直接收集
+        if (ABANDONED.indexOf(topEntry.name) !== -1) {
+            console.log('[gen-test-data] Skipping obsolete directory: ' + topEntry.name);
+            continue;
+        }
+        collectTestFolder(topPath, topEntry.name, 'functional');
+    } else {
+        // 分类目录，扫描其子目录
+        scanCategory(topPath, topEntry.name);
+    }
+}
 
 // Sort by name
 knownTests.sort(function(a, b) { return a.name.localeCompare(b.name); });

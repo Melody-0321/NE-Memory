@@ -964,15 +964,15 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value.\n' +
-        '- Field levels (see table markers above):\n' +
-        '  ▲ Required·Inferrable → [NEW] character: fill from dialogue context. Existing character: only output if changed.\n' +
-        '  △ Required·Suggest → [NEW] character: fill if you have clues, leave empty if unsure. Existing character: only output if changed.\n' +
+        '- Each field is judged independently:\n' +
+        '  · Field shows "(未填)" → If you can infer its value from this round\'s dialogue, output it. If you cannot infer, do NOT output it.\n' +
+        '  · Field already has a concrete value → Only output if this round\'s dialogue changes that value.\n' +
+        '- Field level hints (see table markers):\n' +
+        '  ▲ Required → Prioritize filling from (未填). Fill if this round provides clues.\n' +
+        '  △ Suggested → Fill if clues exist. Leave empty if unsure.\n' +
         '  ○ Optional → Only fill if explicitly mentioned in dialogue.\n' +
-        '  ◆ Incremental → Only append new content, do NOT overwrite existing.\n' +
-        '- [NEW] character: all ▲ fields are unfilled. MUST output all ▲/△ fields you can infer from dialogue.\n' +
-        '  If no information exists for a field, output "" (leave empty) — do NOT fabricate.\n' +
-        '  Empty fields will be shown again in future rounds for filling when new info appears.\n' +
-        '- Existing character: only output fields that ACTUALLY changed this round.\n' +
+        '  ◆ Incremental → Only append new content. Do NOT overwrite existing.\n' +
+        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields will continue to show (未填) in future rounds — you can fill them when new information appears.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
@@ -980,16 +980,15 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var rulesZh = '\n规则：\n' +
         '- state_changes: flat object，dot-path → 新值。\n' +
-        '- 字段分级（见上方表格标记）：\n' +
-        '  ▲ 必填·可推断 → [NEW]角色：尽量从对话中推断并填写。已有角色：仅变化时输出。\n' +
-        '  △ 必填·建议填 → [NEW]角色：有线索就填，无则留空。已有角色：仅变化时输出。\n' +
-        '  ○ 选填       → 仅在对话中明确提及时填写。\n' +
-        '  ◆ 增量追加   → 仅输出新增内容，不要覆盖已有内容。\n' +
-        '- [NEW]角色：所有 ▲ 字段均未填充的新角色。\n' +
-        '  必须输出所有 ▲/△ 字段中可从对话推断的值。无法推断的字段输出 ""（留空）。\n' +
-        '  【禁止编造】如果对话中没有信息，输出 "" —— 不要猜测或编造字段值。\n' +
-        '  留空的字段下一轮会继续展示，你可以在新信息出现后填写。\n' +
-        '- 已有角色：仅输出本轮发生变化的字段。\n' +
+        '- 每个字段独立判断：\n' +
+        '  · 字段显示「(未填)」→ 如果你能从本轮对话中推断该字段的值，输出它。无法推断则不输出。\n' +
+        '  · 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
+        '- 字段分级提示（见表格标记）：\n' +
+        '  ▲ 必填字段 → 优先从未填状态推断填写。本轮对话有线索就填。\n' +
+        '  △ 建议字段 → 有线索就填，无则留空。\n' +
+        '  ○ 选填字段 → 仅在对话中明确提及时填写。\n' +
+        '  ◆ 增量追加 → 仅追加新内容，不要覆盖已有内容。\n' +
+        '- 【禁止编造】如果对话中没有线索，不要猜测或编造字段值。未填的字段下一轮会继续显示(未填)，你可以在新信息出现后填写。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
@@ -998,12 +997,12 @@ function buildStatePrompt_Preset(messages, vault) {
     if (lang === 'en') {
         return {
             system: stateTable + schemaDesc + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Only output changed fields.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields where you can infer from dialogue. Only output changed fields for already-filled values.'
         };
     }
     return {
         system: stateTable + schemaDesc + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。仅输出本轮变化字段。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
     };
 }
 
@@ -1068,22 +1067,28 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value.\n' +
-        '- ▲ Required fields: [NEW] character fill all, existing character only if changed.\n' +
-        '- △ Suggest fields: [NEW] fill if clues exist, existing only if changed.\n' +
-        '- ○ Optional / ◆ Incremental: only if explicitly mentioned / only append new.\n' +
-        '- [NEW] char: all ▲ unfilled → MUST output inferrable ▲/△ fields. Leave empty if unsure. Do NOT fabricate.\n' +
-        '- Existing char: only output fields that actually changed this round.\n' +
+        '- Each field is judged independently:\n' +
+        '  · Field shows "(未填)" → If you can infer its value from this round\'s dialogue, output it. If you cannot infer, do NOT output it.\n' +
+        '  · Field already has a concrete value → Only output if this round\'s dialogue changes that value.\n' +
+        '- Field level hints (see table markers):\n' +
+        '  ▲ Required → Prioritize filling from (未填). Fill if this round provides clues.\n' +
+        '  △ Suggested → Fill if clues exist. Leave empty if unsure.\n' +
+        '  ○ Optional / ◆ Incremental → Only if explicitly mentioned / only append new.\n' +
+        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields continue to show (未填) — fill them when new information appears.\n' +
         '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
         '- state_changes: flat object，dot-path → 新值。\n' +
-        '- ▲ 必填字段：[NEW]角色尽量推断填写，已有角色仅变化时输出。\n' +
-        '- △ 建议字段：[NEW]有线索就填，已有角色仅变化时输出。\n' +
-        '- ○ 选填 / ◆ 增量：仅明确提及时填写 / 仅追加新内容。\n' +
-        '- [NEW]角色：所有 ▲ 未填 → 必须输出可推断的 ▲/△ 字段。无法推断就留空。禁止编造。\n' +
-        '- 已有角色：仅输出本轮实际变化的字段。\n' +
+        '- 每个字段独立判断：\n' +
+        '  · 字段显示「(未填)」→ 如果你能从本轮对话中推断该字段的值，输出它。无法推断则不输出。\n' +
+        '  · 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
+        '- 字段分级提示（见表格标记）：\n' +
+        '  ▲ 必填字段 → 优先从未填状态推断填写。本轮对话有线索就填。\n' +
+        '  △ 建议字段 → 有线索就填，无则留空。\n' +
+        '  ○ 选填 / ◆ 增量 → 仅明确提及时填写 / 仅追加新内容。\n' +
+        '- 【禁止编造】如果对话中没有线索，不要猜测或编造字段值。未填字段下一轮会继续显示(未填)，新信息出现后再填。\n' +
         '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';

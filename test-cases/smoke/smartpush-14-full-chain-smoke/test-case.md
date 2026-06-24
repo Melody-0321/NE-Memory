@@ -1,6 +1,6 @@
 ---
 name: smartpush-14
-folder: smartpush-14
+folder: smoke/smartpush-14-full-chain-smoke
 title: 全链路冒烟测试（STM + LTM + SmartPush + 注入）
 objective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
 preconditions:

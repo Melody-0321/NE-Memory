@@ -672,6 +672,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         var contextWindowRounds = neSettings.contextWindowRounds || 30;
         var contextMemory = formatContextMemory(vault, chatMessages, contextWindowRounds);
         if (contextMemory) {
+            globalThis.__ne_debug_last_context_memory = contextMemory;
             runtime.injectPrompt('ne_context_memory', contextMemory, 'in_chat', 1, 'system');
             var cmCharEstimate = countTokens(contextMemory);
             if (chatId && cmCharEstimate > 0) {

@@ -620,26 +620,18 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
         if (activeCards.length > 0) {
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
-                var isNew = true;
-                for (var i = 0; i < STATE_INJECTION_CHAR_FIELDS.length; i++) {
-                    var fk = STATE_INJECTION_CHAR_FIELDS[i].key;
-                    if (fk !== 'status') {
-                        var fv = item.card[fk];
-                        if (fv !== undefined && fv !== '' && fv !== 0 && fv !== false) {
-                            isNew = false;
-                            break;
-                        }
-                    }
-                }
-                var prefix = isNew ? '[NEW] [' : '[';
-                parts.push(prefix + item.name + ']');
+                parts.push('[' + item.name + ']');
                 for (var j = 0; j < STATE_INJECTION_CHAR_FIELDS.length; j++) {
                     var field = STATE_INJECTION_CHAR_FIELDS[j];
                     var fk = field.key;
                     var fv = item.card[fk] !== undefined ? item.card[fk] : '';
                     var valStr = String(fv);
-                    if (isNew && fk === 'status' && !valStr) valStr = '\u6d3b\u8dc3';
                     var suffix = field.desc ? ' (' + field.desc + ')' : '';
+                    var isFillable = field.flag === '\u25b2' || field.flag === '\u25b3';
+                    var isEmpty = (fv === undefined || fv === '' || (fk === 'affection' && Number(fv) === 0));
+                    if (isFillable && isEmpty) {
+                        suffix = ' (未填)' + suffix;
+                    }
                     parts.push('  ' + field.flag + ' ' + fk + ': ' + valStr + suffix);
                 }
             });
