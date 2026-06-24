@@ -201,7 +201,7 @@ function injectBottomDrawerCSS() {
         '.ne-char-card.open>.ne-char-card-header .ne-char-toggle{transform:rotate(90deg);}' +
         '.ne-char-card-body{padding-top:4px;}' +
         '.ne-char-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-char-card.open>.ne-char-card-detail{display:block;}' +
+        '.ne-char-card.open .ne-char-card-detail{display:block;}' +
         '.ne-char-card-detail .ne-char-card-detail-row{margin:2px 0;}' +
         '.ne-state-global-block{background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px 10px;margin-bottom:8px;}' +
         '.ne-state-global-block .ne-state-global-table{width:100%;border-collapse:collapse;font-size:0.88em;}' +
@@ -216,7 +216,7 @@ function injectBottomDrawerCSS() {
         '.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle{transform:rotate(90deg);}' +
         '.ne-faction-card-body{padding-top:4px;}' +
         '.ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-faction-card.open>.ne-faction-card-detail{display:block;}' +
+        '.ne-faction-card.open .ne-faction-card-detail{display:block;}' +
         '.ne-quest-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
         '.ne-quest-card.status-progress{border-left-color:#2196f3;}' +
         '.ne-quest-card.status-done{border-left-color:#4caf50;}' +
@@ -225,7 +225,7 @@ function injectBottomDrawerCSS() {
         '.ne-quest-header{display:flex;align-items:center;gap:6px;}' +
         '.ne-quest-toggle{font-size:0.8em;}' +
         '.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
+        '.ne-quest-card.open .ne-quest-detail{display:block;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
         '.ne-settings-save-btn:hover{background:var(--black70a);}' +
         '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
@@ -522,6 +522,15 @@ var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
 
 function getCharacterCardType(name, state) {
     if (state && state.protagonist_name && name === state.protagonist_name) return 'protagonist';
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            if (ctx && ctx.name2 && name === ctx.name2) {
+                if (state) state.protagonist_name = ctx.name2;
+                return 'protagonist';
+            }
+        }
+    } catch (e) {}
     return 'npc';
 }
 
@@ -814,7 +823,7 @@ function renderQuestCard(key, entry, sectionType) {
     var html = `
 <div class="ne-quest-card status-${statusCls}">
   <div class="ne-quest-header"
-       onclick="var p=this.parentElement;p.classList.toggle('open');var d=p.querySelector('.ne-quest-detail');if(d)d.style.display=d.style.display==='block'?'none':'block';">
+       onclick="this.parentElement.classList.toggle('open')">
     <span class="ne-quest-toggle">▶</span>
     <span style="color:${iconColor};">${iconChar}</span>
     <b>${escapeHtml(displayName)}</b>
@@ -1728,42 +1737,14 @@ export async function renderVaultPanel(getChatId) {
                 header.textContent = (vis ? '\u25B6' : '\u25BC') + header.textContent.substring(1);
                 return;
             }
-            // Character card toggle
-            var charHeader = e.target.closest('.ne_char_header');
-            if (charHeader) {
-                var cardId = charHeader.getAttribute('data-card-id');
-                var detail = byId(cardId + '_detail');
-                var toggle = charHeader.querySelector('.ne_char_toggle');
-                if (detail) {
-                    var vis = detail.style.display !== 'none';
-                    detail.style.display = vis ? 'none' : '';
-                    if (toggle) toggle.textContent = vis ? '\u25B6' : '\u25BC';
-                }
-                return;
-            }
-            // Faction card toggle
-            var factionHeader = e.target.closest('.ne_faction_header');
-            if (factionHeader) {
-                var fCardId = factionHeader.getAttribute('data-card-id');
-                var fDetail = byId(fCardId + '_detail');
-                var fToggle = factionHeader.querySelector('.ne_faction_toggle');
-                if (fDetail) {
-                    var fVis = fDetail.style.display !== 'none';
-                    fDetail.style.display = fVis ? 'none' : '';
-                    if (fToggle) fToggle.textContent = fVis ? '\u25B6' : '\u25BC';
-                }
-                return;
-            }
             // Quest card toggle
             var questHeader = e.target.closest('.ne-quest-header');
             if (questHeader) {
                 var qCard = questHeader.closest('.ne-quest-card');
-                var qDetail = qCard ? qCard.querySelector('.ne-quest-detail') : null;
                 var qToggle = questHeader.querySelector('.ne-quest-toggle');
-                if (qDetail && qCard) {
+                if (qCard) {
                     qCard.classList.toggle('open');
-                    qDetail.style.display = qCard.classList.contains('open') ? 'block' : 'none';
-                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '▾' : '▶';
+                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '\u25BE' : '\u25B6';
                 }
                 return;
             }

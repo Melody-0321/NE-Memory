@@ -619,11 +619,15 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
         // Active characters (template expansion)
         if (activeCards.length > 0) {
             parts.push('=== Characters (Active) ===');
+            var protagonistName = world.protagonist_name || (state && state.protagonist_name) || '';
+            var SELF_REF_FIELDS = ['affection', 'relationship', 'current_mood', 'inner_thoughts'];
             activeCards.forEach(function(item) {
+                var isProtagonist = protagonistName && item.name === protagonistName;
                 parts.push('[' + item.name + ']');
                 for (var j = 0; j < STATE_INJECTION_CHAR_FIELDS.length; j++) {
                     var field = STATE_INJECTION_CHAR_FIELDS[j];
                     var fk = field.key;
+                    if (isProtagonist && SELF_REF_FIELDS.indexOf(fk) !== -1) continue;
                     var fv = item.card[fk] !== undefined ? item.card[fk] : '';
                     var valStr = String(fv);
                     var suffix = field.desc ? ' (' + field.desc + ')' : '';
