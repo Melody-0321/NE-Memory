@@ -9,7 +9,6 @@ import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
-import { formatContextMemory } from '../core/engine/context-window.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
@@ -691,16 +690,6 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         }
         var neSettings = {};
         try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}
-        var contextWindowRounds = neSettings.contextWindowRounds || 30;
-        var contextMemory = formatContextMemory(vault, chatMessages, contextWindowRounds);
-        if (contextMemory) {
-            globalThis.__ne_debug_last_context_memory = contextMemory;
-            runtime.injectPrompt('ne_context_memory', contextMemory, 'in_chat', 1, 'system');
-            var cmCharEstimate = countTokens(contextMemory);
-            if (chatId && cmCharEstimate > 0) {
-                recordChatToken(chatId, 'tok_chat', cmCharEstimate);
-            }
-        }
         try {
             var formatted;
             try {
