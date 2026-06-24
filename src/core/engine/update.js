@@ -1260,6 +1260,13 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (latestUserMsg) messages.push(latestUserMsg);
     if (latestAssistantMsg) messages.push(latestAssistantMsg);
 
+    // Inferred protagonist_name: 优先 state 已存值，否则从最新用户消息推断
+    var state = vault.content.state || {};
+    if (!state.protagonist_name && latestUserMsg && latestUserMsg.name) {
+        state.protagonist_name = latestUserMsg.name;
+        vault.content.state = state;
+    }
+
     // 首次初始化：运行 NPC 方案发现（仅一次）
     if (!(vault.content.state || {}).npc_schemes) {
         await resolveNpcSchemes(vault, chatId, messages);
