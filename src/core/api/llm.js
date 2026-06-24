@@ -53,7 +53,7 @@ export async function callMemoryLLM(messages, options = {}) {
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
             console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
-            var callOpts = Object.assign({}, options);
+            var callOpts = Object.assign({}, options, { responseFormat: { type: "json_object" } });
             var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
             usage = customResult.usage;
