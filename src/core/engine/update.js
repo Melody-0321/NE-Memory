@@ -949,15 +949,18 @@ function buildStatePrompt_Preset(messages, vault) {
         '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
+    var hasUnfilled = stateTable.indexOf('(未填)') !== -1 || stateTable.indexOf('(Not filled)') !== -1;
+    var worldBook = hasUnfilled ? buildWorldBookSection() : '';
+
     if (lang === 'en') {
         return {
-            system: stateTable + buildCharacterCardSection() + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards first, then dialogue.'
+            system: stateTable + buildCharacterCardSection() + worldBook + rulesEn,
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards and World Book context above, then dialogue.'
         };
     }
     return {
-        system: stateTable + buildCharacterCardSection() + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。优先从 Character Cards 填充未填字段，角色卡无覆盖的字段再从对话推断。'
+        system: stateTable + buildCharacterCardSection() + worldBook + rulesZh,
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。参考上方的角色卡和世界书上下文填充未填字段，无法覆盖的再从对话推断。'
     };
 }
 
