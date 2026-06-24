@@ -241,10 +241,10 @@ export async function onMessageReceived(messageIndex) {
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
-                || totalWords >= getStmWordsThreshold()
+                || (totalWords >= getStmWordsThreshold() && pendingMessages.length > 2)
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled()) {
+            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
