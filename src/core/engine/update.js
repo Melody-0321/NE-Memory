@@ -1146,20 +1146,38 @@ function collectWorldBookContent() {
 }
 
 function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
+    var MAX_WB_ENTRIES = 15;
+    var MAX_WB_CHARS = 200;
+    var MAX_MSG_COUNT = 4;
+    var MAX_MSG_CHARS = 300;
+
     var wbText = '';
     if (worldBookEntries && worldBookEntries.length > 0) {
         wbText = '## World Setting\n';
+        var wbCount = 0;
         worldBookEntries.forEach(function(entry, i) {
-            wbText += '[' + (i + 1) + '] ' + (entry.content || entry.key || '') + '\n';
+            if (wbCount >= MAX_WB_ENTRIES) return;
+            var content = (entry.content || entry.key || '');
+            if (content.length > MAX_WB_CHARS) content = content.substring(0, MAX_WB_CHARS) + '...';
+            wbText += '[' + (i + 1) + '] ' + content + '\n';
+            wbCount++;
         });
+        if (worldBookEntries.length > MAX_WB_ENTRIES) {
+            wbText += '... (' + (worldBookEntries.length - MAX_WB_ENTRIES) + ' more entries omitted)\n';
+        }
     }
 
     var msgText = '';
     if (messages && messages.length > 0) {
         msgText = '\n## Current Dialogue\n';
-        messages.forEach(function(m) {
-            msgText += (m.name || m.role || '') + ': ' + (m.content || '') + '\n';
-        });
+        var msgLimit = Math.min(messages.length, MAX_MSG_COUNT);
+        var startIdx = Math.max(0, messages.length - msgLimit);
+        for (var i = startIdx; i < messages.length; i++) {
+            var m = messages[i];
+            var content = (m.content || '');
+            if (content.length > MAX_MSG_CHARS) content = content.substring(0, MAX_MSG_CHARS) + '...';
+            msgText += (m.name || m.role || '') + ': ' + content + '\n';
+        }
     }
 
     return '' +
