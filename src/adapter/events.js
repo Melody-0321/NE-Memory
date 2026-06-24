@@ -745,31 +745,21 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
-                var npcSchemes = (vault.content.state && vault.content.state.npc_schemes) || {};
-                var schemeNames = Object.keys(npcSchemes).filter(function(k) { return k !== 'default'; });
-                var npcFieldsList = 'gender_age, occupation, personality, clothing_build, affection, relationship, current_mood, inner_thoughts, status, injuries, status_effects, past_experience';
-                var pcFieldsList = 'gender_age, occupation, personality, clothing_build, status, injuries, status_effects';
-                var schemeHint = schemeNames.length > 0
-                    ? '- NPC 方案选择: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n'
-                    : '- NPC 方案: 没有自定义方案，一律使用 "default"\n';
 
-                var charBlockInstr = '你正在扮演的角色以及本轮对话中首次出现的 NPC 角色需要填写角色信息卡。\n' +
-                    '角色信息卡在上方 === Current State === 中。如果某个角色已经在信息卡中存在，跳过；否则在回复末尾输出该角色的信息块。\n' +
-                    '\n角色类型与可用字段：\n' +
-                    '- PC（你扮演的主角）' + (protagonistName ? ': ' + protagonistName : '') + ' — 字段: ' + pcFieldsList + '\n' +
-                    '- NPC（其他角色）— 字段: ' + npcFieldsList + '\n' +
-                    schemeHint +
-                    '\n你的角色信息来自角色卡和系统设定——不需要等对话中显式提及。请填写你已知道的所有字段，宁多勿少。这是填写角色卡的唯一机会，后续不再提示。\n' +
-                    '\n输出格式（严格 JSON，放在回复末尾、正文之后）：\n' +
-                    '  PC: <!--NE-CHAR:' + (protagonistName || '\u4f60\u7684\u89d2\u8272\u540d') + '-->{"_role":"protagonist","gender_age":"\u2026","occupation":"\u2026","personality":"\u2026","clothing_build":"\u2026","status":"\u6d3b\u8dc3"}<!--/NE-CHAR-->\n' +
-                    '  NPC: <!--NE-CHAR:\u89d2\u8272\u540d-->{"_role":"npc","_scheme":"default","gender_age":"\u2026","occupation":"\u2026","personality":"\u2026","clothing_build":"\u2026","affection":50,"relationship":"\u2026","current_mood":"\u2026","inner_thoughts":"\u2026","status":"\u6d3b\u8dc3"}<!--/NE-CHAR-->\n' +
-                    '\n规则：\n' +
-                    '- 已在角色信息卡中的角色 — 跳过，不输出。\n' +
-                    '- 不在信息卡中的角色 — 必须填写。\n' +
-                    '- \"_role\"（注意有下划线 _）: \"protagonist\" 或 \"npc\"，必填。\n' +
-                    '- \"_scheme\"（注意有下划线 _）: NPC 必填，按上方方案选择写入。\n' +
-                    '- 每个角色一个 NE-CHAR 块。PC 和 NPC 各自一个。\n' +
-                    '- 不要在 NE-CHAR 块外写 \"PC:\" 或 \"NPC:\" 标签。';
+                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u597d\u611f\u5ea6\u53d8\u5316\u548c\u5185\u5fc3\u72b6\u6001\uff1a\n' +
+                    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
+                    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: affection_delta, relationship, current_mood, inner_thoughts\n' +
+                    '\n\u683c\u5f0f\uff1a\n' +
+                    '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"affection_delta":5,"relationship":"\u2026","current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
+                    '\n\u89c4\u5219\uff1a\n' +
+                    '- \u53ea\u6709\u672c\u8f6e\u5b9e\u9645\u53d1\u751f\u4e86\u53d8\u5316\u7684\u89d2\u8272\u624d\u8f93\u51fa NE-CHAR \u5757\u3002\u65e0\u53d8\u5316\u7684\u89d2\u8272\u8df3\u8fc7\u3002\n' +
+                    '- affection_delta: \u597d\u611f\u5ea6\u6570\u503c\u53d8\u5316\u91cf\uff08+5 \u8868\u793a\u4e0a\u5347 5\uff0c-10 \u8868\u793a\u4e0b\u964d 10\uff09\u3002\u53ef\u4e3a\u7a7a\uff08\u4ec5\u5f53\u524d\u5fc3\u60c5\u53d8\u5316\u65f6\uff09\u3002\n' +
+                    '- relationship: \u5173\u7cfb\u63cf\u8ff0\u3002\u6709\u53d8\u5316\u65f6\u8f93\u51fa\u6700\u65b0\u63cf\u8ff0\u3002\n' +
+                    '- current_mood: \u89d2\u8272\u5f53\u524d\u5fc3\u60c5/\u60c5\u7eea\u3002\n' +
+                    '- inner_thoughts: \u89d2\u8272\u5185\u5fc3\u60f3\u6cd5\u3002\n' +
+                    '- PC \u4e0d\u8f93\u51fa affection_delta \u548c relationship\u3002\n' +
+                    '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
+                    '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log

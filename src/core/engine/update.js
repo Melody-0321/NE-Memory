@@ -843,6 +843,23 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
 
 // ── State prompt builders（每种模式专用 prompt）──
 
+function buildCharacterCardSection() {
+    var chars = runtime.getCharacters();
+    if (!chars || chars.length === 0) return '';
+    var lines = [];
+    chars.forEach(function(ch) {
+        if (!ch.name) return;
+        var hasContent = ch.description || ch.personality || ch.scenario;
+        if (!hasContent) return;
+        lines.push('[' + ch.name + ']');
+        if (ch.description) lines.push('Description: ' + ch.description);
+        if (ch.personality) lines.push('Personality: ' + ch.personality);
+        if (ch.scenario) lines.push('Scenario: ' + ch.scenario);
+    });
+    if (lines.length === 0) return '';
+    return '## Character Cards\n' + lines.join('\n') + '\n';
+}
+
 function buildWorldBookSection() {
     var worldInfo = runtime.getWorldInfo();
     if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
@@ -932,12 +949,12 @@ function buildStatePrompt_Preset(messages, vault) {
 
     if (lang === 'en') {
         return {
-            system: stateTable + buildWorldBookSection() + rulesEn,
+            system: stateTable + buildCharacterCardSection() + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields where you can infer from dialogue. Only output changed fields for already-filled values.'
         };
     }
     return {
-        system: stateTable + buildWorldBookSection() + rulesZh,
+        system: stateTable + buildCharacterCardSection() + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
     };
 }
@@ -1129,6 +1146,54 @@ function collectWorldBookContent() {
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             var ctx = SillyTavern.getContext();
+            if (ctx && ctx.getWorldInfoPrompt) {
+                // Use ST's world info scanner with dryRun=true to get activated entries
+                var chatForWi = [];
+                var chatRaw = ctx.chat || [];
+                for (var ci = chatRaw.length - 1; ci >= 0; ci--) {
+                    var cm = chatRaw[ci];
+                    if (cm && cm.mes) {
+                        chatForWi.push(cm.name ? cm.name + ': ' + cm.mes : cm.mes);
+                    }
+                }
+                if (chatForWi.length === 0) {
+                    chatForWi.push('placeholder');
+                }
+                var scanData = {
+                    personaDescription: '',
+                    characterDescription: '',
+                    characterPersonality: '',
+                    characterDepthPrompt: '',
+                    scenario: '',
+                    creatorNotes: '',
+                    trigger: 'normal'
+                };
+                var maxCtx = ctx.maxContext || runtime.maxContext || 8192;
+                var resultPromise = ctx.getWorldInfoPrompt(chatForWi, maxCtx, true, scanData);
+                if (resultPromise && typeof resultPromise.then === 'function') {
+                    return resultPromise.then(function(result) {
+                        var text = (result && result.worldInfoString) ? result.worldInfoString : '';
+                        if (!text.trim()) return [];
+                        var lines = text.split('\n').filter(function(l) { return l.trim(); });
+                        return lines.map(function(l) { return { key: '', content: l }; });
+                    }).catch(function(e) {
+                        console.warn('[NE] getWorldInfoPrompt failed, falling back to raw entries:', e && e.message);
+                        return collectWorldBookContent_raw();
+                    });
+                }
+            }
+        }
+    } catch (e) {
+        console.warn('[NE] Failed to collect world book content:', e && e.message);
+    }
+    return Promise.resolve(collectWorldBookContent_raw());
+}
+
+function collectWorldBookContent_raw() {
+    var entries = [];
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
             var worldInfo = ctx && ctx.worldInfo;
             if (worldInfo && worldInfo.entries) {
                 Object.keys(worldInfo.entries).forEach(function(uid) {
@@ -1197,7 +1262,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
     if (state.npc_schemes) return;
 
-    var worldBookContent = collectWorldBookContent();
+    var worldBookContent = await collectWorldBookContent();
 
     if (!worldBookContent || worldBookContent.length === 0) {
         state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
@@ -1349,41 +1414,29 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var pendingCharBlocks = globalThis.__ne_pending_char_blocks;
     if (pendingCharBlocks && pendingCharBlocks.length > 0) {
         var charState = vault.content.state || {};
-        var keysToSkip = ['_role', 'role', '_scheme', 'scheme'];
         pendingCharBlocks.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
-            var role = cb.fields._role || cb.fields.role || null;
-            var scheme = cb.fields._scheme || cb.fields.scheme || null;
-            keysToSkip.forEach(function(k) { delete cb.fields[k]; });
-            var isPC = (role === 'protagonist') || (charState.protagonist_name && cb.name === charState.protagonist_name);
-            if (role === 'protagonist' && !charState.protagonist_name) {
-                charState.protagonist_name = cb.name;
+            var chars = charState.characters || {};
+            if (!chars[cb.name]) {
+                ensureCharacterTemplate(charState, cb.name, 'default');
+                chars = charState.characters;
             }
-            var schemeKey = isPC ? null : (scheme || 'default');
-            if (!isPC && schemeKey && charState.npc_schemes && !charState.npc_schemes[schemeKey]) {
-                console.warn('[NE-CHAR] unknown _scheme "' + schemeKey + '" for ' + cb.name + ', falling back to "default"');
-                schemeKey = 'default';
-                scheme = 'default';
-            }
-            ensureCharacterTemplate(charState, cb.name, schemeKey);
-            var chars = charState.characters;
             if (!chars[cb.name]) chars[cb.name] = {};
-            if (role && !chars[cb.name]._role) chars[cb.name]._role = role;
-            if (scheme && !isPC && !chars[cb.name]._scheme) chars[cb.name]._scheme = scheme;
-            var pcAllowed = ['gender_age', 'occupation', 'personality', 'clothing_build', 'status', 'injuries', 'status_effects'];
-            var npcOnly = ['affection', 'relationship', 'current_mood', 'inner_thoughts'];
-            if (isPC) {
-                npcOnly.forEach(function(fk) { delete chars[cb.name][fk]; });
+
+            if (cb.fields.affection_delta !== undefined) {
+                var current = chars[cb.name].affection;
+                if (typeof current !== 'number') current = 0;
+                chars[cb.name].affection = Math.max(0, Math.min(100, current + Number(cb.fields.affection_delta)));
             }
-            Object.keys(cb.fields).forEach(function(fk) {
-                if (isPC && pcAllowed.indexOf(fk) === -1) return;
-                var existing = chars[cb.name][fk];
-                if (existing === undefined || existing === '' || existing === 0 || existing === false) {
+
+            ['relationship', 'current_mood', 'inner_thoughts'].forEach(function(fk) {
+                if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
                     chars[cb.name][fk] = cb.fields[fk];
                 }
             });
+
             chars[cb.name].status = chars[cb.name].status || '活跃';
-            console.log('[NE-CHAR] merged character:', cb.name, 'role=' + (isPC ? 'PC' : 'NPC'), 'fields=' + Object.keys(cb.fields).join(', '));
+            console.log('[NE-CHAR] delta merged:', cb.name, JSON.stringify(cb.fields));
         });
         charState.characters = charState.characters;
         vault.content.state = charState;
