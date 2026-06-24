@@ -1,4 +1,3 @@
-import { CORE_STATE_FIELDS } from '../vault/schema.js';
 import { getStmMinLtmMerge } from '../settings.js';
 
 export function validateSTMOutput(parsed, vault, messageCount) {
@@ -213,12 +212,3 @@ export function validateMsgRanges(stmEntries, messageCount) {
     return errors;
 }
 
-export function whitelistStateChanges(changes) {
-    var filtered = {};
-    Object.keys(changes || {}).forEach(function(key) {
-        if (CORE_STATE_FIELDS.indexOf(key) !== -1) {
-            filtered[key] = changes[key];
-        }
-    });
-    return filtered;
-}

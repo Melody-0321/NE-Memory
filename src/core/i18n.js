@@ -465,7 +465,6 @@ export const STATE_FIELD_I18N = {
         // Character
         'name': 'Name', 'gender_age': 'Gender & Age', 'occupation': 'Occupation',
         'clothing_build': 'Appearance', 'personality': 'Personality', 'status': 'Status',
-        'clothing_mode': 'Clothing Mode', 'inventory_mode': 'Inventory Mode',
         'inventory': 'Inventory', 'injuries': 'Injuries', 'status_effects': 'Status Effects',
         'power_slot_defs': 'Power Slots', 'power_slots': 'Power Values',
         'inner_thoughts': 'Inner Thoughts', 'affection': 'Affection',
@@ -488,7 +487,6 @@ export const STATE_FIELD_I18N = {
     'zh-cn': {
         'name': '名称', 'gender_age': '性别与年龄', 'occupation': '职业',
         'clothing_build': '外貌着装', 'personality': '性格', 'status': '状态',
-        'clothing_mode': '服装模式', 'inventory_mode': '物品栏模式',
         'inventory': '物品栏', 'injuries': '伤势', 'status_effects': '状态效果',
         'power_slot_defs': '战力槽', 'power_slots': '战力值',
         'inner_thoughts': '内心想法', 'affection': '好感度',
@@ -507,7 +505,6 @@ export const STATE_FIELD_I18N = {
     'zh-tw': {
         'name': '名稱', 'gender_age': '性別與年齡', 'occupation': '職業',
         'clothing_build': '外貌著裝', 'personality': '性格', 'status': '狀態',
-        'clothing_mode': '服裝模式', 'inventory_mode': '物品欄模式',
         'inventory': '物品欄', 'injuries': '傷勢', 'status_effects': '狀態效果',
         'power_slot_defs': '戰力槽', 'power_slots': '戰力值',
         'inner_thoughts': '內心想法', 'affection': '好感度',

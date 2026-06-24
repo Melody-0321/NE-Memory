@@ -34,15 +34,6 @@ export function setDynamicStateMode(val) {
     _dynamicStateMode = !!val;
 }
 
-// ─── Core Layer（永远存在，不受 Schema 开关影响）───
-
-export const CORE_SCHEMA = {
-    type: 'object',
-    fields: {}
-};
-
-export const CORE_STATE_FIELDS = Object.keys(CORE_SCHEMA.fields);
-
 export const POWER_SLOTS_TEMPLATES = {
     cultivation: {
         name: 'cultivation',
@@ -79,41 +70,33 @@ export const POWER_SLOTS_TEMPLATES = {
 export const DEFAULT_CHARACTER_SCHEMA = {
     protagonist: {
         fields: {
-            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
-            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
-            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
-            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
-            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
-            inventory: { type: 'object', expose_level: 'detail', required: false },
-            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
-            power_slots: { type: 'object', expose_level: 'summary', required: false }
+            name: { type: 'string', max_length: 30, required: true },
+            gender_age: { type: 'string', max_length: 20, required: true },
+            occupation: { type: 'string', max_length: 30, required: true },
+            clothing_build: { type: 'string', max_length: 60, required: true },
+            personality: { type: 'string', max_length: 80, required: true },
+            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], required: true },
+            inventory: { type: 'object', required: false },
+            injuries: { type: 'string', max_length: 120, required: false },
+            status_effects: { type: 'string', max_length: 120, required: false }
         }
     },
     npc: {
         fields: {
-            name: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            gender_age: { type: 'string', max_length: 20, expose_level: 'summary', required: true },
-            occupation: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            clothing_build: { type: 'string', max_length: 60, expose_level: 'detail', required: true },
-            personality: { type: 'string', max_length: 80, expose_level: 'summary', required: true },
-            inner_thoughts: { type: 'string', max_length: 120, expose_level: 'detail', required: true },
-            affection: { type: 'number', min: 0, max: 100, expose_level: 'summary', required: true },
-            relationship: { type: 'string', max_length: 50, expose_level: 'summary', required: true },
-            current_mood: { type: 'string', max_length: 30, expose_level: 'summary', required: true },
-            past_experience: { type: 'string', max_length: 200, expose_level: 'detail', required: false },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], expose_level: 'summary', required: true },
-            clothing_mode: { type: 'boolean', expose_level: 'summary', required: false },
-            inventory_mode: { type: 'enum', values: ['开启', '静态', '关闭'], expose_level: 'summary', required: false },
-            inventory: { type: 'object', expose_level: 'detail', required: false },
-            injuries: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            status_effects: { type: 'string', max_length: 120, expose_level: 'detail', required: false },
-            power_slot_defs: { type: 'object', expose_level: 'detail', required: false },
-            power_slots: { type: 'object', expose_level: 'summary', required: false }
+            name: { type: 'string', max_length: 30, required: true },
+            gender_age: { type: 'string', max_length: 20, required: true },
+            occupation: { type: 'string', max_length: 30, required: true },
+            clothing_build: { type: 'string', max_length: 60, required: true },
+            personality: { type: 'string', max_length: 80, required: true },
+            inner_thoughts: { type: 'string', max_length: 120, required: true },
+            affection: { type: 'number', min: 0, max: 100, required: true },
+            relationship: { type: 'string', max_length: 50, required: true },
+            current_mood: { type: 'string', max_length: 30, required: true },
+            past_experience: { type: 'string', max_length: 200, required: false },
+            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], required: true },
+            inventory: { type: 'object', required: false },
+            injuries: { type: 'string', max_length: 120, required: false },
+            status_effects: { type: 'string', max_length: 120, required: false }
         }
     }
 };
@@ -121,8 +104,8 @@ export const DEFAULT_CHARACTER_SCHEMA = {
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
     fields: {
-        main_event: { type: 'string', max_length: 120, expose_level: 'summary', update_rule: 'replace' },
-        present_characters: { type: 'string', max_length: 80, expose_level: 'summary', update_rule: 'replace' },
+        main_event: { type: 'string', max_length: 120 },
+        present_characters: { type: 'string', max_length: 80 },
         characters: {
             type: 'object',
             schema: {
@@ -141,12 +124,12 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                     '*': {
                         type: 'object',
                         fields: {
-                            name: { type: 'string', max_length: 20, expose_level: 'summary' },
-                            description: { type: 'string', max_length: 80, expose_level: 'detail' },
-                            leader: { type: 'string', max_length: 30, expose_level: 'detail' },
-                            attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'], expose_level: 'summary' },
-                            relations: { type: 'object', expose_level: 'detail' },
-                            notes: { type: 'string', max_length: 200, expose_level: 'detail' }
+                            name: { type: 'string', max_length: 20 },
+                            description: { type: 'string', max_length: 80 },
+                            leader: { type: 'string', max_length: 30 },
+                            attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'] },
+                            relations: { type: 'object' },
+                            notes: { type: 'string', max_length: 200 }
                         }
                     }
                 }
@@ -166,16 +149,16 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                                 '*': {
                                     type: 'object',
                                     fields: {
-                                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                                        deadline: { type: 'string', max_length: 30, expose_level: 'summary' },
-                                        status: { type: 'enum', values: ['正在进行', '已完成', '已失败', '已过期'], expose_level: 'summary' },
-                                        type: { type: 'enum', values: ['主线', '支线', '事件'], expose_level: 'detail' },
-                                        issuer: { type: 'string', max_length: 30, expose_level: 'detail' },
-                                        desc: { type: 'string', max_length: 200, expose_level: 'detail' },
-                                        progress: { type: 'string', max_length: 60, expose_level: 'detail' },
-                                        posted_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                                        reward: { type: 'string', max_length: 100, expose_level: 'detail' },
-                                        penalty: { type: 'string', max_length: 100, expose_level: 'detail' }
+                                        name: { type: 'string', max_length: 40 },
+                                        deadline: { type: 'string', max_length: 30 },
+                                        status: { type: 'enum', values: ['正在进行', '已完成', '已失败', '已过期'] },
+                                        type: { type: 'enum', values: ['主线', '支线', '事件'] },
+                                        issuer: { type: 'string', max_length: 30 },
+                                        desc: { type: 'string', max_length: 200 },
+                                        progress: { type: 'string', max_length: 60 },
+                                        posted_time: { type: 'string', max_length: 30 },
+                                        reward: { type: 'string', max_length: 100 },
+                                        penalty: { type: 'string', max_length: 100 }
                                     }
                                 }
                             }
@@ -189,12 +172,12 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                                 '*': {
                                     type: 'object',
                                     fields: {
-                                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                                        status: { type: 'enum', values: ['进行中', '已达成', '已放弃'], expose_level: 'summary' },
-                                        desc: { type: 'string', max_length: 200, expose_level: 'detail' },
-                                        progress: { type: 'string', max_length: 60, expose_level: 'detail' },
-                                        posted_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                                        completed_time: { type: 'string', max_length: 30, expose_level: 'detail' }
+                                        name: { type: 'string', max_length: 40 },
+                                        status: { type: 'enum', values: ['进行中', '已达成', '已放弃'] },
+                                        desc: { type: 'string', max_length: 200 },
+                                        progress: { type: 'string', max_length: 60 },
+                                        posted_time: { type: 'string', max_length: 30 },
+                                        completed_time: { type: 'string', max_length: 30 }
                                     }
                                 }
                             }
@@ -208,11 +191,11 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                                 '*': {
                                     type: 'object',
                                     fields: {
-                                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                                        status: { type: 'enum', values: ['持续中', '已平息', '已结束'], expose_level: 'summary' },
-                                        desc: { type: 'string', max_length: 300, expose_level: 'detail' },
-                                        started_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                                        ended_time: { type: 'string', max_length: 30, expose_level: 'detail' }
+                                        name: { type: 'string', max_length: 40 },
+                                        status: { type: 'enum', values: ['持续中', '已平息', '已结束'] },
+                                        desc: { type: 'string', max_length: 300 },
+                                        started_time: { type: 'string', max_length: 30 },
+                                        ended_time: { type: 'string', max_length: 30 }
                                     }
                                 }
                             }
@@ -232,12 +215,12 @@ export const DEFAULT_FACTION_SCHEMA = {
             '*': {
                 type: 'object',
                 fields: {
-                    name: { type: 'string', max_length: 20, expose_level: 'summary' },
-                    description: { type: 'string', max_length: 80, expose_level: 'detail' },
-                    leader: { type: 'string', max_length: 30, expose_level: 'detail' },
-                    attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'], expose_level: 'summary' },
-                    relations: { type: 'object', expose_level: 'detail' },
-                    notes: { type: 'string', max_length: 200, expose_level: 'detail' }
+                    name: { type: 'string', max_length: 20 },
+                    description: { type: 'string', max_length: 80 },
+                    leader: { type: 'string', max_length: 30 },
+                    attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'] },
+                    relations: { type: 'object' },
+                    notes: { type: 'string', max_length: 200 }
                 }
             }
         }
@@ -253,16 +236,16 @@ export const DEFAULT_QUESTS_SCHEMA = {
                 '*': {
                     type: 'object',
                     fields: {
-                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                        deadline: { type: 'string', max_length: 30, expose_level: 'summary' },
-                        status: { type: 'enum', values: ['正在进行', '已完成', '已失败', '已过期'], expose_level: 'summary' },
-                        type: { type: 'enum', values: ['主线', '支线', '事件'], expose_level: 'detail' },
-                        issuer: { type: 'string', max_length: 30, expose_level: 'detail' },
-                        desc: { type: 'string', max_length: 200, expose_level: 'detail' },
-                        progress: { type: 'string', max_length: 60, expose_level: 'detail' },
-                        posted_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                        reward: { type: 'string', max_length: 100, expose_level: 'detail' },
-                        penalty: { type: 'string', max_length: 100, expose_level: 'detail' }
+                        name: { type: 'string', max_length: 40 },
+                        deadline: { type: 'string', max_length: 30 },
+                        status: { type: 'enum', values: ['正在进行', '已完成', '已失败', '已过期'] },
+                        type: { type: 'enum', values: ['主线', '支线', '事件'] },
+                        issuer: { type: 'string', max_length: 30 },
+                        desc: { type: 'string', max_length: 200 },
+                        progress: { type: 'string', max_length: 60 },
+                        posted_time: { type: 'string', max_length: 30 },
+                        reward: { type: 'string', max_length: 100 },
+                        penalty: { type: 'string', max_length: 100 }
                     }
                 }
             }
@@ -276,12 +259,12 @@ export const DEFAULT_QUESTS_SCHEMA = {
                 '*': {
                     type: 'object',
                     fields: {
-                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                        status: { type: 'enum', values: ['进行中', '已达成', '已放弃'], expose_level: 'summary' },
-                        desc: { type: 'string', max_length: 200, expose_level: 'detail' },
-                        progress: { type: 'string', max_length: 60, expose_level: 'detail' },
-                        posted_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                        completed_time: { type: 'string', max_length: 30, expose_level: 'detail' }
+                        name: { type: 'string', max_length: 40 },
+                        status: { type: 'enum', values: ['进行中', '已达成', '已放弃'] },
+                        desc: { type: 'string', max_length: 200 },
+                        progress: { type: 'string', max_length: 60 },
+                        posted_time: { type: 'string', max_length: 30 },
+                        completed_time: { type: 'string', max_length: 30 }
                     }
                 }
             }
@@ -295,11 +278,11 @@ export const DEFAULT_QUESTS_SCHEMA = {
                 '*': {
                     type: 'object',
                     fields: {
-                        name: { type: 'string', max_length: 40, expose_level: 'summary' },
-                        status: { type: 'enum', values: ['持续中', '已平息', '已结束'], expose_level: 'summary' },
-                        desc: { type: 'string', max_length: 300, expose_level: 'detail' },
-                        started_time: { type: 'string', max_length: 30, expose_level: 'detail' },
-                        ended_time: { type: 'string', max_length: 30, expose_level: 'detail' }
+                        name: { type: 'string', max_length: 40 },
+                        status: { type: 'enum', values: ['持续中', '已平息', '已结束'] },
+                        desc: { type: 'string', max_length: 300 },
+                        started_time: { type: 'string', max_length: 30 },
+                        ended_time: { type: 'string', max_length: 30 }
                     }
                 }
             }
@@ -420,23 +403,35 @@ export function rebuildPresentCharacters(state) {
     return state;
 }
 
-export function ensureCharacterTemplate(state, name) {
+export function ensureCharacterTemplate(state, name, schemeKey) {
     if (!state.characters) state.characters = {};
     if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
 
-    var template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    var isPC = (state.protagonist_name && name === state.protagonist_name);
+    var template;
+    if (isPC) {
+        template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
+    } else if (schemeKey === null && !isPC) {
+        template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
+    } else {
+        template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    }
+
     state.characters[name] = {};
     Object.keys(template).forEach(function (fk) {
         var field = template[fk];
         if (field.type === 'boolean') {
             state.characters[name][fk] = false;
         } else if (field.type === 'number') {
-            state.characters[name][fk] = 0;
+            state.characters[name][fk] = null;
         } else {
             state.characters[name][fk] = '';
         }
     });
     state.characters[name].name = name;
+    if (!isPC && schemeKey) {
+        state.characters[name]._scheme = schemeKey;
+    }
 }
 
 // mergeStateChanges — 按 dot-path 深度合并到状态对象
@@ -482,98 +477,15 @@ export function mergeStateChanges(state, validatedChanges) {
     return newState;
 }
 
-// ─── getEffectiveSchema — 根据当前模式返回实际生效的完整 schema ───
-
-function mergeSchemas(core, extension) {
-    var merged = JSON.parse(JSON.stringify(core));
-    if (extension && extension.fields) {
-        Object.keys(extension.fields).forEach(function (key) {
-            if (!merged.fields[key]) {
-                merged.fields[key] = extension.fields[key];
-            }
-        });
-    }
-    return merged;
-}
-
-function buildDynamicEffectiveSchema(vault) {
-    var ds = vault.content.dynamic_state;
-    var schema = JSON.parse(JSON.stringify(CORE_SCHEMA));
-
-    // 从 dynamic_state 构建字符字段
-    if (ds && ds.characters) {
-        schema.fields.characters = { type: 'object', fields: {} };
-        Object.keys(ds.characters).forEach(function (charName) {
-            var fields = {};
-            var charFields = ds.characters[charName];
-            if (charFields && typeof charFields === 'object') {
-                Object.keys(charFields).forEach(function (fieldName) {
-                    fields[fieldName] = { type: 'string', expose_level: 'summary' };
-                });
-            }
-            schema.fields.characters.fields[charName] = { type: 'object', fields: fields };
-        });
-    }
-
-    // 可选：从 state_schema 合并 factions/quests（预设 schema）
-    var stateSchema = vault.content.state_schema;
-    if (stateSchema && stateSchema.fields) {
-        if (stateSchema.fields.factions && stateSchema.fields.factions.enabled) {
-            schema.fields.factions = stateSchema.fields.factions;
-        }
-        if (stateSchema.fields.quests && stateSchema.fields.quests.enabled) {
-            schema.fields.quests = stateSchema.fields.quests;
-        }
-    }
-
-    return schema;
-}
-
-/**
- * 返回当前实际生效的完整 schema：
- * - Schema OFF: 仅 CORE_SCHEMA
- * - Schema ON 预设: CORE_SCHEMA + state_schema 中的扩展字段
- * - Schema ON 动态: CORE_SCHEMA + 从 dynamic_state 构建的扩展字段
- */
 export function getEffectiveSchema(vault) {
-    if (!_stateSchemaEnabled) {
-        return CORE_SCHEMA;
-    }
-    if (_dynamicStateMode && vault.content.dynamic_state) {
-        return buildDynamicEffectiveSchema(vault);
-    }
-    return mergeSchemas(CORE_SCHEMA, vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA);
+    return vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
 }
 
-/**
- * 仅渲染 Core 字段的状态摘要（用于 Schema OFF 时的面板显示）
- */
-export function formatCoreStateSummary(state) {
-    var lines = [];
-    for (var i = 0; i < CORE_STATE_FIELDS.length; i++) {
-        var key = CORE_STATE_FIELDS[i];
-        if (state[key]) {
-            lines.push(t_field(key) + ': ' + state[key]);
-        }
-    }
-    return lines.join('\n');
-}
+// Fields injected for PC — derived from DEFAULT_CHARACTER_SCHEMA.protagonist
+export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
-var STATE_INJECTION_CHAR_FIELDS = [
-    { key: 'status',        flag: '\u25b2', desc: 'enum: \u6d3b\u8dc3/\u975e\u6d3b\u8dc3/\u5df2\u6b7b\u4ea1/\u5df2\u5f52\u9690/\u5df2\u79bb\u53bb' },
-    { key: 'gender_age',    flag: '\u25b2', desc: 'string' },
-    { key: 'occupation',    flag: '\u25b2', desc: 'string' },
-    { key: 'personality',   flag: '\u25b2', desc: 'string' },
-    { key: 'affection',     flag: '\u25b3', desc: '0-100' },
-    { key: 'relationship',  flag: '\u25b3', desc: 'string' },
-    { key: 'current_mood',  flag: '\u25b3', desc: 'string' },
-    { key: 'inner_thoughts',flag: '\u25b3', desc: 'string' },
-    { key: 'clothing_build',flag: '\u25cb', desc: 'string' },
-    { key: 'injuries',      flag: '\u25cb', desc: 'string' },
-    { key: 'status_effects',flag: '\u25cb', desc: 'string' },
-    { key: 'past_experience',flag: '\u25c6', desc: '\u589e\u91cf\u8ffd\u52a0' }
-];
-var STATE_INJECTION_FOLDED_FIELDS = ['status', 'affection', 'relationship', 'current_mood', 'personality', 'injuries', 'status_effects'];
+// Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
+export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 export function buildStateInjectionTable(state, messages, maxItems, world) {
     if (!state) return '';
@@ -590,6 +502,9 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
     parts.push('story_date: ' + (world.story_date || ''));
     parts.push('main_event: ' + (state.main_event || ''));
     parts.push('');
+
+    // Determine protagonist name
+    var protagonistName = state.protagonist_name || '';
 
     if (state.characters && typeof state.characters === 'object') {
         var charNames = Object.keys(state.characters);
@@ -616,49 +531,49 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             }
         });
 
-        // Active characters (template expansion)
+        // Active characters
         if (activeCards.length > 0) {
             parts.push('=== Characters (Active) ===');
-            var protagonistName = world.protagonist_name || (state && state.protagonist_name) || '';
-            var SELF_REF_FIELDS = ['affection', 'relationship', 'current_mood', 'inner_thoughts'];
             activeCards.forEach(function(item) {
-                var isProtagonist = protagonistName && item.name === protagonistName;
-                parts.push('[' + item.name + ']');
-                for (var j = 0; j < STATE_INJECTION_CHAR_FIELDS.length; j++) {
-                    var field = STATE_INJECTION_CHAR_FIELDS[j];
-                    var fk = field.key;
-                    if (isProtagonist && SELF_REF_FIELDS.indexOf(fk) !== -1) continue;
+                var isPC = (item.name === protagonistName);
+                var cardType = isPC ? 'protagonist' : 'npc';
+                var fields = isPC ? PC_INJECTION_FIELDS : NPC_INJECTION_FIELDS;
+                var requiredSet = {};
+                var schema = DEFAULT_CHARACTER_SCHEMA[cardType];
+                if (schema && schema.fields) {
+                    Object.keys(schema.fields).forEach(function(k) {
+                        if (schema.fields[k].required) requiredSet[k] = true;
+                    });
+                }
+
+                var label = isPC ? '[PC] ' : '';
+                parts.push(label + '[' + item.name + ']');
+                for (var j = 0; j < fields.length; j++) {
+                    var fk = fields[j];
                     var fv = item.card[fk] !== undefined ? item.card[fk] : '';
                     var valStr = String(fv);
-                    var suffix = field.desc ? ' (' + field.desc + ')' : '';
-                    var isFillable = field.flag === '\u25b2' || field.flag === '\u25b3';
                     var isEmpty = (fv === undefined || fv === '' || (fk === 'affection' && Number(fv) === 0));
-                    if (isFillable && isEmpty) {
+                    var suffix = '';
+                    if (fk === 'status') suffix = ' (enum: 活跃/非活跃/已死亡/已归隐/已离去)';
+                    else if (fk === 'affection') suffix = ' (0-100)';
+                    else if (fk === 'past_experience') suffix = ' (增量追加)';
+                    if (requiredSet[fk] && isEmpty) {
                         suffix = ' (未填)' + suffix;
                     }
-                    parts.push('  ' + field.flag + ' ' + fk + ': ' + valStr + suffix);
+                    parts.push('  ' + fk + ': ' + valStr + suffix);
                 }
             });
         }
 
-        // Inactive characters (folded summary)
+        // Inactive characters (simple summary)
         if (inactiveCards.length > 0) {
             parts.push('');
-            var foldedLines = [];
+            var inactiveLines = [];
             inactiveCards.forEach(function(item) {
-                var fields = [];
-                for (var fi = 0; fi < STATE_INJECTION_FOLDED_FIELDS.length; fi++) {
-                    var fk = STATE_INJECTION_FOLDED_FIELDS[fi];
-                    var fv = item.card[fk];
-                    if (fk === 'status') {
-                        fields.push(fk + ': ' + (fv || ''));
-                    } else if (fv !== undefined && fv !== null && fv !== '' && !(fk === 'affection' && Number(fv) === 0)) {
-                        fields.push(fk + ': ' + fv);
-                    }
-                }
-                foldedLines.push('[' + item.name + '] ' + fields.join(', '));
+                var status = item.card.status || '';
+                inactiveLines.push('[' + item.name + '] status: ' + status);
             });
-            parts.push('  Non-active: ' + foldedLines.join(' | '));
+            parts.push('  Non-active: ' + inactiveLines.join(' | '));
         }
         parts.push('');
     }
@@ -727,59 +642,6 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
     return parts.join('\n');
 }
 
-/**
- * 从 dynamic_state 构建与 renderCharacterCard / formatCharacterSummary 兼容的字符 schema。
- * 返回 { protagonist: { fields: {...} }, npc: { fields: {...} } } 格式，或 null。
- */
-export function buildDynamicCharacterSchema(dynamicState) {
-    if (!dynamicState || !dynamicState.characters) return null;
-
-    var allFields = {};
-    var charKeys = Object.keys(dynamicState.characters);
-    for (var i = 0; i < charKeys.length; i++) {
-        var charFields = dynamicState.characters[charKeys[i]];
-        if (charFields && typeof charFields === 'object') {
-            var fieldKeys = Object.keys(charFields);
-            for (var j = 0; j < fieldKeys.length; j++) {
-                var fn = fieldKeys[j];
-                if (!allFields[fn]) {
-                    allFields[fn] = { type: 'string', expose_level: 'summary' };
-                }
-            }
-        }
-    }
-
-    if (Object.keys(allFields).length === 0) return null;
-
-    // 两个角色类型共用同一套动态字段
-    return {
-        protagonist: { fields: JSON.parse(JSON.stringify(allFields)) },
-        npc: { fields: JSON.parse(JSON.stringify(allFields)) }
-    };
-}
-
-// validateCharacterCard — 校验单个角色卡是否符合 protagonist/npc Schema 的 required 字段
-export function validateCharacterCard(characterData, cardType) {
-    var schema = DEFAULT_CHARACTER_SCHEMA[cardType];
-    if (!schema) return { valid: false, errors: ['Unknown card type: ' + cardType] };
-
-    var errors = [];
-    var fields = schema.fields || {};
-
-    Object.keys(fields).forEach(function (key) {
-        var fieldDef = fields[key];
-        if (!fieldDef.required) return;
-        var val = characterData[key];
-        if (val === undefined || val === null || val === '') {
-            errors.push('Missing required field: ' + key);
-        } else if (fieldDef.type === 'enum' && Array.isArray(fieldDef.values) && fieldDef.values.indexOf(val) === -1) {
-            errors.push('Invalid enum value for ' + key + ': ' + val);
-        }
-    });
-
-    return { valid: errors.length === 0, errors: errors };
-}
-
 // formatCharacterSummary — 将角色卡渲染为摘要文本行
 export function formatCharacterSummary(state, characterSchema) {
     if (!state || !state.characters) return '';
@@ -805,10 +667,8 @@ export function formatCharacterSummary(state, characterSchema) {
         summaryFields.push('[' + status + ']');
 
         Object.keys(fields).forEach(function (key) {
-            var fieldDef = fields[key];
-            if (fieldDef.expose_level !== 'summary') return;
             if (key === 'status') return;
-            if (key === 'name') return; // 名字已在卡片标题显示
+            if (key === 'name') return;
             var val = card[key];
             if (val !== undefined && val !== null && val !== '') {
                 var strVal;
@@ -994,114 +854,10 @@ export function formatEntityChainHeaders(activeCharNames, entityChains, entityNa
     return headers;
 }
 
-function stringifyVal(val) {
+export function stringifyVal(val) {
     if (val === null || val === undefined || val === '') return null;
     if (typeof val === 'object') {
         try { return JSON.stringify(val); } catch (e) { return String(val); }
     }
     return String(val);
-}
-
-export function formatWorldBookGlobal(state, world) {
-    world = world || {};
-    if (!state) return '';
-    var lines = [];
-    if (world.story_time) lines.push('Time: ' + world.story_time);
-    if (world.story_scene) lines.push('Scene: ' + world.story_scene);
-    if (world.story_date) lines.push('Story Date: ' + world.story_date);
-    if (state.main_event) lines.push('Main Event: ' + state.main_event);
-    if (state.present_characters) lines.push('Present Characters: ' + state.present_characters);
-    if (lines.length === 0) return '';
-    return lines.join('\n');
-}
-
-export function formatWorldBookCharacterCard(state, name) {
-    if (!state || !state.characters) return '';
-    var card = state.characters[name];
-    if (!card || typeof card !== 'object') return '';
-
-    var lines = ['## ' + name];
-    var fields = [
-        { key: 'status', label: 'Status' },
-        { key: 'gender_age', label: 'Gender/Age' },
-        { key: 'occupation', label: 'Occupation' },
-        { key: 'clothing_build', label: 'Appearance' },
-        { key: 'personality', label: 'Personality' },
-        { key: 'inner_thoughts', label: 'Inner Thoughts' },
-        { key: 'affection', label: 'Affection' },
-        { key: 'relationship', label: 'Relationship' },
-        { key: 'current_mood', label: 'Mood' },
-        { key: 'past_experience', label: 'Past Experience' },
-        { key: 'clothing_mode', label: 'Clothing Mode' },
-        { key: 'inventory_mode', label: 'Inventory Mode' },
-        { key: 'inventory', label: 'Inventory' },
-        { key: 'injuries', label: 'Injuries' },
-        { key: 'status_effects', label: 'Status Effects' },
-        { key: 'power_slots', label: 'Power Slots' }
-    ];
-
-    for (var i = 0; i < fields.length; i++) {
-        var f = fields[i];
-        var val = stringifyVal(card[f.key]);
-        if (val) lines.push(f.key + ': ' + val.substring(0, 120));
-    }
-
-    var extraKeys = Object.keys(card).filter(function(k) {
-        for (var j = 0; j < fields.length; j++) {
-            if (fields[j].key === k) return false;
-        }
-        return true;
-    });
-    for (var ei = 0; ei < extraKeys.length; ei++) {
-        var ek = extraKeys[ei];
-        var ev = stringifyVal(card[ek]);
-        if (ev) lines.push(ek + ': ' + ev.substring(0, 80));
-    }
-
-    return lines.join('\n');
-}
-
-export function formatWorldBookFactionCard(state, name) {
-    if (!state || !state.factions) return '';
-    var card = state.factions[name];
-    if (!card || typeof card !== 'object') return '';
-
-    var lines = ['## ' + name];
-    var fields = ['name', 'description', 'leader', 'attitude_toward_player', 'relations', 'notes'];
-
-    for (var i = 0; i < fields.length; i++) {
-        var f = fields[i];
-        if (f === 'name') continue;
-        var val = stringifyVal(card[f]);
-        if (val) lines.push(f + ': ' + val.substring(0, 120));
-    }
-
-    var extraKeys = Object.keys(card).filter(function(k) { return fields.indexOf(k) === -1; });
-    for (var ei = 0; ei < extraKeys.length; ei++) {
-        var ek = extraKeys[ei];
-        var ev = stringifyVal(card[ek]);
-        if (ev) lines.push(ek + ': ' + ev.substring(0, 80));
-    }
-
-    return lines.join('\n');
-}
-
-export function formatWorldBookQuestCard(state, section, name) {
-    if (!state || !state.quests) return '';
-    var group = state.quests[section];
-    if (!group || typeof group !== 'object') return '';
-    var item = group[name];
-    if (!item || typeof item !== 'object') return '';
-
-    var sectionLabel = section === 'tasks' ? 'Task' : (section === 'goals' ? 'Goal' : 'Event');
-    var lines = ['## [' + sectionLabel + '] ' + (item.name || name)];
-
-    var keys = Object.keys(item);
-    for (var i = 0; i < keys.length; i++) {
-        var k = keys[i];
-        var val = stringifyVal(item[k]);
-        if (val) lines.push(k + ': ' + val.substring(0, 120));
-    }
-
-    return lines.join('\n');
 }

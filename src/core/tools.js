@@ -435,11 +435,9 @@ function lookupCharacter(state, name) {
 
     if (card.injuries) lines.push('injuries: ' + String(card.injuries));
     if (card.status_effects) lines.push('status_effects: ' + String(card.status_effects));
-    if (card.clothing_mode !== undefined) lines.push('clothing_mode: ' + (card.clothing_mode ? 'detailed' : 'simple'));
 
     var inv = card.inventory;
-    var invMode = card.inventory_mode || '关闭';
-    if (invMode !== '关闭' && inv && typeof inv === 'object') {
+    if (inv && typeof inv === 'object') {
         var invLines = [];
         if (inv.gold !== undefined && inv.gold !== null) invLines.push('Gold: ' + inv.gold + 'G');
         var items = inv.items || [];
@@ -453,7 +451,6 @@ function lookupCharacter(state, name) {
             invLines.push('Items: ' + itemDescs.join('; '));
         }
         if (invLines.length > 0) {
-            lines.push('inventory_mode: ' + invMode);
             lines.push('inventory: ' + invLines.join(' | '));
         }
     }

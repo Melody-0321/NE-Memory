@@ -1,8 +1,8 @@
 ---
 name: pipeline-state-01
 folder: pipeline/pipeline-state-01
-title: State 管线集成测试（12 字段模板 + protagonist_name）
-objective: 验证 State 管线独立健康 — 角色状态变化提取、pipeline 无报错、12 字段模板展开正确、protagonist_name 自动推断
+title: State 管线集成测试（PC/NPC 字段分离 + protagonist_name）
+objective: 验证 State 管线独立健康 — 角色状态变化提取、pipeline 无报错、PC/NPC 字段分离正确（PC 无 affection/relationship）、protagonist_name 从 ctx.name1 推断
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - 副 API 可用

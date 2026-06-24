@@ -1,22 +1,6 @@
 import { read, write } from './vault/store.js';
-import { discoverDynamicFields } from './engine/state-discovery.js';
-import { isDynamicStateMode } from './vault/schema.js';
 
 var _loadedChatIds = {};
-
-async function _discoverIfNeeded(chatId, vault) {
-    try {
-        if (!isDynamicStateMode()) return;
-        if (!vault || !vault.content || vault.content.dynamic_state) return;
-        var result = discoverDynamicFields(vault);
-        if (result.discovered) {
-            await write(chatId, vault);
-            console.log('[NE] Dynamic state discovered for', chatId);
-        }
-    } catch (e) {
-        console.warn('[NE] Dynamic state discovery failed:', e);
-    }
-}
 
 function _getChatMetadataNeVault() {
     try {
@@ -74,21 +58,15 @@ export async function loadVault(chatId) {
     var chatVersion = (chatVault && chatVault.version) || 0;
 
     if (chatVersion > 0 && chatVersion >= effectiveVersion) {
-        // 聊天文件为主 → 同步到 IndexedDB，返回
         try { await write(chatId, chatVault); } catch (e) {}
-        await _discoverIfNeeded(chatId, chatVault);
         return chatVault;
     }
 
     if (effectiveVersion > 0 && effectiveVersion > chatVersion) {
-        // IndexedDB 更新 → 回填到聊天文件，返回
         persistVaultToChatFile(dbVault);
-        await _discoverIfNeeded(chatId, dbVault);
         return dbVault;
     }
 
-    // 两者都为空 → 新 vault
-    await _discoverIfNeeded(chatId, dbVault);
     return dbVault;
 }
 

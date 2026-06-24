@@ -11,7 +11,7 @@ import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/ve
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { t_narrative, t_field, setFieldLocale } from '../core/i18n.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { DEFAULT_CHARACTER_SCHEMA, isStateSchemaEnabled, isDynamicStateMode, buildDynamicCharacterSchema, setStateSchemaEnabled } from '../core/vault/schema.js';
+import { DEFAULT_CHARACTER_SCHEMA, isStateSchemaEnabled, setStateSchemaEnabled } from '../core/vault/schema.js';
 import { testSecondaryApiConnection, sendSecondaryTestMessage, saveSecondaryApiConfig, loadSecondaryApiConfig, loadRetrievalApiConfig, saveRetrievalApiConfig, isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { isAuto, computeStmBatch, getTelemetryStats, setAuto } from '../core/params.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -197,11 +197,12 @@ function injectBottomDrawerCSS() {
         '.ne-char-card.status-inactive{border-left-color:#ff9800;}' +
         '.ne-char-card.status-departed{border-left-color:#f44336;}' +
         '.ne-char-card-header{display:flex;align-items:center;gap:8px;cursor:pointer;font-size:0.92em;}' +
-        '.ne-char-card-header .ne-char-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}' +
-        '.ne-char-card.open>.ne-char-card-header .ne-char-toggle{transform:rotate(90deg);}' +
-        '.ne-char-card-body{padding-top:4px;}' +
-        '.ne-char-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-char-card.open .ne-char-card-detail{display:block;}' +
+        '.ne-char-toggle { display: inline-block; transition: transform 0.2s; font-size: 10px; margin-right: 4px; }' +
+        '.ne-char-card.open .ne-char-toggle { transform: rotate(90deg); }' +
+        '.ne-char-card-body { display: none; }' +
+        '.ne-char-card.open .ne-char-card-body { display: block; }' +
+        '.ne-char-card-detail { display: none; }' +
+        '.ne-char-card.open .ne-char-card-detail { display: block; }' +
         '.ne-char-card-detail .ne-char-card-detail-row{margin:2px 0;}' +
         '.ne-state-global-block{background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:8px 10px;margin-bottom:8px;}' +
         '.ne-state-global-block .ne-state-global-table{width:100%;border-collapse:collapse;font-size:0.88em;}' +
@@ -216,7 +217,7 @@ function injectBottomDrawerCSS() {
         '.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle{transform:rotate(90deg);}' +
         '.ne-faction-card-body{padding-top:4px;}' +
         '.ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-faction-card.open .ne-faction-card-detail{display:block;}' +
+        '.ne-faction-card.open>.ne-faction-card-detail{display:block;}' +
         '.ne-quest-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
         '.ne-quest-card.status-progress{border-left-color:#2196f3;}' +
         '.ne-quest-card.status-done{border-left-color:#4caf50;}' +
@@ -225,7 +226,7 @@ function injectBottomDrawerCSS() {
         '.ne-quest-header{display:flex;align-items:center;gap:6px;}' +
         '.ne-quest-toggle{font-size:0.8em;}' +
         '.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
-        '.ne-quest-card.open .ne-quest-detail{display:block;}' +
+        '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
         '.ne-settings-save-btn:hover{background:var(--black70a);}' +
         '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
@@ -522,131 +523,92 @@ var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
 
 function getCharacterCardType(name, state) {
     if (state && state.protagonist_name && name === state.protagonist_name) return 'protagonist';
-    try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var ctx = SillyTavern.getContext();
-            if (ctx && ctx.name2 && name === ctx.name2) {
-                if (state) state.protagonist_name = ctx.name2;
-                return 'protagonist';
-            }
-        }
-    } catch (e) {}
     return 'npc';
 }
 
 function renderCharacterCard(name, card, schema, cardType) {
-    var cardSchema = schema[cardType] || schema.npc;
-    var fields = cardSchema.fields || {};
-    var summaryRows = [];
-    var detailRows = [];
+    var cardSchema = (schema && schema[cardType]) ? schema[cardType] : (schema && schema.npc ? schema.npc : null);
+    if (!cardSchema || !cardSchema.fields) return '';
 
-    var statusStr = card.status || '未知';
-    var statusCls;
-    if (ACTIVE_STATUSES.indexOf(statusStr) !== -1) statusCls = 'active';
-    else if (DEPARTED_STATUSES.indexOf(statusStr) !== -1) statusCls = 'departed';
-    else statusCls = 'inactive';
+    var rows = [];
+    var requiredFields = [];
+    var optionalFields = [];
 
-    Object.keys(fields).forEach(function (key) {
-        var fieldDef = fields[key];
+    Object.keys(cardSchema.fields).forEach(function (key) {
+        if (key === 'name') return;
+        var fieldDef = cardSchema.fields[key];
         var val = card[key];
-        if (val === undefined || val === null || val === '') return;
-        if (key === 'status' || key === 'name') return;
+
+        // Skip empty non-required fields
+        if (!fieldDef.required && (val === undefined || val === null || val === '')) return;
 
         var displayVal;
-        if (key === 'clothing_build' && card.clothing_mode === true) {
-            displayVal = escapeHtml(String(val).substring(0, 30)) + '...';
-        } else if (typeof val === 'object') {
+        if (typeof val === 'object' && val !== null) {
             try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
-            if (displayVal.length > 50) displayVal = displayVal.substring(0, 50) + '...';
-            displayVal = escapeHtml(displayVal);
+        } else if (val === undefined || val === null || val === '') {
+            displayVal = '<span class="ne-empty-value">(未填)</span>';
         } else {
-            displayVal = escapeHtml(String(val));
+            displayVal = String(val);
         }
 
-        var row = '<tr><td>' + t_field(key) + '</td><td>' + displayVal + '</td></tr>';
+        var row = '<tr><td class="ne-field-label">' + escapeHtml(key) + '</td><td>' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</td></tr>';
 
-        if (fieldDef.expose_level === 'summary') {
-            summaryRows.push(row);
-        } else if (fieldDef.expose_level === 'detail') {
-            detailRows.push('<div class="ne-char-card-detail-row">' + t_field(key) + ': ' + displayVal + '</div>');
+        if (fieldDef.required) {
+            requiredFields.push(row);
+        } else {
+            optionalFields.push(row);
         }
     });
 
+    var allRows = requiredFields.concat(optionalFields);
+    if (allRows.length === 0) return '';
+
+    // Special: affection progress bar (NPC only)
     var affectionHtml = '';
     if (cardType === 'npc' && card.affection !== undefined && card.affection !== null && card.affection !== '') {
-        var affNum = Number(card.affection);
-        if (!isNaN(affNum)) {
-            affNum = Math.max(0, Math.min(100, affNum));
-            affectionHtml = '<tr><td>' + t_field('affection') + '</td><td><span class="ne-affection-bar"><div style="width:' + affNum + '%;"></div></span>' + affNum + '</td></tr>';
+        var affVal = Number(card.affection) || 0;
+        var affPercent = Math.min(100, Math.max(0, affVal));
+        affectionHtml = '<div class="ne-affection-bar"><div class="ne-affection-fill" style="width:' + affPercent + '%"></div><span class="ne-affection-label">好感度: ' + affVal + '</span></div>';
+    }
+
+    // Render inventory if present
+    var inventoryHtml = '';
+    if (card.inventory && typeof card.inventory === 'object') {
+        var invItems = [];
+        Object.keys(card.inventory).forEach(function (slot) {
+            invItems.push('<span class="ne-inv-slot">' + escapeHtml(slot) + ': ' + escapeHtml(String(card.inventory[slot])) + '</span>');
+        });
+        if (invItems.length > 0) {
+            inventoryHtml = '<div class="ne-inventory-bar">' + invItems.join(' ') + '</div>';
         }
     }
 
-    var equipmentHtml = '';
-    var inventory = card.inventory;
-    if (inventory && typeof inventory === 'object' && Array.isArray(inventory.items)) {
-        var equipped = inventory.items.filter(function (item) { return item && item.equipped === true; });
-        if (equipped.length > 0) {
-            equipmentHtml = '<div class="ne-char-card-detail-row" style="color:#e2b714;">' + t_field('equipment') + ': ';
-            equipped.forEach(function (item) {
-                equipmentHtml += escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : '') + ' ';
+    var html = '<div class="ne-char-card">';
+    html += '<div class="ne-char-card-header" onclick="this.parentElement.classList.toggle(\'open\')">';
+    html += '<span class="ne-char-toggle">&#9654;</span>';
+    html += '<b>' + escapeHtml(name) + '</b> ';
+    html += '<span class="ne-char-status">' + escapeHtml(card.status || '') + '</span> ';
+    html += '<span class="ne-char-type">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
+    html += '</div>';
+    html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
+    html += affectionHtml;
+    html += inventoryHtml;
+
+    // Power slots (independent rendering)
+    if (card.power_slots && typeof card.power_slots === 'object') {
+        var psKeys = Object.keys(card.power_slots);
+        if (psKeys.length > 0) {
+            html += '<div class="ne-power-slots">';
+            psKeys.forEach(function (sk) {
+                var sv = card.power_slots[sk];
+                var svStr = (sv && typeof sv === 'object' && sv.level !== undefined) ? sv.level : (typeof sv === 'object' ? JSON.stringify(sv) : String(sv || ''));
+                html += '<span class="ne-ps-slot" title="' + escapeHtml(sk) + '">' + escapeHtml(sk) + ': ' + escapeHtml(svStr) + '</span>';
             });
-            equipmentHtml += '</div>';
+            html += '</div>';
         }
     }
 
-    if (card.injuries) {
-        detailRows.push('<div class="ne-char-card-detail-row">' + t_field('injuries') + ': ' + escapeHtml(String(card.injuries)) + '</div>');
-    }
-    if (card.status_effects) {
-        detailRows.push('<div class="ne-char-card-detail-row">' + t_field('status_effects') + ': ' + escapeHtml(String(card.status_effects)) + '</div>');
-    }
-
-    var invMode = card.inventory_mode || '关闭';
-    if (invMode !== '关闭' && inventory && Array.isArray(inventory.items)) {
-        var invLines = [];
-        var allItems = inventory.items.filter(function (item) { return item && !item.equipped; });
-        allItems.forEach(function (item) {
-            invLines.push(escapeHtml(item.name || '?') + (item.qty && item.qty > 1 ? '\u00D7' + item.qty : ''));
-        });
-        if (invLines.length > 0 || (inventory.gold != null)) {
-            var invHtml = t_field('inventory') + (invMode === '静态' ? ' (static)' : '') + ': ';
-            if (inventory.gold != null) invHtml += escapeHtml(String(inventory.gold)) + 'G ';
-            invHtml += invLines.join(', ');
-            detailRows.push('<div class="ne-char-card-detail-row" style="color:#ccc;font-size:0.85em;">' + invHtml + '</div>');
-        }
-    }
-
-    var powerSlotDefs = card.power_slot_defs;
-    var powerSlotValues = card.power_slots;
-    var powerSlotBar = '';
-    if (powerSlotDefs && Array.isArray(powerSlotDefs) && powerSlotDefs.length > 0) {
-        var slotParts = [];
-        powerSlotDefs.forEach(function (def) {
-            var val = (powerSlotValues && typeof powerSlotValues === 'object' && powerSlotValues[def.key]) || '-';
-            slotParts.push(escapeHtml(String(def.label)) + ': ' + escapeHtml(String(val)));
-        });
-        if (slotParts.length > 0) {
-            powerSlotBar = '<div style="margin-top:3px;font-size:0.85em;color:#e2b714;padding:3px 6px;background:var(--black20a);border-radius:3px;">' + slotParts.join(' | ') + '</div>';
-        }
-    }
-
-    var hasDetail = detailRows.length > 0 || equipmentHtml;
-    var html = `
-<div class="ne-char-card status-${statusCls}">
-  <div class="ne-char-card-header"
-       onclick="this.parentElement.classList.toggle('open')">
-    <span class="ne-char-toggle">▶</span>
-    <b>${escapeHtml(name)}</b>
-    <span class="ne-state-badge ${statusCls}">${escapeHtml(statusStr)}</span>
-    <span style="font-size:0.75em;color:var(--grey-50);">${cardType === 'npc' ? 'NPC' : 'PC'}</span>
-  </div>
-  <div class="ne-char-card-body">
-    <table class="ne-state-card-table">${summaryRows.join('')}${affectionHtml}</table>
-    ${powerSlotBar}
-    ${hasDetail ? '<div class="ne-char-card-detail">' + equipmentHtml + detailRows.join('') + '</div>' : ''}
-  </div>
-</div>`;
-
+    html += '</div></div>';
     return html;
 }
 
@@ -670,9 +632,6 @@ function renderCharacterGroup(label, names, characters, schema, state) {
 }
 
 function getCharacterSchemaForPanel(content) {
-    if (isDynamicStateMode() && content.dynamic_state) {
-        return buildDynamicCharacterSchema(content.dynamic_state) || DEFAULT_CHARACTER_SCHEMA;
-    }
     return content.character_schema || DEFAULT_CHARACTER_SCHEMA;
 }
 
@@ -823,7 +782,7 @@ function renderQuestCard(key, entry, sectionType) {
     var html = `
 <div class="ne-quest-card status-${statusCls}">
   <div class="ne-quest-header"
-       onclick="this.parentElement.classList.toggle('open')">
+       onclick="var p=this.parentElement;p.classList.toggle('open');var d=p.querySelector('.ne-quest-detail');if(d)d.style.display=d.style.display==='block'?'none':'block';">
     <span class="ne-quest-toggle">▶</span>
     <span style="color:${iconColor};">${iconChar}</span>
     <b>${escapeHtml(displayName)}</b>
@@ -1737,14 +1696,42 @@ export async function renderVaultPanel(getChatId) {
                 header.textContent = (vis ? '\u25B6' : '\u25BC') + header.textContent.substring(1);
                 return;
             }
+            // Character card toggle
+            var charHeader = e.target.closest('.ne_char_header');
+            if (charHeader) {
+                var cardId = charHeader.getAttribute('data-card-id');
+                var detail = byId(cardId + '_detail');
+                var toggle = charHeader.querySelector('.ne_char_toggle');
+                if (detail) {
+                    var vis = detail.style.display !== 'none';
+                    detail.style.display = vis ? 'none' : '';
+                    if (toggle) toggle.textContent = vis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
+            // Faction card toggle
+            var factionHeader = e.target.closest('.ne_faction_header');
+            if (factionHeader) {
+                var fCardId = factionHeader.getAttribute('data-card-id');
+                var fDetail = byId(fCardId + '_detail');
+                var fToggle = factionHeader.querySelector('.ne_faction_toggle');
+                if (fDetail) {
+                    var fVis = fDetail.style.display !== 'none';
+                    fDetail.style.display = fVis ? 'none' : '';
+                    if (fToggle) fToggle.textContent = fVis ? '\u25B6' : '\u25BC';
+                }
+                return;
+            }
             // Quest card toggle
             var questHeader = e.target.closest('.ne-quest-header');
             if (questHeader) {
                 var qCard = questHeader.closest('.ne-quest-card');
+                var qDetail = qCard ? qCard.querySelector('.ne-quest-detail') : null;
                 var qToggle = questHeader.querySelector('.ne-quest-toggle');
-                if (qCard) {
+                if (qDetail && qCard) {
                     qCard.classList.toggle('open');
-                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '\u25BE' : '\u25B6';
+                    qDetail.style.display = qCard.classList.contains('open') ? 'block' : 'none';
+                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '▾' : '▶';
                 }
                 return;
             }

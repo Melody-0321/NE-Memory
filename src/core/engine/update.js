@@ -6,16 +6,15 @@
 import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, isDynamicStateMode, CORE_STATE_FIELDS, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA, ensureCharacterTemplate } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA, ensureCharacterTemplate } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
-import { validateSTMOutput, postFillSTM, whitelistStateChanges } from './validate.js';
+import { validateSTMOutput, postFillSTM } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
-import { discoverDynamicFields, buildDynamicStatePrompt, formatDynamicStateSummary } from './state-discovery.js';
 import { processTurnsInBatches } from './stm-extractor.js';
 import { isLtmEnabled, computeClosureSignals, formatLtmCatalog, findOpenLtm } from './consolidate.js';
 import { transitionTo, releasePipeline } from './pipeline-guard.js';
 import { pruneSnapshotsForChat } from '../vault/versions.js';
-import { syncStateToWorldBook } from './worldbook-sync.js';
+
 import { persistVaultToChatFile } from '../auto-restore.js';
 import { writeWithSnapshot } from '../vault/store.js';
 import { vocabularyOverlap } from './text-utils.js';
@@ -72,83 +71,35 @@ function _validateLtmEventText(label, text) {
  * @param {Object} vault - 完整 vault 对象，直接修改 vault.content.state
  */
 export function ensureStateStructure(vault) {
-    // Core 字段始终初始化（不受 Schema 开关影响）
     if (!vault.content.state) vault.content.state = {};
-    var state = vault.content.state;
-    for (var ci = 0; ci < CORE_STATE_FIELDS.length; ci++) {
-        var ck = CORE_STATE_FIELDS[ci];
-        if (state[ck] === undefined) state[ck] = '';
-    }
     vault.content.state_css = vault.content.state_css || '';
-
-    // 扩展字段仅在 Schema ON 时初始化
     if (!isStateSchemaEnabled()) return;
-
-    if (isDynamicStateMode()) {
-        var ds = vault.content.dynamic_state;
-        if (!ds || !(Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
-            // dynamic_state 也没有扩展字段 → Core 已初始化
-        } else {
-            if (ds.global) {
-                Object.keys(ds.global).forEach(function (k) {
-                    if (state[k] === undefined) state[k] = '';
-                });
-            }
-            if (ds.characters) {
-                if (!state.characters) state.characters = {};
-                Object.keys(ds.characters).forEach(function (name) {
-                    if (!state.characters[name]) state.characters[name] = {};
-                    var fields = ds.characters[name];
-                    Object.keys(fields).forEach(function (k) {
-                        if (state.characters[name][k] === undefined) state.characters[name][k] = '';
-                    });
-                });
-            }
-        }
-    } else {
-        // 预设模式：每轮校验 state 结构完整性，缺失的字段/子结构从 schema 注入
-        var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
-        if (schema) {
-            var knownCharacterNames = [];
-            var charName = vault.content.character_name || vault.content.current_character;
-            if (charName) knownCharacterNames.push(charName);
-            if (vault.content.dynamic_state && vault.content.dynamic_state.characters) {
-                Object.keys(vault.content.dynamic_state.characters).forEach(function (n) {
-                    if (knownCharacterNames.indexOf(n) === -1) knownCharacterNames.push(n);
-                });
-            }
-            var extState = initStateFromSchema(schema, knownCharacterNames);
-            Object.keys(extState).forEach(function (ek) {
-                if (state[ek] === undefined) state[ek] = extState[ek];
-            });
-
-            // 已有角色字段完整性：补齐模板中缺失的字段（覆盖中途新增模板字段 / 旧 vault）
-            if (state.characters && schema.fields && schema.fields.characters) {
-                var charSchema = schema.fields.characters.schema;
-                if (charSchema && charSchema.fields && charSchema.fields['*']) {
-                    var template = charSchema.fields['*'].fields;
-                    Object.keys(state.characters).forEach(function (name) {
-                        var ch = state.characters[name];
-                        if (!ch || typeof ch !== 'object') {
-                            state.characters[name] = {};
-                            ch = state.characters[name];
-                        }
-                        Object.keys(template).forEach(function (fk) {
-                            if (fk === '*') return;
-                            if (ch[fk] === undefined) {
-                                var ff = template[fk];
-                                if (ff.type === 'boolean') ch[fk] = false;
-                                else if (ff.type === 'number') ch[fk] = 0;
-                                else ch[fk] = '';
-                            }
-                        });
-                    });
+    var state = vault.content.state;
+    var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
+    if (!schema) return;
+    if (!vault.content.state_schema) {
+        vault.content.state_schema = schema;
+    }
+    if (state.characters && schema.fields && schema.fields.characters) {
+        var charSchema = schema.fields.characters.schema;
+        if (charSchema && charSchema.fields && charSchema.fields['*']) {
+            var template = charSchema.fields['*'].fields;
+            Object.keys(state.characters).forEach(function (name) {
+                var ch = state.characters[name];
+                if (!ch || typeof ch !== 'object') {
+                    state.characters[name] = {};
+                    ch = state.characters[name];
                 }
-            }
-
-            if (!vault.content.state_schema) {
-                vault.content.state_schema = schema;
-            }
+                Object.keys(template).forEach(function (fk) {
+                    if (fk === '*') return;
+                    if (ch[fk] === undefined) {
+                        var ff = template[fk];
+                        if (ff.type === 'boolean') ch[fk] = false;
+                        else if (ff.type === 'number') ch[fk] = null;
+                        else ch[fk] = '';
+                    }
+                });
+            });
         }
     }
 }
@@ -230,12 +181,6 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
         if (activeChars.length > 0) {
             currentStateSnapshot += 'Active characters: ' + activeChars.join(', ') + '\n';
         }
-    }
-    // ── 动态字段发现（从角色卡/世界书自动提取的状态栏字段，仅动态模式）──
-    var dynamicState = isDynamicStateMode() ? content.dynamic_state : null;
-    if (dynamicState && (Object.keys(dynamicState.global || {}).length > 0 || Object.keys(dynamicState.characters || {}).length > 0)) {
-        var ds = formatDynamicStateSummary(dynamicState);
-        if (ds) currentStateSnapshot += ds;
     }
 
     // ── BM25 预分组 ──
@@ -338,9 +283,9 @@ export function parseSTMResponse(llmResponse) {
                 parsed.state_changes.forEach(function(item) {
                     if (item && item.path !== undefined) flat[item.path] = item.value;
                 });
-                stateChanges = isStateSchemaEnabled() ? flat : whitelistStateChanges(flat);
+                stateChanges = isStateSchemaEnabled() ? flat : {};
             } else if (typeof parsed.state_changes === 'object') {
-                stateChanges = isStateSchemaEnabled() ? parsed.state_changes : whitelistStateChanges(parsed.state_changes);
+                stateChanges = isStateSchemaEnabled() ? parsed.state_changes : {};
             }
         }
     } else {
@@ -1003,13 +948,11 @@ function buildStatePrompt_Preset(messages, vault) {
         '- state_changes: flat object of dot-path → new-value.\n' +
         '- Each field is judged independently:\n' +
         '  · Field shows "(未填)" → If you can infer its value from this round\'s dialogue, output it. If you cannot infer, do NOT output it.\n' +
-        '  · Field already has a concrete value → Only output if this round\'s dialogue changes that value.\n' +
-        '- Field level hints (see table markers):\n' +
-        '  ▲ Required → Prioritize filling from (未填). Fill if this round provides clues.\n' +
-        '  △ Suggested → Fill if clues exist. Leave empty if unsure.\n' +
-        '  ○ Optional → Only fill if explicitly mentioned in dialogue.\n' +
-        '  ◆ Incremental → Only append new content. Do NOT overwrite existing.\n' +
-        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields will continue to show (未填) in future rounds — you can fill them when new information appears.\n' +
+        '  · Field already has a value → Only output if this round\'s dialogue changes that value.\n' +
+        '- Required fields (no "未填" marker on optional fields) → Prioritize filling from (未填). Fill if this round provides clues.\n' +
+        '- Optional fields → Only fill if explicitly mentioned in dialogue.\n' +
+        '- past_experience: incremental — append new content, do NOT overwrite existing.\n' +
+        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields continue to show (未填) — fill them when new information appears.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
@@ -1020,11 +963,9 @@ function buildStatePrompt_Preset(messages, vault) {
         '- 每个字段独立判断：\n' +
         '  · 字段显示「(未填)」→ 如果你能从本轮对话中推断该字段的值，输出它。无法推断则不输出。\n' +
         '  · 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- 字段分级提示（见表格标记）：\n' +
-        '  ▲ 必填字段 → 优先从未填状态推断填写。本轮对话有线索就填。\n' +
-        '  △ 建议字段 → 有线索就填，无则留空。\n' +
-        '  ○ 选填字段 → 仅在对话中明确提及时填写。\n' +
-        '  ◆ 增量追加 → 仅追加新内容，不要覆盖已有内容。\n' +
+        '- 必填字段（可选字段没有 (未填) 标记）→ 优先从未填状态推断填写。本轮对话有线索就填。\n' +
+        '- 可选字段 → 仅在对话中明确提及时填写。\n' +
+        '- past_experience: 增量追加 → 仅追加新内容，不要覆盖已有内容。\n' +
         '- 【禁止编造】如果对话中没有线索，不要猜测或编造字段值。未填的字段下一轮会继续显示(未填)，你可以在新信息出现后填写。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
@@ -1040,105 +981,6 @@ function buildStatePrompt_Preset(messages, vault) {
     return {
         system: stateTable + buildWorldBookSection() + schemaDesc + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
-    };
-}
-
-function buildStatePrompt_Dynamic(messages, vault) {
-    var content = vault.content || {};
-    var lang = content.language === 'en' ? 'en' : 'zh';
-    var ds = content.dynamic_state;
-
-    var msgTexts = messages.map(function(m, i) {
-        var role = m.role === 'user' ? 'User' : 'Character';
-        var name = m.name ? m.name + ': ' : '';
-        return '[' + i + '] [' + role + '] ' + name + (m.content || '');
-    }).join('\n\n');
-
-    var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
-
-    var schemaDesc = lang === 'en'
-        ? '\n## Field Reference (paths available in state_changes)\n' +
-          '- main_event: event summary, one sentence\n' +
-          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
-          '- characters.*.affection: fondness [0, 100]\n' +
-          '- characters.*.relationship: relationship with protagonist\n' +
-          '- characters.*.current_mood: current mood\n' +
-          '- characters.*.inner_thoughts: inner thoughts\n' +
-          '- characters.*.injuries: injury description\n' +
-          '- characters.*.status_effects: status effects\n' +
-          '- characters.*.past_experience: incrementally appended past experience\n' +
-          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
-          '- factions.*.leader: leader name\n' +
-          '- factions.*.notes: faction notes\n' +
-          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
-          '- quests.tasks.*.desc: task description\n' +
-          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
-          '- quests.goals.*.desc: goal description\n' +
-          '- quests.events.*.status: 持续中/已平息/已结束\n'
-        : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
-          '- main_event: 事件摘要，一句话\n' +
-          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
-          '- characters.*.affection: 好感度 [0, 100]，支持增量（如 "+5" 或 "-3"）\n' +
-          '- characters.*.relationship: 与主角的关系描述\n' +
-          '- characters.*.current_mood: 当前心情\n' +
-          '- characters.*.inner_thoughts: 对主角的内心想法\n' +
-          '- characters.*.injuries: 受伤情况\n' +
-          '- characters.*.status_effects: 状态效果\n' +
-          '- characters.*.past_experience: 过往经历（增量追加）\n' +
-          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
-          '- factions.*.leader: 首领名称\n' +
-          '- factions.*.notes: 势力备注\n' +
-          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
-          '- quests.tasks.*.desc: 任务描述\n' +
-          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
-          '- quests.goals.*.desc: 目标描述\n' +
-          '- quests.events.*.status: 持续中/已平息/已结束\n';
-
-    var dynamicExtra = '';
-    if (ds && (Object.keys(ds.global || {}).length > 0 || Object.keys(ds.characters || {}).length > 0)) {
-        var dsText = formatDynamicStateSummary(ds);
-        if (dsText) {
-            dynamicExtra = '\nDiscovered fields to track:\n' + dsText + '\n';
-        }
-    }
-
-    var rulesEn = '\nRules:\n' +
-        '- state_changes: flat object of dot-path → new-value.\n' +
-        '- Each field is judged independently:\n' +
-        '  · Field shows "(未填)" → If you can infer its value from this round\'s dialogue, output it. If you cannot infer, do NOT output it.\n' +
-        '  · Field already has a concrete value → Only output if this round\'s dialogue changes that value.\n' +
-        '- Field level hints (see table markers):\n' +
-        '  ▲ Required → Prioritize filling from (未填). Fill if this round provides clues.\n' +
-        '  △ Suggested → Fill if clues exist. Leave empty if unsure.\n' +
-        '  ○ Optional / ◆ Incremental → Only if explicitly mentioned / only append new.\n' +
-        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields continue to show (未填) — fill them when new information appears.\n' +
-        '- Use ALL paths shown in the Current State table and Discovered fields above. Do NOT invent new paths.\n' +
-        '- Do NOT output present_characters (auto-generated).\n' +
-        '\nZero-change example: {"state_changes":{}}\n\n';
-
-    var rulesZh = '\n规则：\n' +
-        '- state_changes: flat object，dot-path → 新值。\n' +
-        '- 每个字段独立判断：\n' +
-        '  · 字段显示「(未填)」→ 如果你能从本轮对话中推断该字段的值，输出它。无法推断则不输出。\n' +
-        '  · 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- 字段分级提示（见表格标记）：\n' +
-        '  ▲ 必填字段 → 优先从未填状态推断填写。本轮对话有线索就填。\n' +
-        '  △ 建议字段 → 有线索就填，无则留空。\n' +
-        '  ○ 选填 / ◆ 增量 → 仅明确提及时填写 / 仅追加新内容。\n' +
-        '- 【禁止编造】如果对话中没有线索，不要猜测或编造字段值。未填字段下一轮会继续显示(未填)，新信息出现后再填。\n' +
-        '- 使用上方 Current State 表格和动态发现字段中的所有路径。请勿创造新路径。\n' +
-        '- 不要输出 present_characters（自动生成）。\n' +
-        '\n零变化示例: {"state_changes":{}}\n\n';
-
-    if (lang === 'en') {
-        return {
-            system: stateTable + dynamicExtra + buildWorldBookSection() + schemaDesc + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with state_changes.'
-        };
-    }
-    return {
-        system: stateTable + dynamicExtra + buildWorldBookSection() + schemaDesc + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 state_changes 的 JSON。'
     };
 }
 
@@ -1319,12 +1161,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         console.warn('[NE] STM pipeline failed:', e);
     }
 
-    try {
-        await syncStateToWorldBook(vault);
-    } catch (e) {
-        console.warn('[NE] World book sync failed:', e.message);
-    }
-
     return { vault: vault, added: newEntries.length };
 }
 
@@ -1342,9 +1178,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (latestAssistantMsg) messages.push(latestAssistantMsg);
     if (messages.length === 0) return { vault, changed: false };
 
-    var statePrompt = isDynamicStateMode()
-        ? buildStatePrompt_Dynamic(messages, vault)
-        : buildStatePrompt_Preset(messages, vault);
+    var statePrompt = buildStatePrompt_Preset(messages, vault);
 
     var stateResponse;
     try {

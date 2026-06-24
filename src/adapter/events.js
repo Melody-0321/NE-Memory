@@ -237,15 +237,14 @@ export async function onMessageReceived(messageIndex) {
 
             if (!isIdle()) return;
 
-            var userMsgCount = pendingMessages.reduce(function(c, m) { return c + (m.role === 'user' ? 1 : 0); }, 0);
             const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
-                || (totalWords >= getStmWordsThreshold() && userMsgCount >= 2)
+                || (totalWords >= getStmWordsThreshold() && pendingMessages.length > 2)
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && userMsgCount >= 2) {
+            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
@@ -664,7 +663,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
-        var protagonistName = (ctx && ctx.name2) || null;
+        var protagonistName = (ctx && ctx.name1) || null;
         if (protagonistName && vault.content.state) {
             vault.content.state.protagonist_name = protagonistName;
         }

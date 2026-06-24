@@ -1,8 +1,8 @@
 ---
 name: pipeline-state-03
 folder: pipeline/pipeline-state-03
-title: State 新角色字段展开 + 模板分层规则
-objective: 验证 State LLM 看到 12 字段展开模板（▲/△/○/◆ 标记），未填字段显示 (未填) 标记，LLM 优先填充未填的 ▲/△ 字段；banner present 路径调 ensureCharacterTemplate；protagonist_name 从 ctx.name2 推断
+title: State 新角色 per-field (未填) 标记 + required/optional 分层规则
+objective: 验证 State LLM 看到 PC/NPC 分离字段表，required 字段为空时显示 (未填) 标记，LLM 优先填充未填的 required 字段；banner present 路径调 ensureCharacterTemplate；protagonist_name 从 ctx.name1 推断
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - 副 API 可用
@@ -26,23 +26,22 @@ expectedRounds: "7-9"
 timeoutPerRound: 120000
 ---
 
-# pipeline-state-03: State 新角色字段展开 + 分层规则
+# pipeline-state-03: State per-field (未填) 标记 + required/optional 分层
 
 ## 目标
 
-验证 commit `53b87af` 后的新行为：
+验证重构后的新行为：
 
-1. **12 字段模板展开**：State LLM 在 Current State 表中看到完整字段列表（▲/△/○/◆ 标记），不只是 4 个字段
-2. **(未填) 标记**：未填充的 ▲/△ 字段显示 (未填) 注释，LLM 被指令优先填充这些字段
-3. **per-field 独立判断**：每个字段独立决定是否输出——未填且可推断就填，已填仅变化时输出。不再有 [NEW] binary 标记
-4. **分层规则**：
-   - ▲ 必填 → 优先从未填推断填写
-   - △ 建议 → 有线索就填，无则留空
-   - ○ 选填 → 仅明确提及时填写
-   - ◆ 增量追加 → 仅追加新内容
+1. **PC/NPC 字段分离**：PC 使用 protagonist 字段集（无 affection/relationship），NPC 使用 npc 字段集
+2. **(未填) 标记**：required 字段为空时显示 (未填) 标记，LLM 被指令优先填充这些字段
+3. **per-field 独立判断**：每个字段独立决定是否输出——未填且可推断就填，已填仅变化时输出
+4. **required/optional 分层**：
+   - Required 字段 → 优先从未填推断填写
+   - Optional 字段 → 仅明确提及时填写
+   - past_experience → 增量追加
 5. **禁止编造**：LLM 对无法推断的字段留空，不编造
 6. **banner present 路径**：banner 引入的新角色通过 `ensureCharacterTemplate` 创建完整字段壳
-7. **protagonist_name**：`ctx.name2` 自动写入 `state.protagonist_name`
+7. **protagonist_name**：`ctx.name1` 自动写入 `state.protagonist_name`
 
 ## 前置条件
 
