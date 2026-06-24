@@ -6,6 +6,7 @@ import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { callMemoryRetrievalWithTools, recordTelemetry } from '../api/llm.js';
 import { executeAccess } from '../tools.js';
 import { countTokens } from './text-utils.js';
+import { buildStateInjectionTable } from '../vault/schema.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -335,6 +336,9 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     var parts = [];
 
+    var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content);
+    if (stateTable) parts.push(stateTable);
+
     if (vault.memory_system_prompt) {
         parts.push(vault.memory_system_prompt);
     }
@@ -544,60 +548,9 @@ export function buildStateOnlyInjection(vault) {
 
     var content = vault.content || {};
     var state = content.state || {};
-    var stateLines = [];
-
-    if (content.story_time || content.story_date || content.story_scene) {
-        var sceneParts = [];
-        if (content.story_scene) sceneParts.push(content.story_scene);
-        if (content.story_time) sceneParts.push(content.story_time);
-        if (content.story_date) sceneParts.push(content.story_date);
-        if (state.main_event) sceneParts.push(state.main_event);
-        stateLines.push('Scene: ' + sceneParts.join(' · '));
-    }
-
-    var chars = state.characters || {};
-    var charNames = Object.keys(chars);
-    if (charNames.length > 0) {
-        var alive = charNames.filter(function(n) {
-            var c = chars[n];
-            return c && c.status !== '死亡' && c.status !== '离场';
-        });
-        if (alive.length > 0) {
-            stateLines.push('Active characters: ' + alive.map(function(n) {
-                var c = chars[n];
-                var desc = n;
-                if (c.appearance) desc += ' (' + String(c.appearance).substring(0, 50) + ')';
-                if (c.attitude_toward_player) desc += ' [' + c.attitude_toward_player + ']';
-                return desc;
-            }).join(', '));
-        }
-    }
-
-    var factions = state.factions || {};
-    var factionNames = Object.keys(factions);
-    if (factionNames.length > 0) {
-        var factionLines = factionNames.map(function(n) {
-            var f = factions[n];
-            if (!f || !f.attitude_toward_player) return n;
-            return n + ' (' + f.attitude_toward_player + ')';
-        });
-        if (factionLines.length > 0) {
-            stateLines.push('Factions: ' + factionLines.join(', '));
-        }
-    }
-
-    var quests = state.quests || {};
-    var activeQuests = Object.keys(quests).filter(function(q) {
-        return quests[q] && quests[q].status !== '完成' && quests[q].status !== '失败';
-    });
-    if (activeQuests.length > 0) {
-        stateLines.push('Active quests: ' + activeQuests.map(function(q) {
-            return q + (quests[q].description ? ' - ' + String(quests[q].description).substring(0, 60) : '');
-        }).join(' | '));
-    }
-
-    if (stateLines.length > 0) {
-        parts.push('## ' + 'Current State' + '\n' + stateLines.join('\n'));
+    var stateTable = buildStateInjectionTable(state, undefined, undefined, content);
+    if (stateTable) {
+        parts.push(stateTable);
     } else {
         parts.push('[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]');
     }
