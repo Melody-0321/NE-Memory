@@ -749,23 +749,27 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 var schemeNames = Object.keys(npcSchemes).filter(function(k) { return k !== 'default'; });
                 var npcFieldsList = 'gender_age, occupation, personality, clothing_build, affection, relationship, current_mood, inner_thoughts, status, injuries, status_effects, past_experience';
                 var pcFieldsList = 'gender_age, occupation, personality, clothing_build, status, injuries, status_effects';
+                var schemeHint = schemeNames.length > 0
+                    ? '- NPC 方案选择: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n'
+                    : '- NPC 方案: 没有自定义方案，一律使用 "default"\n';
 
-                var charBlockInstr = '本轮对话中如果出现了状态卡中尚未记录的新角色（上方 Current State 中未出现的角色名），在回复末尾为其输出角色信息块。\n' +
-                    '状态卡中已有的角色无需输出，跳过即可。\n' +
-                    '\n- PC（主角，你扮演的角色）' + (protagonistName ? ': ' + protagonistName : '') + ' — 可用字段: ' + pcFieldsList + '\n' +
-                    '- NPC（其他角色）— 可用字段: ' + npcFieldsList + '\n' +
-                    (schemeNames.length > 0 ? '- NPC 可用方案: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n' : '') +
-                    '\n格式：\n' +
-                    '  主角范例: <!--NE-CHAR:' + (protagonistName || '你的角色名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
-                    '  NPC范例: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                var charBlockInstr = '你正在扮演的角色以及本轮对话中首次出现的 NPC 角色需要填写角色信息卡。\n' +
+                    '角色信息卡在上方 === Current State === 中。如果某个角色已经在信息卡中存在，跳过；否则在回复末尾输出该角色的信息块。\n' +
+                    '\n角色类型与可用字段：\n' +
+                    '- PC（你扮演的主角）' + (protagonistName ? ': ' + protagonistName : '') + ' — 字段: ' + pcFieldsList + '\n' +
+                    '- NPC（其他角色）— 字段: ' + npcFieldsList + '\n' +
+                    schemeHint +
+                    '\n你的角色信息来自角色卡和系统设定——不需要等对话中显式提及。请填写你已知道的所有字段，宁多勿少。这是填写角色卡的唯一机会，后续不再提示。\n' +
+                    '\n输出格式（严格 JSON，放在回复末尾、正文之后）：\n' +
+                    '  PC: <!--NE-CHAR:' + (protagonistName || '\u4f60\u7684\u89d2\u8272\u540d') + '-->{"_role":"protagonist","gender_age":"\u2026","occupation":"\u2026","personality":"\u2026","clothing_build":"\u2026","status":"\u6d3b\u8dc3"}<!--/NE-CHAR-->\n' +
+                    '  NPC: <!--NE-CHAR:\u89d2\u8272\u540d-->{"_role":"npc","_scheme":"default","gender_age":"\u2026","occupation":"\u2026","personality":"\u2026","clothing_build":"\u2026","affection":50,"relationship":"\u2026","current_mood":"\u2026","inner_thoughts":"\u2026","status":"\u6d3b\u8dc3"}<!--/NE-CHAR-->\n' +
                     '\n规则：\n' +
-                    '- 只看状态卡中尚不存在的角色。已有角色不输出。\n' +
-                    '- 如果没有新角色，则不需要输出任何 NE-CHAR 块。\n' +
-                    '- 不要在 NE-CHAR 块之外额外写 "PC:" 或 "NPC:" 标签。\n' +
-                    '- _role: "protagonist" 或 "npc"（必填）。\n' +
-                    '- _scheme: NPC 才需要，从上方可用方案中选择（必填）。\n' +
-                    '- 尽可能多地填写你能从对话和角色认知中确定的字段。有把握就填，不确定的字段省略。\n' +
-                    '- 角色信息块放在回复末尾，正文之后。';
+                    '- 已在角色信息卡中的角色 — 跳过，不输出。\n' +
+                    '- 不在信息卡中的角色 — 必须填写。\n' +
+                    '- \"_role\"（注意有下划线 _）: \"protagonist\" 或 \"npc\"，必填。\n' +
+                    '- \"_scheme\"（注意有下划线 _）: NPC 必填，按上方方案选择写入。\n' +
+                    '- 每个角色一个 NE-CHAR 块。PC 和 NPC 各自一个。\n' +
+                    '- 不要在 NE-CHAR 块外写 \"PC:\" 或 \"NPC:\" 标签。';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log
