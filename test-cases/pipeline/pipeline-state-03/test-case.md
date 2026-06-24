@@ -1,105 +1,68 @@
 ---
 name: pipeline-state-03
 folder: pipeline/pipeline-state-03
-title: State 新角色 per-field (未填) 标记 + required/optional 分层规则
-objective: 验证 State LLM 看到 PC/NPC 分离字段表，required 字段为空时显示 (未填) 标记，LLM 优先填充未填的 required 字段；banner present 路径调 ensureCharacterTemplate；protagonist_name 从 ctx.name1 推断
+title: State LLM 信息源验证 — Character Cards + World Book 优先提取
+objective: 验证 State LLM 从 Character Cards（角色卡 description/personality/scenario）和 World Book（有未填字段时注入激活条目）直接提取 role_card 和 world_book 字段，而非等待对话提及；同时验证 State LLM 不输出属 Main LLM NE-CHAR 管理的字段（affection/current_mood/inner_thoughts）
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - 副 API 可用
-  - State Schema 已开启（预设模式）
-  - contextWindowRounds >= 30（或对话 < 30 轮）
-  - 对话中自然引入至少 1 个新 NPC
+  - State Schema 已开启
+  - 角色卡可用
 structural:
   - { op: exists, target: pipeline_changes }
   - { op: min_length, target: pipeline_changes, value: 1 }
   - { op: not_contains, target: pipeline_changes, value: "error" }
-  - { op: contains, target: pipeline_changes, value: "characters." }
-  - { op: exists, target: pipeline_responses }
-  - { op: not_contains, target: pipeline_responses, value: "undefined" }
+  - { op: exists, target: state_block_instruction }
+  - { op: contains, target: state_block_instruction, value: "<!--NE-BANNER-->" }
 semantic:
-  - "State LLM 是否对新角色输出了至少 3 个字段（不只是 status）？理想情况应包括 gender_age / occupation / personality 等可从对话推断的字段。"
-  - "新角色的 state_changes 是否使用了系统预定义的字段路径（status, gender_age, occupation, personality, affection, relationship, current_mood 等），没有 LLM 自创的字段名？"
-  - "State LLM 是否对无法从对话中推断的字段留空（输出 ''），而不是编造虚假信息？"
-minRounds: 5
-maxRounds: 12
-expectedRounds: "7-9"
+  - "State LLM 是否在首轮就主动从 Character Cards 中提取了静态字段？理想行为是尽早填满 gender_age/occupation/personality/clothing_build，而不等到对话中显式提及角色属性。"
+  - "新角色字段是否正确使用了系统预定义的路径？检查 state_changes 中是否不存在 LLM 自创的字段名或路径——应与 Current State 表中定义的完全一致。"
+  - "State LLM 是否正确遵守了职责边界——不输出 affection/current_mood/inner_thoughts？这些字段由 Main LLM NE-CHAR 增量机制管理。检查 pipeline_responses 中是否出现了这些字段名。"
+minRounds: 4
+maxRounds: 10
+expectedRounds: "5-8"
 timeoutPerRound: 120000
 ---
 
-# pipeline-state-03: State per-field (未填) 标记 + required/optional 分层
+# pipeline-state-03: State LLM 信息源验证
 
 ## 目标
 
-验证重构后的新行为：
+验证 Plan A 重构后的 State LLM 信息源机制：
 
-1. **PC/NPC 字段分离**：PC 使用 protagonist 字段集（无 affection/relationship），NPC 使用 npc 字段集
-2. **(未填) 标记**：required 字段为空时显示 (未填) 标记，LLM 被指令优先填充这些字段
-3. **per-field 独立判断**：每个字段独立决定是否输出——未填且可推断就填，已填仅变化时输出
-4. **required/optional 分层**：
-   - Required 字段 → 优先从未填推断填写
-   - Optional 字段 → 仅明确提及时填写
-   - past_experience → 增量追加
-5. **禁止编造**：LLM 对无法推断的字段留空，不编造
-6. **banner present 路径**：banner 引入的新角色通过 `ensureCharacterTemplate` 创建完整字段壳
-7. **protagonist_name**：`ctx.name1` 自动写入 `state.protagonist_name`
+1. **Character Cards 优先**：State LLM 直接从上方 `## Character Cards` 段提取 gender_age/occupation/personality/clothing_build
+2. **World Book 参考**：有未填字段时补充注入激活世界书条目
+3. **对话兜底**：以上两者覆盖不到的字段，再从对话推断
+4. **职责边界**：State LLM 不输出 affection/current_mood/inner_thoughts（由 Main LLM NE-CHAR 管理）
 
-## 前置条件
+## 旧测试的失效前提
 
-- NE-Memory 已初始化，SmartPush 启用
-- 副 API 可用
-- **State Schema 已开启**（预设模式）
-- contextWindowRounds >= 30（或对话 < 30 轮）
-- 对话中自然引入至少 1 个新 NPC
+旧 `pipeline-state-03` 验证的是"per-field (未填) 标记 + required/optional 分层 + no fabrication"——即 State LLM 仅从对话推断，无法推断就留空。
 
-## 对话设计（给 LLM Driver 的指导）
-
-Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
-
-轮次参考：预期 7-9 轮内自然完成。低于 5 轮时 [DONE] 无效。达到 maxRounds 时强制结束。
-
-引导策略：
-- 第 1-3 轮：跟随 AI 故事自然互动，积累对话
-- 第 4-6 轮：**自然引入 1-2 个不在角色卡中的新 NPC**（如酒馆老板、路人、信使等）。尽量让该 NPC 的性别/年龄、职业、性格等信息在对话中可被自然推断（比如通过称呼、衣着描述、说话方式等）。
-- 第 7-9 轮：让新 NPC 与已有角色发生 2-3 轮互动，使 State LLM 有机会从对话中提取多个字段。
-
-注意：不需要让新 NPC 有长篇戏份——短暂出现即可。但需要给 State LLM 足够的对话线索来推断 gender_age / occupation / personality。
+新架构下 State LLM 有 Character Cards + World Book 两个额外信息源，"禁止编造"被替换为"从角色卡主动提取"。
 
 ## 断言
 
-### 结构性断言（代码自动检查）
-
+### 结构性
 | # | 断言 | 含义 |
 |---|------|------|
 | 1 | `exists: pipeline_changes` | State 管线执行过 |
-| 2 | `min_length: pipeline_changes >= 1` | 有变化输出 |
+| 2 | `min_length: pipeline_changes >= 1` | 有变化 |
 | 3 | `not_contains: pipeline_changes [error]` | 无报错 |
-| 4 | `contains: pipeline_changes [characters.]` | state_changes 中包含角色字段 |
-| 5 | `exists: pipeline_responses` | pipeline 响应完整 |
-| 6 | `not_contains: pipeline_responses [undefined]` | 无 JSON 破碎 |
+| 4 | `exists: state_block_instruction` | 指令已注入 |
+| 5 | `contains: state_block_instruction [<!--NE-BANNER-->]` | BANNER 指令已注入 |
 
-### 语义性断言（LLM 评估 trace）
-
-1. State LLM 是否对新角色输出了至少 3 个字段（不只是 status）？理想情况应包括 gender_age / occupation / personality 等可从对话推断的字段。
-2. 新角色的 state_changes 是否使用了系统预定义的字段路径（status, gender_age, occupation, personality, affection, relationship, current_mood 等），没有 LLM 自创的字段名？
-3. State LLM 是否对无法从对话中推断的字段留空（输出 ''），而不是编造虚假信息？
+### 语义性
+1. State LLM 是否在首轮就主动从 Character Cards 中提取了静态字段？
+2. state_changes 中的字段路径是否与 Current State 表一致（无 LLM 自创路径）？
+3. State LLM 是否未输出 affection/current_mood/inner_thoughts？
 
 ## 运行参数
 
-- minRounds: 5
-- maxRounds: 12
-- expectedRounds: 7-9
+- minRounds: 4
+- maxRounds: 10
+- expectedRounds: 5-8
 - timeoutPerRound: 120000
-
-## 期望行为说明
-
-v2.0 (commit `53b87af`) 的新角色流程：
-
-1. 对话中出现新 NPC「王五」
-2. 如果 Main LLM 输出了 NE-BANNER「…|王五」→ banner present 路径调用 `ensureCharacterTemplate` 创建完整字段壳
-3. State LLM 在 Current State 表中看到 12 行字段（▲ status / ▲ gender_age / ▲ occupation / ▲ personality / △ affection / △ relationship / ...）
-4. 空角色显示 `[NEW]` 标记
-5. State LLM 输出所有可从对话推断的 ▲/△ 字段（不只是 status）
-6. 无法推断的字段留空 ''，等待后续轮次补全
 
 ## 调用方式
 
