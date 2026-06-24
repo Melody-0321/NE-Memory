@@ -237,14 +237,15 @@ export async function onMessageReceived(messageIndex) {
 
             if (!isIdle()) return;
 
+            var userMsgCount = pendingMessages.reduce(function(c, m) { return c + (m.role === 'user' ? 1 : 0); }, 0);
             const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var pressureVal = computeContextPressure(pendingTokenCount);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
-                || (totalWords >= getStmWordsThreshold() && pendingMessages.length > 2)
+                || (totalWords >= getStmWordsThreshold() && userMsgCount >= 2)
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
+            if (isStateSchemaEnabled() && userMsgCount >= 2) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {

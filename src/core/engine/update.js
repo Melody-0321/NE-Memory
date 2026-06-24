@@ -898,6 +898,43 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
 
 // ── State prompt builders（每种模式专用 prompt）──
 
+function buildWorldBookSection() {
+    var worldInfo = runtime.getWorldInfo();
+    if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
+
+    var enabledBooks = {};
+    try {
+        var wi = runtime.getWorldInfo();
+        var globalSelect = (wi && wi.globalSelect) ? wi.globalSelect : null;
+        if (!globalSelect) {
+            var pus = runtime.getPowerUserCfg();
+            if (pus && pus.world_info && Array.isArray(pus.world_info.globalSelect)) {
+                globalSelect = pus.world_info.globalSelect;
+            }
+        }
+        if (globalSelect) {
+            for (var si = 0; si < globalSelect.length; si++) {
+                enabledBooks[globalSelect[si]] = true;
+            }
+        }
+    } catch (e) {}
+
+    var hasEnabledFilter = Object.keys(enabledBooks).length > 0;
+    var lines = [];
+    var entryKeys = Object.keys(worldInfo.entries);
+    for (var j = 0; j < entryKeys.length; j++) {
+        var entry = worldInfo.entries[entryKeys[j]];
+        if (!entry || !entry.content) continue;
+        if (entry.disable) continue;
+        if (hasEnabledFilter && entry.world && !enabledBooks[entry.world]) continue;
+        var label = entry.key || entryKeys[j];
+        lines.push('[' + label + '] ' + entry.content);
+    }
+
+    if (lines.length === 0) return '';
+    return '\n## World Book (active entries)\n' + lines.join('\n') + '\n';
+}
+
 function buildStatePrompt_Preset(messages, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -996,12 +1033,12 @@ function buildStatePrompt_Preset(messages, vault) {
 
     if (lang === 'en') {
         return {
-            system: stateTable + schemaDesc + rulesEn,
+            system: stateTable + buildWorldBookSection() + schemaDesc + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields where you can infer from dialogue. Only output changed fields for already-filled values.'
         };
     }
     return {
-        system: stateTable + schemaDesc + rulesZh,
+        system: stateTable + buildWorldBookSection() + schemaDesc + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
     };
 }
@@ -1095,12 +1132,12 @@ function buildStatePrompt_Dynamic(messages, vault) {
 
     if (lang === 'en') {
         return {
-            system: stateTable + dynamicExtra + schemaDesc + rulesEn,
+            system: stateTable + dynamicExtra + buildWorldBookSection() + schemaDesc + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nExtract state changes from THIS round only — using discovered fields and Current State paths. Output JSON with state_changes.'
         };
     }
     return {
-        system: stateTable + dynamicExtra + schemaDesc + rulesZh,
+        system: stateTable + dynamicExtra + buildWorldBookSection() + schemaDesc + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n提取本轮实际发生的时间、场景和角色状态变化——使用动态发现字段和 Current State 路径。输出包含 state_changes 的 JSON。'
     };
 }
