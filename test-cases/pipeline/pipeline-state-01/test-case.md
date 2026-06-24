@@ -2,7 +2,7 @@
 name: pipeline-state-01
 folder: pipeline/pipeline-state-01
 title: State 管线集成测试（PC/NPC 字段分离 + protagonist_name）
-objective: 验证 State 管线独立健康 — 角色状态变化提取、pipeline 无报错、PC/NPC 字段分离正确（PC 无 affection/relationship）、protagonist_name 从 ctx.name1 推断
+objective: 验证 State 管线独立健康 — 角色状态变化提取、pipeline 无报错、PC/NPC 字段分离正确（PC 无 affection/relationship/inner_thoughts/current_mood）、protagonist_name 从 ctx.name1 推断
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - 副 API 可用
@@ -18,6 +18,8 @@ semantic:
   - "State 管线是否提取了对话中出现的角色的状态变化（入场/离场/状态改变）？"
   - "提取的 state_changes 是否使用了系统预定义的字段路径（status, gender_age, occupation, personality, affection 等），而非 LLM 自创的字段名？"
   - "state_changes 的 value 是否与对话中实际发生的情况一致（无编造）？对无法推断的字段是否留空而不是编造？"
+  - "主角（PC）的状态变更中是否不包含 affection/relationship/inner_thoughts/current_mood 等 NPC 专属字段？"
+  - "NPC 的状态变更中是否正确包含了 affection/relationship/current_mood 等 NPC 专属字段？"
 minRounds: 4
 maxRounds: 10
 expectedRounds: "5-7"
@@ -27,7 +29,7 @@ timeoutPerRound: 120000
 # pipeline-state-01: State 管线集成测试
 
 ## 目标
-验证 State 管线独立健康。自 commit `53b87af` 起，State LLM 看到完整 12 字段模板（▲/△/○/◆ 标记）、protagonist_name 从 `ctx.name2` 自动推断、`getCharacterCardType` 基于 protagonist_name 判定主角/NPC。
+验证 State 管线独立健康。自重构 commit 起，PC/NPC 通过 protagonist_name 自动判定角色类型，PC 角色卡片不含 NPC 专属字段（affection/relationship/inner_thoughts/current_mood），NPC 角色卡片包含完整 NPC 专属字段。
 
 ## 前置条件
 - NE-Memory 已初始化，SmartPush 启用
@@ -58,6 +60,8 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 1. State 管线是否提取了对话中出现的角色的状态变化（入场/离场/状态改变）？
 2. 提取的 state_changes 是否使用了系统预定义的字段路径（status, gender_age, occupation, personality, affection 等），而非 LLM 自创的字段名？
 3. state_changes 的 value 是否与对话中实际发生的情况一致（无编造）？对无法推断的字段是否留空而不是编造？
+4. **主角（PC）的状态变更中是否不包含 affection/relationship/inner_thoughts/current_mood 等 NPC 专属字段？**
+5. **NPC 的状态变更中是否正确包含了 affection/relationship/current_mood 等 NPC 专属字段？**
 
 ## 运行参数
 - minRounds: 4

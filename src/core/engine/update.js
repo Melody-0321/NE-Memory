@@ -6,7 +6,7 @@
 import { runtime } from '../runtime.js';
 import { read, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { callMemoryPipeline, initPowerSlots, recordTelemetry } from '../api/llm.js';
-import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA, ensureCharacterTemplate } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, rebuildPresentCharacters, isStateSchemaEnabled, buildStateInjectionTable, DEFAULT_GLOBAL_SCHEMA, DEFAULT_NPC_SCHEME, ensureCharacterTemplate, getNpcInjectionFields } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -892,58 +892,6 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
 
-    var schemaDesc = lang === 'en'
-        ? '\n## Field Reference (paths available in state_changes)\n' +
-          '- main_event: event summary, one sentence\n' +
-          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
-          '- characters.*.affection: fondness [0, 100]\n' +
-          '- characters.*.relationship: relationship with protagonist\n' +
-          '- characters.*.current_mood: current mood\n' +
-          '- characters.*.inner_thoughts: inner thoughts about the protagonist\n' +
-          '- characters.*.injuries: injury description\n' +
-          '- characters.*.status_effects: status effects\n' +
-          '- characters.*.past_experience: incrementally appended past experience\n' +
-          '- characters.*.personality: personality traits\n' +
-          '- characters.*.occupation: role/job\n' +
-          '- characters.*.clothing_build: clothing and build description\n' +
-          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
-          '- factions.*.leader: leader name\n' +
-          '- factions.*.relations: object of faction-name → relation\n' +
-          '- factions.*.notes: faction notes\n' +
-          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
-          '- quests.tasks.*.progress: progress description\n' +
-          '- quests.tasks.*.desc: task description\n' +
-          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
-          '- quests.goals.*.progress: progress description\n' +
-          '- quests.goals.*.desc: goal description\n' +
-          '- quests.events.*.status: 持续中/已平息/已结束\n' +
-          '- quests.events.*.desc: event description\n'
-        : '\n## 字段说明（可在 state_changes 中修改的路径）\n' +
-          '- main_event: 事件摘要，一句话\n' +
-          '- characters.*.status: 活跃/非活跃/已死亡/已归隐/已离去\n' +
-          '- characters.*.affection: 好感度 [0, 100]，支持增量（如 "+5" 或 "-3"）\n' +
-          '- characters.*.relationship: 与主角的关系描述\n' +
-          '- characters.*.current_mood: 当前心情\n' +
-          '- characters.*.inner_thoughts: 对主角的内心想法\n' +
-          '- characters.*.injuries: 受伤情况\n' +
-          '- characters.*.status_effects: 状态效果\n' +
-          '- characters.*.past_experience: 过往经历（增量追加）\n' +
-          '- characters.*.personality: 性格特质\n' +
-          '- characters.*.occupation: 职业/身份\n' +
-          '- characters.*.clothing_build: 衣着体态描述\n' +
-          '- factions.*.attitude_toward_player: 友好/中立/冷淡/敌对\n' +
-          '- factions.*.leader: 首领名称\n' +
-          '- factions.*.relations: 对象，势力名→关系\n' +
-          '- factions.*.notes: 势力备注\n' +
-          '- quests.tasks.*.status: 正在进行/已完成/已失败/已过期\n' +
-          '- quests.tasks.*.progress: 进度描述\n' +
-          '- quests.tasks.*.desc: 任务描述\n' +
-          '- quests.goals.*.status: 进行中/已达成/已放弃\n' +
-          '- quests.goals.*.progress: 进度描述\n' +
-          '- quests.goals.*.desc: 目标描述\n' +
-          '- quests.events.*.status: 持续中/已平息/已结束\n' +
-          '- quests.events.*.desc: 事件描述\n';
-
     var rulesEn = '\nRules:\n' +
         '- state_changes: flat object of dot-path → new-value.\n' +
         '- Each field is judged independently:\n' +
@@ -956,6 +904,11 @@ function buildStatePrompt_Preset(messages, vault) {
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
+        '\n## NPC Scheme Assignment\n' +
+        '- NPCs already have a _scheme field — do NOT change it.\n' +
+        '- New NPCs without _scheme: infer the appropriate scheme from the NPC\'s traits (see "NPC Schemes Available" above for options).\n' +
+        '- To assign a scheme to a new NPC, include `characters.<name>._scheme` in state_changes.\n' +
+        '- Use "default" scheme if unsure.\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
     var rulesZh = '\n规则：\n' +
@@ -970,16 +923,21 @@ function buildStatePrompt_Preset(messages, vault) {
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
+        '\n## NPC 方案分配\n' +
+        '- 已有 _scheme 的 NPC — 不要修改其 _scheme 值。\n' +
+        '- 新 NPC 没有 _scheme 时：根据 NPC 的特征从上方的「NPC Schemes Available」中选择合适的方案。\n' +
+        '- 分配方案时在 state_changes 中包含 `characters.<name>._scheme`。\n' +
+        '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
     if (lang === 'en') {
         return {
-            system: stateTable + buildWorldBookSection() + schemaDesc + rulesEn,
+            system: stateTable + buildWorldBookSection() + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields where you can infer from dialogue. Only output changed fields for already-filled values.'
         };
     }
     return {
-        system: stateTable + buildWorldBookSection() + schemaDesc + rulesZh,
+        system: stateTable + buildWorldBookSection() + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
     };
 }
@@ -1164,6 +1122,131 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     return { vault: vault, added: newEntries.length };
 }
 
+// ── NPC 方案发现 ──
+
+function collectWorldBookContent() {
+    var entries = [];
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            var worldInfo = ctx && ctx.worldInfo;
+            if (worldInfo && worldInfo.entries) {
+                Object.keys(worldInfo.entries).forEach(function(uid) {
+                    var entry = worldInfo.entries[uid];
+                    if (entry && !entry.disable && entry.content) {
+                        entries.push({ key: entry.key || '', content: entry.content });
+                    }
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('[NE] Failed to collect world book content:', e);
+    }
+    return entries;
+}
+
+function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
+    var wbText = '';
+    if (worldBookEntries && worldBookEntries.length > 0) {
+        wbText = '## World Setting\n';
+        worldBookEntries.forEach(function(entry, i) {
+            wbText += '[' + (i + 1) + '] ' + (entry.content || entry.key || '') + '\n';
+        });
+    }
+
+    var msgText = '';
+    if (messages && messages.length > 0) {
+        msgText = '\n## Current Dialogue\n';
+        messages.forEach(function(m) {
+            msgText += (m.name || m.role || '') + ': ' + (m.content || '') + '\n';
+        });
+    }
+
+    return '' +
+        wbText +
+        msgText +
+        '\n## Task\n' +
+        'Based on the world setting and dialogue above, determine:\n' +
+        '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
+        '2. Identify all characters mentioned (protagonist + NPCs)\n' +
+        '\nAvailable field names for schemes:\n' +
+        '  status, gender_age, occupation, personality, clothing_build,\n' +
+        '  injuries, status_effects, past_experience, inner_thoughts,\n' +
+        '  affection, relationship, current_mood\n' +
+        '\nRules:\n' +
+        '- Every scheme MUST include "status"\n' +
+        '- "default" scheme is mandatory (catch-all)\n' +
+        '- Field names MUST be from the available list\n' +
+        '- required: fields always tracked; optional: tracked when relevant\n' +
+        '\nOutput ONLY valid JSON:\n' +
+        '{\n' +
+        '  "schemes": {\n' +
+        '    "default": { "description": "...", "required": [...], "optional": [...] },\n' +
+        '    "scheme_name": { ... }\n' +
+        '  },\n' +
+        '  "initial_characters": [\n' +
+        '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" }\n' +
+        '  ]\n' +
+        '}';
+}
+
+export async function resolveNpcSchemes(vault, chatId, messages) {
+    if (!vault || !vault.content) return;
+
+    var state = vault.content.state || {};
+
+    if (state.npc_schemes) return;
+
+    var worldBookContent = collectWorldBookContent();
+
+    if (!worldBookContent || worldBookContent.length === 0) {
+        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+
+        if (state.protagonist_name) {
+            ensureCharacterTemplate(state, state.protagonist_name);
+            if (state.characters && state.characters[state.protagonist_name]) {
+                state.characters[state.protagonist_name]._role = 'protagonist';
+            }
+        }
+        vault.content.state = state;
+        return;
+    }
+
+    var prompt = buildSchemeDiscoveryPrompt(worldBookContent, messages);
+
+    try {
+        var response = await callMemoryPipeline([
+            { role: 'system', content: 'You are a world-building analyst. Analyze the world setting and determine NPC tracking schemes.' },
+            { role: 'user', content: prompt }
+        ], { operation: 'scheme_discovery' }, chatId);
+
+        var parsed = safeJsonParse(String(response || '').trim());
+
+        if (parsed && parsed.schemes) {
+            state.npc_schemes = parsed.schemes;
+        } else {
+            state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+        }
+
+        if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
+            parsed.initial_characters.forEach(function(ch) {
+                if (ch.name) {
+                    ensureCharacterTemplate(state, ch.name, ch._role === 'npc' ? (ch._scheme || 'default') : null);
+                    if (state.characters && state.characters[ch.name]) {
+                        state.characters[ch.name]._role = ch._role || (ch.name === state.protagonist_name ? 'protagonist' : 'npc');
+                        if (ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
+                    }
+                }
+            });
+        }
+        vault.content.state = state;
+    } catch (e) {
+        console.warn('[NE] Scheme discovery failed, using default:', e);
+        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+        vault.content.state = state;
+    }
+}
+
 // ── 逐轮轻量状态检测（非阈值轮，仅 1-2 条消息）──
 
 export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
@@ -1176,6 +1259,12 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var messages = [];
     if (latestUserMsg) messages.push(latestUserMsg);
     if (latestAssistantMsg) messages.push(latestAssistantMsg);
+
+    // 首次初始化：运行 NPC 方案发现（仅一次）
+    if (!(vault.content.state || {}).npc_schemes) {
+        await resolveNpcSchemes(vault, chatId, messages);
+    }
+
     if (messages.length === 0) return { vault, changed: false };
 
     var statePrompt = buildStatePrompt_Preset(messages, vault);

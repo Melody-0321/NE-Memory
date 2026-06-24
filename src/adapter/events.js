@@ -664,8 +664,13 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         var protagonistName = (ctx && ctx.name1) || null;
-        if (protagonistName && vault.content.state) {
-            vault.content.state.protagonist_name = protagonistName;
+        if (vault.content.state) {
+            var currentName = vault.content.state.protagonist_name || '';
+            if (protagonistName && protagonistName !== currentName) {
+                vault.content.state.protagonist_name = protagonistName;
+            } else if (!currentName && !protagonistName) {
+                console.warn('[NE] protagonist_name not set: ctx.name1 is null');
+            }
         }
         var neSettings = {};
         try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}

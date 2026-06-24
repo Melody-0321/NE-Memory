@@ -101,6 +101,24 @@ export const DEFAULT_CHARACTER_SCHEMA = {
     }
 };
 
+export var DEFAULT_NPC_SCHEME = (function() {
+    var npcFields = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    var required = [];
+    var optional = [];
+    Object.keys(npcFields).forEach(function(k) {
+        if (k === 'name' || k === 'inventory') return;
+        if (npcFields[k].required) required.push(k);
+        else optional.push(k);
+    });
+    return {
+        default: {
+            description: 'Default NPC scheme (all standard fields)',
+            required: required,
+            optional: optional
+        }
+    };
+})();
+
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
     fields: {
@@ -306,6 +324,11 @@ export function validateField(value, fieldSchema) {
         }
     } else if (type === 'number') {
         if (typeof value !== 'number') {
+            var strVal = String(value).trim();
+            var incMatch = strVal.match(/^([+-])\s*(\d+)$/);
+            if (incMatch) {
+                return { ok: true, value: { __inc: true, delta: (incMatch[1] === '+' ? 1 : -1) * parseInt(incMatch[2], 10) } };
+            }
             var n = Number(value);
             if (isNaN(n)) return { ok: false, value: value, error: 'Expected number, got: ' + typeof value };
             value = n;
@@ -411,8 +434,17 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
     var template;
     if (isPC) {
         template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
-    } else if (schemeKey === null && !isPC) {
-        template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
+    } else if (schemeKey && state.npc_schemes && state.npc_schemes[schemeKey]) {
+        var scheme = state.npc_schemes[schemeKey];
+        var fieldNames = [];
+        (scheme.required || []).forEach(function(f) { if (fieldNames.indexOf(f) === -1) fieldNames.push(f); });
+        (scheme.optional || []).forEach(function(f) { if (fieldNames.indexOf(f) === -1) fieldNames.push(f); });
+        template = {};
+        fieldNames.forEach(function(fn) {
+            if (DEFAULT_CHARACTER_SCHEMA.npc.fields[fn]) {
+                template[fn] = DEFAULT_CHARACTER_SCHEMA.npc.fields[fn];
+            }
+        });
     } else {
         template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
     }
@@ -443,6 +475,15 @@ export function mergeStateChanges(state, validatedChanges) {
     Object.keys(validatedChanges).forEach(function (path) {
         var parts = path.split('.');
 
+        if (path.endsWith('._scheme')) {
+            var charName = parts[1];
+            var existingScheme = (newState.characters && newState.characters[charName] && newState.characters[charName]._scheme) || null;
+            if (existingScheme && existingScheme !== validatedChanges[path]) {
+                console.warn('[NE] _scheme protected: ' + charName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + validatedChanges[path]);
+                return;
+            }
+        }
+
         if (parts[0] === 'characters' && parts.length >= 2) {
             var charName = parts[1];
             if (charName && charName !== '*') {
@@ -466,6 +507,13 @@ export function mergeStateChanges(state, validatedChanges) {
         }
 
         var lastKey = parts[parts.length - 1];
+        if (lastKey === 'affection' && validatedChanges[path] && typeof validatedChanges[path] === 'object' && validatedChanges[path].__inc) {
+            var delta = validatedChanges[path].delta;
+            var currentAffection = Number(current[lastKey]) || 0;
+            current[lastKey] = Math.max(0, Math.min(100, currentAffection + delta));
+            hasChanges = true;
+            return;
+        }
         current[lastKey] = validatedChanges[path];
         hasChanges = true;
     });
@@ -486,6 +534,20 @@ export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'persona
 
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
 export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
+
+export function getNpcInjectionFields(state, name) {
+    var charData = (state && state.characters && state.characters[name]) || {};
+    var schemeKey = charData._scheme || 'default';
+    var npcSchemes = (state && state.npc_schemes) || DEFAULT_NPC_SCHEME;
+    var scheme = npcSchemes[schemeKey];
+    if (!scheme) {
+        scheme = npcSchemes['default'] || DEFAULT_NPC_SCHEME.default;
+    }
+    var fields = [];
+    (scheme.required || []).forEach(function(f) { if (fields.indexOf(f) === -1) fields.push(f); });
+    (scheme.optional || []).forEach(function(f) { if (fields.indexOf(f) === -1) fields.push(f); });
+    return fields;
+}
 
 export function buildStateInjectionTable(state, messages, maxItems, world) {
     if (!state) return '';
@@ -533,11 +595,19 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 
         // Active characters
         if (activeCards.length > 0) {
+            if (state && state.npc_schemes && Object.keys(state.npc_schemes).length > 1) {
+                parts.push('=== NPC Schemes Available ===');
+                Object.keys(state.npc_schemes).forEach(function(sk) {
+                    var s = state.npc_schemes[sk];
+                    parts.push(sk + ': ' + (s.description || '') + ' (required: ' + (s.required || []).join(', ') + ', optional: ' + (s.optional || []).join(', ') + ')');
+                });
+                parts.push('');
+            }
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
                 var isPC = (item.name === protagonistName);
                 var cardType = isPC ? 'protagonist' : 'npc';
-                var fields = isPC ? PC_INJECTION_FIELDS : NPC_INJECTION_FIELDS;
+                var fields = isPC ? PC_INJECTION_FIELDS : getNpcInjectionFields(state, item.name);
                 var requiredSet = {};
                 var schema = DEFAULT_CHARACTER_SCHEMA[cardType];
                 if (schema && schema.fields) {
@@ -551,7 +621,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                 for (var j = 0; j < fields.length; j++) {
                     var fk = fields[j];
                     var fv = item.card[fk] !== undefined ? item.card[fk] : '';
-                    var valStr = String(fv);
+                    var valStr = (fv === undefined || fv === null || fv === '') ? '(empty)' : String(fv);
                     var isEmpty = (fv === undefined || fv === '' || (fk === 'affection' && Number(fv) === 0));
                     var suffix = '';
                     if (fk === 'status') suffix = ' (enum: 活跃/非活跃/已死亡/已归隐/已离去)';
