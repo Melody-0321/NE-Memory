@@ -725,13 +725,27 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
                 console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
 
-                var charBlockInstr = '当你的回复中首次引入新角色（之前对话中未出现过的角色）时，在回复任意位置输出角色信息块。\n' +
-                    '格式：<!--NE-CHAR:角色名-->{"gender_age":"描述","occupation":"职业","personality":"性格","clothing_build":"外貌衣着",' +
-                    '"affection":50,"relationship":"与主角的关系","current_mood":"心情","inner_thoughts":"内心想法"}<!--/NE-CHAR-->\n' +
-                    '- 所有字段均为可选——仅输出你能从世界书或角色设定中确定的字段。不确定就省略该字段。\n' +
-                    '- affection: 好感度 0-100（50=中性，<30=反感，>70=好感）。\n' +
-                    '- 已有角色的字段变化不要用此格式——该格式仅用于首次引入新角色。\n' +
-                    '- 同一角色只输出一次此块。';
+                var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
+                var npcSchemes = (vault.content.state && vault.content.state.npc_schemes) || {};
+                var schemeNames = Object.keys(npcSchemes).filter(function(k) { return k !== 'default'; });
+                var npcFieldsList = 'gender_age, occupation, personality, clothing_build, affection, relationship, current_mood, inner_thoughts, status, injuries, status_effects, past_experience';
+                var pcFieldsList = 'gender_age, occupation, personality, clothing_build, status, injuries, status_effects';
+
+                var charBlockInstr = '在回复末尾（对话正文之后），为以下角色输出角色信息块，用于填补状态卡中的空缺字段：\n' +
+                    (protagonistName ? '- PC（主角，你扮演的角色）: ' + protagonistName + ' — 可用字段: ' + pcFieldsList + '\n' : '') +
+                    '- NPC（其他角色）— 可用字段: ' + npcFieldsList + '\n' +
+                    (schemeNames.length > 0 ? '- NPC 可用方案: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n' : '') +
+                    '\n格式：\n' +
+                    '  PC: <!--NE-CHAR:' + (protagonistName || '主角名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '  NPC: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '\n规则：\n' +
+                    '- _role: "protagonist" 或 "npc"（必填）。\n' +
+                    '- _scheme: NPC 才需要，从上方可用方案中选择（必填）。\n' +
+                    '- affection: 好感度 0-100（50=中性）。\n' +
+                    '- 尽可能多地填写你能从对话和角色认知中确定的字段。有把握就填，不确定的字段省略。\n' +
+                    '- 已有值的字段请勿覆盖（如果状态卡中已有内容则跳过该字段）。\n' +
+                    '- 同一角色只输出一次此块。\n' +
+                    '- 角色信息块放在回复末尾，正文之后。';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log
