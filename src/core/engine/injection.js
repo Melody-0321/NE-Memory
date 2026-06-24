@@ -6,7 +6,6 @@ import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { callMemoryRetrievalWithTools, recordTelemetry } from '../api/llm.js';
 import { executeAccess } from '../tools.js';
 import { countTokens } from './text-utils.js';
-import { buildStateInjectionTable } from '../vault/schema.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -336,9 +335,6 @@ export async function formatSmartContext(vault, chatMessages, budget) {
 
     var parts = [];
 
-    var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content);
-    if (stateTable) parts.push(stateTable);
-
     if (vault.memory_system_prompt) {
         parts.push(vault.memory_system_prompt);
     }
@@ -541,21 +537,7 @@ function compileRetrievalBudget(content, query, entityNames, entityChains, budge
 }
 
 export function buildStateOnlyInjection(vault) {
-    var parts = [];
-    if (vault.memory_system_prompt) {
-        parts.push(vault.memory_system_prompt);
-    }
-
-    var content = vault.content || {};
-    var state = content.state || {};
-    var stateTable = buildStateInjectionTable(state, undefined, undefined, content);
-    if (stateTable) {
-        parts.push(stateTable);
-    } else {
-        parts.push('[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]');
-    }
-
-    return parts.join('\n\n');
+    return '[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]';
 }
 
 function formatBM25Results(query, candidates) {

@@ -9,6 +9,7 @@ import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
+import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
@@ -690,6 +691,18 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         }
         var neSettings = {};
         try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}
+
+        // State table injection — independent from SmartPush
+        if (isStateSchemaEnabled()) {
+            var content = vault.content || {};
+            var state = content.state || {};
+            var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content);
+            if (stateTable) {
+                globalThis.__ne_debug_last_state_table = stateTable;
+                runtime.injectPrompt('ne_state_table', stateTable, 'in_chat', 2, 'system');
+            }
+        }
+
         try {
             var formatted;
             try {
@@ -705,7 +718,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     formatted = MEMORY_INJECTION_WRAPPER + '\n\n' + formatted;
                 }
                 globalThis.__ne_debug_last_injection = formatted;
-                runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 2, 'system');
+                runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 3, 'system');
             }
             // State block instruction — Main LLM outputs pre-built banner HTML at reply start
             if (isStateSchemaEnabled()) {
