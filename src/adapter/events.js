@@ -748,21 +748,21 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 var npcFieldsList = 'gender_age, occupation, personality, clothing_build, affection, relationship, current_mood, inner_thoughts, status, injuries, status_effects, past_experience';
                 var pcFieldsList = 'gender_age, occupation, personality, clothing_build, status, injuries, status_effects';
 
-                var charBlockInstr = '在回复末尾（对话正文之后），为以下角色输出角色信息块，用于填补状态卡中的空缺字段：\n' +
-                    (protagonistName ? '- PC（主角，你扮演的角色）: ' + protagonistName + ' — 可用字段: ' + pcFieldsList + '\n' : '') +
+                var charBlockInstr = '本轮对话中如果出现了状态卡中尚未记录的新角色（上方 Current State 中未出现的角色名），在回复末尾为其输出角色信息块。\n' +
+                    '状态卡中已有的角色无需输出，跳过即可。\n' +
+                    (protagonistName ? '\n- PC（主角，你扮演的角色）: ' + protagonistName + ' — 可用字段: ' + pcFieldsList + '\n' : '') +
                     '- NPC（其他角色）— 可用字段: ' + npcFieldsList + '\n' +
                     (schemeNames.length > 0 ? '- NPC 可用方案: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n' : '') +
                     '\n格式：\n' +
                     '  主角范例: <!--NE-CHAR:' + (protagonistName || '主角名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
                     '  NPC范例: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
-                    '\n注意：不要在 NE-CHAR 块之外额外写 "PC:" 或 "NPC:" 标签。角色类型已由块内的 _role 字段指明。' +
                     '\n规则：\n' +
+                    '- 只看状态卡中尚不存在的角色。已有角色不输出。\n' +
+                    '- 如果没有新角色，则不需要输出任何 NE-CHAR 块。\n' +
+                    '- 不要在 NE-CHAR 块之外额外写 "PC:" 或 "NPC:" 标签。\n' +
                     '- _role: "protagonist" 或 "npc"（必填）。\n' +
                     '- _scheme: NPC 才需要，从上方可用方案中选择（必填）。\n' +
-                    '- affection: 好感度 0-100（50=中性）。\n' +
                     '- 尽可能多地填写你能从对话和角色认知中确定的字段。有把握就填，不确定的字段省略。\n' +
-                    '- 已有值的字段请勿覆盖（如果状态卡中已有内容则跳过该字段）。\n' +
-                    '- 同一角色只输出一次此块。\n' +
                     '- 角色信息块放在回复末尾，正文之后。';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
             }
