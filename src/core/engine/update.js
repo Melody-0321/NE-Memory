@@ -1356,6 +1356,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
             var scheme = cb.fields._scheme || cb.fields.scheme || null;
             keysToSkip.forEach(function(k) { delete cb.fields[k]; });
             var isPC = (role === 'protagonist') || (charState.protagonist_name && cb.name === charState.protagonist_name);
+            if (role === 'protagonist' && !charState.protagonist_name) {
+                charState.protagonist_name = cb.name;
+            }
             var schemeKey = isPC ? null : (scheme || 'default');
             if (!isPC && schemeKey && charState.npc_schemes && !charState.npc_schemes[schemeKey]) {
                 console.warn('[NE-CHAR] unknown _scheme "' + schemeKey + '" for ' + cb.name + ', falling back to "default"');
