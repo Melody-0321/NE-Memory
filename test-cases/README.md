@@ -38,6 +38,8 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | # | 用例 | 状态 | 描述 |
 |---|------|------|------|
 | pipeline-stm-01 | STM 提取质量 | ⬜ | LLM 响应格式规范（无代词、无标识符残留、无 JSON 破碎） |
+| stm-scene-switch | 场景切换提取 | ⬜ | L1 边界检测跨场景边界，STM 不跨场景合并 |
+| stm-long-batch | 长时间线批量提取 | ⬜ | Phase 2 batch pipeline 不超时/不溢出/分批正确 |
 
 ### State 管线
 
@@ -48,14 +50,30 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | pipeline-state-03 | 信息源验证 — Character Cards + World Book | ⬜ | State LLM 从角色卡主动提取，不等对话 |
 | pipeline-state-04 | ⚠ 已废弃 — ne_context_memory 已移除 | — | context_memory 监控目标始终为空 |
 | pipeline-state-05 | autoDecayStaleCharacters 两轮缓冲 | ⬜ | 角色不在 present 列表时两轮后才衰减 |
+| state-field-validate | 字段白名单校验 | ⬜ | 拒绝 LLM 自创字段名，字段路径与 schema 一致 |
+| state-merge-retain | 合并保留非重叠字段 | ⬜ | 两轮 state_changes 不互相覆盖，_scheme 保护 |
 
 ### LTM 合并
 
 | # | 用例 | 状态 | 描述 |
 |---|------|------|------|
 | pipeline-ltm-01 | LTM 流式整合测试 | ⬜ | STM+LTM 合流，open/closed 生命周期，硬上限自动闭合 |
+| ltm-consolidate | LTM 基础合并 | ⬜ | append/close_and_new 决策 + MAX_OPEN_STM_REFS 硬上限 |
 
-### 冒烟测试
+### Vault / Store
+
+| # | 用例 | 状态 | 描述 |
+|---|------|------|------|
+| vault-dedup-msg | 消息去重 | ⬜ | filterNewMessages 拒绝已处理的 msg_id |
+| vault-msg-rollback | 消息回滚 | ⬜ | rollbackByMsgIds 移除 STM + 级联清理 LTM |
+
+### 集成
+
+| # | 用例 | 状态 | 描述 |
+|---|------|------|------|
+| integ-msg-delete | 消息删除端到端 | ⬜ | onMessageDeleted → rollback → vault 写回完整事件链 |
+
+### 冒烟测试 （续上）
 
 | # | 用例 | 状态 | 描述 |
 |---|------|------|------|
@@ -63,22 +81,7 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 
 ---
 
-## 二、高价值 — 应定义（8 个）
-
-| # | 用例 | 理由 |
-|---|------|------|
-| stm-scene-switch | 场景切换提取 | L1 同场景检测是 STM 边界核心逻辑。场景切换漏切 → 一条 STM 跨两个场景 → 记忆混乱 |
-| stm-long-batch | 长时间线 batch 提取 | Phase 2 batch 是真实使用中必触发的路径。token 溢出、分批逻辑如有 bug，用户直接受损 |
-| ltm-consolidate | LTM 基础合并 | 验证 append vs close_and_new 是否被正确执行（pipeline-ltm-01 是烟测，不验证具体合并逻辑正确性） |
-| state-field-validate | 字段白名单校验 | 防止 LLM 自创字段名写入 state。静默数据损坏——字段被写入但永不被展示 |
-| state-merge-retain | 合并保留非重叠字段 | 同一角色两轮 state_changes 不互相覆盖字段 |
-| vault-dedup-msg | 消息去重 (processed_msg_ids) | 同一消息被 pipeline 处理两次 → 双倍 STM → LTM 膨胀 |
-| vault-msg-rollback | 消息回滚 | 删除/滑动消息后 vault 不同步 = 永久数据损坏 |
-| integ-msg-delete | 消息删除端到端 | vault-msg-rollback 的端到端版本（删除消息 → vault 回滚 → pipeline 恢复） |
-
----
-
-## 三、中价值 — 可定义但不急（6 个）
+## 二、中价值 — 可定义但不急（6 个）
 
 | # | 用例 | 理由 |
 |---|------|------|
@@ -93,14 +96,14 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 
 ## 汇总
 
-| 分组 | 已定义 | 高价值待定义 | 中价值待定义 |
-|------|--------|-------------|-------------|
-| SmartPush 注入 / 检索 | 9 | — | — |
-| STM 提取 | 1 | 2 | 3 |
-| LTM 合并 | 1 | 1 | 1 |
-| State 管线 | 5 | 2 | — |
-| Vault/Store | — | 2 | 1 |
-| 集成 | — | 1 | — |
-| 冒烟 | 1 | — | — |
-| 压力 | — | — | 1 |
-| **合计** | **17** (`-1` 废弃) | **8** | **6** |
+| 分组 | 已定义 | 中价值待定义 |
+|------|--------|-------------|
+| SmartPush 注入 / 检索 | 9 | — |
+| STM 提取 | 3 | 3 |
+| LTM 合并 | 2 | 1 |
+| State 管线 | 7 | — |
+| Vault/Store | 2 | 1 |
+| 集成 | 1 | — |
+| 冒烟 | 1 | — |
+| 压力 | — | 1 |
+| **合计** | **25** (`-1` 废弃) | **6** |
