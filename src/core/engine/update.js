@@ -909,40 +909,42 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
 
-    var rulesEn = '\nRules:\n' +
-        '- state_changes: flat object of dot-path → new-value.\n' +
-        '- Each field is judged independently:\n' +
-        '  · Field shows "(未填)" → If you can infer its value from this round\'s dialogue, output it. If you cannot infer, do NOT output it.\n' +
-        '  · Field already has a value → Only output if this round\'s dialogue changes that value.\n' +
-        '- Required fields (no "未填" marker on optional fields) → Prioritize filling from (未填). Fill if this round provides clues.\n' +
-        '- Optional fields → Only fill if explicitly mentioned in dialogue.\n' +
+    var rulesEn = '\n## Your responsibility\n' +
+        '- You manage: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience.\n' +
+        '- Do NOT manage: affection, current_mood, inner_thoughts. These are handled by the main LLM and should never appear in your state_changes output.\n' +
+        '\n## Filling unfilled fields\n' +
+        '- Character Cards (above) are your primary source. Directly extract: gender_age, occupation, personality, clothing_build from the card text.\n' +
+        '- If the Character Cards describe it explicitly, fill it — do NOT wait for dialogue to mention it.\n' +
+        '- For fields not covered by Character Cards, infer from dialogue.\n' +
         '- past_experience: incremental — append new content, do NOT overwrite existing.\n' +
-        '- 【No fabrication】If there are no clues in the dialogue, do NOT guess or fabricate values. Unfilled fields continue to show (未填) — fill them when new information appears.\n' +
+        '\n## Updating existing fields\n' +
+        '- Field already has a value → Only output if this round\'s dialogue changes that value.\n' +
         '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
         '\n## NPC Scheme Assignment\n' +
         '- NPCs already have a _scheme field — do NOT change it.\n' +
-        '- New NPCs without _scheme: infer the appropriate scheme from the NPC\'s traits (see "NPC Schemes Available" above for options).\n' +
-        '- To assign a scheme to a new NPC, include `characters.<name>._scheme` in state_changes.\n' +
+        '- New NPCs without _scheme: infer from traits (see "NPC Schemes Available" above).\n' +
+        '- To assign: include `characters.<name>._scheme` in state_changes.\n' +
         '- Use "default" scheme if unsure.\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
-    var rulesZh = '\n规则：\n' +
-        '- state_changes: flat object，dot-path → 新值。\n' +
-        '- 每个字段独立判断：\n' +
-        '  · 字段显示「(未填)」→ 如果你能从本轮对话中推断该字段的值，输出它。无法推断则不输出。\n' +
-        '  · 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- 必填字段（可选字段没有 (未填) 标记）→ 优先从未填状态推断填写。本轮对话有线索就填。\n' +
-        '- 可选字段 → 仅在对话中明确提及时填写。\n' +
+    var rulesZh = '\n## 你的职责\n' +
+        '- 你管理: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience。\n' +
+        '- 不要管理: affection, current_mood, inner_thoughts。这些由主 LLM 负责，绝不应该出现在你的 state_changes 输出中。\n' +
+        '\n## 填充未填字段\n' +
+        '- Character Cards（上方）是你的首要信息来源。直接从角色卡文本中提取 gender_age、occupation、personality、clothing_build。\n' +
+        '- 角色卡明确描述的内容直接填入，不需要等对话提及。\n' +
+        '- 角色卡没有覆盖的字段，再从本轮对话中推断。\n' +
         '- past_experience: 增量追加 → 仅追加新内容，不要覆盖已有内容。\n' +
-        '- 【禁止编造】如果对话中没有线索，不要猜测或编造字段值。未填的字段下一轮会继续显示(未填)，你可以在新信息出现后填写。\n' +
+        '\n## 更新已有字段\n' +
+        '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '\n## NPC 方案分配\n' +
         '- 已有 _scheme 的 NPC — 不要修改其 _scheme 值。\n' +
-        '- 新 NPC 没有 _scheme 时：根据 NPC 的特征从上方的「NPC Schemes Available」中选择合适的方案。\n' +
+        '- 新 NPC 没有 _scheme 时：从上方的「NPC Schemes Available」中选择合适的方案。\n' +
         '- 分配方案时在 state_changes 中包含 `characters.<name>._scheme`。\n' +
         '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
@@ -950,12 +952,12 @@ function buildStatePrompt_Preset(messages, vault) {
     if (lang === 'en') {
         return {
             system: stateTable + buildCharacterCardSection() + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields where you can infer from dialogue. Only output changed fields for already-filled values.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards first, then dialogue.'
         };
     }
     return {
         system: stateTable + buildCharacterCardSection() + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。未填字段可从对话推断就填充。已填字段仅输出本轮变化。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。优先从 Character Cards 填充未填字段，角色卡无覆盖的字段再从对话推断。'
     };
 }
 
