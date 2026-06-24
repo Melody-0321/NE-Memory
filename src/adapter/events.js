@@ -567,7 +567,7 @@ function registerGlobalBannerRegex() {
         var CHAR_FIND = '<!--NE-CHAR:[^-]+-->\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->';
         var CHAR_ID = 'ne-char-block-strip';
         var CHAR_NAME = 'NE Character Block Strip';
-        var CHAR_VERSION = '1.0';
+        var CHAR_VERSION = '1.1';
         var charStripPattern = /^ne-char-block-strip$/;
         var charEntry = null;
         for (var cj = 0; cj < es.regex.length; cj++) {

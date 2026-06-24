@@ -1349,20 +1349,29 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var pendingCharBlocks = globalThis.__ne_pending_char_blocks;
     if (pendingCharBlocks && pendingCharBlocks.length > 0) {
         var charState = vault.content.state || {};
-        var keysToSkip = ['_role', '_scheme'];
+        var keysToSkip = ['_role', 'role', '_scheme', 'scheme'];
         pendingCharBlocks.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
-            var role = cb.fields._role || null;
-            var scheme = cb.fields._scheme || null;
+            var role = cb.fields._role || cb.fields.role || null;
+            var scheme = cb.fields._scheme || cb.fields.scheme || null;
             keysToSkip.forEach(function(k) { delete cb.fields[k]; });
             var isPC = (role === 'protagonist') || (charState.protagonist_name && cb.name === charState.protagonist_name);
             var schemeKey = isPC ? null : (scheme || 'default');
+            if (!isPC && schemeKey && charState.npc_schemes && !charState.npc_schemes[schemeKey]) {
+                console.warn('[NE-CHAR] unknown _scheme "' + schemeKey + '" for ' + cb.name + ', falling back to "default"');
+                schemeKey = 'default';
+                scheme = 'default';
+            }
             ensureCharacterTemplate(charState, cb.name, schemeKey);
             var chars = charState.characters;
             if (!chars[cb.name]) chars[cb.name] = {};
             if (role && !chars[cb.name]._role) chars[cb.name]._role = role;
             if (scheme && !isPC && !chars[cb.name]._scheme) chars[cb.name]._scheme = scheme;
             var pcAllowed = ['gender_age', 'occupation', 'personality', 'clothing_build', 'status', 'injuries', 'status_effects'];
+            var npcOnly = ['affection', 'relationship', 'current_mood', 'inner_thoughts'];
+            if (isPC) {
+                npcOnly.forEach(function(fk) { delete chars[cb.name][fk]; });
+            }
             Object.keys(cb.fields).forEach(function(fk) {
                 if (isPC && pcAllowed.indexOf(fk) === -1) return;
                 var existing = chars[cb.name][fk];
