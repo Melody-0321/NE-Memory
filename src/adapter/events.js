@@ -588,7 +588,7 @@ function registerGlobalBannerRegex() {
             charEntry.enabled = true;
             charEntry.runOnEdit = false;
             charEntry.markdownOnly = false;
-            charEntry.promptOnly = true;
+            charEntry.promptOnly = false;
             charEntry.placement = [2];
             charEntry.substituteRegex = 0;
             charEntry.minDepth = null;
