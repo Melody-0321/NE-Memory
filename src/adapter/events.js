@@ -753,8 +753,9 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- NPC（其他角色）— 可用字段: ' + npcFieldsList + '\n' +
                     (schemeNames.length > 0 ? '- NPC 可用方案: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n' : '') +
                     '\n格式：\n' +
-                    '  PC: <!--NE-CHAR:' + (protagonistName || '主角名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
-                    '  NPC: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '  主角范例: <!--NE-CHAR:' + (protagonistName || '主角名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '  NPC范例: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '\n注意：不要在 NE-CHAR 块之外额外写 "PC:" 或 "NPC:" 标签。角色类型已由块内的 _role 字段指明。' +
                     '\n规则：\n' +
                     '- _role: "protagonist" 或 "npc"（必填）。\n' +
                     '- _scheme: NPC 才需要，从上方可用方案中选择（必填）。\n' +
