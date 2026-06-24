@@ -231,6 +231,23 @@ export async function onMessageReceived(messageIndex) {
                 globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
             }
 
+            // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
+            var rawMes = message.mes || '';
+            var stripRegex = /<!--NE-CHAR:([^-]+?)-->\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
+            var stripCount = 0;
+            var strippedNames = [];
+            var strippedMes = rawMes.replace(stripRegex, function(match, name) {
+                stripCount++;
+                strippedNames.push(name.trim());
+                return '';
+            });
+            if (stripCount > 0) {
+                message.mes = strippedMes;
+                assistantMsg.content = strippedMes;
+                console.log('[NE-CHAR-MONITOR] stripped ' + stripCount + ' block(s): ' + strippedNames.join(', ') +
+                    ' | raw had ' + (rawMes.match(/<!--NE-CHAR/g) || []).length + ' tag(s)');
+            }
+
             pendingMessages.push(assistantMsg);
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
