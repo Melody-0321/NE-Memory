@@ -489,7 +489,7 @@ function registerGlobalBannerRegex() {
 
         var DISPLAY_ID = 'ne-state-banner';
         var PROMPT_ID = 'ne-state-banner-prompt';
-        var _BANNER_VERSION = '1.1';
+        var _BANNER_VERSION = '1.2';
         var DISPLAY_NAME = 'NE State Banner v' + _BANNER_VERSION;
         var PROMPT_NAME = 'NE State Banner (prompt strip) v' + _BANNER_VERSION;
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
@@ -500,7 +500,7 @@ function registerGlobalBannerRegex() {
             '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
             '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
             '```\n';
-        var FIND_PROMPT = '<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*';
+        var FIND_PROMPT = '/<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*/g';
 
         // ── 迁移：扫描所有历史版本（id 以 ne-state-banner / ne-state-banner-prompt 开头，
         //     可以是精确匹配也可以是带 -vN 后缀），归一化为永久 id，删掉多余的 ──
@@ -581,10 +581,10 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
-        var CHAR_FIND = '<!--NE-CHAR:[^-]+-->\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->';
+        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-->\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
         var CHAR_ID = 'ne-char-block-strip';
         var CHAR_NAME = 'NE Character Block Strip';
-        var CHAR_VERSION = '1.1';
+        var CHAR_VERSION = '1.2';
         var charStripPattern = /^ne-char-block-strip$/;
         var charEntry = null;
         for (var cj = 0; cj < es.regex.length; cj++) {
