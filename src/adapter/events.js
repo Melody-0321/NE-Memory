@@ -750,11 +750,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 
                 var charBlockInstr = '本轮对话中如果出现了状态卡中尚未记录的新角色（上方 Current State 中未出现的角色名），在回复末尾为其输出角色信息块。\n' +
                     '状态卡中已有的角色无需输出，跳过即可。\n' +
-                    (protagonistName ? '\n- PC（主角，你扮演的角色）: ' + protagonistName + ' — 可用字段: ' + pcFieldsList + '\n' : '') +
+                    '\n- PC（主角，你扮演的角色）' + (protagonistName ? ': ' + protagonistName : '') + ' — 可用字段: ' + pcFieldsList + '\n' +
                     '- NPC（其他角色）— 可用字段: ' + npcFieldsList + '\n' +
                     (schemeNames.length > 0 ? '- NPC 可用方案: ' + schemeNames.join(', ') + '（未指定时用 "default"）\n' : '') +
                     '\n格式：\n' +
-                    '  主角范例: <!--NE-CHAR:' + (protagonistName || '主角名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
+                    '  主角范例: <!--NE-CHAR:' + (protagonistName || '你的角色名') + '-->{"_role":"protagonist","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
                     '  NPC范例: <!--NE-CHAR:角色名-->{"_role":"npc","_scheme":"方案名","gender_age":"...","occupation":"...","personality":"...","clothing_build":"...","affection":50,"relationship":"...","current_mood":"...","inner_thoughts":"...","status":"活跃"}<!--/NE-CHAR-->\n' +
                     '\n规则：\n' +
                     '- 只看状态卡中尚不存在的角色。已有角色不输出。\n' +
