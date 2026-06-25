@@ -893,37 +893,41 @@ function buildCharacterCardSection(vault) {
     return '## Character Cards\n' + lines.join('\n') + '\n';
 }
 
-function buildWorldBookNeeded(vault) {
+function findNewCharacterNames(vault) {
     var state = (vault && vault.content && vault.content.state) || {};
     var chars = state.characters || {};
-    var managedFields = ['gender_age', 'occupation', 'personality', 'clothing_build', 'status', 'relationship', 'past_experience'];
-    var names = Object.keys(chars);
-    if (state.protagonist_name && names.indexOf(state.protagonist_name) === -1) names.push(state.protagonist_name);
-    for (var i = 0; i < names.length; i++) {
-        var card = chars[names[i]];
-        if (!card) continue;
-        for (var j = 0; j < managedFields.length; j++) {
-            if (!card[managedFields[j]] || card[managedFields[j]] === '') return true;
+    var staticFields = ['gender_age', 'occupation', 'personality', 'clothing_build'];
+    var newNames = [];
+    Object.keys(chars).forEach(function(name) {
+        var card = chars[name];
+        if (!card || typeof card !== 'object') return;
+        var allEmpty = staticFields.every(function(fk) {
+            return !card[fk] || card[fk] === '' || card[fk] === '(未填)';
+        });
+        if (allEmpty) newNames.push(name);
+    });
+    if (state.protagonist_name && newNames.indexOf(state.protagonist_name) === -1) {
+        var pc = chars[state.protagonist_name];
+        if (!pc || typeof pc !== 'object') {
+            newNames.push(state.protagonist_name);
+        } else {
+            var pcEmpty = staticFields.every(function(fk) {
+                return !pc[fk] || pc[fk] === '' || pc[fk] === '(未填)';
+            });
+            if (pcEmpty) newNames.push(state.protagonist_name);
         }
     }
-    return false;
+    return newNames;
 }
 
-function buildWorldBookSection(vault) {
+function buildWorldBookSection(vault, names) {
     try {
-        var state = (vault && vault.content && vault.content.state) || {};
-        var chars = state.characters || {};
-        var trackedNames = Object.keys(chars);
-        if (state.protagonist_name && trackedNames.indexOf(state.protagonist_name) === -1) {
-            trackedNames.push(state.protagonist_name);
-        }
-        if (trackedNames.length === 0) return '';
-
+        if (!names || names.length === 0) return '';
         var worldInfo = runtime.getWorldInfo();
         if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
 
         var nameSet = {};
-        trackedNames.forEach(function(n) { nameSet[n] = true; });
+        names.forEach(function(n) { nameSet[n] = true; });
 
         var lines = [];
         var entryKeys = Object.keys(worldInfo.entries);
@@ -933,12 +937,12 @@ function buildWorldBookSection(vault) {
             if (entry.disable) continue;
             var entryKeysArr = entry.key || [];
             var matchesName = entryKeysArr.some(function(k) { return nameSet[k]; });
-            if (!matchesName && !entry.constant) continue;
+            if (!matchesName) continue;
             var label = entryKeysArr.length > 0 ? entryKeysArr[0] : entryKeys[j];
             lines.push('[' + label + '] ' + entry.content);
         }
         if (lines.length === 0) return '';
-        return '\n## World Book (active entries)\n' + lines.join('\n') + '\n';
+        return '\n## World Book — new character profiles\n' + lines.join('\n') + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
     }
@@ -997,17 +1001,41 @@ function buildStatePrompt_Preset(messages, vault) {
         '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
-    var hasUnfilled = buildWorldBookNeeded(vault);
-    var worldBook = hasUnfilled ? buildWorldBookSection(vault) : '';
+    var newNames = findNewCharacterNames(vault);
+    var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames) : '';
 
     if (lang === 'en') {
+        var newCharHintEn = '';
+        if (newNames.length > 0) {
+            if (worldBook) {
+                newCharHintEn = '\n## New Characters\n' +
+                    '- Appearing for the first time: ' + newNames.join(', ') + '.\n' +
+                    '- Their fields are empty. Use the World Book entry above to fill gender_age, occupation, personality, clothing_build.\n';
+            } else {
+                newCharHintEn = '\n## New Characters\n' +
+                    '- Appearing for the first time: ' + newNames.join(', ') + '.\n' +
+                    '- Their fields are empty. Use Character Cards above to fill gender_age, occupation, personality, clothing_build.\n';
+            }
+        }
         return {
-            system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesEn,
+            system: stateTable + buildCharacterCardSection(vault) + worldBook + newCharHintEn + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards and World Book context above, then dialogue.'
         };
     }
+    var newCharHintZh = '';
+    if (newNames.length > 0) {
+        if (worldBook) {
+            newCharHintZh = '\n## 新角色\n' +
+                '- 以下角色首次出场：' + newNames.join(', ') + '。\n' +
+                '- 其字段为空。请使用上方的 World Book 条目填充 gender_age、occupation、personality、clothing_build。\n';
+        } else {
+            newCharHintZh = '\n## 新角色\n' +
+                '- 以下角色首次出场：' + newNames.join(', ') + '。\n' +
+                '- 其字段为空。请使用上方的角色卡填充 gender_age、occupation、personality、clothing_build。\n';
+        }
+    }
     return {
-        system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesZh,
+        system: stateTable + buildCharacterCardSection(vault) + worldBook + newCharHintZh + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。参考上方的角色卡和世界书上下文填充未填字段，无法覆盖的再从对话推断。'
     };
 }
@@ -1319,8 +1347,10 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
     if (!worldBookContent || worldBookContent.length === 0) {
         state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+        state._character_schemes = state._character_schemes || {};
 
         if (state.protagonist_name) {
+            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
             ensureCharacterTemplate(state, state.protagonist_name);
             if (state.characters && state.characters[state.protagonist_name]) {
                 state.characters[state.protagonist_name]._role = 'protagonist';
@@ -1347,13 +1377,29 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         }
 
         if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
+            var schemeMap = {};
             parsed.initial_characters.forEach(function(ch) {
                 if (ch.name) {
-                    ensureCharacterTemplate(state, ch.name, ch._role === 'npc' ? (ch._scheme || 'default') : null);
-                    if (state.characters && state.characters[ch.name]) {
-                        state.characters[ch.name]._role = ch._role || (ch.name === state.protagonist_name ? 'protagonist' : 'npc');
-                        if (ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
-                    }
+                    var chRole = ch.name === state.protagonist_name ? 'protagonist' : (ch._role || 'npc');
+                    schemeMap[ch.name] = { _role: chRole, _scheme: ch._scheme || null };
+                }
+            });
+            state._character_schemes = schemeMap;
+
+            var msgText = '';
+            if (messages && messages.length > 0) {
+                msgText = messages.map(function(m) { return (m.name || '') + ' ' + (m.content || ''); }).join(' ');
+            }
+            parsed.initial_characters.forEach(function(ch) {
+                if (!ch.name) return;
+                var isProtagonist = ch._role === 'protagonist' || ch.name === state.protagonist_name;
+                var isMentioned = msgText.indexOf(ch.name) !== -1;
+                if (!isProtagonist && !isMentioned) return;
+                var schemeKey = ch._role === 'npc' ? (ch._scheme || 'default') : null;
+                ensureCharacterTemplate(state, ch.name, schemeKey);
+                if (state.characters && state.characters[ch.name]) {
+                    state.characters[ch.name]._role = isProtagonist ? 'protagonist' : 'npc';
+                    if (ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
                 }
             });
         }
@@ -1361,8 +1407,22 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
     } catch (e) {
         console.warn('[NE] Scheme discovery failed, using default:', e);
         state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
-        vault.content.state = state;
     }
+
+    // 主角不依赖 World Book：LLM 可能未返回，兜底创建
+    if (state.protagonist_name) {
+        if (!state._character_schemes) state._character_schemes = {};
+        if (!state._character_schemes[state.protagonist_name]) {
+            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
+        }
+        if (!state.characters || !state.characters[state.protagonist_name]) {
+            ensureCharacterTemplate(state, state.protagonist_name);
+        }
+        if (state.characters && state.characters[state.protagonist_name]) {
+            state.characters[state.protagonist_name]._role = 'protagonist';
+        }
+    }
+    vault.content.state = state;
 }
 
 // ── 逐轮轻量状态检测（非阈值轮，仅 1-2 条消息）──
@@ -1429,8 +1489,12 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     chars[name].status = '活跃';
                 } else {
                     if (!chars[name]) chars[name] = {};
-                    ensureCharacterTemplate(state, name);
+                    var schemeLookup = state._character_schemes && state._character_schemes[name];
+                    var schemeKey = schemeLookup ? schemeLookup._scheme : null;
+                    ensureCharacterTemplate(state, name, schemeKey);
                     chars = state.characters;
+                    chars[name]._role = (name === state.protagonist_name) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
+                    if (schemeLookup && schemeLookup._scheme) chars[name]._scheme = schemeLookup._scheme;
                     chars[name].status = '活跃';
                 }
             });

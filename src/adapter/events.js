@@ -201,8 +201,12 @@ async function consumeNeCharBlocks() {
             if (!cb.name || !cb.fields) return;
             var chars = charState.characters || {};
             if (!chars[cb.name]) {
-                ensureCharacterTemplate(charState, cb.name, 'default');
+                var schemeLookup = charState._character_schemes && charState._character_schemes[cb.name];
+                var schemeKey = schemeLookup ? schemeLookup._scheme : null;
+                ensureCharacterTemplate(charState, cb.name, schemeKey);
                 chars = charState.characters;
+                chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
+                if (schemeLookup && schemeLookup._scheme) chars[cb.name]._scheme = schemeLookup._scheme;
             }
             if (!chars[cb.name]) chars[cb.name] = {};
 

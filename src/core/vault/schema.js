@@ -476,10 +476,18 @@ export function mergeStateChanges(state, validatedChanges) {
         var parts = path.split('.');
 
         if (path.endsWith('._scheme')) {
-            var charName = parts[1];
-            var existingScheme = (newState.characters && newState.characters[charName] && newState.characters[charName]._scheme) || null;
+            var schCharName = parts[1];
+            var existingScheme = (newState.characters && newState.characters[schCharName] && newState.characters[schCharName]._scheme) || null;
             if (existingScheme && existingScheme !== validatedChanges[path]) {
-                console.warn('[NE] _scheme protected: ' + charName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + validatedChanges[path]);
+                console.warn('[NE] _scheme protected: ' + schCharName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + validatedChanges[path]);
+                return;
+            }
+        }
+
+        if (path.endsWith('._role')) {
+            var roleCharName = parts[1];
+            if (newState.protagonist_name && newState.protagonist_name === roleCharName) {
+                console.warn('[NE] _role protected: ' + roleCharName + ' is protagonist, ignoring role change');
                 return;
             }
         }

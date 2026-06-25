@@ -290,7 +290,14 @@ function injectBottomDrawerCSS() {
         '.ne-state-event{margin-top:2px;font-size:12px;color:var(--grey-60,#888);font-style:italic;}' +
         '.ne-state-chars{margin-top:4px;display:flex;flex-wrap:wrap;gap:6px;}' +
         '.ne-state-char-pill{display:inline-block;padding:1px 8px;border-radius:10px;background:rgba(125,73,64,.08);border:1px solid rgba(125,73,64,.15);font-size:12px;color:var(--SmartThemeBodyColor,#c1b9ad);}' +
-        '.ne-state-banner-missing{font-style:italic;color:var(--grey-50);font-size:12px;}';
+        '.ne-state-banner-missing{font-style:italic;color:var(--grey-50);font-size:12px;}' +
+        '.ne-card-edit-btn{font-size:0.85em;padding:0 4px;cursor:pointer;opacity:0.6;border:none;background:none;color:var(--SmartThemeBodyColor,#c1b9ad);margin-left:auto;}' +
+        '.ne-card-edit-btn:hover{opacity:1;}' +
+        '.ne-card-save-btn{font-size:0.82em;padding:1px 8px;cursor:pointer;margin-left:auto;background:#4caf50;color:#fff;border:none;border-radius:3px;}' +
+        '.ne-card-cancel-btn{font-size:0.82em;padding:1px 8px;cursor:pointer;margin-left:4px;background:#f44336;color:#fff;border:none;border-radius:3px;}' +
+        '.ne-char-edit{width:100%;padding:2px 4px;border:1px solid var(--SmartThemeBorderColor,rgba(155,109,94,.15));border-radius:3px;background:var(--black20a,rgba(0,0,0,.2));color:var(--SmartThemeBodyColor,#c1b9ad);font-size:0.82em;}' +
+        '.ne-char-edit:focus{outline:1px solid var(--SmartThemeEmColor,#7d4940);border-color:var(--SmartThemeEmColor,#7d4940);}' +
+        '.ne-card-editing .ne-field-label{vertical-align:middle;}';
     pdHead().appendChild(style);
 }
 
@@ -551,7 +558,14 @@ function renderCharacterCard(name, card, schema, cardType) {
             displayVal = String(val);
         }
 
-        var row = '<tr><td class="ne-field-label">' + escapeHtml(key) + '</td><td>' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</td></tr>';
+        var dataAttrs = 'data-char="' + escapeHtml(name) + '" data-field="' + escapeHtml(key) + '" data-type="' + (fieldDef.type || 'string') + '"';
+        if (fieldDef.max_length) dataAttrs += ' data-maxlen="' + fieldDef.max_length + '"';
+        if (fieldDef.type === 'number') {
+            if (fieldDef.min !== undefined) dataAttrs += ' data-min="' + fieldDef.min + '"';
+            if (fieldDef.max !== undefined) dataAttrs += ' data-max="' + fieldDef.max + '"';
+        }
+        if (fieldDef.values) dataAttrs += ' data-values="' + escapeHtml(fieldDef.values.join(',')) + '"';
+        var row = '<tr><td class="ne-field-label">' + escapeHtml(key) + '</td><td class="ne-char-val" ' + dataAttrs + '><span class="ne-char-val-text">' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</span></td></tr>';
 
         if (fieldDef.required) {
             requiredFields.push(row);
@@ -589,6 +603,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<b>' + escapeHtml(name) + '</b> ';
     html += '<span class="ne-char-status">' + escapeHtml(card.status || '') + '</span> ';
     html += '<span class="ne-char-type">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
+    html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" onclick="event.stopPropagation()">&#9998;</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
     html += affectionHtml;
@@ -941,6 +956,17 @@ async function updateVaultViewerPopout(getChatId) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             charContainer.innerHTML = charHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No character data') + ')</div>';
+            setTimeout(function() {
+                var block = byId('ne_character_block_container');
+                if (!block) return;
+                var buttons = block.querySelectorAll('.ne-card-edit-btn');
+                buttons.forEach(function(btn) {
+                    btn.onclick = function(e) {
+                        e.stopPropagation();
+                        enterCardEditMode(this);
+                    };
+                });
+            }, 50);
         }
     } catch (e) { _logSection('char-block', e); }
 
@@ -1095,6 +1121,122 @@ async function updateVaultViewerPopout(getChatId) {
 }
 
 /* ──────── 表格渲染 ──────── */
+
+function enterCardEditMode(editBtn) {
+    var cardDiv = editBtn.closest('.ne-char-card');
+    if (!cardDiv || cardDiv.classList.contains('ne-card-editing')) return;
+
+    cardDiv.classList.add('ne-card-editing');
+    cardDiv._neOrigEditBtnHTML = editBtn.outerHTML;
+
+    var body = cardDiv.querySelector('.ne-char-card-body');
+    if (!body) return;
+
+    var table = body.querySelector('table');
+    if (table) cardDiv._neOrigTableHTML = table.outerHTML;
+
+    var vals = cardDiv.querySelectorAll('.ne-char-val');
+    vals.forEach(function(td) {
+        var fieldType = td.getAttribute('data-type') || 'string';
+        var span = td.querySelector('.ne-char-val-text');
+        var textVal = span ? (span.textContent || '').trim() : '';
+        if (textVal === '(未填)' || textVal === '(Not filled)') textVal = '';
+
+        var editor;
+        switch (fieldType) {
+            case 'enum':
+                var values = (td.getAttribute('data-values') || '').split(',');
+                editor = '<select class="ne-char-edit">';
+                values.forEach(function(v) {
+                    var vv = v.trim();
+                    var sel = (textVal === vv) ? ' selected' : '';
+                    editor += '<option value="' + escapeHtml(vv) + '"' + sel + '>' + escapeHtml(vv) + '</option>';
+                });
+                editor += '</select>';
+                break;
+            case 'number':
+                var min = td.getAttribute('data-min');
+                var max = td.getAttribute('data-max');
+                editor = '<input class="ne-char-edit" type="number" value="' + escapeHtml(textVal) + '"' +
+                    (min ? ' min="' + min + '"' : '') +
+                    (max ? ' max="' + max + '"' : '') + '>';
+                break;
+            default:
+                var maxlen = td.getAttribute('data-maxlen');
+                editor = '<input class="ne-char-edit" type="text" value="' + escapeHtml(textVal) + '"' +
+                    (maxlen ? ' maxlength="' + maxlen + '"' : '') + '>';
+        }
+        span.outerHTML = editor;
+    });
+
+    editBtn.outerHTML =
+        '<button class="ne-card-save-btn">' + t('Save') + '</button>' +
+        '<button class="ne-card-cancel-btn">' + t('Cancel') + '</button>';
+
+    var saveBtn = cardDiv.querySelector('.ne-card-save-btn');
+    if (saveBtn) saveBtn.onclick = function(e) { e.stopPropagation(); saveCardFields(cardDiv); };
+
+    var cancelBtn = cardDiv.querySelector('.ne-card-cancel-btn');
+    if (cancelBtn) cancelBtn.onclick = function(e) { e.stopPropagation(); exitCardEditMode(cardDiv); };
+}
+
+function saveCardFields(cardDiv) {
+    var stored = _pendingInlineStorage;
+    if (!stored || !stored.vault) return;
+    var vault = stored.vault;
+    var c = vault.content || {};
+    var state = c.state || {};
+    var chars = state.characters || {};
+
+    var vals = cardDiv.querySelectorAll('.ne-char-val');
+    var hasChanges = false;
+    vals.forEach(function(td) {
+        var charName = td.getAttribute('data-char');
+        var fieldName = td.getAttribute('data-field');
+        var fieldType = td.getAttribute('data-type') || 'string';
+        var input = td.querySelector('.ne-char-edit');
+        if (!charName || !fieldName || !input) return;
+
+        var rawVal = input.value.trim();
+        var newVal;
+        if (fieldType === 'number') {
+            newVal = rawVal === '' ? null : Number(rawVal);
+        } else {
+            newVal = rawVal === '' ? '' : rawVal;
+        }
+
+        if (!chars[charName]) chars[charName] = {};
+        var old = chars[charName][fieldName];
+        if (old !== newVal) { chars[charName][fieldName] = newVal; hasChanges = true; }
+    });
+
+    if (!hasChanges) { exitCardEditMode(cardDiv); return; }
+
+    state.characters = chars;
+    c.state = state;
+
+    var getChatId = stored.getChatId;
+    write(getChatId(), vault).then(function() {
+        updateVaultViewerPopout(getChatId);
+    });
+}
+
+function exitCardEditMode(cardDiv) {
+    if (!cardDiv) return;
+
+    if (cardDiv._neOrigTableHTML) {
+        var table = cardDiv.querySelector('.ne-char-card-body table');
+        if (table) table.outerHTML = cardDiv._neOrigTableHTML;
+        cardDiv._neOrigTableHTML = null;
+    }
+
+    var saveBtn = cardDiv.querySelector('.ne-card-save-btn');
+    var cancelBtn = cardDiv.querySelector('.ne-card-cancel-btn');
+    if (saveBtn) saveBtn.outerHTML = cardDiv._neOrigEditBtnHTML || '';
+    if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
+
+    cardDiv.classList.remove('ne-card-editing');
+}
 
 function toggleInlineEdit(row, entryId, entryType) {
     if (!row) return;
