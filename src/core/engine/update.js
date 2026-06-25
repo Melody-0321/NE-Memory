@@ -1371,8 +1371,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         }
 
         if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
-            var protagonistCandidates = parsed.initial_characters.filter(function(ch) { return ch._role === 'protagonist'; });
-            var discoveredProtagonist = protagonistCandidates.length === 1 ? protagonistCandidates[0] : null;
+            var discoveredProtagonist = parsed.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
             if (discoveredProtagonist && discoveredProtagonist.name && discoveredProtagonist.name !== state.protagonist_name) {
                 state.protagonist_name = discoveredProtagonist.name;
                 console.log('[NE] protagonist_name updated from scheme_discovery: ' + discoveredProtagonist.name);
@@ -1381,7 +1380,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             var schemeMap = {};
             parsed.initial_characters.forEach(function(ch) {
                 if (ch.name) {
-                    var isProtagonist = ch.name === state.protagonist_name;
+                    var isProtagonist = (ch.name === state.protagonist_name);
                     var chRole = isProtagonist ? 'protagonist' : 'npc';
                     schemeMap[ch.name] = { _role: chRole, _scheme: isProtagonist ? null : (ch._scheme || null) };
                 }
@@ -1394,7 +1393,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             }
             parsed.initial_characters.forEach(function(ch) {
                 if (!ch.name) return;
-                var isProtagonist = ch.name === state.protagonist_name;
+                var isProtagonist = (ch.name === state.protagonist_name);
                 var isMentioned = msgText.indexOf(ch.name) !== -1;
                 if (!isProtagonist && !isMentioned) return;
                 var schemeKey = isProtagonist ? null : (ch._scheme || 'default');
@@ -1405,46 +1404,48 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                 }
             });
 
-            if (worldBookContent && worldBookContent.length > 0) {
+            if (parsed.initial_characters) {
                 var wbCache = {};
                 var protagonistName = state.protagonist_name || '';
 
-                var currentSection = '__header__';
-                var sections = { '__header__': [] };
-                var sectionRegex = /^\[?\d*\]?\s*<(\w+)>/;
+                try {
+                    var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+                    var allEntries = (ctx && ctx.worldInfo && ctx.worldInfo.entries) ? ctx.worldInfo.entries : {};
+                    var entryList = [];
 
-                worldBookContent.forEach(function(entry) {
-                    var line = entry.content || '';
-                    var m = line.match(sectionRegex);
-                    if (m) {
-                        currentSection = m[1];
-                        if (!sections[currentSection]) sections[currentSection] = [];
-                    }
-                    sections[currentSection].push(line);
-                });
-
-                parsed.initial_characters.forEach(function(ch) {
-                    if (!ch.name) return;
-                    var isProtagonist = ch.name === protagonistName;
-                    var nameLower = ch.name.toLowerCase();
-                    var matchingLines = [];
-
-                    Object.keys(sections).forEach(function(secName) {
-                        var isProfileSection = secName.indexOf('character_') === 0 || secName.indexOf('guide_') === 0;
-                        if (!isProfileSection) return;
-
-                        sections[secName].forEach(function(line) {
-                            var lower = line.toLowerCase();
-                            if (lower.indexOf(nameLower) !== -1) {
-                                matchingLines.push(line);
-                            } else if (isProtagonist && lower.indexOf('{{user}}') !== -1) {
-                                matchingLines.push(line);
-                            }
-                        });
+                    Object.keys(allEntries).forEach(function(uid) {
+                        var entry = allEntries[uid];
+                        if (!entry || entry.disable || !entry.content) return;
+                        if (entry.constant) return;
+                        entryList.push(entry);
                     });
-                    wbCache[ch.name] = matchingLines;
-                });
-                state._world_book_cache = wbCache;
+
+                    if (entryList.length > 0) {
+                        parsed.initial_characters.forEach(function(ch) {
+                            if (!ch.name) return;
+                            var nameLower = ch.name.toLowerCase();
+                            var isProtagonist = ch.name === protagonistName;
+
+                            var matched = entryList.filter(function(entry) {
+                                var contentLower = (entry.content || '').toLowerCase();
+                                if (contentLower.indexOf(nameLower) !== -1) return true;
+                                if (isProtagonist && contentLower.indexOf('{{user}}') !== -1) return true;
+                                return false;
+                            }).map(function(entry) {
+                                var label = (entry.key && entry.key.length > 0) ? entry.key[0] : '';
+                                return label ? ('[' + label + '] ' + entry.content) : entry.content;
+                            });
+
+                            wbCache[ch.name] = matched;
+                        });
+                    }
+                } catch (e) {
+                    console.warn('[NE] WB cache build from entries failed:', e && e.message);
+                }
+
+                if (Object.keys(wbCache).length > 0) {
+                    state._world_book_cache = wbCache;
+                }
             }
         }
         vault.content.state = state;
