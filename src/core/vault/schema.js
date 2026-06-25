@@ -471,16 +471,35 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
 export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
 
+    var flattened = {};
+    Object.keys(validatedChanges).forEach(function(path) {
+        var val = validatedChanges[path];
+        if (val !== null && typeof val === 'object' && !Array.isArray(val) && !val.__inc) {
+            Object.keys(val).forEach(function(subKey) {
+                flattened[path + '.' + subKey] = val[subKey];
+            });
+        } else {
+            flattened[path] = val;
+        }
+    });
+
     var hasChanges = false;
-    Object.keys(validatedChanges).forEach(function (path) {
+    Object.keys(flattened).forEach(function (path) {
         var parts = path.split('.');
 
         if (path.endsWith('._scheme')) {
             var schCharName = parts[1];
             var existingScheme = (newState.characters && newState.characters[schCharName] && newState.characters[schCharName]._scheme) || null;
-            if (existingScheme && existingScheme !== validatedChanges[path]) {
-                console.warn('[NE] _scheme protected: ' + schCharName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + validatedChanges[path]);
+            if (existingScheme && existingScheme !== flattened[path]) {
+                console.warn('[NE] _scheme protected: ' + schCharName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + flattened[path]);
                 return;
+            }
+            if (!existingScheme) {
+                var isProtagonist = newState.protagonist_name && newState.protagonist_name === schCharName;
+                if (isProtagonist) {
+                    console.warn('[NE] _scheme protected: ' + schCharName + ' is protagonist, ignoring _scheme change');
+                    return;
+                }
             }
         }
 
@@ -515,14 +534,14 @@ export function mergeStateChanges(state, validatedChanges) {
         }
 
         var lastKey = parts[parts.length - 1];
-        if (lastKey === 'affection' && validatedChanges[path] && typeof validatedChanges[path] === 'object' && validatedChanges[path].__inc) {
-            var delta = validatedChanges[path].delta;
+        if (lastKey === 'affection' && flattened[path] && typeof flattened[path] === 'object' && flattened[path].__inc) {
+            var delta = flattened[path].delta;
             var currentAffection = Number(current[lastKey]) || 0;
             current[lastKey] = Math.max(0, Math.min(100, currentAffection + delta));
             hasChanges = true;
             return;
         }
-        current[lastKey] = validatedChanges[path];
+        current[lastKey] = flattened[path];
         hasChanges = true;
     });
 
@@ -624,7 +643,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                     });
                 }
 
-                var label = isPC ? '[PC] ' : '';
+                var label = isPC ? '[PC] ' : '[NPC] ';
                 parts.push(label + '[' + item.name + ']');
                 for (var j = 0; j < fields.length; j++) {
                     var fk = fields[j];

@@ -1380,7 +1380,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             var schemeMap = {};
             parsed.initial_characters.forEach(function(ch) {
                 if (ch.name) {
-                    var chRole = ch.name === state.protagonist_name ? 'protagonist' : (ch._role || 'npc');
+                    var chRole = ch.name === state.protagonist_name ? 'protagonist' : 'npc';
                     schemeMap[ch.name] = { _role: chRole, _scheme: ch._scheme || null };
                 }
             });
@@ -1392,14 +1392,14 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             }
             parsed.initial_characters.forEach(function(ch) {
                 if (!ch.name) return;
-                var isProtagonist = ch._role === 'protagonist' || ch.name === state.protagonist_name;
+                var isProtagonist = ch.name === state.protagonist_name;
                 var isMentioned = msgText.indexOf(ch.name) !== -1;
                 if (!isProtagonist && !isMentioned) return;
-                var schemeKey = ch._role === 'npc' ? (ch._scheme || 'default') : null;
+                var schemeKey = isProtagonist ? null : (ch._scheme || 'default');
                 ensureCharacterTemplate(state, ch.name, schemeKey);
                 if (state.characters && state.characters[ch.name]) {
                     state.characters[ch.name]._role = isProtagonist ? 'protagonist' : 'npc';
-                    if (ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
+                    if (!isProtagonist && ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
                 }
             });
         }
