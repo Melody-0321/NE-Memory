@@ -265,6 +265,30 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
     };
 }
 
+function flattenNestedChanges(changes, prefix) {
+    prefix = prefix || '';
+    var flat = {};
+    Object.keys(changes).forEach(function(key) {
+        var fullPath = prefix ? prefix + '.' + key : key;
+        var val = changes[key];
+        if (val !== null && typeof val === 'object' && !Array.isArray(val)) {
+            var childKeys = Object.keys(val);
+            var hasNestedObjects = childKeys.some(function(ck) {
+                return val[ck] !== null && typeof val[ck] === 'object' && !Array.isArray(val[ck]);
+            });
+            if (hasNestedObjects) {
+                var sub = flattenNestedChanges(val, fullPath);
+                Object.keys(sub).forEach(function(sk) { flat[sk] = sub[sk]; });
+            } else {
+                childKeys.forEach(function(ck) { flat[fullPath + '.' + ck] = val[ck]; });
+            }
+        } else {
+            flat[fullPath] = val;
+        }
+    });
+    return flat;
+}
+
 export function parseSTMResponse(llmResponse) {
     var text = String(llmResponse || '').trim();
     if (!text) {
@@ -285,7 +309,8 @@ export function parseSTMResponse(llmResponse) {
                 });
                 stateChanges = isStateSchemaEnabled() ? flat : {};
             } else if (typeof parsed.state_changes === 'object') {
-                stateChanges = isStateSchemaEnabled() ? parsed.state_changes : {};
+                var nested = isStateSchemaEnabled() ? parsed.state_changes : {};
+                stateChanges = flattenNestedChanges(nested);
             }
         }
     } else {
@@ -843,12 +868,20 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
 
 // ── State prompt builders（每种模式专用 prompt）──
 
-function buildCharacterCardSection() {
+function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
     if (!chars || chars.length === 0) return '';
+    var state = vault && vault.content && vault.content.state;
+    var trackedNames = {};
+    if (state && state.characters) {
+        Object.keys(state.characters).forEach(function(n) { trackedNames[n] = true; });
+    }
+    if (state && state.protagonist_name) trackedNames[state.protagonist_name] = true;
+    var hasTracked = Object.keys(trackedNames).length > 0;
     var lines = [];
     chars.forEach(function(ch) {
         if (!ch.name) return;
+        if (hasTracked && !trackedNames[ch.name]) return;
         var hasContent = ch.description || ch.personality || ch.scenario;
         if (!hasContent) return;
         lines.push('[' + ch.name + ']');
@@ -860,44 +893,33 @@ function buildCharacterCardSection() {
     return '## Character Cards\n' + lines.join('\n') + '\n';
 }
 
-function buildWorldBookSection() {
-    var worldInfo = runtime.getWorldInfo();
-    if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
-
-    var enabledBooks = {};
+async function buildWorldBookSection() {
     try {
-        var wi = runtime.getWorldInfo();
-        var globalSelect = (wi && wi.globalSelect) ? wi.globalSelect : null;
-        if (!globalSelect) {
-            var pus = runtime.getPowerUserCfg();
-            if (pus && pus.world_info && Array.isArray(pus.world_info.globalSelect)) {
-                globalSelect = pus.world_info.globalSelect;
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            if (ctx && ctx.getWorldInfoPrompt) {
+                var chat = ctx.chat || [];
+                var chatForWi = [];
+                for (var ci = chat.length - 1; ci >= 0; ci--) {
+                    var cm = chat[ci];
+                    if (cm && cm.mes) {
+                        chatForWi.push(cm.name ? cm.name + ': ' + cm.mes : cm.mes);
+                    }
+                }
+                if (chatForWi.length === 0) return '';
+                var result = await ctx.getWorldInfoPrompt(chatForWi, ctx.maxContext || 8192, true);
+                if (result && result.worldInfoString && result.worldInfoString.trim()) {
+                    return '\n## World Book (active entries)\n' + result.worldInfoString.trim() + '\n';
+                }
             }
         }
-        if (globalSelect) {
-            for (var si = 0; si < globalSelect.length; si++) {
-                enabledBooks[globalSelect[si]] = true;
-            }
-        }
-    } catch (e) {}
-
-    var hasEnabledFilter = Object.keys(enabledBooks).length > 0;
-    var lines = [];
-    var entryKeys = Object.keys(worldInfo.entries);
-    for (var j = 0; j < entryKeys.length; j++) {
-        var entry = worldInfo.entries[entryKeys[j]];
-        if (!entry || !entry.content) continue;
-        if (entry.disable) continue;
-        if (hasEnabledFilter && entry.world && !enabledBooks[entry.world]) continue;
-        var label = entry.key || entryKeys[j];
-        lines.push('[' + label + '] ' + entry.content);
+    } catch (e) {
+        console.warn('[NE] buildWorldBookSection failed:', e && e.message);
     }
-
-    if (lines.length === 0) return '';
-    return '\n## World Book (active entries)\n' + lines.join('\n') + '\n';
+    return '';
 }
 
-function buildStatePrompt_Preset(messages, vault) {
+async function buildStatePrompt_Preset(messages, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
@@ -950,16 +972,16 @@ function buildStatePrompt_Preset(messages, vault) {
         '\n零变化示例: {"state_changes":{}}\n\n';
 
     var hasUnfilled = stateTable.indexOf('(未填)') !== -1 || stateTable.indexOf('(Not filled)') !== -1;
-    var worldBook = hasUnfilled ? buildWorldBookSection() : '';
+    var worldBook = hasUnfilled ? await buildWorldBookSection() : '';
 
     if (lang === 'en') {
         return {
-            system: stateTable + buildCharacterCardSection() + worldBook + rulesEn,
+            system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesEn,
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards and World Book context above, then dialogue.'
         };
     }
     return {
-        system: stateTable + buildCharacterCardSection() + worldBook + rulesZh,
+        system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesZh,
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。参考上方的角色卡和世界书上下文填充未填字段，无法覆盖的再从对话推断。'
     };
 }
@@ -1344,7 +1366,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (messages.length === 0) return { vault, changed: false };
 
-    var statePrompt = buildStatePrompt_Preset(messages, vault);
+    var statePrompt = await buildStatePrompt_Preset(messages, vault);
 
     var stateResponse;
     try {
