@@ -1371,7 +1371,8 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         }
 
         if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
-            var discoveredProtagonist = parsed.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
+            var protagonistCandidates = parsed.initial_characters.filter(function(ch) { return ch._role === 'protagonist'; });
+            var discoveredProtagonist = protagonistCandidates.length === 1 ? protagonistCandidates[0] : null;
             if (discoveredProtagonist && discoveredProtagonist.name && discoveredProtagonist.name !== state.protagonist_name) {
                 state.protagonist_name = discoveredProtagonist.name;
                 console.log('[NE] protagonist_name updated from scheme_discovery: ' + discoveredProtagonist.name);
@@ -1380,7 +1381,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             var schemeMap = {};
             parsed.initial_characters.forEach(function(ch) {
                 if (ch.name) {
-                    var isProtagonist = (ch._role === 'protagonist') || (ch.name === state.protagonist_name);
+                    var isProtagonist = ch.name === state.protagonist_name;
                     var chRole = isProtagonist ? 'protagonist' : 'npc';
                     schemeMap[ch.name] = { _role: chRole, _scheme: isProtagonist ? null : (ch._scheme || null) };
                 }
@@ -1393,7 +1394,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             }
             parsed.initial_characters.forEach(function(ch) {
                 if (!ch.name) return;
-                var isProtagonist = (ch._role === 'protagonist') || (ch.name === state.protagonist_name);
+                var isProtagonist = ch.name === state.protagonist_name;
                 var isMentioned = msgText.indexOf(ch.name) !== -1;
                 if (!isProtagonist && !isMentioned) return;
                 var schemeKey = isProtagonist ? null : (ch._scheme || 'default');
@@ -1406,20 +1407,42 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
             if (worldBookContent && worldBookContent.length > 0) {
                 var wbCache = {};
-                var stUserName = (messages.length > 0 && messages[0].name) || '';
+                var protagonistName = state.protagonist_name || '';
+
+                var currentSection = '__header__';
+                var sections = { '__header__': [] };
+                var sectionRegex = /^\[?\d*\]?\s*<(\w+)>/;
+
+                worldBookContent.forEach(function(entry) {
+                    var line = entry.content || '';
+                    var m = line.match(sectionRegex);
+                    if (m) {
+                        currentSection = m[1];
+                        if (!sections[currentSection]) sections[currentSection] = [];
+                    }
+                    sections[currentSection].push(line);
+                });
 
                 parsed.initial_characters.forEach(function(ch) {
                     if (!ch.name) return;
-                    var isProtagonist = (ch._role === 'protagonist') || (ch.name === state.protagonist_name);
+                    var isProtagonist = ch.name === protagonistName;
                     var nameLower = ch.name.toLowerCase();
+                    var matchingLines = [];
 
-                    wbCache[ch.name] = worldBookContent.filter(function(entry) {
-                        var contentLower = (entry.content || '').toLowerCase();
-                        if (contentLower.indexOf(nameLower) !== -1) return true;
-                        if (isProtagonist && contentLower.indexOf('{{user}}') !== -1) return true;
-                        if (isProtagonist && stUserName && contentLower.indexOf(stUserName.toLowerCase()) !== -1) return true;
-                        return false;
-                    }).map(function(entry) { return entry.content; });
+                    Object.keys(sections).forEach(function(secName) {
+                        var isProfileSection = secName.indexOf('character_') === 0 || secName.indexOf('guide_') === 0;
+                        if (!isProfileSection) return;
+
+                        sections[secName].forEach(function(line) {
+                            var lower = line.toLowerCase();
+                            if (lower.indexOf(nameLower) !== -1) {
+                                matchingLines.push(line);
+                            } else if (isProtagonist && lower.indexOf('{{user}}') !== -1) {
+                                matchingLines.push(line);
+                            }
+                        });
+                    });
+                    wbCache[ch.name] = matchingLines;
                 });
                 state._world_book_cache = wbCache;
             }
