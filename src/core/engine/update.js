@@ -893,33 +893,59 @@ function buildCharacterCardSection(vault) {
     return '## Character Cards\n' + lines.join('\n') + '\n';
 }
 
-async function buildWorldBookSection() {
-    try {
-        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-            var ctx = SillyTavern.getContext();
-            if (ctx && ctx.getWorldInfoPrompt) {
-                var chat = ctx.chat || [];
-                var chatForWi = [];
-                for (var ci = chat.length - 1; ci >= 0; ci--) {
-                    var cm = chat[ci];
-                    if (cm && cm.mes) {
-                        chatForWi.push(cm.name ? cm.name + ': ' + cm.mes : cm.mes);
-                    }
-                }
-                if (chatForWi.length === 0) return '';
-                var result = await ctx.getWorldInfoPrompt(chatForWi, ctx.maxContext || 8192, true);
-                if (result && result.worldInfoString && result.worldInfoString.trim()) {
-                    return '\n## World Book (active entries)\n' + result.worldInfoString.trim() + '\n';
-                }
-            }
+function buildWorldBookNeeded(vault) {
+    var state = (vault && vault.content && vault.content.state) || {};
+    var chars = state.characters || {};
+    var managedFields = ['gender_age', 'occupation', 'personality', 'clothing_build', 'status', 'relationship', 'past_experience'];
+    var names = Object.keys(chars);
+    if (state.protagonist_name && names.indexOf(state.protagonist_name) === -1) names.push(state.protagonist_name);
+    for (var i = 0; i < names.length; i++) {
+        var card = chars[names[i]];
+        if (!card) continue;
+        for (var j = 0; j < managedFields.length; j++) {
+            if (!card[managedFields[j]] || card[managedFields[j]] === '') return true;
         }
+    }
+    return false;
+}
+
+function buildWorldBookSection(vault) {
+    try {
+        var state = (vault && vault.content && vault.content.state) || {};
+        var chars = state.characters || {};
+        var trackedNames = Object.keys(chars);
+        if (state.protagonist_name && trackedNames.indexOf(state.protagonist_name) === -1) {
+            trackedNames.push(state.protagonist_name);
+        }
+        if (trackedNames.length === 0) return '';
+
+        var worldInfo = runtime.getWorldInfo();
+        if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
+
+        var nameSet = {};
+        trackedNames.forEach(function(n) { nameSet[n] = true; });
+
+        var lines = [];
+        var entryKeys = Object.keys(worldInfo.entries);
+        for (var j = 0; j < entryKeys.length; j++) {
+            var entry = worldInfo.entries[entryKeys[j]];
+            if (!entry || !entry.content) continue;
+            if (entry.disable) continue;
+            var entryKeysArr = entry.key || [];
+            var matchesName = entryKeysArr.some(function(k) { return nameSet[k]; });
+            if (!matchesName && !entry.constant) continue;
+            var label = entryKeysArr.length > 0 ? entryKeysArr[0] : entryKeys[j];
+            lines.push('[' + label + '] ' + entry.content);
+        }
+        if (lines.length === 0) return '';
+        return '\n## World Book (active entries)\n' + lines.join('\n') + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
     }
     return '';
 }
 
-async function buildStatePrompt_Preset(messages, vault) {
+function buildStatePrompt_Preset(messages, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
@@ -971,8 +997,8 @@ async function buildStatePrompt_Preset(messages, vault) {
         '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
-    var hasUnfilled = stateTable.indexOf('(未填)') !== -1 || stateTable.indexOf('(Not filled)') !== -1;
-    var worldBook = hasUnfilled ? await buildWorldBookSection() : '';
+    var hasUnfilled = buildWorldBookNeeded(vault);
+    var worldBook = hasUnfilled ? buildWorldBookSection(vault) : '';
 
     if (lang === 'en') {
         return {
@@ -1366,7 +1392,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (messages.length === 0) return { vault, changed: false };
 
-    var statePrompt = await buildStatePrompt_Preset(messages, vault);
+    var statePrompt = buildStatePrompt_Preset(messages, vault);
 
     var stateResponse;
     try {
@@ -1436,38 +1462,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
             console.warn('[NE-HARNESS] All ' + Object.keys(stateChanges).length + ' stateChanges rejected by validateStateChanges — Schema may be missing');
         }
-    }
-
-    var pendingCharBlocks = globalThis.__ne_pending_char_blocks;
-    if (pendingCharBlocks && pendingCharBlocks.length > 0) {
-        var charState = vault.content.state || {};
-        pendingCharBlocks.forEach(function(cb) {
-            if (!cb.name || !cb.fields) return;
-            var chars = charState.characters || {};
-            if (!chars[cb.name]) {
-                ensureCharacterTemplate(charState, cb.name, 'default');
-                chars = charState.characters;
-            }
-            if (!chars[cb.name]) chars[cb.name] = {};
-
-            if (cb.fields.affection_delta !== undefined) {
-                var current = chars[cb.name].affection;
-                if (typeof current !== 'number') current = 0;
-                chars[cb.name].affection = Math.max(0, Math.min(100, current + Number(cb.fields.affection_delta)));
-            }
-
-            ['relationship', 'current_mood', 'inner_thoughts'].forEach(function(fk) {
-                if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
-                    chars[cb.name][fk] = cb.fields[fk];
-                }
-            });
-
-            chars[cb.name].status = chars[cb.name].status || '活跃';
-            console.log('[NE-CHAR] delta merged:', cb.name, JSON.stringify(cb.fields));
-        });
-        charState.characters = charState.characters;
-        vault.content.state = charState;
-        globalThis.__ne_pending_char_blocks = null;
     }
 
     if (isStateSchemaEnabled()) {

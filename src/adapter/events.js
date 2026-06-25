@@ -12,7 +12,7 @@ import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/inje
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
-import { isStateSchemaEnabled } from '../core/vault/schema.js';
+import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
@@ -188,6 +188,47 @@ export function onMessageSent(messageIndex) {
     }
 }
 
+async function consumeNeCharBlocks() {
+    var pending = globalThis.__ne_pending_char_blocks;
+    if (!pending || pending.length === 0) return;
+    globalThis.__ne_pending_char_blocks = null;
+    try {
+        var chatId = getChatIdFn ? getChatIdFn() : 'default';
+        var vault = await read(chatId);
+        if (!vault || !vault.content) return;
+        var charState = vault.content.state || {};
+        pending.forEach(function(cb) {
+            if (!cb.name || !cb.fields) return;
+            var chars = charState.characters || {};
+            if (!chars[cb.name]) {
+                ensureCharacterTemplate(charState, cb.name, 'default');
+                chars = charState.characters;
+            }
+            if (!chars[cb.name]) chars[cb.name] = {};
+
+            if (cb.fields.affection_delta !== undefined) {
+                var current = chars[cb.name].affection;
+                if (typeof current !== 'number') current = 0;
+                chars[cb.name].affection = Math.max(0, Math.min(100, current + Number(cb.fields.affection_delta)));
+            }
+
+            ['relationship', 'current_mood', 'inner_thoughts'].forEach(function(fk) {
+                if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
+                    chars[cb.name][fk] = cb.fields[fk];
+                }
+            });
+
+            chars[cb.name].status = chars[cb.name].status || '活跃';
+            console.log('[NE-CHAR] delta merged:', cb.name, JSON.stringify(cb.fields));
+        });
+        charState.characters = charState.characters;
+        vault.content.state = charState;
+        await saveVaultWithSnapshot(chatId, vault);
+    } catch (e) {
+        console.warn('[NE-CHAR] consumeNeCharBlocks failed:', e && e.message);
+    }
+}
+
 export async function onMessageReceived(messageIndex) {
     try {
         if (!getChatMessagesFn) return;
@@ -247,6 +288,8 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-CHAR-MONITOR] stripped ' + stripCount + ' block(s): ' + strippedNames.join(', ') +
                     ' | raw had ' + (rawMes.match(/<!--NE-CHAR/g) || []).length + ' tag(s)');
             }
+
+            await consumeNeCharBlocks();
 
             pendingMessages.push(assistantMsg);
             persistPending();
