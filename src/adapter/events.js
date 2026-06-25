@@ -727,15 +727,15 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
-        var protagonistName = (ctx && ctx.name1) || null;
+        var stateProtoName = (vault.content.state && vault.content.state.protagonist_name) || '';
+        var ctxName1 = (ctx && ctx.name1) || null;
         if (vault.content.state) {
-            var currentName = vault.content.state.protagonist_name || '';
-            if (protagonistName && protagonistName !== currentName) {
-                vault.content.state.protagonist_name = protagonistName;
-            } else if (!currentName && !protagonistName) {
-                console.warn('[NE] protagonist_name not set: ctx.name1 is null');
+            if (!stateProtoName && ctxName1) {
+                vault.content.state.protagonist_name = ctxName1;
+                stateProtoName = ctxName1;
             }
         }
+        var protagonistName = stateProtoName || ctxName1;
         var neSettings = {};
         try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}
 
