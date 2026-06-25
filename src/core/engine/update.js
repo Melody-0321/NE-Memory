@@ -920,16 +920,61 @@ function findNewCharacterNames(vault) {
     return newNames;
 }
 
+function _matchEntryKeyToName(entry, name, protagonistName) {
+    var keys = entry.key || [];
+    if (keys.length === 0) return false;
+    var nameLower = name.toLowerCase();
+    var isProtagonist = (name === protagonistName);
+    for (var i = 0; i < keys.length; i++) {
+        var keyLower = (keys[i] || '').toLowerCase();
+        if (keyLower === nameLower) return true;
+        if (keyLower.indexOf(nameLower) !== -1) return true;
+        if (nameLower.indexOf(keyLower) !== -1) return true;
+        if (isProtagonist && (keyLower === '{{user}}' || keyLower.indexOf('{{user}}') !== -1)) return true;
+    }
+    return false;
+}
+
+function _lookupWbByName(name, protagonistName) {
+    try {
+        var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        var allEntries = (ctx && ctx.worldInfo && ctx.worldInfo.entries) ? ctx.worldInfo.entries : {};
+        if (Object.keys(allEntries).length === 0) return [];
+
+        var matched = [];
+        Object.keys(allEntries).forEach(function(uid) {
+            var entry = allEntries[uid];
+            if (!entry || entry.disable || !entry.content) return;
+            if (!_matchEntryKeyToName(entry, name, protagonistName)) return;
+            var label = (entry.key && entry.key.length > 0) ? entry.key[0] : '';
+            matched.push(label ? ('[' + label + '] ' + entry.content) : entry.content);
+        });
+        return matched;
+    } catch (e) {
+        return [];
+    }
+}
+
 function buildWorldBookSection(vault, names) {
     try {
         if (!names || names.length === 0) return '';
         var state = (vault && vault.content && vault.content.state) || {};
         var cache = state._world_book_cache;
-        if (!cache || Object.keys(cache).length === 0) return '';
+        if (!cache) {
+            cache = {};
+            state._world_book_cache = cache;
+        }
 
+        var protagonistName = state.protagonist_name || '';
         var lines = [];
         names.forEach(function(name) {
             var entries = cache[name];
+            if (!entries || entries.length === 0) {
+                entries = _lookupWbByName(name, protagonistName);
+                if (entries && entries.length > 0) {
+                    cache[name] = entries;
+                }
+            }
             if (!entries || entries.length === 0) return;
             entries.forEach(function(content) {
                 lines.push('[WB] ' + content);
@@ -1235,7 +1280,7 @@ function collectWorldBookContent() {
                     chatForWi.push('placeholder');
                 }
                 var scanData = {
-                    personaDescription: '',
+                    personaDescription: (ctx.powerUserSettings && ctx.powerUserSettings.persona_description) || '',
                     characterDescription: '',
                     characterPersonality: '',
                     characterDepthPrompt: '',
@@ -1243,6 +1288,23 @@ function collectWorldBookContent() {
                     creatorNotes: '',
                     trigger: 'normal'
                 };
+                try {
+                    var chid = ctx.characterId;
+                    var currentChar = chid !== undefined && ctx.characters ? ctx.characters[chid] : null;
+                    if (currentChar) {
+                        scanData.characterDescription = currentChar.description || '';
+                        scanData.characterPersonality = currentChar.personality || '';
+                        scanData.scenario = currentChar.scenario || '';
+                        if (currentChar.data && currentChar.data.extensions && currentChar.data.extensions.depth_prompt) {
+                            scanData.characterDepthPrompt = currentChar.data.extensions.depth_prompt.prompt || '';
+                        }
+                        if (currentChar.data && currentChar.data.creator_notes) {
+                            scanData.creatorNotes = currentChar.data.creator_notes || '';
+                        }
+                    }
+                } catch (e2) {
+                    console.warn('[NE] Failed to build scanData from character:', e2 && e2.message);
+                }
                 var maxCtx = ctx.maxContext || runtime.maxContext || 8192;
                 var resultPromise = ctx.getWorldInfoPrompt(chatForWi, maxCtx, true, scanData);
                 if (resultPromise && typeof resultPromise.then === 'function') {
@@ -1416,21 +1478,15 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                     Object.keys(allEntries).forEach(function(uid) {
                         var entry = allEntries[uid];
                         if (!entry || entry.disable || !entry.content) return;
-                        if (entry.constant) return;
                         entryList.push(entry);
                     });
 
                     if (entryList.length > 0) {
                         parsed.initial_characters.forEach(function(ch) {
                             if (!ch.name) return;
-                            var nameLower = ch.name.toLowerCase();
-                            var isProtagonist = ch.name === protagonistName;
 
                             var matched = entryList.filter(function(entry) {
-                                var contentLower = (entry.content || '').toLowerCase();
-                                if (contentLower.indexOf(nameLower) !== -1) return true;
-                                if (isProtagonist && contentLower.indexOf('{{user}}') !== -1) return true;
-                                return false;
+                                return _matchEntryKeyToName(entry, ch.name, protagonistName);
                             }).map(function(entry) {
                                 var label = (entry.key && entry.key.length > 0) ? entry.key[0] : '';
                                 return label ? ('[' + label + '] ' + entry.content) : entry.content;
