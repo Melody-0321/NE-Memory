@@ -205,7 +205,7 @@ async function consumeNeCharBlocks() {
                 var schemeKey = schemeLookup ? schemeLookup._scheme : null;
                 ensureCharacterTemplate(charState, cb.name, schemeKey);
                 chars = charState.characters;
-                chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
+                chars[cb.name]._role = (cb.name === charState.protagonist_name || (schemeLookup && schemeLookup._role === 'protagonist')) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
                 if (schemeLookup && schemeLookup._scheme) chars[cb.name]._scheme = schemeLookup._scheme;
             }
             if (!chars[cb.name]) chars[cb.name] = {};
@@ -258,7 +258,7 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
             }
 
-            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-->(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
+            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
             var charBlockMatch;
             var newCharBlocks = [];
             while ((charBlockMatch = charBlockRegex.exec(message.mes || '')) !== null) {
@@ -278,7 +278,7 @@ export async function onMessageReceived(messageIndex) {
 
             // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
             var rawMes = message.mes || '';
-            var stripRegex = /<!--NE-CHAR:([^-]+?)-->\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
+            var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
             var stripCount = 0;
             var strippedNames = [];
             var strippedMes = rawMes.replace(stripRegex, function(match, name) {
@@ -628,7 +628,7 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
-        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-->\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
+        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
         var CHAR_ID = 'ne-char-block-strip';
         var CHAR_NAME = 'NE Character Block Strip';
         var CHAR_VERSION = '1.2';

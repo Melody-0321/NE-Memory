@@ -430,7 +430,8 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
     if (!state.characters) state.characters = {};
     if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
 
-    var isPC = (state.protagonist_name && name === state.protagonist_name);
+    var isPC = (state.protagonist_name && name === state.protagonist_name) ||
+        (state._character_schemes && state._character_schemes[name] && state._character_schemes[name]._role === 'protagonist');
     var template;
     if (isPC) {
         template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
@@ -490,12 +491,13 @@ export function mergeStateChanges(state, validatedChanges) {
         if (path.endsWith('._scheme')) {
             var schCharName = parts[1];
             var existingScheme = (newState.characters && newState.characters[schCharName] && newState.characters[schCharName]._scheme) || null;
+            var isProtagonist = (newState.protagonist_name && newState.protagonist_name === schCharName) ||
+                (newState.characters && newState.characters[schCharName] && newState.characters[schCharName]._role === 'protagonist');
             if (existingScheme && existingScheme !== flattened[path]) {
                 console.warn('[NE] _scheme protected: ' + schCharName + ' already has _scheme=' + existingScheme + ', ignoring change to ' + flattened[path]);
                 return;
             }
             if (!existingScheme) {
-                var isProtagonist = newState.protagonist_name && newState.protagonist_name === schCharName;
                 if (isProtagonist) {
                     console.warn('[NE] _scheme protected: ' + schCharName + ' is protagonist, ignoring _scheme change');
                     return;
@@ -505,7 +507,9 @@ export function mergeStateChanges(state, validatedChanges) {
 
         if (path.endsWith('._role')) {
             var roleCharName = parts[1];
-            if (newState.protagonist_name && newState.protagonist_name === roleCharName) {
+            var isRoleProtagonist = (newState.protagonist_name && newState.protagonist_name === roleCharName) ||
+                (newState.characters && newState.characters[roleCharName] && newState.characters[roleCharName]._role === 'protagonist');
+            if (isRoleProtagonist) {
                 console.warn('[NE] _role protected: ' + roleCharName + ' is protagonist, ignoring role change');
                 return;
             }
@@ -632,7 +636,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             }
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
-                var isPC = (item.name === protagonistName);
+                var isPC = (item.name === protagonistName) || (item.card._role === 'protagonist');
                 var cardType = isPC ? 'protagonist' : 'npc';
                 var fields = isPC ? PC_INJECTION_FIELDS : getNpcInjectionFields(state, item.name);
                 var requiredSet = {};

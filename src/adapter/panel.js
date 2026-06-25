@@ -530,6 +530,9 @@ var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
 
 function getCharacterCardType(name, state) {
     if (state && state.protagonist_name && name === state.protagonist_name) return 'protagonist';
+    var schemeLookup = state && state._character_schemes && state._character_schemes[name];
+    if (schemeLookup && schemeLookup._role === 'protagonist') return 'protagonist';
+    if (state && state.characters && state.characters[name] && state.characters[name]._role === 'protagonist') return 'protagonist';
     return 'npc';
 }
 

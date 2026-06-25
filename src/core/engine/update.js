@@ -1377,11 +1377,18 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         }
 
         if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
+            var discoveredProtagonist = parsed.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
+            if (discoveredProtagonist && discoveredProtagonist.name && discoveredProtagonist.name !== state.protagonist_name) {
+                state.protagonist_name = discoveredProtagonist.name;
+                console.log('[NE] protagonist_name updated from scheme_discovery: ' + discoveredProtagonist.name);
+            }
+
             var schemeMap = {};
             parsed.initial_characters.forEach(function(ch) {
                 if (ch.name) {
-                    var chRole = ch.name === state.protagonist_name ? 'protagonist' : 'npc';
-                    schemeMap[ch.name] = { _role: chRole, _scheme: ch._scheme || null };
+                    var isProtagonist = (ch._role === 'protagonist') || (ch.name === state.protagonist_name);
+                    var chRole = isProtagonist ? 'protagonist' : 'npc';
+                    schemeMap[ch.name] = { _role: chRole, _scheme: isProtagonist ? null : (ch._scheme || null) };
                 }
             });
             state._character_schemes = schemeMap;
@@ -1392,7 +1399,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             }
             parsed.initial_characters.forEach(function(ch) {
                 if (!ch.name) return;
-                var isProtagonist = ch.name === state.protagonist_name;
+                var isProtagonist = (ch._role === 'protagonist') || (ch.name === state.protagonist_name);
                 var isMentioned = msgText.indexOf(ch.name) !== -1;
                 if (!isProtagonist && !isMentioned) return;
                 var schemeKey = isProtagonist ? null : (ch._scheme || 'default');
@@ -1493,7 +1500,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     var schemeKey = schemeLookup ? schemeLookup._scheme : null;
                     ensureCharacterTemplate(state, name, schemeKey);
                     chars = state.characters;
-                    chars[name]._role = (name === state.protagonist_name) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
+                    chars[name]._role = (name === state.protagonist_name || (schemeLookup && schemeLookup._role === 'protagonist')) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
                     if (schemeLookup && schemeLookup._scheme) chars[name]._scheme = schemeLookup._scheme;
                     chars[name].status = '活跃';
                 }
