@@ -920,31 +920,9 @@ function findNewCharacterNames(vault) {
     return newNames;
 }
 
-function buildWorldBookSection(vault, names, entries) {
+function buildWorldBookSection(vault, names) {
     try {
         if (!names || names.length === 0) return '';
-
-        var nameSet = {};
-        names.forEach(function(n) { nameSet[n] = true; });
-
-        if (entries && entries.length > 0) {
-            var lines = [];
-            for (var i = 0; i < entries.length; i++) {
-                var entry = entries[i];
-                if (!entry || !entry.content) continue;
-                var entryKeys = (entry.key && Array.isArray(entry.key)) ? entry.key : [];
-                var matchesName = entryKeys.some(function(k) { return nameSet[k]; });
-                if (!matchesName) {
-                    var contentLower = (entry.content || '').toLowerCase();
-                    matchesName = Object.keys(nameSet).some(function(n) { return contentLower.indexOf(n.toLowerCase()) !== -1; });
-                }
-                if (!matchesName) continue;
-                var label = (entryKeys.length > 0 && entryKeys[0]) ? entryKeys[0] : (entry.label || '');
-                lines.push('[' + label + '] ' + entry.content);
-            }
-            if (lines.length === 0) return '';
-            return '\n## World Book — new character profiles\n' + lines.join('\n') + '\n';
-        }
         var worldInfo = runtime.getWorldInfo();
         if (!worldInfo || !worldInfo.entries || Object.keys(worldInfo.entries).length === 0) return '';
 
@@ -957,13 +935,10 @@ function buildWorldBookSection(vault, names, entries) {
             var entry = worldInfo.entries[entryKeys[j]];
             if (!entry || !entry.content) continue;
             if (entry.disable) continue;
-            var entryKeysArr = entry.key || [];
-            var matchesName = entryKeysArr.some(function(k) { return nameSet[k]; });
-            if (!matchesName) {
-                var contentLower = (entry.content || '').toLowerCase();
-                matchesName = Object.keys(nameSet).some(function(n) { return contentLower.indexOf(n.toLowerCase()) !== -1; });
-            }
+            var contentLower = (entry.content || '').toLowerCase();
+            var matchesName = Object.keys(nameSet).some(function(n) { return contentLower.indexOf(n.toLowerCase()) !== -1; });
             if (!matchesName) continue;
+            var entryKeysArr = entry.key || [];
             var label = entryKeysArr.length > 0 ? entryKeysArr[0] : entryKeys[j];
             lines.push('[' + label + '] ' + entry.content);
         }
@@ -975,7 +950,7 @@ function buildWorldBookSection(vault, names, entries) {
     return '';
 }
 
-function buildStatePrompt_Preset(messages, vault, worldBookEntries) {
+function buildStatePrompt_Preset(messages, vault) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
@@ -1028,7 +1003,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookEntries) {
         '\n零变化示例: {"state_changes":{}}\n\n';
 
     var newNames = findNewCharacterNames(vault);
-    var worldBook = (newNames.length > 0 && worldBookEntries) ? buildWorldBookSection(vault, newNames, worldBookEntries) : buildWorldBookSection(vault, newNames);
+    var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames) : '';
 
     if (lang === 'en') {
         var newCharHintEn = '';
@@ -1485,8 +1460,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (messages.length === 0) return { vault, changed: false };
 
-    var worldBookEntries = await collectWorldBookContent();
-    var statePrompt = buildStatePrompt_Preset(messages, vault, worldBookEntries);
+    var statePrompt = buildStatePrompt_Preset(messages, vault);
 
     var stateResponse;
     try {
