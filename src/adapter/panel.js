@@ -2390,8 +2390,8 @@ function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Context Window Rounds') + '</span><span class="range-val" id="nes_context_window_val">' + (settings.contextWindowRounds || 30) + '</span></div>' +
-        '<input type="range" id="nes_context_window_rounds" min="10" max="100" step="5" value="' + (settings.contextWindowRounds || 30) + '" style="width:100%;">' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('context_window_rounds') + '</span><span class="range-val" id="nes_context_window_val">' + (settings.contextWindowRounds || 10) + '</span></div>' +
+        '<input type="range" id="nes_context_window_rounds" min="2" max="30" step="1" value="' + (settings.contextWindowRounds || 10) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Recent rounds appear as full text in chat. Earlier events are supplemented with memory summaries.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +

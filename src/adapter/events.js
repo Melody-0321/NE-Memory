@@ -819,7 +819,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
         }
 
-        var cwRounds = neSettings.contextWindowRounds || 30;
+        var cwRounds = neSettings.contextWindowRounds || 10;
         var ctxMemory = formatContextMemory(vault, chatMessages, cwRounds);
         if (ctxMemory) {
             runtime.injectPrompt('ne_context_memory', ctxMemory, 'in_chat', 2, 'system');
