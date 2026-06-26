@@ -44,20 +44,6 @@ const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 let lastGenerationTime = 0;
 
-function countWords(text) {
-    if (!text) return 0;
-    var cjkCount = 0;
-    for (var i = 0; i < text.length; i++) {
-        var code = text.charCodeAt(i);
-        if ((code >= 0x4E00 && code <= 0x9FFF) || (code >= 0x3400 && code <= 0x4DBF) || (code >= 0x3000 && code <= 0x303F)) {
-            cjkCount++;
-        }
-    }
-    var nonCjkText = text.replace(/[\u4E00-\u9FFF\u3400-\u4DBF\u3000-\u303F]+/g, ' ').trim();
-    var spaceWords = nonCjkText ? nonCjkText.split(/\s+/).length : 0;
-    return cjkCount + spaceWords;
-}
-
 function persistPending() {
     try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
 }
@@ -94,17 +80,6 @@ async function getStmBatchSize() {
         }
     } catch (e) {}
     return 10;
-}
-
-function getStmWordsThreshold() {
-    try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) {
-            var s = JSON.parse(raw);
-            return Number(s.stmWordsThreshold) || 500;
-        }
-    } catch (e) {}
-    return 500;
 }
 
 export function setContextFns(getChatId, getChatMessages) {
@@ -381,12 +356,10 @@ export async function onMessageReceived(messageIndex) {
 
             if (!isIdle()) return;
 
-            const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var chatMessages = runtime.getChat ? runtime.getChat() : [];
             var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
-                || (totalWords >= getStmWordsThreshold() && pendingMessages.length > 2)
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
             if (isStateSchemaEnabled() && pendingMessages.length > 2) {
@@ -430,12 +403,11 @@ async function flushPendingMessages() {
         console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
     }
     if (pendingMessages.length === 0) return;
-    const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var chatMessages = runtime.getChat ? runtime.getChat() : [];
     var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
-    if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {
-        console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
+    if (pendingMessages.length < await getStmBatchSize() && pressureVal < 0.50) {
+        console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' batch=' + await getStmBatchSize() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
         return;
     }
     const batch = pendingMessages.splice(0);
@@ -554,9 +526,7 @@ async function flushPendingMessages() {
                 var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
                 var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
                 var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
-                var totalWords = pendingMessages.reduce(function(s, m) { return s + (m.content || '').split(/\s+/).length; }, 0);
                 if ((pendingMessages.length >= await getStmBatchSize()
-                    || totalWords >= getStmWordsThreshold()
                     || (pressureVal >= 0.50 && pressureVal > 0))
                     && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
                     _drainContinuationCount++;
