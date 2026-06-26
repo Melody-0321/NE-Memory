@@ -566,6 +566,9 @@ export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'persona
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
 export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
+// Static field categories — used by buildStateInjectionTable to annotate unfilled required fields
+var STATIC_FIELD_CATEGORIES = { gender_age: true, occupation: true, personality: true };
+
 export function getNpcInjectionFields(state, name) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var schemeKey = charData._scheme || 'default';
@@ -658,10 +661,12 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                     if (fk === 'status') suffix = ' (enum: 活跃/非活跃/已死亡/已归隐/已离去)';
                     else if (fk === 'affection') suffix = ' (0-100)';
                     else if (fk === 'past_experience') suffix = ' (增量追加)';
+                    var translatedLabel = t_field(fk);
                     if (requiredSet[fk] && isEmpty) {
                         suffix = ' (未填)' + suffix;
+                        if (STATIC_FIELD_CATEGORIES[fk]) suffix += ' (静态字段，从来源提取)';
                     }
-                    parts.push('  ' + fk + ': ' + valStr + suffix);
+                    parts.push('  ' + translatedLabel + ' (' + fk + '): ' + valStr + suffix);
                 }
             });
         }
