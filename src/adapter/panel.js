@@ -546,6 +546,7 @@ function renderCharacterCard(name, card, schema, cardType) {
 
     Object.keys(cardSchema.fields).forEach(function (key) {
         if (key === 'name') return;
+        if (key === 'status') return; // shown in card header + grouping, redundant in body
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
 
@@ -633,6 +634,12 @@ function renderCharacterCard(name, card, schema, cardType) {
 
 function renderCharacterGroup(label, names, characters, schema, state) {
     if (names.length === 0) return '';
+    var protoName = (state && state.protagonist_name) || '';
+    var sorted = names.slice();
+    if (protoName && sorted.indexOf(protoName) !== -1) {
+        sorted = sorted.filter(function(n) { return n !== protoName; });
+        sorted.unshift(protoName);
+    }
     var headerColor = label === '活跃' ? '#4caf50' : (label === '已退场' ? '#f44336' : '#ff9800');
 
     var html = '<details class="ne_character_group" open style="margin:6px 0;">' +
@@ -640,7 +647,7 @@ function renderCharacterGroup(label, names, characters, schema, state) {
         t(label) + ' (' + names.length + ')</summary>' +
         '<div style="padding-top:2px;">';
 
-    names.forEach(function (name) {
+    sorted.forEach(function (name) {
         var card = characters[name];
         var cardType = getCharacterCardType(name, state);
         html += renderCharacterCard(name, card, schema, cardType);
