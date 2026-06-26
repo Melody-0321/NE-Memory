@@ -3,7 +3,7 @@
  */
 import { executeIncrementalUpdate, extractStateChangesOnly, runLtmDecision, saveVaultWithSnapshot } from '../core/engine/update.js';
 import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
-import { incrementChatTurn, recordChatStat, recordChatToken } from '../core/engine/chat-telemetry.js';
+import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
@@ -254,6 +254,7 @@ async function consumeNeCharBlocks() {
 export async function onMessageReceived(messageIndex) {
     try {
         if (!getChatMessagesFn) return;
+        var chatId = getChatIdFn ? getChatIdFn() : 'default';
         const chat = getChatMessagesFn();
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
@@ -416,7 +417,7 @@ async function flushPendingMessages() {
     console.log('[NE] Pipeline starting: batch=' + batch.length);
     const chatId = runtime.getChatId() || 'default';
     var pipelineStart = Date.now();
-    incrementChatTurn(chatId);
+    if (getChatTurnNumber(chatId) === 0) incrementChatTurn(chatId);
     try {
         const result = await executeIncrementalUpdate(chatId, batch);
         var latestVault = result.vault;
@@ -787,6 +788,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         }
         const vault = await read(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
+        incrementChatTurn(chatId);
         console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;

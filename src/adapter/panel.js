@@ -2246,7 +2246,6 @@ async function renderUsageTab() {
     }
 
     var overview = debug.getUsageOverview();
-    var daily = debug.getDailyStats(30);
     var chats = debug.getAllChatUsage();
 
     function fmt(n) { return n >= 1000000 ? (n / 1000000).toFixed(1) + 'M' : n >= 1000 ? (n / 1000).toFixed(1) + 'k' : String(n); }
@@ -2257,21 +2256,32 @@ async function renderUsageTab() {
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title">📊 ' + t('This Session') + ' / ' + t('This Month') + ' / ' + t('All Time') + '</div>' +
         '<div class="ne-usage-cards">' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">🔄 ' + fmt(overview.sessionTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.sessionTotal) + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">📅 ' + fmt(overview.monthTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.monthTotal) + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">📊 ' + fmt(overview.allTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + '</div><div class="ne-usage-card-sub">👤 ' + t('User Chat') + '</div><div class="ne-usage-card-sub">📦 Total: ' + fmt(overview.allTotal) + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">🔄 ' + fmt(overview.sessionTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.sessionChat) + '</div><div class="ne-usage-card-sub">' + (overview.sessionTurns || 0) + ' ' + t('Turns') + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">📅 ' + fmt(overview.monthTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.monthChat) + '</div><div class="ne-usage-card-sub">' + (overview.monthDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value">📊 ' + fmt(overview.allTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.allChat) + '</div><div class="ne-usage-card-sub">' + (overview.totalDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
         '</div></div>';
 
-    /* Section B: Pipeline breakdown bar chart */
+    /* Section B: Pipeline breakdown — pie chart with scope dropdown */
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title">📊 ' + t('Pipeline Breakdown') + '</div>' +
-        '<div class="ne-usage-chart-wrap"><canvas id="ne-usage-bar-canvas"></canvas></div>' +
+        '<select id="ne-breakdown-scope" onchange="(function(){var s=document.getElementById(\'ne-breakdown-scope\').value;document.getElementById(\'ne-breakdown-month-wrap\').style.display=s===\'month\'?\'\':\'none\';window._renderBreakdownPie&&window._renderBreakdownPie();})()">' +
+        '<option value="chat">' + t('Current Chat') + '</option>' +
+        '<option value="month">' + t('This Month') + '</option>' +
+        '<option value="all">' + t('All Time') + '</option>' +
+        '</select>' +
+        '<span id="ne-breakdown-month-wrap" style="display:none">' +
+        '<select id="ne-breakdown-month" onchange="window._renderBreakdownPie&&window._renderBreakdownPie()"></select>' +
+        '</span>' +
+        '<div class="ne-usage-chart-wrap"><canvas id="ne-breakdown-pie-canvas"></canvas></div>' +
+        '<div id="ne-breakdown-empty" style="display:none;text-align:center;color:var(--grey-50);padding:12px;">' + t('No data') + '</div>' +
         '</div>';
 
-    /* Section C: Daily trend line chart */
+    /* Section C: Daily trend — bar chart with month dropdown */
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title">📈 ' + t('Daily Trend') + '</div>' +
-        '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-usage-line-canvas"></canvas></div>' +
+        '<select id="ne-daily-month" onchange="window._renderDailyBar&&window._renderDailyBar()"></select>' +
+        '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-daily-bar-canvas"></canvas></div>' +
+        '<div id="ne-daily-bar-empty" style="display:none;text-align:center;color:var(--grey-50);padding:12px;">' + t('No data') + '</div>' +
         '</div>';
 
     /* Section D: Per-chat table */
@@ -2293,44 +2303,97 @@ async function renderUsageTab() {
 
     /* Chart.js rendering */
     try {
-        /* Bar chart — pipeline breakdown */
-        var barCtx = document.getElementById('ne-usage-bar-canvas');
-        if (barCtx && window.Chart) {
-            if (_chartInstances.bar) _chartInstances.bar.destroy();
-            _chartInstances.bar = new Chart(barCtx, {
-                type: 'bar',
+        var debug2 = globalThis.__ne_debug;
+
+        /* Populate month dropdowns */
+        var months = debug2 && debug2.getAvailableMonths ? debug2.getAvailableMonths() : [];
+        var breakdownMonthSel = document.getElementById('ne-breakdown-month');
+        var dailyMonthSel = document.getElementById('ne-daily-month');
+        if (months.length > 0) {
+            for (var mi = 0; mi < months.length; mi++) {
+                var m = months[mi];
+                if (breakdownMonthSel) { var bo = document.createElement('option'); bo.value = m; bo.textContent = m; breakdownMonthSel.appendChild(bo); }
+                if (dailyMonthSel) { var do1 = document.createElement('option'); do1.value = m; do1.textContent = m; dailyMonthSel.appendChild(do1); }
+            }
+        }
+
+        /* —— Breakdown pie chart —— */
+        window._renderBreakdownPie = function() {
+            var scopeSel = document.getElementById('ne-breakdown-scope');
+            var scope = scopeSel ? scopeSel.value : 'all';
+            var breakdown;
+            if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
+                breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
+            } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
+                var monthSel = document.getElementById('ne-breakdown-month');
+                var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
+                breakdown = debug2.getMonthlyBreakdown(monthVal);
+            } else {
+                breakdown = overview.breakdown || { stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+            }
+
+            var bc = breakdown;
+            var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.sp) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
+            var bSum = bData[0] + bData[1] + bData[2] + bData[3] + bData[4];
+
+            var emptyEl = document.getElementById('ne-breakdown-empty');
+            if (bSum === 0) {
+                if (emptyEl) emptyEl.style.display = '';
+                if (_chartInstances.pie) { _chartInstances.pie.destroy(); _chartInstances.pie = null; }
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            var pieCtx = document.getElementById('ne-breakdown-pie-canvas');
+            if (!pieCtx || !window.Chart) return;
+            if (_chartInstances.pie) _chartInstances.pie.destroy();
+            _chartInstances.pie = new Chart(pieCtx, {
+                type: 'pie',
                 data: {
-                    labels: ['STM', 'LTM', 'SmartPush', t('NE Pipeline')],
+                    labels: ['STM', 'LTM', 'SmartPush', 'Tool', t('User Chat')],
                     datasets: [{
-                        label: t('Total Tokens'),
-                        data: [(overview.breakdown && overview.breakdown.stm) || 0, (overview.breakdown && overview.breakdown.ltm) || 0, (overview.breakdown && overview.breakdown.sp) || 0, (overview.breakdown && overview.breakdown.tool) || 0],
-                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0']
+                        data: bData,
+                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0', '#9E9E9E']
                     }]
                 },
                 options: {
-                    indexAxis: 'y',
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { display: false } },
-                    scales: { x: { ticks: { callback: function(v) { return fmt(v); } } } }
+                    plugins: {
+                        tooltip: { callbacks: { label: function(ctx) { return ctx.label + ': ' + fmt(ctx.raw); } } },
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } }
+                    }
                 }
             });
-        }
+        };
 
-        /* Line chart — daily trend */
-        var lineCtx = document.getElementById('ne-usage-line-canvas');
-        if (lineCtx && window.Chart && daily.length > 0) {
-            if (_chartInstances.line) _chartInstances.line.destroy();
-            _chartInstances.line = new Chart(lineCtx, {
-                type: 'line',
+        /* —— Daily bar chart —— */
+        window._renderDailyBar = function() {
+            var monthSel = document.getElementById('ne-daily-month');
+            var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
+            var dailyData = debug2 && debug2.getMonthlyStats ? debug2.getMonthlyStats(monthVal) : [];
+
+            var emptyEl = document.getElementById('ne-daily-bar-empty');
+            if (dailyData.length === 0) {
+                if (emptyEl) emptyEl.style.display = '';
+                if (_chartInstances.dailyBar) { _chartInstances.dailyBar.destroy(); _chartInstances.dailyBar = null; }
+                return;
+            }
+            if (emptyEl) emptyEl.style.display = 'none';
+
+            var barCtx = document.getElementById('ne-daily-bar-canvas');
+            if (!barCtx || !window.Chart) return;
+            if (_chartInstances.dailyBar) _chartInstances.dailyBar.destroy();
+            _chartInstances.dailyBar = new Chart(barCtx, {
+                type: 'bar',
                 data: {
-                    labels: daily.map(function(d) { return d.date.substring(5); }),
+                    labels: dailyData.map(function(d) { return d.date.substring(5); }),
                     datasets: [
-                        { label: 'STM', data: daily.map(function(d) { return d.stm; }), borderColor: '#4CAF50', tension: 0.3, pointRadius: 0 },
-                        { label: 'LTM', data: daily.map(function(d) { return d.ltm; }), borderColor: '#FF9800', tension: 0.3, pointRadius: 0 },
-                        { label: 'SmartPush', data: daily.map(function(d) { return d.sp; }), borderColor: '#2196F3', tension: 0.3, pointRadius: 0 },
-                        { label: t('NE Pipeline'), data: daily.map(function(d) { return d.tool; }), borderColor: '#9C27B0', tension: 0.3, pointRadius: 0 },
-                        { label: t('User Chat'), data: daily.map(function(d) { return d.chat; }), borderColor: '#9E9E9E', borderDash: [5,5], tension: 0.3, pointRadius: 0, yAxisID: 'y1' }
+                        { label: 'STM', data: dailyData.map(function(d) { return d.stm; }), backgroundColor: '#4CAF50' },
+                        { label: 'LTM', data: dailyData.map(function(d) { return d.ltm; }), backgroundColor: '#FF9800' },
+                        { label: 'SmartPush', data: dailyData.map(function(d) { return d.sp; }), backgroundColor: '#2196F3' },
+                        { label: 'Tool', data: dailyData.map(function(d) { return d.tool; }), backgroundColor: '#9C27B0' },
+                        { label: t('User Chat'), data: dailyData.map(function(d) { return d.chat; }), backgroundColor: '#9E9E9E' }
                     ]
                 },
                 options: {
@@ -2338,12 +2401,17 @@ async function renderUsageTab() {
                     maintainAspectRatio: false,
                     plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
                     scales: {
-                        y: { ticks: { callback: function(v) { return fmt(v); } } },
-                        y1: { position: 'right', grid: { drawOnChartArea: false }, ticks: { callback: function(v) { return fmt(v); } } }
+                        x: { stacked: false },
+                        y: { stacked: false, ticks: { callback: function(v) { return fmt(v); } } }
                     }
                 }
             });
-        }
+        };
+
+        /* Initial render */
+        if (window._renderBreakdownPie) window._renderBreakdownPie();
+        if (window._renderDailyBar) window._renderDailyBar();
+
     } catch (e) {
         console.warn('[NE] Chart render failed:', e);
     }

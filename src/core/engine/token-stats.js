@@ -85,6 +85,9 @@ export function getUsageOverview(getChatStatsFn) {
         allNE: allNE,
         allTotal: allChat + allNE,
         allAvgPerDay: totalDays > 0 ? Math.round((allChat + allNE) / totalDays) : 0,
+        sessionTurns: sessionTurns,
+        monthDays: monthDays,
+        totalDays: totalDays,
         breakdown: {
             stm: allStm,
             ltm: allLtm,
@@ -134,5 +137,66 @@ export function getAllChatUsage(getAllChatStatsFn) {
         });
     });
     result.sort(function(a, b) { return b.totalTokens - a.totalTokens; });
+    return result;
+}
+
+export function getMonthlyBreakdown(month) {
+    var data = loadDaily();
+    var stm = 0, ltm = 0, sp = 0, tool = 0, chat = 0;
+    Object.keys(data).forEach(function(date) {
+        if (date.substring(0, 7) === month) {
+            var d = data[date];
+            stm += (d.tok_stm || 0);
+            ltm += (d.tok_ltm || 0);
+            sp += (d.tok_sp || 0);
+            tool += (d.tok_tool || 0);
+            chat += (d.tok_chat || 0);
+        }
+    });
+    return { stm: stm, ltm: ltm, sp: sp, tool: tool, chat: chat };
+}
+
+export function getChatBreakdown(getChatStatsFn, chatId) {
+    var stats = getChatStatsFn() || {};
+    var chat = stats[chatId];
+    if (!chat || !chat.aggregates) return { stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+    var agg = chat.aggregates;
+    return {
+        stm: agg.total_tok_stm || 0,
+        ltm: agg.total_tok_ltm || 0,
+        sp: agg.total_tok_sp || 0,
+        tool: agg.total_tok_tool || 0,
+        chat: agg.total_tok_chat || 0
+    };
+}
+
+export function getAvailableMonths() {
+    var data = loadDaily();
+    var months = {};
+    Object.keys(data).forEach(function(date) {
+        months[date.substring(0, 7)] = true;
+    });
+    var list = Object.keys(months).sort().reverse();
+    if (list.length === 0) list.push(new Date().toISOString().substring(0, 7));
+    return list;
+}
+
+export function getMonthlyStats(month) {
+    var data = loadDaily();
+    var keys = Object.keys(data).sort();
+    var result = [];
+    for (var i = 0; i < keys.length; i++) {
+        if (keys[i].substring(0, 7) === month) {
+            var d = data[keys[i]];
+            result.push({
+                date: keys[i],
+                stm: d.tok_stm || 0,
+                ltm: d.tok_ltm || 0,
+                sp: d.tok_sp || 0,
+                tool: d.tok_tool || 0,
+                chat: d.tok_chat || 0
+            });
+        }
+    }
     return result;
 }

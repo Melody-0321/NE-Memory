@@ -16,7 +16,7 @@ import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } fro
 import { ensureStateWorldBook } from '../core/engine/worldbook-sync.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner.js';
 import { getTestCaseMetadata } from '../core/test-runner/files.js';
-import { getUsageOverview, getDailyStats, getAllChatUsage } from '../core/engine/token-stats.js';
+import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, getChatBreakdown, getAvailableMonths, getMonthlyStats } from '../core/engine/token-stats.js';
 import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
 window.__NE_DEV_MODE = window.__NE_DEV_MODE !== undefined ? window.__NE_DEV_MODE : true;
@@ -493,6 +493,11 @@ function _buildDebugApi(host) {
         getUsageOverview: function() { return getUsageOverview(getAllChatStats); },
         getDailyStats: function(days) { return getDailyStats(days || 30); },
         getAllChatUsage: function() { return getAllChatUsage(getAllChatStats); },
+        getMonthlyBreakdown: function(month) { return getMonthlyBreakdown(month); },
+        getChatBreakdown: function(chatId) { return getChatBreakdown(getAllChatStats, chatId); },
+        getAvailableMonths: function() { return getAvailableMonths(); },
+        getMonthlyStats: function(month) { return getMonthlyStats(month); },
+        getCurrentChatId: function() { return getChatId(); },
         setReportsDir: async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } },
         waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); },
         dumpVaultKeys: async function() {
