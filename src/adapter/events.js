@@ -730,30 +730,37 @@ function registerGlobalBannerRegex() {
 export { registerGlobalBannerRegex };
 
 export async function onBeforeGenerate(type, _options, dryRun) {
+    var entryNow = Date.now();
+    console.log('[NE-DEBUG] onBeforeGenerate ENTRY type=' + type + ' dryRun=' + dryRun + ' _isInjecting=' + _isInjecting +
+        ' lastKnownChatId=' + lastKnownChatId + ' lastGenerationTime=' + lastGenerationTime +
+        ' elapsed=' + (entryNow - lastGenerationTime) + 'ms');
     // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)
     // 做 dry run 以获取 token 计数。dry run 走完整 prompt 组装但不调 API，
     // 但会触发 GENERATION_AFTER_COMMANDS 事件。各扩展应检测并跳过，避免副作用。
     if (dryRun) {
-        console.log('[NE] onBeforeGenerate: dry run, skipping entirely');
+        console.log('[NE-DEBUG] onBeforeGenerate EXIT: dry run');
         return;
     }
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
     if (_isInjecting) {
-        console.log('[NE] onBeforeGenerate: re-entrant call blocked (already running)');
+        console.log('[NE-DEBUG] onBeforeGenerate EXIT: re-entrant blocked (_isInjecting=true)');
         return;
     }
     _isInjecting = true;
     try {
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
-            console.log('[NE] onBeforeGenerate skipped: generation type=' + type);
+            console.log('[NE-DEBUG] onBeforeGenerate EXIT: type=' + type);
             return;
         }
-        if (!lastKnownChatId) { console.log('[NE] onBeforeGenerate skipped: no lastKnownChatId'); return; }
+        if (!lastKnownChatId) { console.log('[NE-DEBUG] onBeforeGenerate EXIT: no lastKnownChatId'); return; }
         var now = Date.now();
-        if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) return;
+        if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) {
+            console.log('[NE-DEBUG] onBeforeGenerate EXIT: debounce — elapsed=' + (now - lastGenerationTime) + 'ms < ' + MIN_GENERATION_INTERVAL_MS + 'ms');
+            return;
+        }
         lastGenerationTime = now;
 
         const chatId = getChatIdFn ? getChatIdFn() : 'default';
@@ -763,7 +770,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         }
         const vault = await read(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
-        console.log('[NE] onBeforeGenerate running ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+        console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         var stateProtoName = (vault.content.state && vault.content.state.protagonist_name) || '';
@@ -828,7 +835,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- 仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
                 globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
-                console.log('[NE-BANNER] state block instruction injected, currentState=', dayInfo, sceneInfo || '(none)', timePreview || '');
+                console.log('[NE-DEBUG] onBeforeGenerate: ne_state_block injected, dayInfo=' + dayInfo + ' scene=' + (sceneInfo || '(none)') + ' time=' + (timePreview || '') + ' isSchemaEnabled=true');
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
 
