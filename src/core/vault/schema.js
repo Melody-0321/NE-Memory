@@ -72,6 +72,7 @@ export const DEFAULT_CHARACTER_SCHEMA = {
         fields: {
             name: { type: 'string', max_length: 30, required: true },
             gender_age: { type: 'string', max_length: 20, required: true },
+            physique: { type: 'string', max_length: 60, required: true },
             occupation: { type: 'string', max_length: 30, required: true },
             clothing_build: { type: 'string', max_length: 60, required: true },
             personality: { type: 'string', max_length: 80, required: true },
@@ -85,6 +86,7 @@ export const DEFAULT_CHARACTER_SCHEMA = {
         fields: {
             name: { type: 'string', max_length: 30, required: true },
             gender_age: { type: 'string', max_length: 20, required: true },
+            physique: { type: 'string', max_length: 60, required: true },
             occupation: { type: 'string', max_length: 30, required: true },
             clothing_build: { type: 'string', max_length: 60, required: true },
             personality: { type: 'string', max_length: 80, required: true },
@@ -561,13 +563,13 @@ export function getEffectiveSchema(vault) {
 }
 
 // Fields injected for PC — derived from DEFAULT_CHARACTER_SCHEMA.protagonist
-export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
+export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
-export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
+export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 // Static field categories — used by buildStateInjectionTable to annotate unfilled required fields
-var STATIC_FIELD_CATEGORIES = { gender_age: true, occupation: true, personality: true };
+var STATIC_FIELD_CATEGORIES = { gender_age: true, physique: true, occupation: true, personality: true };
 
 export function getNpcInjectionFields(state, name) {
     var charData = (state && state.characters && state.characters[name]) || {};

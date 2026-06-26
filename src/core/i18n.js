@@ -463,7 +463,7 @@ export function t_config(key) {
 export const STATE_FIELD_I18N = {
     'en': {
         // Character
-        'name': 'Name', 'gender_age': 'Gender & Age', 'occupation': 'Occupation',
+        'name': 'Name', 'gender_age': 'Gender & Age', 'physique': 'Physique', 'occupation': 'Occupation',
         'clothing_build': 'Clothing', 'personality': 'Personality', 'status': 'Status',
         'inventory': 'Inventory', 'injuries': 'Injuries', 'status_effects': 'Status Effects',
         'power_slot_defs': 'Power Slots', 'power_slots': 'Power Values',
@@ -485,7 +485,7 @@ export const STATE_FIELD_I18N = {
         'equipment': 'Equipment',
     },
     'zh-cn': {
-        'name': '名称', 'gender_age': '性别与年龄', 'occupation': '职业',
+        'name': '名称', 'gender_age': '性别与年龄', 'physique': '体型外貌', 'occupation': '职业',
         'clothing_build': '穿着', 'personality': '性格', 'status': '状态',
         'inventory': '物品栏', 'injuries': '伤势', 'status_effects': '状态效果',
         'power_slot_defs': '战力槽', 'power_slots': '战力值',
@@ -503,7 +503,7 @@ export const STATE_FIELD_I18N = {
         'equipment': '装备',
     },
     'zh-tw': {
-        'name': '名稱', 'gender_age': '性別與年齡', 'occupation': '職業',
+        'name': '名稱', 'gender_age': '性別與年齡', 'physique': '體型外貌', 'occupation': '職業',
         'clothing_build': '穿著', 'personality': '性格', 'status': '狀態',
         'inventory': '物品欄', 'injuries': '傷勢', 'status_effects': '狀態效果',
         'power_slot_defs': '戰力槽', 'power_slots': '戰力值',

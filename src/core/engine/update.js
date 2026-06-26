@@ -896,7 +896,7 @@ function buildCharacterCardSection(vault) {
 function findNewCharacterNames(vault) {
     var state = (vault && vault.content && vault.content.state) || {};
     var chars = state.characters || {};
-    var staticFields = ['gender_age', 'occupation', 'personality', 'clothing_build'];
+    var staticFields = ['gender_age', 'physique', 'occupation', 'personality', 'clothing_build'];
     var newNames = [];
     Object.keys(chars).forEach(function(name) {
         var card = chars[name];
@@ -995,7 +995,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
     var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
 
     var rulesEn = '\n## Field Rules\n' +
-        '- You manage: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience.\n' +
+        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience.\n' +
         '- Do NOT manage: affection, current_mood, inner_thoughts (handled by main LLM).\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Use the field key shown in parentheses in the table above (e.g. gender_age) as the JSON path.\n' +
@@ -1006,7 +1006,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
         '\n';
 
     var rulesZh = '\n## 字段规则\n' +
-        '- 你管理: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience。\n' +
+        '- 你管理: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience。\n' +
         '- 不要管理: affection, current_mood, inner_thoughts（主 LLM 负责）。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- JSON 路径使用上方表格括号内的字段名（如 gender_age）。\n' +
@@ -1028,22 +1028,24 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
                 newCharHintEn = '\n## New Characters (MUST fill)\n' +
                     'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
                     'You MUST output state_changes.characters.<name> containing:\n' +
-                    '- gender_age: extract sex + age + physique from World Book character descriptions above.\n' +
+                    '- gender_age: extract sex + age only from World Book character descriptions above.\n' +
+                    '- physique: extract height, build, body features, hair from World Book character descriptions above.\n' +
                     '- occupation: extract job/role from World Book above.\n' +
                     '- personality: extract 2-4 personality traits from World Book above.\n' +
                     '- clothing_build: infer ONE outfit matching the current scene from World Book wardrobe entries.\n\n' +
                     'Correct example:\n' +
-                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁,tall athletic","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
+                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁","physique":"170cm tall, athletic build, short black hair","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
             } else {
                 newCharHintEn = '\n## New Characters (MUST fill)\n' +
                     'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
                     'You MUST output state_changes.characters.<name> containing:\n' +
-                    '- gender_age: extract sex + age + physique from Character Cards above.\n' +
+                    '- gender_age: extract sex + age only from Character Cards above.\n' +
+                    '- physique: extract height, build, body features, hair from Character Cards above.\n' +
                     '- occupation: extract job/role from Character Cards above.\n' +
                     '- personality: extract 2-4 personality traits from Character Cards above.\n' +
                     '- clothing_build: infer ONE outfit matching the current scene.\n\n' +
                     'Correct example:\n' +
-                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁,tall athletic","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
+                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁","physique":"170cm tall, athletic build, short black hair","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
             }
         }
         return {
@@ -1057,22 +1059,24 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
             newCharHintZh = '\n## 新角色（必须填充）\n' +
                 '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
                 '你必须输出 state_changes.characters.<name> 包含：\n' +
-                '- gender_age：从上方 World Book 的角色外貌描述中提取性别/年龄/体型。\n' +
+                '- gender_age：从上方 World Book 中提取性别/年龄（不含体型，体型放入 physique）。\n' +
+                '- physique：从上方 World Book 的角色外貌描述中提取身高/体型/外貌特征。\n' +
                 '- occupation：从上方 World Book 中提取职业/身份。\n' +
                 '- personality：从上方 World Book 中提取 2-4 个性格特质。\n' +
                 '- clothing_build：根据当前场景从 World Book 穿着设定中推断一套最匹配的穿着。\n\n' +
                 '正确示例：\n' +
-                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁,假小子风格","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
+                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁","physique":"约170cm,假小子风格,黑色短发","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
         } else {
             newCharHintZh = '\n## 新角色（必须填充）\n' +
                 '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
                 '你必须输出 state_changes.characters.<name> 包含：\n' +
-                '- gender_age：从上方角色卡中提取性别/年龄/体型。\n' +
+                '- gender_age：从上方角色卡中提取性别/年龄（不含体型）。\n' +
+                '- physique：从上方角色卡中提取身高/体型/外貌特征。\n' +
                 '- occupation：从上方角色卡中提取职业/身份。\n' +
                 '- personality：从上方角色卡中提取 2-4 个性格特质。\n' +
                 '- clothing_build：根据当前场景推断一套最匹配的穿着。\n\n' +
                 '正确示例：\n' +
-                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁,假小子风格","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
+                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁","physique":"约170cm,假小子风格,黑色短发","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
         }
     }
     return {
@@ -1374,7 +1378,7 @@ function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
         '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
         '2. Identify all characters mentioned (protagonist + NPCs)\n' +
         '\nAvailable field names for schemes:\n' +
-        '  status, gender_age, occupation, personality, clothing_build,\n' +
+        '  status, gender_age, physique, occupation, personality, clothing_build,\n' +
         '  injuries, status_effects, past_experience, inner_thoughts,\n' +
         '  affection, relationship, current_mood\n' +
         '\nRules:\n' +
