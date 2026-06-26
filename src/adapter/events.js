@@ -667,6 +667,16 @@ function registerGlobalBannerRegex() {
         var CHAR_DISPLAY_NAME = 'NE Character Block Strip (Display)';
         var CHAR_VERSION = '1.3';
 
+        // Cleanup legacy entries that could strip raw message before onMessageReceived sees it
+        for (var ck = es.regex.length - 1; ck >= 0; ck--) {
+            var cid = es.regex[ck].id || '';
+            if (cid === 'ne-char-block-strip' || cid === 'ne-char-block-prompt') {
+                es.regex.splice(ck, 1);
+                updatedCount++;
+                console.log('[NE-BANNER] removed legacy regex entry: ' + cid);
+            }
+        }
+
         // Display-only strip: removes CHAR blocks from UI rendering (our onMessageReceived extraction runs first on rawMes)
         var charDisplayEntry = null;
         for (var cd = 0; cd < es.regex.length; cd++) {
