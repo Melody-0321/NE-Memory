@@ -218,6 +218,8 @@ function injectBottomDrawerCSS() {
         '.ne-faction-card-body{padding-top:4px;}' +
         '.ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
         '.ne-faction-card.open>.ne-faction-card-detail{display:block;}' +
+        '.ne-faction-card.ne-faction-hidden{opacity:0.55;border-left-color:#555;}' +
+        '.ne-faction-card.ne-faction-hidden:hover{opacity:0.85;}' +
         '.ne-quest-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
         '.ne-quest-card.status-progress{border-left-color:#2196f3;}' +
         '.ne-quest-card.status-done{border-left-color:#4caf50;}' +
@@ -696,6 +698,8 @@ function renderCharacterPanelHTML(state, characterSchema) {
 function renderFactionCard(name, faction) {
     var attitude = faction.attitude_toward_player || '未知';
     var attitudeCls = attitude === '友好' ? 'friendly' : (attitude === '敌对' ? 'hostile' : 'neutral');
+    var isHidden = !!faction._hidden;
+    var cardCls = isHidden ? ' ne-faction-hidden' : '';
 
     var summaryRows = [];
     if (faction.name) summaryRows.push('<tr><td>' + t_field('name') + '</td><td>' + escapeHtml(String(faction.name).substring(0, 20)) + '</td></tr>');
@@ -719,12 +723,13 @@ function renderFactionCard(name, faction) {
     }
 
     var hasDetail = detailLines.length > 0;
+    var hiddenBadge = isHidden ? '<span style="margin-left:6px;font-size:0.75em;color:#888;border:1px solid #555;border-radius:3px;padding:0 4px;">未接触</span>' : '';
     var html = `
-<div class="ne-faction-card attitude-${attitudeCls}">
+<div class="ne-faction-card attitude-${attitudeCls}${cardCls}" data-faction="${escapeHtml(name)}">
   <div class="ne-faction-card-header"
        onclick="this.parentElement.classList.toggle('open')">
     <span class="ne-faction-toggle">▶</span>
-    <b>${escapeHtml(name)}</b>
+    <b>${escapeHtml(name)}</b>${hiddenBadge}
     <span class="ne-state-badge ${attitudeCls}">${escapeHtml(attitude)}</span>
   </div>
   <div class="ne-faction-card-body">

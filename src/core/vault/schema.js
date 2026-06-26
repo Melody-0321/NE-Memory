@@ -149,7 +149,8 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                             leader: { type: 'string', max_length: 30 },
                             attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'] },
                             relations: { type: 'object' },
-                            notes: { type: 'string', max_length: 200 }
+                            notes: { type: 'string', max_length: 200 },
+                            _hidden: { type: 'boolean', default: true }
                         }
                     }
                 }
@@ -240,7 +241,8 @@ export const DEFAULT_FACTION_SCHEMA = {
                     leader: { type: 'string', max_length: 30 },
                     attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'] },
                     relations: { type: 'object' },
-                    notes: { type: 'string', max_length: 200 }
+                    notes: { type: 'string', max_length: 200 },
+                    _hidden: { type: 'boolean', default: true }
                 }
             }
         }
@@ -690,14 +692,18 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 
     if (state.factions && typeof state.factions === 'object') {
         var factionNames = Object.keys(state.factions);
-        if (factionNames.length === 0) {
+        var visibleFactions = factionNames.filter(function (name) {
+            var f = state.factions[name];
+            return f && typeof f === 'object' && !f._hidden;
+        });
+        if (visibleFactions.length === 0) {
             parts.push('=== Factions ===');
             parts.push('(available paths: factions.<Name>.name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], relations, notes)');
             parts.push('(empty — create via factions.<Name>.attitude_toward_player)');
             parts.push('');
         } else {
             parts.push('=== Factions ===');
-            factionNames.forEach(function (name) {
+            visibleFactions.forEach(function (name) {
                 var f = state.factions[name];
                 if (!f || typeof f !== 'object') return;
                 var fields = [];

@@ -961,6 +961,40 @@ function buildWorldBookSection(vault, names, worldBookText) {
     return '';
 }
 
+function buildFactionKeywords(factions) {
+    var map = {};
+    Object.keys(factions).forEach(function(name) {
+        var f = factions[name];
+        var keywords = [name];
+        if (f.aliases && Array.isArray(f.aliases)) {
+            Array.prototype.push.apply(keywords, f.aliases);
+        }
+        map[name] = keywords;
+    });
+    return map;
+}
+
+function scanMessageForFactions(text, factionKeywords, state) {
+    if (!text || !factionKeywords) return;
+    Object.keys(factionKeywords).forEach(function(name) {
+        var faction = state.factions && state.factions[name];
+        if (faction && !faction._hidden) return;
+        var keywords = factionKeywords[name];
+        for (var i = 0; i < keywords.length; i++) {
+            if (text.indexOf(keywords[i]) !== -1) {
+                if (faction) {
+                    faction._hidden = false;
+                } else {
+                    state.factions = state.factions || {};
+                    state.factions[name] = { _hidden: false };
+                }
+                console.log('[NE] Faction activated:', name, 'matched:', keywords[i]);
+                break;
+            }
+        }
+    });
+}
+
 function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCharFallback) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -986,6 +1020,8 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
         (newNames.length > 0 ? '' : '\nZero-change example: {"state_changes":{}}\n') +
+        '- You also manage factions: name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], notes.\n' +
+        '- When a faction is first mentioned or interacts with the player, update its attitude and notes.\n' +
         '\n';
 
     var rulesZh = '\n## 字段规则\n' +
@@ -1001,6 +1037,8 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
         (newNames.length > 0 ? '' : '\n零变化示例: {"state_changes":{}}\n') +
+        '- 你也管理 factions（势力）：name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], notes。\n' +
+        '- 势力首次被提及或与 PC 互动时，更新其 attitude 和 notes。\n' +
         '\n';
 
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';
@@ -1346,6 +1384,7 @@ function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
         'Based on the world setting and dialogue above, determine:\n' +
         '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
         '2. Identify all characters mentioned (protagonist + NPCs)\n' +
+        '3. Identify all organizations, factions, guilds, clans, families, or groups\n' +
         '\nAvailable field names for schemes:\n' +
         '  status, gender_age, physique, occupation, personality, clothing_build,\n' +
         '  injuries, status_effects, past_experience, inner_thoughts,\n' +
@@ -1363,7 +1402,16 @@ function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
         '  },\n' +
         '  "initial_characters": [\n' +
         '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" }\n' +
-        '  ]\n' +
+        '  ],\n' +
+        '  "factions": {\n' +
+        '    "<Faction Name>": {\n' +
+        '      "name": "<Full name>",\n' +
+        '      "description": "<One-sentence description>",\n' +
+        '      "leader": "<Leader name, or empty if unknown>",\n' +
+        '      "attitude_toward_player": "\u53cb\u597d/\u4e2d\u7acb/\u51b7\u6de1/\u654c\u5bf9/\u672a\u77e5",\n' +
+        '      "aliases": ["<alias1>", "<alias2>"]\n' +
+        '    }\n' +
+        '  }\n' +
         '}';
 }
 
@@ -1478,6 +1526,30 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                     state._world_book_cache = wbCache;
                 }
             }
+
+            if (parsed && parsed.factions && typeof parsed.factions === 'object') {
+                var foundFactions = parsed.factions;
+                var factionNames = Object.keys(foundFactions);
+                if (factionNames.length > 0) {
+                    state.factions = state.factions || {};
+                    factionNames.forEach(function(name) {
+                        var f = foundFactions[name];
+                        if (!f || typeof f !== 'object') return;
+                        state.factions[name] = {
+                            name: f.name || name,
+                            description: f.description || '',
+                            leader: f.leader || '',
+                            attitude_toward_player: f.attitude_toward_player || '未知',
+                            notes: '',
+                            aliases: f.aliases || [],
+                            _hidden: true
+                        };
+                    });
+                    vault.content.faction_keywords = buildFactionKeywords(state.factions);
+                    vault.content._factions_extracted = true;
+                    console.log('[NE] Factions extracted from scheme discovery:', factionNames.length);
+                }
+            }
         }
         vault.content.state = state;
     } catch (e) {
@@ -1524,6 +1596,13 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     // 首次初始化：运行 NPC 方案发现（仅一次）
     if (!(vault.content.state || {}).npc_schemes) {
         await resolveNpcSchemes(vault, chatId, messages);
+    }
+
+    if (vault.content.faction_keywords) {
+        var scanText = '';
+        if (latestUserMsg && latestUserMsg.content) scanText += latestUserMsg.content + ' ';
+        if (latestAssistantMsg && latestAssistantMsg.content) scanText += latestAssistantMsg.content;
+        scanMessageForFactions(scanText, vault.content.faction_keywords, vault.content.state);
     }
 
     if (messages.length === 0) return { vault, changed: false };
