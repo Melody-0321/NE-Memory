@@ -314,6 +314,25 @@ export async function onMessageReceived(messageIndex) {
                     Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
             if (newCharBlocks.length > 0) {
                 globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
+                globalThis.__ne_char_fallback_needed = false;
+            } else {
+                var hasNECharTag = /<!--NE-CHAR/.test(rawMes);
+                if (hasNECharTag) {
+                    console.warn('[NE-CHAR] Main LLM output NE-CHAR tag but 0 blocks extracted (JSON parse failed?) — rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
+                } else {
+                    var state = (globalThis.__ne_vault_cache && globalThis.__ne_vault_cache.content && globalThis.__ne_vault_cache.content.state) || {};
+                    var activeNPCs = [];
+                    if (state.characters) {
+                        Object.keys(state.characters).forEach(function(n) {
+                            var c = state.characters[n];
+                            if (c && c._role !== 'protagonist' && c.status === '活跃') activeNPCs.push(n);
+                        });
+                    }
+                    console.warn('[NE-CHAR] Main LLM did NOT output any NE-CHAR block. ' +
+                        'Active NPCs (' + activeNPCs.length + '): ' + activeNPCs.join(', ') + '. ' +
+                        'Falling back to State LLM for affection/mood/thoughts inference.');
+                }
+                globalThis.__ne_char_fallback_needed = true;
             }
 
             // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
