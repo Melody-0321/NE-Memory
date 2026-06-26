@@ -8,6 +8,7 @@ import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
+import { formatContextMemory } from '../core/engine/context-window.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
@@ -816,6 +817,13 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 globalThis.__ne_debug_last_state_table = stateTable;
                 runtime.injectPrompt('ne_state_table', stateTable, 'in_chat', 2, 'system');
             }
+        }
+
+        var cwRounds = neSettings.contextWindowRounds || 30;
+        var ctxMemory = formatContextMemory(vault, chatMessages, cwRounds);
+        if (ctxMemory) {
+            runtime.injectPrompt('ne_context_memory', ctxMemory, 'in_chat', 2, 'system');
+            globalThis.__ne_debug_last_context_memory = ctxMemory;
         }
 
         try {
