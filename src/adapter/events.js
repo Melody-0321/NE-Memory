@@ -195,8 +195,23 @@ async function consumeNeCharBlocks() {
     try {
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
         var vault = await read(chatId);
-        if (!vault || !vault.content) return;
+        if (!vault || !vault.content) {
+            console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
+            return;
+        }
         var charState = vault.content.state || {};
+        var charBefore = charState.characters || {};
+        var affectedKeys = Object.keys(charBefore);
+        var summaryBefore = {};
+        pending.forEach(function(cb) {
+            if (!cb.name || !cb.fields) return;
+            var c = charBefore[cb.name];
+            summaryBefore[cb.name] = c ? JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts }) : 'NEW';
+        });
+        console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
+            ' | charState keys=' + affectedKeys.join(',') +
+            ' | before=' + JSON.stringify(summaryBefore));
+
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             var chars = charState.characters || {};
@@ -223,11 +238,17 @@ async function consumeNeCharBlocks() {
             });
 
             chars[cb.name].status = chars[cb.name].status || '活跃';
-            console.log('[NE-CHAR] delta merged:', cb.name, JSON.stringify(cb.fields));
+            console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
         });
         charState.characters = charState.characters;
         vault.content.state = charState;
         await saveVaultWithSnapshot(chatId, vault);
+        var summaryAfter = {};
+        Object.keys(charState.characters || {}).forEach(function(n) {
+            var c = charState.characters[n];
+            summaryAfter[n] = JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts });
+        });
+        console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
     } catch (e) {
         console.warn('[NE-CHAR] consumeNeCharBlocks failed:', e && e.message);
     }
@@ -241,10 +262,19 @@ export async function onMessageReceived(messageIndex) {
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
 
-            var assistantMsg = { role: 'assistant', content: message.mes || '', id: messageIndex, timestamp: Date.now() };
+            var rawMes = message.mes || '';
+            var hasNeChar = rawMes.indexOf('<!--NE-CHAR') !== -1;
+            var hasNeBanner = rawMes.indexOf('<!--NE-BANNER') !== -1;
+            console.log('[NE-DEBUG] onMessageReceived msgId=' + (message.mes_id || messageIndex) +
+                ' | len=' + rawMes.length +
+                ' | hasNE-CHAR=' + hasNeChar +
+                ' | hasNE-BANNER=' + hasNeBanner +
+                ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
+
+            var assistantMsg = { role: 'assistant', content: rawMes, id: messageIndex, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
-            var stateBlockMatch = (message.mes || '').match(
+            var stateBlockMatch = rawMes.match(
                 /<!--NE-BANNER-->([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)<!--\/NE-BANNER-->/
             );
             if (stateBlockMatch) {
@@ -255,29 +285,38 @@ export async function onMessageReceived(messageIndex) {
                     event: (stateBlockMatch[4] || '').trim(),
                     present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
-                console.log('[NE-BANNER] state block detected in msg id=' + (message.mes_id || messageIndex) + ' scene=' + stateBlockMatch[1]);
+                console.log('[NE-DEBUG] stateBlock EXTRACTED: scene=' + stateBlockMatch[1] +
+                    ' time=' + stateBlockMatch[2] + ' day=' + stateBlockMatch[3] +
+                    ' event=' + stateBlockMatch[4] + ' present=' + stateBlockMatch[5]);
+            } else {
+                console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
             }
 
             var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
             var charBlockMatch;
             var newCharBlocks = [];
-            while ((charBlockMatch = charBlockRegex.exec(message.mes || '')) !== null) {
+            while ((charBlockMatch = charBlockRegex.exec(rawMes)) !== null) {
                 var charName = (charBlockMatch[1] || '').trim();
                 var charJson = (charBlockMatch[2] || '').trim();
                 try {
                     var charData = JSON.parse(charJson);
                     newCharBlocks.push({ name: charName, fields: charData });
-                    console.log('[NE-CHAR] new character block detected:', charName, Object.keys(charData).join(', '));
+                    console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
                 } catch (e) {
-                    console.warn('[NE-CHAR] invalid JSON in char block for:', charName, e.message);
+                    console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' json=' + charJson.substring(0, 200) + ' error=' + e.message);
                 }
             }
+            console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
+                ' | extracted=' + newCharBlocks.length +
+                ' | regex_matches=' + ((rawMes.match(/<!--NE-CHAR/g) || []).length) +
+                ' | raw block preview=' + JSON.stringify(rawMes.substring(
+                    Math.max(0, rawMes.indexOf('<!--NE-CHAR') - 10),
+                    Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
             if (newCharBlocks.length > 0) {
                 globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
             }
 
             // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
-            var rawMes = message.mes || '';
             var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
             var stripCount = 0;
             var strippedNames = [];
@@ -289,8 +328,8 @@ export async function onMessageReceived(messageIndex) {
             if (stripCount > 0) {
                 message.mes = strippedMes;
                 assistantMsg.content = strippedMes;
-                console.log('[NE-CHAR-MONITOR] stripped ' + stripCount + ' block(s): ' + strippedNames.join(', ') +
-                    ' | raw had ' + (rawMes.match(/<!--NE-CHAR/g) || []).length + ' tag(s)');
+                console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
+                    ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
             }
 
             await consumeNeCharBlocks();
@@ -808,6 +847,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
                     '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
+                console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? countTokens(formatted) : 0;
