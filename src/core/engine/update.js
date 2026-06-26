@@ -952,12 +952,14 @@ function _lookupWbByName(name, protagonistName, worldBookText) {
     } catch (e) { return []; }
 }
 
-function _fetchWorldBookText(newNames) {
+function _fetchWorldBookText(newNames, protagonistName) {
     if (!newNames || newNames.length === 0) return Promise.resolve('');
     try {
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         if (!ctx || !ctx.getWorldInfoPrompt) return Promise.resolve('');
-        var chatForWi = newNames.slice();
+        var chatForWi = newNames.map(function(n) {
+            return (protagonistName && n === protagonistName) ? '{{user}}' : n;
+        });
         var maxCtx = chatForWi.length;
         var scanData = {
             personaDescription: '',
@@ -1587,7 +1589,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (messages.length === 0) return { vault, changed: false };
 
     var newNames = findNewCharacterNames(vault);
-    var worldBookText = newNames.length > 0 ? await _fetchWorldBookText(newNames) : '';
+    var worldBookText = newNames.length > 0 ? await _fetchWorldBookText(newNames, state.protagonist_name) : '';
     var statePrompt = buildStatePrompt_Preset(messages, vault, worldBookText, newNames);
 
     var stateResponse;
