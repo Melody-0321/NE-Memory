@@ -48,8 +48,9 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | pipeline-state-01 | 架构验证 — NE-CHAR 增量 + 静态字段 | ⬜ | State LLM 不输出 affection/current_mood/inner_thoughts |
 | pipeline-state-02 | BANNER 管道格式 | ⬜ | NE-BANNER 指令注入 + 提取完整性 |
 | pipeline-state-03 | 信息源验证 — Character Cards + World Book | ⬜ | State LLM 从角色卡主动提取，不等对话 |
-| pipeline-state-04 | ⚠ 已废弃 — ne_context_memory 已移除 | — | context_memory 监控目标始终为空 |
+| pipeline-state-04 | 滑动窗口上下文注入 | ⬜ | formatContextMemory → ne_context_memory 摘要注入 |
 | pipeline-state-05 | autoDecayStaleCharacters 两轮缓冲 | ⬜ | 角色不在 present 列表时两轮后才衰减 |
+| pipeline-state-06 | 势力状态管理 | ⬜ | 一次性预载 + 关键词激活 + State LLM 管理 |
 | state-field-validate | 字段白名单校验 | ⬜ | 拒绝 LLM 自创字段名，字段路径与 schema 一致 |
 | state-merge-retain | 合并保留非重叠字段 | ⬜ | 两轮 state_changes 不互相覆盖，_scheme 保护 |
 
@@ -101,9 +102,9 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | SmartPush 注入 / 检索 | 9 | — |
 | STM 提取 | 3 | 3 |
 | LTM 合并 | 2 | 1 |
-| State 管线 | 7 | — |
+| State 管线 | 8 | — |
 | Vault/Store | 2 | 1 |
 | 集成 | 1 | — |
 | 冒烟 | 1 | — |
 | 压力 | — | 1 |
-| **合计** | **25** (`-1` 废弃) | **6** |
+| **合计** | **26** | **6** |

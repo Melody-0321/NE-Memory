@@ -444,6 +444,17 @@ function _buildDebugApi(host) {
         dumpVault: async function() {
             try { var v = await read(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content)); } catch (e) { return null; }
         },
+        getFactionSummary: function() {
+            try {
+                var vault = getCurrentVault(getChatId());
+                if (!vault || !vault.content || !vault.content.state || !vault.content.state.factions) return null;
+                var f = vault.content.state.factions;
+                var names = Object.keys(f);
+                var hidden = names.filter(function(n) { return f[n]._hidden; });
+                var visible = names.filter(function(n) { return !f[n]._hidden; });
+                return { total: names.length, hidden: hidden, visible: visible, names: names };
+            } catch (e) { return null; }
+        },
         _waitUntilReply: function(maxMs) {
             var doc = hostDoc;
             return new Promise(function(resolve) {

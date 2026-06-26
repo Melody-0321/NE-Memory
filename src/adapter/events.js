@@ -815,6 +815,15 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             }
         }
 
+        // Write faction state for test monitor
+        if (vault.content.state && vault.content.state.factions) {
+            var f2 = vault.content.state.factions;
+            var fnames = Object.keys(f2);
+            var fhidden = fnames.filter(function(n) { return f2[n]._hidden; });
+            var fvisible = fnames.filter(function(n) { return !f2[n]._hidden; });
+            globalThis.__ne_debug_last_faction_state = { total: fnames.length, hidden: fhidden, visible: fvisible, names: fnames };
+        }
+
         var cwRounds = neSettings.contextWindowRounds || 10;
         var ctxMemory = formatContextMemory(vault, chatMessages, cwRounds);
         if (ctxMemory) {

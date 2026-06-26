@@ -126,6 +126,7 @@ function resolveTarget(collected, targetName) {
     case 'ltm_state': return collected.ltmState ? JSON.stringify(collected.ltmState) : '';
     case 'state_block_instruction': return collected.stateBlockInstruction || '';
     case 'context_memory': return collected.contextMemory || '';
+    case 'faction_state': return collected.factionState ? JSON.stringify(collected.factionState) : '';
     default: return '';
     }
 }

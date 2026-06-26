@@ -62,6 +62,7 @@ export function collectRoundData(roundTag) {
         smartpushPrompt: globalThis.__ne_debug_last_smartpush_prompt || null,
         stateBlockInstruction: globalThis.__ne_debug_last_state_block_instruction || null,
         contextMemory: globalThis.__ne_debug_last_context_memory || null,
+        factionState: globalThis.__ne_debug_last_faction_state || null,
         pipelineResponses: globalThis.__ne_debug_all_pipeline_responses || null,
         vault: null,
         timestamp: new Date().toISOString()

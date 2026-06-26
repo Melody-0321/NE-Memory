@@ -2,7 +2,7 @@
 name: smartpush-14
 folder: smoke/smartpush-14-full-chain-smoke
 title: 全链路冒烟测试（STM + LTM + SmartPush + State + 注入）
-objective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → State 管线 → ne_state_table 注入 → ne_char_block 注入 → ne_memory_vault 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
+objective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → State 管线 → 滑动窗口上下文 → ne_state_table 注入 → ne_char_block 注入 → ne_memory_vault 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用，State Schema 已开启
   - 副 API 可用
@@ -23,6 +23,7 @@ structural:
   - { op: not_contains, target: pipeline_changes, value: "error" }
   - { op: exists, target: state_block_instruction }
   - { op: min_length, target: state_block_instruction, value: 20 }
+  - { op: exists, target: context_memory }
 semantic:
   - "SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？"
   - "注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？"
@@ -32,6 +33,7 @@ semantic:
   - "ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？检查 trace 中这两项注入的文本长度和关键标记。"
   - "trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？"
   - "trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？"
+  - "context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？检查 trace 中 ne_context_memory 注入内容。"
 minRounds: 4
 maxRounds: 8
 expectedRounds: "5-7"
@@ -49,6 +51,7 @@ timeoutPerRound: 120000
 - LTM 合流（STM+LTM 同次调用，ltm_decision）
 - SmartPush 检索（BM25 + 实体链 + 记忆合成 → ne_memory_vault 注入）
 - State 管线（State LLM → state_changes → mergeStateChanges → vault）
+- 滑动窗口上下文（formatContextMemory → ne_context_memory）
 - Main LLM 注入（ne_state_table + ne_char_block + ne_state_block + ne_memory_vault）
 
 ## 前置条件
@@ -87,6 +90,7 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 | 13 | `not_contains: pipeline_changes [error]` | State 管线无报错 |
 | 14 | `exists: state_block_instruction` | NE-BANNER + NE-CHAR 指令已注入 |
 | 15 | `min_length: state_block_instruction >= 20` | 指令非空 |
+| 16 | `exists: context_memory` | 滑动窗口上下文已注入 |
 
 ### 语义性断言（LLM 评估 trace）
 
@@ -98,6 +102,7 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 6. ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？
 7. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？
 8. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？
+9. context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？检查 trace 中 ne_context_memory 注入内容。
 
 ## 运行参数
 
