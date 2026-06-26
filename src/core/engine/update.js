@@ -40,16 +40,6 @@ export async function saveVaultWithSnapshot(chatId, vault) {
     }
 }
 
-function resolvePeriodFromSnapshots(msgStart, snapshots) {
-    if (!snapshots || snapshots.length === 0) return null;
-    for (var i = snapshots.length - 1; i >= 0; i--) {
-        if (snapshots[i].msgIdx <= msgStart) {
-            return snapshots[i];
-        }
-    }
-    return null;
-}
-
 var EVENT_CLOSING_PUNCT = /[.。！？!?\"\”\)\}\]\>\」』）]$/;
 
 function _validateLtmEventText(label, text) {
@@ -243,7 +233,7 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
                 '- "time_label": optional — only set if the event\'s time differs from the implied time. Otherwise omit.\n' +
                 '- "translation": Chinese translation of the event (max 200 chars) for cross-lingual search. Provides key terms in Chinese for BM25 token matching.\n' +
                 '- "entities": optional — involved entity names with types. Each entry: {"name":"Alice","type":"character"}. Types: character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件). Plain string arrays ["Alice"] are still accepted and default to character. E.g. [{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}].\n' +
-                '\nNote: "period" and "scene" are auto-filled from global state snapshots. Do NOT include them in entries.\n' +
+                '\nNote: "period" and "scene" are NOT needed — do NOT include them in entries.\n' +
                 msgRangeInstructionEn +
                 '\nIf nothing of narrative significance happened, output {"stm_entries": []}.',
             user: userMsgEn
@@ -260,8 +250,8 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
             '- "time_label": （可选）仅当事件时间与当前时间不同时填写，否则省略。\n' +
             '- "translation": 事件的英文翻译（最长200字符），用于跨语言检索。提供英文关键词以供 BM25 词项匹配。\n' +
             '- "entities": （可选）事件涉及的实体名称和类型。每条：{"name":"Alice","type":"character"}。类型：character(角色), item(物品), faction(势力), concept(概念), location(地点), event(事件)。旧式字符串数组 ["Alice"] 仍被接受，默认视为角色。示例：[{"name":"Alice","type":"character"}, {"name":"龙牙剑","type":"item"}, {"name":"魔教","type":"faction"}]。\n' +
-            '\n注意："period" 和 "scene" 会自动从全局状态快照填充，条目中无需包含。\n' +
-            msgRangeInstructionZh +
+            '\n注意："period" 和 "scene" 条目中无需包含。\n' +
+        msgRangeInstructionZh +
             '\n如果没有叙事意义的事件，输出 {"stm_entries": []}。',
         user: userMsgZh
     };
@@ -442,7 +432,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
          '- "entity": optional string — characters/factions involved\n' +
          '- "translation": optional Chinese translation for cross-language search\n' +
          '- "time_label": optional — only if time differs from current\n' +
-         '\nNote: "period" and "scene" are auto-filled. Do NOT include them.\n' +
+         '\nNote: "period" and "scene" are NOT needed — do NOT include them.\n' +
          'Messages must be covered contiguously, no skipping.\n' +
          'If window content is insufficient for a complete event → return status:"partial".') :
         (retrospectiveCtx + currentStateSnapshot + '你是故事记忆提取器。从以下 ' + windowItems.length + ' 条消息中提取关键事件。\n\n' +
@@ -453,7 +443,7 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
          '- "entity": 可选字符串 — 涉及的角色/势力\n' +
          '- "translation": 可选英文翻译，用于跨语言检索\n' +
          '- "time_label": 可选 — 仅当事件时间与当前不同时填写\n' +
-         '\n注意："period" 和 "scene" 会自动填充，条目中无需包含。\n' +
+         '\n注意："period" 和 "scene" 条目中无需包含。\n' +
          '消息必须连续覆盖，不能跳过。\n' +
          '如果窗口内消息不足以形成完整事件 → 返回 status:"partial"。');
 
@@ -492,19 +482,6 @@ function buildRetrospectiveContext(content) {
         retrospectiveCtx = '\n\n## 时间锚点\n这是故事起始部分，无往期事件可参考。从对话内容和角色卡/世界书中推断时间格式和起始值。';
     }
     return retrospectiveCtx;
-}
-
-function buildStateSnapshot(content) {
-    var snapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        snapshot += 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
-    }
-    var state = content.state || {};
-    var allChars = state.characters ? Object.keys(state.characters) : [];
-    if (allChars.length > 0) {
-        snapshot += '已知角色: ' + allChars.join(', ') + '\n';
-    }
-    return snapshot;
 }
 
 export function buildBatchPrompt(turns, vault) {
@@ -1185,7 +1162,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 if (summaryParsed) events = summaryParsed.events || [];
             }
 
-            var snapshots = vault.content._state_snapshots;
             for (var ei = 0; ei < Math.min(events.length, segments.length); ei++) {
                 var seg = segments[ei];
                 var turnIndices = [];
@@ -1196,17 +1172,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 events[ei].absMsgEnd = turns[seg[1]].msgEnd;
                 events[ei].msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
                 events[ei].status = 'closed';
-
-                var segmentMsgStart = turns[seg[0]].msgStart;
-                var periodSnap = resolvePeriodFromSnapshots(segmentMsgStart, snapshots);
-                if (periodSnap) {
-                    if (!events[ei].period || events[ei].period === '-' || events[ei].period === '') {
-                        events[ei].period = periodSnap.time;
-                    }
-                    if (!events[ei].scene || events[ei].scene === '-' || events[ei].scene === '') {
-                        events[ei].scene = periodSnap.scene;
-                    }
-                }
             }
 
             var beforeFilter = events.length;
@@ -1237,15 +1202,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             if (events.length > 0) {
                 postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
                 appendSTMEntries(vault, events);
-
-                if (snapshots && snapshots.length > 0) {
-                    var minProcessedMsgIdx = events.reduce(function(acc, e) {
-                        return e.absMsgStart != null ? Math.min(acc, e.absMsgStart) : acc;
-                    }, Infinity);
-                    vault.content._state_snapshots = snapshots.filter(function(s) {
-                        return s.msgIdx >= minProcessedMsgIdx;
-                    });
-                }
             }
         }
 
@@ -1654,21 +1610,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (isStateSchemaEnabled()) {
         vault.content.state = autoDecayStaleCharacters(vault.content.state, messages);
-    }
-
-    var latestAssistantId = latestAssistantMsg ? latestAssistantMsg.id : null;
-    if (latestAssistantId != null && (vault.content.story_time || vault.content.story_scene)) {
-        vault.content._state_snapshots = vault.content._state_snapshots || [];
-        var snapshots = vault.content._state_snapshots;
-        var lastSnap = snapshots.length > 0 ? snapshots[snapshots.length - 1] : null;
-        if (!lastSnap || lastSnap.time !== vault.content.story_time || lastSnap.scene !== vault.content.story_scene) {
-            snapshots.push({
-                msgIdx: Number(latestAssistantId),
-                time: vault.content.story_time || '',
-                scene: vault.content.story_scene || '',
-                date: vault.content.story_date || ''
-            });
-        }
     }
 
     vault._meta = vault._meta || {};
