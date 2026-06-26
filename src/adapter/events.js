@@ -8,7 +8,7 @@ import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
-import { formatContextMemory } from '../core/engine/context-window.js';
+import { formatContextMemory, computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
@@ -118,13 +118,34 @@ export function setGetContextBudgetFn(fn) {
 export function trackMemoryInjection(tokenCount) {
     lastMemoryInjectionTokens = tokenCount;
 }
-function computeContextPressure(pendingTokenCount) {
+function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages) {
     if (!runtime.maxContext) return -1;
     var maxCtx = runtime.maxContext;
     if (!maxCtx || maxCtx <= 0) return -1;
+
+    var tokenPressure = 0;
     var usable = maxCtx - 1500 - lastMemoryInjectionTokens;
-    if (usable <= 0) return 1;
-    return pendingTokenCount / usable;
+    if (usable > 0) {
+        tokenPressure = pendingTokenCount / usable;
+    } else {
+        tokenPressure = 1;
+    }
+
+    var turnPressure = 0;
+    if (chatMessages && pendingMessages && pendingMessages.length > 0) {
+        var cwRounds = neSettings.contextWindowRounds || 10;
+        var windowStartId = computeWindowStartMsgId(chatMessages, cwRounds);
+        var outOfWindowCount = 0;
+        for (var i = 0; i < pendingMessages.length; i++) {
+            var msgId = pendingMessages[i].mes_id || pendingMessages[i].id || 0;
+            if (msgId > 0 && msgId < windowStartId) outOfWindowCount++;
+        }
+        if (cwRounds > 0 && outOfWindowCount > 0) {
+            turnPressure = Math.min(1, outOfWindowCount / Math.max(1, cwRounds));
+        }
+    }
+
+    return Math.max(tokenPressure, turnPressure);
 }
 function notifyVaultChanged() {
     try {
@@ -362,7 +383,8 @@ export async function onMessageReceived(messageIndex) {
 
             const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
-            var pressureVal = computeContextPressure(pendingTokenCount);
+            var chatMessages = runtime.getChat ? runtime.getChat() : [];
+            var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (totalWords >= getStmWordsThreshold() && pendingMessages.length > 2)
                 || (pressureVal >= 0.50 && pressureVal > 0);
@@ -410,7 +432,8 @@ async function flushPendingMessages() {
     if (pendingMessages.length === 0) return;
     const totalWords = pendingMessages.reduce(function(sum, m) { return sum + countWords(m.content); }, 0);
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
-    var pressureVal = computeContextPressure(pendingTokenCount);
+    var chatMessages = runtime.getChat ? runtime.getChat() : [];
+    var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
     if (pendingMessages.length < await getStmBatchSize() && totalWords < getStmWordsThreshold() && pressureVal < 0.50) {
         console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' words=' + totalWords + ' batch=' + await getStmBatchSize() + ' threshold=' + getStmWordsThreshold() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
         return;
@@ -529,7 +552,8 @@ async function flushPendingMessages() {
         if (pendingMessages.length > 0) {
             (async function() {
                 var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
-                var pressureVal = computeContextPressure(pendingTokenCount);
+                var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
+                var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
                 var totalWords = pendingMessages.reduce(function(s, m) { return s + (m.content || '').split(/\s+/).length; }, 0);
                 if ((pendingMessages.length >= await getStmBatchSize()
                     || totalWords >= getStmWordsThreshold()

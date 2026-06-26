@@ -1,6 +1,6 @@
 import { sortStmByMsgOrder } from '../vault/store.js';
 
-function computeWindowStartMsgId(chatMessages, contextWindowRounds) {
+export function computeWindowStartMsgId(chatMessages, contextWindowRounds) {
     if (!chatMessages || chatMessages.length === 0) return 0;
 
     var rounds = 0;
