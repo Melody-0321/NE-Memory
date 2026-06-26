@@ -668,38 +668,78 @@ function registerGlobalBannerRegex() {
         }
 
         var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
-        var CHAR_ID = 'ne-char-block-strip';
-        var CHAR_NAME = 'NE Character Block Strip';
-        var CHAR_VERSION = '1.2';
-        var charStripPattern = /^ne-char-block-strip$/;
-        var charEntry = null;
-        for (var cj = 0; cj < es.regex.length; cj++) {
-            if (charStripPattern.test(es.regex[cj].id || '')) {
-                charEntry = es.regex[cj];
+        var CHAR_PROMPT_ID = 'ne-char-block-prompt';
+        var CHAR_DISPLAY_ID = 'ne-char-block-display';
+        var CHAR_PROMPT_NAME = 'NE Character Block Strip (Prompt)';
+        var CHAR_DISPLAY_NAME = 'NE Character Block Strip (Display)';
+        var CHAR_VERSION = '1.3';
+
+        // Remove old unified entry (v1.2) if present — was promptOnly=false + markdownOnly=false, too aggressive
+        for (var ck = es.regex.length - 1; ck >= 0; ck--) {
+            var cid = es.regex[ck].id || '';
+            if (cid === 'ne-char-block-strip') {
+                es.regex.splice(ck, 1);
+                updatedCount++;
+                console.log('[NE-BANNER] removed legacy ne-char-block-strip entry');
                 break;
             }
         }
-        if (!charEntry || charEntry._neVersion !== CHAR_VERSION) {
-            if (!charEntry) {
-                charEntry = { id: CHAR_ID };
-                es.regex.push(charEntry);
+
+        // Prompt-only strip: prevents CHAR JSON from leaking into State LLM context, but keeps raw message intact
+        var charPromptEntry = null;
+        for (var cp = 0; cp < es.regex.length; cp++) {
+            if (es.regex[cp].id === CHAR_PROMPT_ID) { charPromptEntry = es.regex[cp]; break; }
+        }
+        if (!charPromptEntry || charPromptEntry._neVersion !== CHAR_VERSION) {
+            if (!charPromptEntry) {
+                charPromptEntry = { id: CHAR_PROMPT_ID };
+                es.regex.push(charPromptEntry);
             }
-            charEntry.id = CHAR_ID;
-            charEntry.scriptName = CHAR_NAME;
-            charEntry.findRegex = CHAR_FIND;
-            charEntry.replaceString = '';
-            charEntry.enabled = true;
-            charEntry.runOnEdit = false;
-            charEntry.markdownOnly = false;
-            charEntry.promptOnly = false;
-            charEntry.placement = [2];
-            charEntry.substituteRegex = 0;
-            charEntry.minDepth = null;
-            charEntry.maxDepth = null;
-            charEntry.onlyLongerThan = null;
-            charEntry.onlyShorterThan = null;
-            charEntry.trimStrings = [];
-            charEntry._neVersion = CHAR_VERSION;
+            charPromptEntry.id = CHAR_PROMPT_ID;
+            charPromptEntry.scriptName = CHAR_PROMPT_NAME;
+            charPromptEntry.findRegex = CHAR_FIND;
+            charPromptEntry.replaceString = '';
+            charPromptEntry.enabled = true;
+            charPromptEntry.runOnEdit = false;
+            charPromptEntry.markdownOnly = false;
+            charPromptEntry.promptOnly = true;
+            charPromptEntry.placement = [2];
+            charPromptEntry.substituteRegex = 0;
+            charPromptEntry.minDepth = null;
+            charPromptEntry.maxDepth = null;
+            charPromptEntry.onlyLongerThan = null;
+            charPromptEntry.onlyShorterThan = null;
+            charPromptEntry.trimStrings = [];
+            charPromptEntry._neVersion = CHAR_VERSION;
+            updatedCount++;
+        }
+
+        // Display-only strip: removes CHAR blocks from UI rendering (our onMessageReceived extraction runs first on rawMes)
+        var charDisplayEntry = null;
+        for (var cd = 0; cd < es.regex.length; cd++) {
+            if (es.regex[cd].id === CHAR_DISPLAY_ID) { charDisplayEntry = es.regex[cd]; break; }
+        }
+        if (!charDisplayEntry || charDisplayEntry._neVersion !== CHAR_VERSION) {
+            if (!charDisplayEntry) {
+                charDisplayEntry = { id: CHAR_DISPLAY_ID };
+                es.regex.push(charDisplayEntry);
+            }
+            charDisplayEntry.id = CHAR_DISPLAY_ID;
+            charDisplayEntry.scriptName = CHAR_DISPLAY_NAME;
+            charDisplayEntry.findRegex = CHAR_FIND;
+            charDisplayEntry.replaceString = '';
+            charDisplayEntry.enabled = true;
+            charDisplayEntry.runOnEdit = false;
+            charDisplayEntry.markdownOnly = true;
+            charDisplayEntry.promptOnly = false;
+            charDisplayEntry.placement = [2];
+            charDisplayEntry.substituteRegex = 0;
+            charDisplayEntry.minDepth = null;
+            charDisplayEntry.maxDepth = null;
+            charDisplayEntry.onlyLongerThan = null;
+            charDisplayEntry.onlyShorterThan = null;
+            charDisplayEntry.trimStrings = [];
+            charDisplayEntry._neVersion = CHAR_VERSION;
             updatedCount++;
         }
 
