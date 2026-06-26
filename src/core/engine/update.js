@@ -73,13 +73,15 @@ function _validateLtmEventText(label, text) {
 export function ensureStateStructure(vault) {
     if (!vault.content.state) vault.content.state = {};
     vault.content.state_css = vault.content.state_css || '';
-    if (!isStateSchemaEnabled()) return;
     var state = vault.content.state;
     var schema = vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
-    if (!schema) return;
-    if (!vault.content.state_schema) {
-        vault.content.state_schema = schema;
+    if (isStateSchemaEnabled()) {
+        if (!schema) return;
+        if (!vault.content.state_schema) {
+            vault.content.state_schema = schema;
+        }
     }
+    schema = schema || DEFAULT_GLOBAL_SCHEMA;
     if (state.characters && schema.fields && schema.fields.characters) {
         var charSchema = schema.fields.characters.schema;
         if (charSchema && charSchema.fields && charSchema.fields['*']) {
@@ -974,7 +976,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
         if (!names || names.length === 0) return '';
         if (!worldBookText || !worldBookText.trim()) return '';
         return '\n## World Book — new character profiles\n' +
-            '(以上是世界书原文。请重点关注：性别/年龄→用于 gender_age、体型/外貌→用于 physique、职业/身份→用于 occupation、性格→用于 personality、穿着设定→用于 clothing_build)\n\n' +
+            '(以上是世界书原文。请重点关注：角色外貌描述→用于 gender_age、角色身份→用于 occupation、性格描述→用于 personality、穿着设定→用于 clothing_build)\n\n' +
             '[WB] ' + worldBookText.trim() + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
