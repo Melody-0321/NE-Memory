@@ -568,7 +568,8 @@ function renderCharacterCard(name, card, schema, cardType) {
             if (fieldDef.max !== undefined) dataAttrs += ' data-max="' + fieldDef.max + '"';
         }
         if (fieldDef.values) dataAttrs += ' data-values="' + escapeHtml(fieldDef.values.join(',')) + '"';
-        var row = '<tr><td class="ne-field-label">' + escapeHtml(key) + '</td><td class="ne-char-val" ' + dataAttrs + '><span class="ne-char-val-text">' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</span></td></tr>';
+        var label = t_field(key);
+        var row = '<tr><td class="ne-field-label">' + escapeHtml(label) + '</td><td class="ne-char-val" ' + dataAttrs + '><span class="ne-char-val-text">' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</span></td></tr>';
 
         if (fieldDef.required) {
             requiredFields.push(row);
@@ -585,7 +586,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     if (cardType === 'npc' && card.affection !== undefined && card.affection !== null && card.affection !== '') {
         var affVal = Number(card.affection) || 0;
         var affPercent = Math.min(100, Math.max(0, affVal));
-        affectionHtml = '<div class="ne-affection-bar"><div class="ne-affection-fill" style="width:' + affPercent + '%"></div><span class="ne-affection-label">好感度: ' + affVal + '</span></div>';
+        affectionHtml = '<div class="ne-affection-bar"><div class="ne-affection-fill" style="width:' + affPercent + '%"></div><span class="ne-affection-label">' + escapeHtml(t_field('affection')) + ': ' + affVal + '</span></div>';
     }
 
     // Render inventory if present
