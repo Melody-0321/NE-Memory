@@ -574,10 +574,10 @@ function registerGlobalBannerRegex() {
         es.regex = Array.isArray(es.regex) ? es.regex : [];
 
         var DISPLAY_ID = 'ne-state-banner';
-        var PROMPT_ID = 'ne-state-banner-prompt';
-        var _BANNER_VERSION = '1.2';
+        var PROMPT_ID = 'ne-state-prompt';
+        var _BANNER_VERSION = '1.3';
         var DISPLAY_NAME = 'NE State Banner v' + _BANNER_VERSION;
-        var PROMPT_NAME = 'NE State Banner (prompt strip) v' + _BANNER_VERSION;
+        var PROMPT_NAME = 'NE State Prompt Strip v' + _BANNER_VERSION;
         var FIND_PIPE = '<!--NE-BANNER-->([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)\\|([^|]*)<!--\\/NE-BANNER-->';
         var REPLACE_HTML = '\n```banner\n' +
             '\uD83D\uDCCD \u5730\u70B9\uFF1A$1\n' +
@@ -586,36 +586,31 @@ function registerGlobalBannerRegex() {
             '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
             '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
             '```\n';
-        var FIND_PROMPT = '/<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*/g';
+        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>\\\\{[\\\\s\\\\S]*?\\\\}<!--\\\\/NE-CHAR-->)/g';
 
-        // ── 迁移：扫描所有历史版本（id 以 ne-state-banner / ne-state-banner-prompt 开头，
-        //     可以是精确匹配也可以是带 -vN 后缀），归一化为永久 id，删掉多余的 ──
-        var BANNER_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
-        var PROMPT_PATTERN = /^ne-state-banner-prompt(?:-v\d+)?$/;
+        var BANNER_DISPLAY_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
+        var PROMPT_PATTERN = /^(?:ne-state-banner-prompt(?:-v\d+)?|ne-state-prompt(?:-v\d+)?|ne-char-block-prompt(?:-v\d+)?)$/;
 
         var displayCandidates = [];
         var promptCandidates = [];
         for (var i = 0; i < es.regex.length; i++) {
             var rid = es.regex[i].id || '';
-            if (BANNER_PATTERN.test(rid)) displayCandidates.push(i);
+            if (BANNER_DISPLAY_PATTERN.test(rid)) displayCandidates.push(i);
             if (PROMPT_PATTERN.test(rid)) promptCandidates.push(i);
         }
 
-        // 只保留最后一个 display 候选，删除其余（从高索引删起避免 shift）
         for (var d = displayCandidates.length - 2; d >= 0; d--) {
             es.regex.splice(displayCandidates[d], 1);
         }
-        // 只保留最后一个 prompt 候选，删除其余
         for (var p = promptCandidates.length - 2; p >= 0; p--) {
             es.regex.splice(promptCandidates[p], 1);
         }
 
-        // 重新扫描唯一条目
         var displayEntry = null;
         var promptEntry = null;
         for (var j = 0; j < es.regex.length; j++) {
             var jid = es.regex[j].id || '';
-            if (BANNER_PATTERN.test(jid)) displayEntry = es.regex[j];
+            if (BANNER_DISPLAY_PATTERN.test(jid)) displayEntry = es.regex[j];
             if (PROMPT_PATTERN.test(jid)) promptEntry = es.regex[j];
         }
 
@@ -668,51 +663,9 @@ function registerGlobalBannerRegex() {
         }
 
         var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
-        var CHAR_PROMPT_ID = 'ne-char-block-prompt';
         var CHAR_DISPLAY_ID = 'ne-char-block-display';
-        var CHAR_PROMPT_NAME = 'NE Character Block Strip (Prompt)';
         var CHAR_DISPLAY_NAME = 'NE Character Block Strip (Display)';
         var CHAR_VERSION = '1.3';
-
-        // Remove old unified entry (v1.2) if present — was promptOnly=false + markdownOnly=false, too aggressive
-        for (var ck = es.regex.length - 1; ck >= 0; ck--) {
-            var cid = es.regex[ck].id || '';
-            if (cid === 'ne-char-block-strip') {
-                es.regex.splice(ck, 1);
-                updatedCount++;
-                console.log('[NE-BANNER] removed legacy ne-char-block-strip entry');
-                break;
-            }
-        }
-
-        // Prompt-only strip: prevents CHAR JSON from leaking into State LLM context, but keeps raw message intact
-        var charPromptEntry = null;
-        for (var cp = 0; cp < es.regex.length; cp++) {
-            if (es.regex[cp].id === CHAR_PROMPT_ID) { charPromptEntry = es.regex[cp]; break; }
-        }
-        if (!charPromptEntry || charPromptEntry._neVersion !== CHAR_VERSION) {
-            if (!charPromptEntry) {
-                charPromptEntry = { id: CHAR_PROMPT_ID };
-                es.regex.push(charPromptEntry);
-            }
-            charPromptEntry.id = CHAR_PROMPT_ID;
-            charPromptEntry.scriptName = CHAR_PROMPT_NAME;
-            charPromptEntry.findRegex = CHAR_FIND;
-            charPromptEntry.replaceString = '';
-            charPromptEntry.enabled = true;
-            charPromptEntry.runOnEdit = false;
-            charPromptEntry.markdownOnly = false;
-            charPromptEntry.promptOnly = true;
-            charPromptEntry.placement = [2];
-            charPromptEntry.substituteRegex = 0;
-            charPromptEntry.minDepth = null;
-            charPromptEntry.maxDepth = null;
-            charPromptEntry.onlyLongerThan = null;
-            charPromptEntry.onlyShorterThan = null;
-            charPromptEntry.trimStrings = [];
-            charPromptEntry._neVersion = CHAR_VERSION;
-            updatedCount++;
-        }
 
         // Display-only strip: removes CHAR blocks from UI rendering (our onMessageReceived extraction runs first on rawMes)
         var charDisplayEntry = null;
