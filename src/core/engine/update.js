@@ -1048,16 +1048,17 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
     if (lang === 'en') {
         var newCharHintEn = '';
         if (newNames.length > 0) {
-            var wbFields = 'gender_age, occupation, personality (from World Book above). For clothing_build, infer from scene context using World Book as reference — pick ONE plausible outfit, do NOT paste wardrobe lists or "居家常见".';
-            var ccFields = 'gender_age, occupation, personality, clothing_build from Character Cards above (with scene-context inference).';
             if (worldBook) {
                 newCharHintEn = '\n## New Characters\n' +
                     '- First appearance: ' + newNames.join(', ') + '. Fields are empty.\n' +
-                    '- Fill ' + wbFields + '\n';
+                    '- You MUST fill: gender_age, occupation, personality (from World Book above).\n' +
+                    '- clothing_build: infer ONE outfit from scene context using World Book as reference. Do NOT paste wardrobe lists or "居家常见".\n' +
+                    '- You MUST output state_changes containing these fields. {"state_changes":{}} is NOT allowed when there are new characters.\n';
             } else {
                 newCharHintEn = '\n## New Characters\n' +
                     '- First appearance: ' + newNames.join(', ') + '. Fields are empty.\n' +
-                    '- Fill ' + ccFields + '\n';
+                    '- You MUST fill: gender_age, occupation, personality, clothing_build (from Character Cards above, clothing inferred from scene).\n' +
+                    '- You MUST output state_changes containing these fields. {"state_changes":{}} is NOT allowed when there are new characters.\n';
             }
         }
         return {
@@ -1067,16 +1068,17 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
     }
     var newCharHintZh = '';
     if (newNames.length > 0) {
-        var wbFieldsZh = 'gender_age、occupation、personality（从上方 World Book 提取）。clothing_build 则根据场景从 World Book 推断一套最匹配的穿着——绝不要粘贴"居家常见"或衣柜清单。';
-        var ccFieldsZh = 'gender_age、occupation、personality、clothing_build（服装需结合场景推断）。';
         if (worldBook) {
             newCharHintZh = '\n## 新角色\n' +
                 '- 首次出场：' + newNames.join('、') + '。字段为空。\n' +
-                '- 请填充 ' + wbFieldsZh + '\n';
+                '- 你必须填充: gender_age、occupation、personality（从上方 World Book 提取）。\n' +
+                '- clothing_build 根据场景从 World Book 推断一套最匹配的穿着。绝不要粘贴"居家常见"或衣柜清单。\n' +
+                '- 必须输出 state_changes 包含这些字段，不允许输出 {"state_changes":{}}。\n';
         } else {
             newCharHintZh = '\n## 新角色\n' +
                 '- 首次出场：' + newNames.join('、') + '。字段为空。\n' +
-                '- 请填充 ' + ccFieldsZh + '\n';
+                '- 你必须填充: gender_age、occupation、personality、clothing_build（从上方角色卡提取，服装需结合场景推断）。\n' +
+                '- 必须输出 state_changes 包含这些字段，不允许输出 {"state_changes":{}}。\n';
         }
     }
     return {
