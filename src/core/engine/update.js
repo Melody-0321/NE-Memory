@@ -939,18 +939,31 @@ function _lookupWbByName(name, protagonistName) {
     try {
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         var allEntries = (ctx && ctx.worldInfo && ctx.worldInfo.entries) ? ctx.worldInfo.entries : {};
-        if (Object.keys(allEntries).length === 0) return [];
+        if (Object.keys(allEntries).length === 0) {
+            console.log('[NE-DEBUG] _lookupWbByName: ctx.worldInfo.entries is EMPTY for name=' + name);
+            return [];
+        }
 
+        var allKeys = [];
         var matched = [];
         Object.keys(allEntries).forEach(function(uid) {
             var entry = allEntries[uid];
-            if (!entry || entry.disable || !entry.content) return;
+            if (!entry || entry.disable) return;
+            var keys = (entry.key || []).map(function(k) { return String(k); });
+            allKeys.push('[' + keys.join(',') + ']' + (entry.constant ? '(const)' : ''));
+            if (!entry.content) return;
             if (!_matchEntryKeyToName(entry, name, protagonistName)) return;
             var label = (entry.key && entry.key.length > 0) ? entry.key[0] : '';
             matched.push(label ? ('[' + label + '] ' + entry.content) : entry.content);
         });
+        console.log('[NE-DEBUG] _lookupWbByName: name=' + name +
+            ' | entries_total=' + Object.keys(allEntries).length +
+            ' | all_keys=' + JSON.stringify(allKeys) +
+            ' | matched=' + matched.length +
+            ' | previews=' + JSON.stringify(matched.map(function(s) { return s.substring(0, 80); })));
         return matched;
     } catch (e) {
+        console.warn('[NE-DEBUG] _lookupWbByName error:', e && e.message);
         return [];
     }
 }
@@ -1042,6 +1055,9 @@ function buildStatePrompt_Preset(messages, vault) {
 
     var newNames = findNewCharacterNames(vault);
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames) : '';
+    console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
+        ' | worldBook_len=' + (worldBook ? worldBook.length : 0) +
+        ' | worldBook_preview=' + JSON.stringify(worldBook ? worldBook.substring(0, 300) : '(empty)'));
 
     if (lang === 'en') {
         var newCharHintEn = '';
