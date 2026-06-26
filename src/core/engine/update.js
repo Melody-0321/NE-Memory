@@ -937,10 +937,7 @@ function _matchEntryKeyToName(entry, name, protagonistName) {
 
 function _lookupWbByName(name, protagonistName, worldBookText) {
     try {
-        if (!worldBookText || !worldBookText.trim()) {
-            console.log('[NE-DEBUG] _lookupWbByName: worldBookText is EMPTY for name=' + name);
-            return [];
-        }
+        if (!worldBookText || !worldBookText.trim()) return [];
         var nameLower = name.toLowerCase();
         var blocks = worldBookText.split(/\n\n+/);
         var matched = [];
@@ -951,41 +948,19 @@ function _lookupWbByName(name, protagonistName, worldBookText) {
                 matched.push('[WB] ' + block);
             }
         }
-        if (matched.length === 0 && blocks.length > 0) {
-            var combined = worldBookText.replace(/\n+/g, ' ');
-            if (combined.toLowerCase().indexOf(nameLower) !== -1) {
-                matched.push('[WB] ' + combined);
-            }
-        }
-        console.log('[NE-DEBUG] _lookupWbByName: name=' + name +
-            ' | wbText_len=' + worldBookText.length +
-            ' | blocks=' + blocks.length +
-            ' | matched=' + matched.length +
-            ' | previews=' + JSON.stringify(matched.map(function(s) { return s.substring(0, 80); })));
         return matched;
-    } catch (e) {
-        console.warn('[NE-DEBUG] _lookupWbByName error:', e && e.message);
-        return [];
-    }
+    } catch (e) { return []; }
 }
 
-function _fetchWorldBookText(messages) {
+function _fetchWorldBookText(newNames) {
+    if (!newNames || newNames.length === 0) return Promise.resolve('');
     try {
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
-        if (!ctx || !ctx.getWorldInfoPrompt) return '';
-        var chatForWi = [];
-        if (messages && messages.length > 0) {
-            for (var ci = messages.length - 1; ci >= 0; ci--) {
-                var cm = messages[ci];
-                if (cm && (cm.mes || cm.content)) {
-                    chatForWi.push((cm.name || '') + ': ' + (cm.mes || cm.content));
-                }
-            }
-        }
-        if (chatForWi.length === 0) chatForWi.push('placeholder');
-        var maxCtx = Math.min(chatForWi.length, 50);
+        if (!ctx || !ctx.getWorldInfoPrompt) return Promise.resolve('');
+        var chatForWi = newNames.slice();
+        var maxCtx = chatForWi.length;
         var scanData = {
-            personaDescription: (ctx.powerUserSettings && ctx.powerUserSettings.persona_description) || '',
+            personaDescription: '',
             characterDescription: '',
             characterPersonality: '',
             characterDepthPrompt: '',
@@ -993,32 +968,22 @@ function _fetchWorldBookText(messages) {
             creatorNotes: '',
             trigger: 'normal'
         };
-        try {
-            var chid = ctx.characterId;
-            var currentChar = chid !== undefined && ctx.characters ? ctx.characters[chid] : null;
-            if (currentChar) {
-                scanData.characterDescription = currentChar.description || '';
-                scanData.characterPersonality = currentChar.personality || '';
-                scanData.scenario = currentChar.scenario || '';
-                if (currentChar.data && currentChar.data.extensions && currentChar.data.extensions.depth_prompt) {
-                    scanData.characterDepthPrompt = currentChar.data.extensions.depth_prompt.prompt || '';
-                }
-                if (currentChar.data && currentChar.data.creator_notes) {
-                    scanData.creatorNotes = currentChar.data.creator_notes || '';
-                }
-            }
-        } catch (e2) {}
-        return Promise.resolve(ctx.getWorldInfoPrompt(chatForWi, maxCtx, true, scanData)).then(function(result) {
-            var text = (result && result.worldInfoString) ? result.worldInfoString : '';
-            console.log('[NE-DEBUG] _fetchWorldBookText: got worldBookText len=' + text.length);
-            return text;
-        }).catch(function(e) {
-            console.warn('[NE-DEBUG] _fetchWorldBookText failed:', e && e.message);
-            return '';
-        });
+        var resultPromise = ctx.getWorldInfoPrompt(chatForWi, maxCtx, true, scanData);
+        if (resultPromise && typeof resultPromise.then === 'function') {
+            return resultPromise.then(function(result) {
+                var text = (result && result.worldInfoString) ? result.worldInfoString : '';
+                console.log('[NE-DEBUG] _fetchWorldBookText: newNames=' + JSON.stringify(newNames) +
+                    ' | worldBookText_len=' + text.length);
+                return text;
+            }).catch(function(e) {
+                console.warn('[NE-DEBUG] _fetchWorldBookText failed:', e && e.message);
+                return '';
+            });
+        }
     } catch (e) {
-        return Promise.resolve('');
+        console.warn('[NE-DEBUG] _fetchWorldBookText error:', e && e.message);
     }
+    return Promise.resolve('');
 }
 
 function buildWorldBookSection(vault, names, worldBookText) {
@@ -1054,7 +1019,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
     return '';
 }
 
-function buildStatePrompt_Preset(messages, vault, worldBookText) {
+function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
@@ -1106,7 +1071,6 @@ function buildStatePrompt_Preset(messages, vault, worldBookText) {
         '- 如果无法确定，使用 "default" 方案。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
-    var newNames = findNewCharacterNames(vault);
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';
     console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
         ' | worldBook_len=' + (worldBook ? worldBook.length : 0) +
@@ -1622,8 +1586,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     if (messages.length === 0) return { vault, changed: false };
 
-    var worldBookText = await _fetchWorldBookText(messages);
-    var statePrompt = buildStatePrompt_Preset(messages, vault, worldBookText);
+    var newNames = findNewCharacterNames(vault);
+    var worldBookText = newNames.length > 0 ? await _fetchWorldBookText(newNames) : '';
+    var statePrompt = buildStatePrompt_Preset(messages, vault, worldBookText, newNames);
 
     var stateResponse;
     try {
