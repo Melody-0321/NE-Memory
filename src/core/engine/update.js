@@ -935,30 +935,13 @@ function _matchEntryKeyToName(entry, name, protagonistName) {
     return false;
 }
 
-function _lookupWbByName(name, protagonistName, worldBookText) {
-    try {
-        if (!worldBookText || !worldBookText.trim()) return [];
-        var nameLower = name.toLowerCase();
-        var blocks = worldBookText.split(/\n\n+/);
-        var matched = [];
-        for (var i = 0; i < blocks.length; i++) {
-            var block = blocks[i].trim();
-            if (!block || block.length < 10) continue;
-            if (block.toLowerCase().indexOf(nameLower) !== -1) {
-                matched.push('[WB] ' + block);
-            }
-        }
-        return matched;
-    } catch (e) { return []; }
-}
-
 function _fetchWorldBookText(newNames) {
     if (!newNames || newNames.length === 0) return Promise.resolve('');
     try {
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         if (!ctx || !ctx.getWorldInfoPrompt) return Promise.resolve('');
         var chatForWi = newNames.slice();
-        var maxCtx = chatForWi.length;
+        var maxCtx = (ctx.maxContext && ctx.maxContext > 0) ? ctx.maxContext : 8192;
         var scanData = {
             personaDescription: '',
             characterDescription: '',
@@ -989,30 +972,8 @@ function _fetchWorldBookText(newNames) {
 function buildWorldBookSection(vault, names, worldBookText) {
     try {
         if (!names || names.length === 0) return '';
-        var state = (vault && vault.content && vault.content.state) || {};
-        var cache = state._world_book_cache;
-        if (!cache) {
-            cache = {};
-            state._world_book_cache = cache;
-        }
-
-        var protagonistName = state.protagonist_name || '';
-        var lines = [];
-        names.forEach(function(name) {
-            var entries = cache[name];
-            if (!entries || entries.length === 0) {
-                entries = _lookupWbByName(name, protagonistName, worldBookText);
-                if (entries && entries.length > 0) {
-                    cache[name] = entries;
-                }
-            }
-            if (!entries || entries.length === 0) return;
-            entries.forEach(function(content) {
-                lines.push(content);
-            });
-        });
-        if (lines.length === 0) return '';
-        return '\n## World Book — new character profiles\n' + lines.join('\n') + '\n';
+        if (!worldBookText || !worldBookText.trim()) return '';
+        return '\n## World Book — new character profiles\n[WB] ' + worldBookText.trim() + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
     }
