@@ -370,6 +370,8 @@ export function resolveSchemaPath(stateSchema, dotPath) {
             } else {
                 return null;
             }
+        } else if (current.fields) {
+            current = current.fields[part] || null;
         } else {
             return null;
         }
