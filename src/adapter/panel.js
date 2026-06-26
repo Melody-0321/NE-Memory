@@ -606,7 +606,6 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<div class="ne-char-card-header" onclick="this.parentElement.classList.toggle(\'open\')">';
     html += '<span class="ne-char-toggle">&#9654;</span>';
     html += '<b>' + escapeHtml(name) + '</b> ';
-    html += '<span class="ne-char-status">' + escapeHtml(card.status || '') + '</span> ';
     html += '<span class="ne-char-type">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" onclick="event.stopPropagation()">&#9998;</button>';
     html += '</div>';

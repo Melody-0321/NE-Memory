@@ -974,7 +974,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
         if (!names || names.length === 0) return '';
         if (!worldBookText || !worldBookText.trim()) return '';
         return '\n## World Book — new character profiles\n' +
-            '(以上是世界书原文。请重点关注：角色外貌描述→用于 gender_age、角色身份→用于 occupation、性格描述→用于 personality、穿着设定→用于 clothing_build)\n\n' +
+            '(以上是世界书原文。请重点关注：性别/年龄→用于 gender_age、体型/外貌→用于 physique、职业/身份→用于 occupation、性格→用于 personality、穿着设定→用于 clothing_build)\n\n' +
             '[WB] ' + worldBookText.trim() + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
