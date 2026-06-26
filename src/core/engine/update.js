@@ -992,44 +992,52 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
 
     var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
 
-    var rulesEn = '\n## Your responsibility\n' +
+    var rulesEn = '\n## Field Reference\n' +
+        '### Static (extract from World Book / Character Card)\n' +
+        '- gender_age: sex + age + physique only (e.g. "男,25岁,肩宽体脂低"). Do NOT include clothing here.\n' +
+        '- occupation: job/role, short.\n' +
+        '- personality: 2-4 traits, short.\n' +
+        '### Current Snapshot (dialogue-first, infer only if dialogue is silent)\n' +
+        '- clothing_build: what the character is wearing RIGHT NOW in this scene. NOT body features. NOT wardrobe lists.\n' +
+        '  If the dialogue says "wearing a T恤", use that. If the scene is 阳台 at night and World Book lists 居家/外出,\n' +
+        '  infer ONE outfit matching the scene — never paste "居家常见" or enumerate options.\n' +
+        '- injuries: current wounds/symptoms only.\n' +
+        '- status_effects: current status effects only.\n' +
+        '### Hybrid\n' +
+        '- relationship: can start from World Book, update from dialogue.\n' +
+        '- past_experience: incremental — append only, never overwrite.\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
+        '\n## Field Rules\n' +
         '- You manage: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience.\n' +
-        '- Do NOT manage: affection, current_mood, inner_thoughts. These are handled by the main LLM and should never appear in your state_changes output.\n' +
-        '\n## Filling unfilled fields\n' +
-        '- Character Cards (above) are your primary source. Directly extract: gender_age, occupation, personality, clothing_build from the card text.\n' +
-        '- If the Character Cards describe it explicitly, fill it — do NOT wait for dialogue to mention it.\n' +
-        '- For fields not covered by Character Cards, infer from dialogue.\n' +
-        '- past_experience: incremental — append new content, do NOT overwrite existing.\n' +
-        '\n## Updating existing fields\n' +
-        '- Field already has a value → Only output if this round\'s dialogue changes that value.\n' +
-        '- Allowed paths are shown in the Current State table above. Do NOT invent new paths.\n' +
+        '- Do NOT manage: affection, current_mood, inner_thoughts (handled by main LLM).\n' +
+        '- Field already has a specific value → only output if this round CHANGES it.\n' +
+        '- Allowed paths are shown in the Current State table. Do NOT invent new paths.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention≠presence.\n' +
-        '\n## NPC Scheme Assignment\n' +
-        '- NPCs already have a _scheme field — do NOT change it.\n' +
-        '- New NPCs without _scheme: infer from traits (see "NPC Schemes Available" above).\n' +
-        '- To assign: include `characters.<name>._scheme` in state_changes.\n' +
-        '- Use "default" scheme if unsure.\n' +
+        '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
         '\nZero-change example: {"state_changes":{}}\n\n';
 
-    var rulesZh = '\n## 你的职责\n' +
+    var rulesZh = '\n## 字段参考\n' +
+        '### 静态字段（从世界书 / 角色卡中提取）\n' +
+        '- gender_age: 性别 + 年龄 + 体型（如 "男,25岁,肩宽体脂低"）。绝对不要包含穿着。\n' +
+        '- occupation: 职业/身份，短词。\n' +
+        '- personality: 2-4个性格特质，短词。\n' +
+        '### 当前快照字段（对话优先，对话无描述时才推断）\n' +
+        '- clothing_build: 角色在**本轮场景中**正在穿着的衣物。不是身体特征。不是衣柜清单。\n' +
+        '  对话明确说了"穿着T恤"，就用T恤。场景是阳台夜晚，世界书列了居家/外出两种，\n' +
+        '  就根据场景选一套最匹配的——绝不要粘贴"居家常见"或列举全部选项。\n' +
+        '- injuries: 仅当前受伤/症状。\n' +
+        '- status_effects: 仅当前状态效果。\n' +
+        '### 混合字段\n' +
+        '- relationship: 可从世界书起步，随对话更新。\n' +
+        '- past_experience: 增量追加，不要覆盖已有内容。\n' +
+        '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
+        '\n## 字段规则\n' +
         '- 你管理: gender_age, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience。\n' +
-        '- 不要管理: affection, current_mood, inner_thoughts。这些由主 LLM 负责，绝不应该出现在你的 state_changes 输出中。\n' +
-        '\n## 填充未填字段\n' +
-        '- Character Cards（上方）是你的首要信息来源。直接从角色卡文本中提取 gender_age、occupation、personality、clothing_build。\n' +
-        '- 角色卡明确描述的内容直接填入，不需要等对话提及。\n' +
-        '- 角色卡没有覆盖的字段，再从本轮对话中推断。\n' +
-        '- past_experience: 增量追加 → 仅追加新内容，不要覆盖已有内容。\n' +
-        '\n## 更新已有字段\n' +
+        '- 不要管理: affection, current_mood, inner_thoughts（主 LLM 负责）。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- 可用路径见上方 Current State 表格。请勿创造新路径。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
-        '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
-        '\n## NPC 方案分配\n' +
-        '- 已有 _scheme 的 NPC — 不要修改其 _scheme 值。\n' +
-        '- 新 NPC 没有 _scheme 时：从上方的「NPC Schemes Available」中选择合适的方案。\n' +
-        '- 分配方案时在 state_changes 中包含 `characters.<name>._scheme`。\n' +
-        '- 如果无法确定，使用 "default" 方案。\n' +
+        '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
         '\n零变化示例: {"state_changes":{}}\n\n';
 
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';
@@ -1040,36 +1048,40 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames) {
     if (lang === 'en') {
         var newCharHintEn = '';
         if (newNames.length > 0) {
+            var wbFields = 'gender_age, occupation, personality (from World Book above). For clothing_build, infer from scene context using World Book as reference — pick ONE plausible outfit, do NOT paste wardrobe lists or "居家常见".';
+            var ccFields = 'gender_age, occupation, personality, clothing_build from Character Cards above (with scene-context inference).';
             if (worldBook) {
                 newCharHintEn = '\n## New Characters\n' +
-                    '- Appearing for the first time: ' + newNames.join(', ') + '.\n' +
-                    '- Their fields are empty. Use the World Book entry above to fill gender_age, occupation, personality, clothing_build.\n';
+                    '- First appearance: ' + newNames.join(', ') + '. Fields are empty.\n' +
+                    '- Fill ' + wbFields + '\n';
             } else {
                 newCharHintEn = '\n## New Characters\n' +
-                    '- Appearing for the first time: ' + newNames.join(', ') + '.\n' +
-                    '- Their fields are empty. Use Character Cards above to fill gender_age, occupation, personality, clothing_build.\n';
+                    '- First appearance: ' + newNames.join(', ') + '. Fields are empty.\n' +
+                    '- Fill ' + ccFields + '\n';
             }
         }
         return {
             system: stateTable + buildCharacterCardSection(vault) + worldBook + newCharHintEn + rulesEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill unfilled fields from Character Cards and World Book context above, then dialogue.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill static fields from sources above; infer current-snapshot fields from dialogue + scene context.'
         };
     }
     var newCharHintZh = '';
     if (newNames.length > 0) {
+        var wbFieldsZh = 'gender_age、occupation、personality（从上方 World Book 提取）。clothing_build 则根据场景从 World Book 推断一套最匹配的穿着——绝不要粘贴"居家常见"或衣柜清单。';
+        var ccFieldsZh = 'gender_age、occupation、personality、clothing_build（服装需结合场景推断）。';
         if (worldBook) {
             newCharHintZh = '\n## 新角色\n' +
-                '- 以下角色首次出场：' + newNames.join(', ') + '。\n' +
-                '- 其字段为空。请使用上方的 World Book 条目填充 gender_age、occupation、personality、clothing_build。\n';
+                '- 首次出场：' + newNames.join('、') + '。字段为空。\n' +
+                '- 请填充 ' + wbFieldsZh + '\n';
         } else {
             newCharHintZh = '\n## 新角色\n' +
-                '- 以下角色首次出场：' + newNames.join(', ') + '。\n' +
-                '- 其字段为空。请使用上方的角色卡填充 gender_age、occupation、personality、clothing_build。\n';
+                '- 首次出场：' + newNames.join('、') + '。字段为空。\n' +
+                '- 请填充 ' + ccFieldsZh + '\n';
         }
     }
     return {
         system: stateTable + buildCharacterCardSection(vault) + worldBook + newCharHintZh + rulesZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。参考上方的角色卡和世界书上下文填充未填字段，无法覆盖的再从对话推断。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。静态字段从上方来源填充；当前快照字段从对话 + 场景上下文推断。'
     };
 }
 
