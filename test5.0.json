@@ -1,0 +1,17 @@
+{
+  "type": "script",
+  "enabled": false,
+  "name": "NE Memory Engine",
+  "id": "ne_memory_engine",
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test5.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test5.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 State 系统正式可用 — 角色卡自动填充（性别年龄/体型外貌/职业/性格/穿着/关系） · 💬 NE-CHAR 情感通道 — 主 LLM 输出好感度/情绪/内心想法 · 🏷️ NE-BANNER 状态栏 — 场景/时间/天数/事件由主 LLM 管理 · 🔄 NE-CHAR fallback — 缺失时 State LLM 自动推断 · 📐 physique 体型拆分 · ✏️ 角色卡内联编辑 + PC 排序 + i18n 标签 · 30 项测试",
+  "button": {
+    "enabled": false,
+    "buttons": []
+  },
+  "data": {},
+  "export_with": {
+    "data": true,
+    "button": true
+  }
+}
