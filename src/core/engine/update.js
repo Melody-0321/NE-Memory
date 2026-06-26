@@ -942,19 +942,19 @@ function _lookupWbByName(name, protagonistName, worldBookText) {
             return [];
         }
         var nameLower = name.toLowerCase();
-        var isProtagonist = name === protagonistName;
-        var blocks = worldBookText.split(/\n(?=\[)/);
+        var blocks = worldBookText.split(/\n\n+/);
         var matched = [];
         for (var i = 0; i < blocks.length; i++) {
             var block = blocks[i].trim();
-            if (!block) continue;
-            var keyMatch = block.match(/^\[([^\]]+)\]/);
-            var blockKey = keyMatch ? keyMatch[1].toLowerCase() : '';
-            if (blockKey === nameLower ||
-                blockKey.indexOf(nameLower) !== -1 ||
-                nameLower.indexOf(blockKey) !== -1 ||
-                (isProtagonist && (blockKey === '{{user}}' || blockKey.indexOf('{{user}}') !== -1))) {
-                matched.push(block);
+            if (!block || block.length < 10) continue;
+            if (block.toLowerCase().indexOf(nameLower) !== -1) {
+                matched.push('[WB] ' + block);
+            }
+        }
+        if (matched.length === 0 && blocks.length > 0) {
+            var combined = worldBookText.replace(/\n+/g, ' ');
+            if (combined.toLowerCase().indexOf(nameLower) !== -1) {
+                matched.push('[WB] ' + combined);
             }
         }
         console.log('[NE-DEBUG] _lookupWbByName: name=' + name +
@@ -1043,7 +1043,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
             }
             if (!entries || entries.length === 0) return;
             entries.forEach(function(content) {
-                lines.push('[WB] ' + content);
+                lines.push(content);
             });
         });
         if (lines.length === 0) return '';
