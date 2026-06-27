@@ -1360,15 +1360,15 @@ function collectWorldBookContent_raw() {
     return entries;
 }
 
-function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
-    var wbText = '';
-    if (worldBookEntries && worldBookEntries.length > 0) {
-        wbText = '## World Setting\n';
-        worldBookEntries.forEach(function(entry, i) {
-            wbText += '[' + (i + 1) + '] ' + (entry.content || entry.key || '') + '\n';
-        });
-    }
+function buildWorldBookSystemBlock(worldBookEntries) {
+    var text = '## World Setting\n';
+    worldBookEntries.forEach(function(entry, i) {
+        text += '[' + (i + 1) + '] ' + (entry.content || entry.key || '') + '\n';
+    });
+    return { role: 'system', content: text };
+}
 
+function buildSchemeCharPrompt(messages) {
     var msgText = '';
     if (messages && messages.length > 0) {
         msgText = '\n## Current Dialogue\n';
@@ -1378,13 +1378,11 @@ function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
     }
 
     return '' +
-        wbText +
         msgText +
         '\n## Task\n' +
-        'Based on the world setting and dialogue above, determine:\n' +
+        'Based on the world setting (see system message) and dialogue above, determine:\n' +
         '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
         '2. Identify all characters mentioned (protagonist + NPCs)\n' +
-        '3. Identify all organizations, factions, guilds, clans, families, or groups\n' +
         '\nAvailable field names for schemes:\n' +
         '  status, gender_age, physique, occupation, personality, clothing_build,\n' +
         '  injuries, status_effects, past_experience, inner_thoughts,\n' +
@@ -1402,17 +1400,29 @@ function buildSchemeDiscoveryPrompt(worldBookEntries, messages) {
         '  },\n' +
         '  "initial_characters": [\n' +
         '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" }\n' +
-        '  ],\n' +
+        '  ]\n' +
+        '}';
+}
+
+function buildFactionExtractionPrompt() {
+    return '## Task\n' +
+        'Extract only organizations, factions, guilds, clans, families, or groups\n' +
+        'that are EXPLICITLY described in the World Setting (system message above).\n' +
+        'If none are described, return an empty object: {}\n' +
+        '\nOutput ONLY valid JSON:\n' +
+        '{\n' +
         '  "factions": {\n' +
-        '    "<Faction Name>": {\n' +
+        '    "<Name>": {\n' +
         '      "name": "<Full name>",\n' +
         '      "description": "<One-sentence description>",\n' +
         '      "leader": "<Leader name, or empty if unknown>",\n' +
         '      "attitude_toward_player": "\u53cb\u597d/\u4e2d\u7acb/\u51b7\u6de1/\u654c\u5bf9/\u672a\u77e5",\n' +
-        '      "aliases": ["<alias1>", "<alias2>"]\n' +
+        '      "aliases": ["<alias>"]\n' +
         '    }\n' +
         '  }\n' +
-        '}';
+        '}\n' +
+        '\nIf no factions exist:\n' +
+        '{"factions":{}}';
 }
 
 export async function resolveNpcSchemes(vault, chatId, messages) {
@@ -1439,31 +1449,40 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         return;
     }
 
-    var prompt = buildSchemeDiscoveryPrompt(worldBookContent, messages);
+    var worldBookMsg = buildWorldBookSystemBlock(worldBookContent);
 
     try {
-        var response = await callMemoryPipeline([
-            { role: 'system', content: 'You are a world-building analyst. Analyze the world setting and determine NPC tracking schemes.' },
-            { role: 'user', content: prompt }
-        ], { operation: 'scheme_discovery' }, chatId);
+        var [resp1, resp2] = await Promise.all([
+            callMemoryPipeline([
+                worldBookMsg,
+                { role: 'system', content: 'You are a world-building analyst. Determine NPC tracking schemes and list all characters.' },
+                { role: 'user', content: buildSchemeCharPrompt(messages) }
+            ], { operation: 'scheme_discovery' }, chatId),
 
-        var parsed = safeJsonParse(String(response || '').trim());
+            callMemoryPipeline([
+                worldBookMsg,
+                { role: 'system', content: 'You extract organizations and factions from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}.' },
+                { role: 'user', content: buildFactionExtractionPrompt() }
+            ], { operation: 'faction_discovery' }, chatId)
+        ]);
 
-        if (parsed && parsed.schemes) {
-            state.npc_schemes = parsed.schemes;
+        var parsed1 = safeJsonParse(String(resp1 || '').trim());
+
+        if (parsed1 && parsed1.schemes) {
+            state.npc_schemes = parsed1.schemes;
         } else {
             state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
         }
 
-        if (parsed && parsed.initial_characters && Array.isArray(parsed.initial_characters)) {
-            var discoveredProtagonist = parsed.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
+        if (parsed1 && parsed1.initial_characters && Array.isArray(parsed1.initial_characters)) {
+            var discoveredProtagonist = parsed1.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
             if (discoveredProtagonist && discoveredProtagonist.name && discoveredProtagonist.name !== state.protagonist_name) {
                 state.protagonist_name = discoveredProtagonist.name;
                 console.log('[NE] protagonist_name updated from scheme_discovery: ' + discoveredProtagonist.name);
             }
 
             var schemeMap = {};
-            parsed.initial_characters.forEach(function(ch) {
+            parsed1.initial_characters.forEach(function(ch) {
                 if (ch.name) {
                     var isProtagonist = (ch.name === state.protagonist_name);
                     var chRole = isProtagonist ? 'protagonist' : 'npc';
@@ -1476,7 +1495,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
             if (messages && messages.length > 0) {
                 msgText = messages.map(function(m) { return (m.name || '') + ' ' + (m.content || ''); }).join(' ');
             }
-            parsed.initial_characters.forEach(function(ch) {
+            parsed1.initial_characters.forEach(function(ch) {
                 if (!ch.name) return;
                 var isProtagonist = (ch.name === state.protagonist_name);
                 var isMentioned = msgText.indexOf(ch.name) !== -1;
@@ -1489,7 +1508,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                 }
             });
 
-            if (parsed.initial_characters) {
+            if (parsed1.initial_characters) {
                 var wbCache = {};
                 var protagonistName = state.protagonist_name || '';
 
@@ -1505,7 +1524,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                     });
 
                     if (entryList.length > 0) {
-                        parsed.initial_characters.forEach(function(ch) {
+                        parsed1.initial_characters.forEach(function(ch) {
                             if (!ch.name) return;
 
                             var matched = entryList.filter(function(entry) {
@@ -1526,31 +1545,33 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                     state._world_book_cache = wbCache;
                 }
             }
+        }
 
-            if (parsed && parsed.factions && typeof parsed.factions === 'object') {
-                var foundFactions = parsed.factions;
-                var factionNames = Object.keys(foundFactions);
-                if (factionNames.length > 0) {
-                    state.factions = state.factions || {};
-                    factionNames.forEach(function(name) {
-                        var f = foundFactions[name];
-                        if (!f || typeof f !== 'object') return;
-                        state.factions[name] = {
-                            name: f.name || name,
-                            description: f.description || '',
-                            leader: f.leader || '',
-                            attitude_toward_player: f.attitude_toward_player || '未知',
-                            notes: '',
-                            aliases: f.aliases || [],
-                            _hidden: true
-                        };
-                    });
-                    vault.content.faction_keywords = buildFactionKeywords(state.factions);
-                    vault.content._factions_extracted = true;
-                    console.log('[NE] Factions extracted from scheme discovery:', factionNames.length);
-                }
+        var parsed2 = safeJsonParse(String(resp2 || '').trim());
+
+        if (parsed2 && parsed2.factions && typeof parsed2.factions === 'object') {
+            var foundFactions = parsed2.factions;
+            var factionNames = Object.keys(foundFactions);
+            if (factionNames.length > 0) {
+                state.factions = state.factions || {};
+                factionNames.forEach(function(name) {
+                    var f = foundFactions[name];
+                    if (!f || typeof f !== 'object') return;
+                    state.factions[name] = {
+                        name: f.name || name,
+                        description: f.description || '',
+                        leader: f.leader || '',
+                        attitude_toward_player: f.attitude_toward_player || '未知',
+                        notes: '',
+                        aliases: f.aliases || [],
+                        _hidden: true
+                    };
+                });
+                vault.content.faction_keywords = buildFactionKeywords(state.factions);
+                console.log('[NE] Factions extracted from faction_discovery:', factionNames.length);
             }
         }
+        vault.content._factions_extracted = true;
         vault.content.state = state;
     } catch (e) {
         console.warn('[NE] Scheme discovery failed, using default:', e);
