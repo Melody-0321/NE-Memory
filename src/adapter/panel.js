@@ -2307,25 +2307,25 @@ async function renderUsageTab() {
 
         /* Populate month dropdowns */
         var months = debug2 && debug2.getAvailableMonths ? debug2.getAvailableMonths() : [];
-        var breakdownMonthSel = document.getElementById('ne-breakdown-month');
-        var dailyMonthSel = document.getElementById('ne-daily-month');
+        var breakdownMonthSel = byId('ne-breakdown-month');
+        var dailyMonthSel = byId('ne-daily-month');
         if (months.length > 0) {
             for (var mi = 0; mi < months.length; mi++) {
                 var m = months[mi];
-                if (breakdownMonthSel) { var bo = document.createElement('option'); bo.value = m; bo.textContent = m; breakdownMonthSel.appendChild(bo); }
-                if (dailyMonthSel) { var do1 = document.createElement('option'); do1.value = m; do1.textContent = m; dailyMonthSel.appendChild(do1); }
+                if (breakdownMonthSel) { var bo = pdCreate('option'); bo.value = m; bo.textContent = m; breakdownMonthSel.appendChild(bo); }
+                if (dailyMonthSel) { var do1 = pdCreate('option'); do1.value = m; do1.textContent = m; dailyMonthSel.appendChild(do1); }
             }
         }
 
         /* —— Breakdown pie chart —— */
         window._renderBreakdownPie = function() {
-            var scopeSel = document.getElementById('ne-breakdown-scope');
+            var scopeSel = byId('ne-breakdown-scope');
             var scope = scopeSel ? scopeSel.value : 'all';
             var breakdown;
             if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
                 breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
             } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
-                var monthSel = document.getElementById('ne-breakdown-month');
+                var monthSel = byId('ne-breakdown-month');
                 var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
                 breakdown = debug2.getMonthlyBreakdown(monthVal);
             } else {
@@ -2336,7 +2336,7 @@ async function renderUsageTab() {
             var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.sp) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
             var bSum = bData[0] + bData[1] + bData[2] + bData[3] + bData[4];
 
-            var emptyEl = document.getElementById('ne-breakdown-empty');
+            var emptyEl = byId('ne-breakdown-empty');
             if (bSum === 0) {
                 if (emptyEl) emptyEl.style.display = '';
                 if (_chartInstances.pie) { _chartInstances.pie.destroy(); _chartInstances.pie = null; }
@@ -2344,7 +2344,7 @@ async function renderUsageTab() {
             }
             if (emptyEl) emptyEl.style.display = 'none';
 
-            var pieCtx = document.getElementById('ne-breakdown-pie-canvas');
+            var pieCtx = byId('ne-breakdown-pie-canvas');
             if (!pieCtx || !window.Chart) return;
             if (_chartInstances.pie) _chartInstances.pie.destroy();
             _chartInstances.pie = new Chart(pieCtx, {
@@ -2369,11 +2369,11 @@ async function renderUsageTab() {
 
         /* —— Daily bar chart —— */
         window._renderDailyBar = function() {
-            var monthSel = document.getElementById('ne-daily-month');
+            var monthSel = byId('ne-daily-month');
             var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
             var dailyData = debug2 && debug2.getMonthlyStats ? debug2.getMonthlyStats(monthVal) : [];
 
-            var emptyEl = document.getElementById('ne-daily-bar-empty');
+            var emptyEl = byId('ne-daily-bar-empty');
             if (dailyData.length === 0) {
                 if (emptyEl) emptyEl.style.display = '';
                 if (_chartInstances.dailyBar) { _chartInstances.dailyBar.destroy(); _chartInstances.dailyBar = null; }
@@ -2381,7 +2381,7 @@ async function renderUsageTab() {
             }
             if (emptyEl) emptyEl.style.display = 'none';
 
-            var barCtx = document.getElementById('ne-daily-bar-canvas');
+            var barCtx = byId('ne-daily-bar-canvas');
             if (!barCtx || !window.Chart) return;
             if (_chartInstances.dailyBar) _chartInstances.dailyBar.destroy();
             _chartInstances.dailyBar = new Chart(barCtx, {
