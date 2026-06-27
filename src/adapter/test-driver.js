@@ -189,7 +189,14 @@ export async function runTestLoop(testCase, hostDoc) {
         trace += '\n\n## 轮次外管线调用（延迟到达）\n';
         for (var oi = 0; oi < orphanCalls.length; oi++) {
             var oc = orphanCalls[oi];
-            trace += '\n### 调用 #' + (oi + 1) + ' — ' + oc.operation + ' (roundTag=' + oc.roundTag + ', ' + oc.source + ', ' + oc.durationMs + 'ms)\n\n';
+            trace += '\n### 调用 #' + (oi + 1) + ' — ' + oc.operation + ' (roundTag=' + oc.roundTag + ', ' + oc.source + ', ' + oc.durationMs + 'ms)';
+            if (oc.usage) {
+                var pt2 = oc.usage.prompt_tokens || '?';
+                var ct2 = oc.usage.completion_tokens || '?';
+                var tt2 = oc.usage.total_tokens || (pt2 !== '?' && ct2 !== '?' ? pt2 + ct2 : '?');
+                trace += '\n- **Tokens:** prompt=' + pt2 + ' completion=' + ct2 + ' total=' + tt2;
+            }
+            trace += '\n\n';
             trace += '**System Prompt:**\n```\n' + (oc.messages ? (oc.messages.find(function(m) { return m.role === 'system'; }) || {}).content || '(none)' : '') + '\n```\n\n';
             trace += '**User Prompt:**\n```\n' + (oc.messages ? (oc.messages.find(function(m) { return m.role === 'user'; }) || {}).content || '(none)' : '') + '\n```\n\n';
             trace += '**LLM Response:**\n```\n' + (oc.response || '') + '\n```\n';
@@ -226,7 +233,8 @@ export async function runTestLoop(testCase, hostDoc) {
     }
 
     var totalDuration = Date.now() - startTime;
-    var report = createReport(testCase, roundDataList.length, totalDuration, structuralResults, semanticResults);
+    var tokenRounds = roundDataList.map(function(rd) { return rd.tokenSummary; });
+    var report = createReport(testCase, roundDataList.length, totalDuration, structuralResults, semanticResults, tokenRounds);
     report += '\n\n**结束类型**: ' + endType + '\n';
 
     if (gatedResult) {

@@ -42,6 +42,31 @@ function _filterByRoundTag(roundTag) {
     return matching;
 }
 
+function _computeTokenSummary(calls) {
+    var summary = {};
+    var totalPrompt = 0;
+    var totalCompletion = 0;
+    var totalTokens = 0;
+    for (var i = 0; i < calls.length; i++) {
+        var c = calls[i];
+        var op = c.operation || 'unknown';
+        if (!summary[op]) summary[op] = { calls: 0, prompt: 0, completion: 0, total: 0 };
+        summary[op].calls++;
+        if (c.usage) {
+            var p = c.usage.prompt_tokens || 0;
+            var comp = c.usage.completion_tokens || 0;
+            var tot = c.usage.total_tokens || (p + comp);
+            summary[op].prompt += p;
+            summary[op].completion += comp;
+            summary[op].total += tot;
+            totalPrompt += p;
+            totalCompletion += comp;
+            totalTokens += tot;
+        }
+    }
+    return { byOperation: summary, totalPrompt: totalPrompt, totalCompletion: totalCompletion, totalTokens: totalTokens };
+}
+
 export function collectRoundData(roundTag) {
     var injection = globalThis.__ne_debug_last_injection || null;
     var pipelineCalls = roundTag != null ? _filterByRoundTag(roundTag) : _filterByRoundTag(null);
@@ -52,6 +77,7 @@ export function collectRoundData(roundTag) {
         injectionPreview: injection || null,
         pipeline: globalThis.__ne_debug_last_pipeline || null,
         pipelineCalls: pipelineCalls,
+        tokenSummary: _computeTokenSummary(pipelineCalls),
         merge: globalThis.__ne_debug_last_merge || null,
         notebook: globalThis.__ne_debug_last_notebook || null,
         stmEvents: globalThis.__ne_debug_last_stm_events || null,

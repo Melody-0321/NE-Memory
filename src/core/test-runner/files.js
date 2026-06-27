@@ -284,6 +284,12 @@ export function appendTraceRound(trace, roundData) {
             var pc = roundData.pipelineCalls[pci];
             lines.push('');
             lines.push('#### 管线调用 #' + (pci + 1) + ' — ' + pc.operation + ' (' + pc.source + ', ' + pc.durationMs + 'ms)');
+            if (pc.usage) {
+                var pt = pc.usage.prompt_tokens || '?';
+                var ct = pc.usage.completion_tokens || '?';
+                var tt = pc.usage.total_tokens || (pt !== '?' && ct !== '?' ? pt + ct : '?');
+                lines.push('- **Tokens:** prompt=' + pt + ' completion=' + ct + ' total=' + tt);
+            }
             lines.push('');
             lines.push('**System Prompt:**');
             var sysMsg = pc.messages ? pc.messages.find(function(m) { return m.role === 'system'; }) : null;
@@ -321,7 +327,24 @@ export function appendTraceRound(trace, roundData) {
         lines.push('(本轮无 NE 管线 LLM 调用)');
     }
     lines.push('');
-    lines.push('### 管线数据');
+
+    /* —— 本轮 Token 用量汇总 —— */
+    if (roundData.tokenSummary && roundData.tokenSummary.totalTokens > 0) {
+        var ts = roundData.tokenSummary;
+        lines.push('### 本轮 Token 用量');
+        lines.push('| Operation | Calls | Prompt | Completion | Total |');
+        lines.push('|---|---:|---:|---:|---:|');
+        var ops = Object.keys(ts.byOperation).sort();
+        for (var oi = 0; oi < ops.length; oi++) {
+            var op = ops[oi];
+            var od = ts.byOperation[op];
+            lines.push('| ' + op + ' | ' + od.calls + ' | ' + od.prompt + ' | ' + od.completion + ' | ' + od.total + ' |');
+        }
+        lines.push('| **合计** | **' + Object.values(ts.byOperation).reduce(function(s, od) { return s + od.calls; }, 0) + '** | **' + ts.totalPrompt + '** | **' + ts.totalCompletion + '** | **' + ts.totalTokens + '** |');
+    }
+    lines.push('');
+
+    /* —— 管线数据 —— */
     lines.push('- SmartPush injection: ' + (roundData.injectionLength || 0) + ' chars');
     if (roundData.injectionPreview) {
         lines.push('  ```');
@@ -371,6 +394,62 @@ export function createReport(testCase, roundCount, totalDurationMs, structuralRe
     });
     lines.push('');
     var allPassed = structuralResults.every(function(r) { return r.passed; }) && semanticResults.every(function(r) { return r.passed; });
+    if (tokenRounds && tokenRounds.length > 0) {
+        lines.push('');
+        lines.push('## 逐轮 NE 管线 Token 用量');
+        var allOps = {};
+        var grandTotal = 0;
+        for (var ri = 0; ri < tokenRounds.length; ri++) {
+            var tr = tokenRounds[ri];
+            if (tr && tr.byOperation) {
+                Object.keys(tr.byOperation).forEach(function(op) { allOps[op] = true; });
+            }
+        }
+        var opsList = Object.keys(allOps).sort();
+        var headerCols = ['Round', 'Calls'];
+        for (var oi = 0; oi < opsList.length; oi++) {
+            headerCols.push(opsList[oi] + '_P');
+            headerCols.push(opsList[oi] + '_C');
+        }
+        headerCols.push('Total');
+        lines.push('| ' + headerCols.join(' | ') + ' |');
+        lines.push('|' + headerCols.map(function() { return '---:'; }).join('|') + '|');
+
+        for (var ri2 = 0; ri2 < tokenRounds.length; ri2++) {
+            var trd = tokenRounds[ri2];
+            var row = [String(ri2 + 1)];
+            var callsSum = 0;
+            for (var oi2 = 0; oi2 < opsList.length; oi2++) {
+                var od = trd && trd.byOperation ? (trd.byOperation[opsList[oi2]] || { calls: 0, prompt: 0, completion: 0, total: 0 }) : { calls: 0, prompt: 0, completion: 0, total: 0 };
+                callsSum += od.calls;
+                row.push(String(od.prompt));
+                row.push(String(od.completion));
+            }
+            row.splice(1, 0, String(callsSum));
+            var roundTotal = trd ? (trd.totalTokens || 0) : 0;
+            row.push(String(roundTotal));
+            grandTotal += roundTotal;
+            lines.push('| ' + row.join(' | ') + ' |');
+        }
+        var footerRow = ['**合计**', ''];
+        for (var oi3 = 0; oi3 < opsList.length; oi3++) {
+            var opP = 0, opC = 0;
+            for (var ri3 = 0; ri3 < tokenRounds.length; ri3++) {
+                var trd2 = tokenRounds[ri3];
+                if (trd2 && trd2.byOperation && trd2.byOperation[opsList[oi3]]) {
+                    opP += trd2.byOperation[opsList[oi3]].prompt;
+                    opC += trd2.byOperation[opsList[oi3]].completion;
+                }
+            }
+            footerRow.push(String(opP));
+            footerRow.push(String(opC));
+        }
+        footerRow.push(String(grandTotal));
+        lines.push('| ' + footerRow.join(' | ') + ' |');
+        lines.push('');
+        lines.push('> 列名格式: `{operation}_P` = prompt tokens, `{operation}_C` = completion tokens, Total = prompt + completion。');
+    }
+    lines.push('');
     lines.push('## 总结');
     lines.push(allPassed ? '**通过。** 所有断言通过。' : '**未通过。** 存在失败的断言，详见上方。');
     return lines.join('\n');
