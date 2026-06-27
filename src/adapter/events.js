@@ -355,8 +355,6 @@ export async function onMessageReceived(messageIndex) {
             persistPending();
             console.log('[NE] onMessageReceived: pending=' + pendingMessages.length);
 
-            if (!isIdle()) return;
-
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
             var chatMessages = runtime.getChat ? runtime.getChat() : [];
             var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
@@ -403,6 +401,7 @@ async function flushPendingMessages() {
         }
         console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
     }
+    try {
     if (pendingMessages.length === 0) return;
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var chatMessages = runtime.getChat ? runtime.getChat() : [];
@@ -448,6 +447,7 @@ async function flushPendingMessages() {
             pendingMessages.unshift.apply(pendingMessages, batch);
             persistPending();
         }
+    }
     } finally {
         console.log('[NE] Pipeline: releasing guard pipeline (stm)');
         releasePipeline();
