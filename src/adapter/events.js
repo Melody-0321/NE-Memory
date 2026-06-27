@@ -108,7 +108,8 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
 
     var turnPressure = 0;
     if (chatMessages && pendingMessages && pendingMessages.length > 0) {
-        var cwRounds = neSettings.contextWindowRounds || 10;
+        var cwRounds = 10;
+        try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.contextWindowRounds) || 10; } } catch (e) {}
         var windowStartId = computeWindowStartMsgId(chatMessages, cwRounds);
         var outOfWindowCount = 0;
         for (var i = 0; i < pendingMessages.length; i++) {
