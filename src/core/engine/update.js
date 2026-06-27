@@ -1006,14 +1006,10 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     }).join('\n\n');
 
     var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
+    var charCard = buildCharacterCardSection(vault);
 
-    var rulesEn = '\n## Field Rules\n' +
-        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience' +
-        (neCharFallback ? ', affection, current_mood, inner_thoughts' : '') +
-        '.\n' +
-        (neCharFallback
-            ? '- Main LLM did NOT output character emotion blocks this round. You MUST fill: affection (0-100 number), current_mood, inner_thoughts — infer from dialogue context.\n'
-            : '- Do NOT manage: affection, current_mood, inner_thoughts (handled by main LLM).\n') +
+    var rulesStaticEn = '\n## Field Rules\n' +
+        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience, affection, current_mood, inner_thoughts.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Use the field key shown in parentheses in the table above (e.g. gender_age) as the JSON path.\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
@@ -1024,13 +1020,8 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- When a faction is first mentioned or interacts with the player, update its attitude and notes.\n' +
         '\n';
 
-    var rulesZh = '\n## 字段规则\n' +
-        '- 你管理: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience' +
-        (neCharFallback ? ', affection, current_mood, inner_thoughts' : '') +
-        '。\n' +
-        (neCharFallback
-            ? '- 主 LLM 本轮未输出角色情感数据。你必须填充活跃 NPC 的: affection（0-100数值）、current_mood、inner_thoughts — 从对话上下文推断。\n'
-            : '- 不要管理: affection, current_mood, inner_thoughts（主 LLM 负责）。\n') +
+    var rulesStaticZh = '\n## 字段规则\n' +
+        '- 你管理: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience, affection, current_mood, inner_thoughts。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- JSON 路径使用上方表格括号内的字段名（如 gender_age）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
@@ -1040,6 +1031,13 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 你也管理 factions（势力）：name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], notes。\n' +
         '- 势力首次被提及或与 PC 互动时，更新其 attitude 和 notes。\n' +
         '\n';
+
+    var fallbackNote = '';
+    if (neCharFallback) {
+        fallbackNote = lang === 'en'
+            ? '\n## Emotion Fallback\nMain LLM did NOT output character emotion blocks this round. You MUST fill: affection (0-100 number), current_mood, inner_thoughts — infer from dialogue context.\n'
+            : '\n## 情感回退\n主 LLM 本轮未输出角色情感数据。你必须填充活跃 NPC 的: affection（0-100数值）、current_mood、inner_thoughts — 从对话上下文推断。\n';
+    }
 
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';
     console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
@@ -1075,9 +1073,11 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             }
         }
         return {
-            system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesEn + newCharHintEn,
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill static fields from sources above; infer current-snapshot fields from dialogue + scene context.' +
-                (neCharFallback ? ' Main LLM missed emotion data — also infer affection/current_mood/inner_thoughts for active NPCs.' : '')
+            system: [
+                (charCard || '') + rulesStaticEn,
+                stateTable + worldBook + fallbackNote + newCharHintEn
+            ],
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill static fields from sources above; infer current-snapshot fields from dialogue + scene context.'
         };
     }
     var newCharHintZh = '';
@@ -1107,9 +1107,11 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         }
     }
     return {
-        system: stateTable + buildCharacterCardSection(vault) + worldBook + rulesZh + newCharHintZh,
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。静态字段从上方来源填充；当前快照字段从对话 + 场景上下文推断。' +
-            (neCharFallback ? ' 主LLM本轮未输出情感数据，请同时为活跃NPC推断 affection/current_mood/inner_thoughts。' : '')
+        system: [
+            (charCard || '') + rulesStaticZh,
+            stateTable + worldBook + fallbackNote + newCharHintZh
+        ],
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。静态字段从上方来源填充；当前快照字段从对话 + 场景上下文推断。'
     };
 }
 
@@ -1636,10 +1638,13 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     var stateResponse;
     try {
-        stateResponse = await callMemoryPipeline([
-            { role: 'system', content: statePrompt.system },
-            { role: 'user', content: statePrompt.user }
-        ], { operation: 'state_extract' }, chatId);
+        var sysMsgs = statePrompt.system.map(function(s) {
+            return { role: 'system', content: s };
+        });
+        stateResponse = await callMemoryPipeline(
+            sysMsgs.concat([{ role: 'user', content: statePrompt.user }]),
+            { operation: 'state_extract' }, chatId
+        );
     } catch (e) {
         console.warn('[NE] Per-round state extraction failed:', e);
         return { vault, changed: false };
