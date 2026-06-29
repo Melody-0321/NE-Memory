@@ -23,7 +23,6 @@ structural:
   - { op: not_contains, target: pipeline_changes, value: "error" }
   - { op: exists, target: state_block_instruction }
   - { op: min_length, target: state_block_instruction, value: 20 }
-  - { op: exists, target: context_memory }
 semantic:
   - "SmartPush 注入是否以实体链分块格式呈现（## 实体记忆链 → ### 实体名 (N events) → 条目列表 + KB 标注）？"
   - "注入是否包含 ## 记忆使用指南 段？"
@@ -33,7 +32,7 @@ semantic:
   - "ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？"
   - "trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？"
   - "trace 中是否出现过 pipeline LLM 调用 fallback？如有，是否仍正常工作？"
-  - "context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？"
+  - "context_memory（滑动窗口上下文摘要）是否已移除？在 Plan B 重构中 formatContextMemory / ne_context_memory 注入已被删除，SmartPush 实体链分块已覆盖其功能。"
 minRounds: 4
 maxRounds: 8
 expectedRounds: "5-7"
@@ -60,7 +59,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 
 ## 断言
 
-### 结构性断言（16 条）
+### 结构性断言（15 条）
 | 断言 | 含义 |
 |------|------|
 | `exists: smartpush_injection` | SmartPush 触发成功 |
@@ -78,7 +77,6 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `not_contains: pipeline_changes error` | State 无报错 |
 | `exists: state_block_instruction` | 注入指令存在 |
 | `min_length: state_block_instruction >= 20` | 指令非空 |
-| `exists: context_memory` | 滑动窗口上下文已注入 |
 
 ### 语义性断言
 1. SmartPush 注入是否以实体链分块格式呈现（实体链块 + KB 标注 + 使用指南）？
@@ -88,7 +86,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 5. 注入指令是否非空且格式正确？
 6. pipeline LLM response 是否有效 JSON、无 parse error？
 7. fallback 路径是否正常？
-8. context_memory 是否非空、自然语言？
+8. 对话轮数截断是否按预期生效（可通过 `__ne_debug.dumpVault()` 检查 vault 中的消息覆盖范围）？
 
 ## 运行参数
 - minRounds: 4
