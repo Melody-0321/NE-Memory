@@ -3,11 +3,14 @@ import { t_narrative, t_field } from '../core/i18n.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
+import { read } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
   closeVaultOverlay, sortLtmByMsgOrder } from './panel-shared.js';
 import { renderVaultPanel } from './panel-init.js';
 import { updateVaultViewerPopout } from './panel-content.js';
+import { renderSettingsTab } from './panel-settings.js';
+import { renderEntitiesTab } from './panel-entities.js';
 
 export function createVaultPopout(getChatId) {
     var overlay = byId('ne_vault_bottom_overlay');

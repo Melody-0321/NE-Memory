@@ -1,15 +1,17 @@
-import { read, write, isStorageBlocked, collectAllMsgIds } from '../core/vault/store.js';
+import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
 import { loadVault } from '../core/auto-restore.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
+import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
-  renderMemoryTable, enterCardEditMode } from './panel-state-cards.js';
+  renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
+import { renderEntitySummaryBar } from './panel-entities.js';
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;

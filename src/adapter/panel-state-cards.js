@@ -136,7 +136,7 @@ function renderCharacterGroup(label, names, characters, schema, state) {
     return html;
 }
 
-function getCharacterSchemaForPanel(content) {
+export function getCharacterSchemaForPanel(content) {
     return content.character_schema || DEFAULT_CHARACTER_SCHEMA;
 }
 

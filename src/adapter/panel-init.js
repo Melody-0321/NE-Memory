@@ -5,8 +5,6 @@ import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collecto
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
-import { isStateSchemaEnabled } from '../core/vault/schema.js';
-import { computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   injectPinCSS, injectBottomDrawerCSS, setVaultActivity, freezeIframeHeight,
@@ -24,7 +22,7 @@ import { updateVaultViewerPopout } from './panel-content.js';
 import { initTestRunner } from './panel-tools.js';
 import { renderUsageTab } from './panel-usage.js';
 import { renderSettingsTab } from './panel-settings.js';
-import { renderEntitiesTab, renderEntitySummaryBar, collectAllEntityNames } from './panel-entities.js';
+import { renderEntitiesTab } from './panel-entities.js';
 
 export async function renderVaultPanel(getChatId) {
     try {

@@ -7,7 +7,7 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage,
   isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
   testEmbeddingApiConnection } from '../core/engine/embedding.js';
-import { setAuto, isAuto } from '../core/params.js';
+import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t } from './panel-shared.js';
 
 export function renderSettingsTab() {
