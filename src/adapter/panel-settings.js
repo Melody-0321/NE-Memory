@@ -7,9 +7,8 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage,
   isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
   testEmbeddingApiConnection } from '../core/engine/embedding.js';
-import { setAuto } from '../core/params.js';
+import { setAuto, isAuto } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t } from './panel-shared.js';
-import { createVaultPopout } from './panel-popout.js';
 
 export function renderSettingsTab() {
     var container = byId('ne_common_settings');

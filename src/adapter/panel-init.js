@@ -6,7 +6,7 @@ import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
-import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
+import { computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   injectPinCSS, injectBottomDrawerCSS, setVaultActivity, freezeIframeHeight,
@@ -20,7 +20,6 @@ import { _currentChatIdForCollapse, _currentCollapseState,
   renderQuickIndex, setCurrentChatIdForCollapse } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   enterCardEditMode } from './panel-state-cards.js';
-import { createVaultPopout } from './panel-popout.js';
 import { updateVaultViewerPopout } from './panel-content.js';
 import { initTestRunner } from './panel-tools.js';
 import { renderUsageTab } from './panel-usage.js';
