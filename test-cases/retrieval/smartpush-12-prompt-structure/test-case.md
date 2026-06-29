@@ -2,7 +2,7 @@
 name: smartpush-12
 folder: retrieval/smartpush-12-prompt-structure
 title: SmartPush Memory LLM 系统提示词结构
-objective: 验证 Memory LLM 收到的 system prompt 遵循 7 层认知结构，不含原文泄漏、msg_id 为有效数字、候选条目带 msgs 标签、access() 限制已告知
+objective: 验证 Memory LLM 收到的 system prompt 遵循三层认知结构（角色→需要做→空输出→严格禁止），候选按实体链分组展示、含 KB 标注指引、access() 限制已告知、无原文泄漏
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用
   - stmBatch >= 4
@@ -12,15 +12,17 @@ structural:
   - { op: not_contains, target: smartpush_prompt, value: "## 最近一轮对话上下文" }
   - { op: not_contains, target: smartpush_prompt, value: "[msg_undefined]" }
   - { op: contains, target: smartpush_prompt, value: "[msgs:" }
-  - { op: contains, target: smartpush_prompt, value: "最多 2 次 access" }
+  - { op: contains, target: smartpush_prompt, value: "access()" }
+  - { op: contains, target: smartpush_prompt, value: "严格禁止" }
   - { op: min_length, target: smartpush_prompt, value: 200 }
 semantic:
-  - "System prompt 中是否存在 7 层结构：身份+任务 → 规则 → 当前语境 → 可见窗口 → 候选记忆 → 工具？每一层是否出现在正确的位置顺序？"
+  - "System prompt 中是否存在三层结构：## Role/角色（身份） → ## To Do/需要做（KB 标注 + 缺口检测 + 残余缺口格式） → ## 空输出（空路径建模） → ## 严格禁止（具体禁止短语）？每一层是否出现在正确的位置顺序？"
+  - "候选记忆是否按实体链分组展示（## 实体名 + 时间排序条目列表），而非扁平 BM25 列表？"
+  - "## To Do 段是否包含 4 级认知标注指引（直接知晓/间接知晓/线索/未知）和输出格式 [实体: X] / [KB: X=Y]？"
+  - "## 严格禁止 段是否包含"她感到""他心想""由此可见""这表明"等具体禁止短语（非空泛规则）？"
   - "可见窗口段是否仅包含 [msg_N] 格式的紧凑列表（无原文）？"
-  - "候选记忆条目是否带有 [msgs: X,Y] 标签？"
   - "[msg_N] 中的 N 是否为有效数字（而非 undefined/null）？"
-  - "System prompt 中是否未出现主 LLM 的对话原文泄漏（conversationBlock 已删除）？"
-  - "规则 8「认知边界」是否引用 entities[] 和线程标签（而非 conversation context 原文）？"
+  - "System prompt 中是否未出现主 LLM 的对话原文泄漏？"
 minRounds: 4
 maxRounds: 10
 expectedRounds: "5-7"
@@ -30,14 +32,14 @@ timeoutPerRound: 120000
 # smartpush-12: Memory LLM 系统提示词结构
 
 ## 目标
-验证 SmartPush 触发时，Memory LLM 收到的 system prompt 遵循以下结构约束：
+验证 SmartPush 触发时，Memory LLM 收到的 system prompt 遵循 v2 三层认知结构：
 
-1. **7 层认知顺序** — 身份→规则→语境→可见窗口→候选→工具，自顶向下面向 LLM 认知模型
-2. **无原文泄漏** — `## 最近一轮对话上下文` 段已删除；可见窗口不含 200 chars 原文复述
-3. **msg_id 有效** — 可见窗口中 `[msg_N]` 的 N 为实际数字（非 `undefined`）
-4. **候选带 msgs 标签** — 条目含 `[msgs: X,Y]` 用于对照可见窗口
-5. **access() 限制** — 工具段明确「最多 2 次 access() 调用」
-6. **规则 8 来源正确** — 活跃角色从 `entities[]` + 线程标签识别，不引用已删除的 conversation context
+1. **三层结构顺序** — Role/角色 → 输入（实体分链候选） → To Do/需要做（KB 标注 + 缺口检测） → 空输出（建模空路径） → 严格禁止（具体禁止短语），自顶向下面向 LLM 认知模型
+2. **实体链分组** — 候选按实体分链展示（`## 实体名 (N events)`），而非扁平 BM25 列表；含原文预取 ↓ 文本、关联引用、RRF 评分
+3. **KB 标注指引** — 4 级认知等级（直接知晓/间接知晓/线索/未知）+ 输出格式 `[实体: X]` / `[KB: 角色=等级(理由)]`
+4. **缺口检测** — access() 递归最多 4 次（vector 路径）或 2 次（BM25 路径），残余缺口输出 `## 缺口`
+5. **严格禁止** — 末尾列出具体禁止短语（"她感到""他心想""由此可见""这表明"），非空泛规则
+6. **无原文泄漏** — 可见窗口不含原文复述，msg_id 有效
 
 ## 前置条件
 - NE-Memory 已初始化，SmartPush 启用
@@ -59,18 +61,20 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 |------|------|
 | `exists: smartpush_prompt` | SmartPush 触发后 system prompt 存在 |
 | `not_contains: "## 最近一轮对话上下文"` | conversationBlock 已删除——无原文泄漏 |
-| `not_contains: "[msg_undefined]"` | msg_id 全部有效——`computeVisibleWindow` 的 `_msg_id` 已注入 |
+| `not_contains: "[msg_undefined]"` | msg_id 全部有效 |
 | `contains: "[msgs:"` | 候选条目带有 msgs 标签——对照链路存在 |
-| `contains: "最多 2 次 access"` | access() 调用限制已在 prompt 中告知 |
-| `min_length: 200` | System prompt 非空且小于合理长度 |
+| `contains: "access()"` | access() 工具指引已告知 |
+| `contains: "严格禁止"` | 三层结构的关键层出现——禁止叙事短语 |
+| `min_length: 200` | System prompt 非空 |
 
 ### 语义性断言（LLM 评估 trace）
-1. System prompt 中是否存在 7 层结构？每一层是否出现在正确的位置顺序？
-2. 可见窗口段是否仅包含 `[msg_N]` 格式的紧凑列表（无原文）？
-3. 候选记忆条目是否带有 `[msgs: X,Y]` 标签？
-4. `[msg_N]` 中的 N 是否为有效数字？
-5. System prompt 中是否未出现主 LLM 的对话原文泄漏？
-6. 规则 8 是否引用 `entities[]` 和线程标签（而非 conversation context）？
+1. System prompt 中是否存在三层结构：Role→To Do（KB 标注+缺口检测）→空输出→严格禁止？每一层是否按正确顺序出现？
+2. 候选记忆是否按实体链分组展示（`## 实体名 (N events)`），而非扁平列表？
+3. To Do 段是否包含 4 级认知标注指引和 [实体: X] / [KB: X=Y] 输出格式说明？
+4. 严格禁止段是否包含具体禁止短语（"她感到""他心想""由此可见""这表明"）？
+5. 可见窗口段是否仅包含 `[msg_N]` 紧凑列表（无原文）？
+6. `[msg_N]` 中的 N 是否为有效数字？
+7. System prompt 中是否未出现主 LLM 的对话原文泄漏？
 
 ## 运行参数
 - minRounds: 4
@@ -82,21 +86,12 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 
 此测试的验证对象是 **Memory LLM 的 system prompt**（即 trace 中的 `## System Prompt` 段），而非注入主 LLM 的 `smartpush_injection` 文本。
 
-需要新增 assertion target `smartpush_prompt`：在 `assertions.js` 的 `resolveTarget` 中添加：
-
-```javascript
-case 'smartpush_prompt':
-    return collected.prompt || '';
-```
-
-在 `monitor.js` 的 `collectRoundData` 中捕获 prompt 内容：
-
-```javascript
-var prompt = globalThis.__ne_debug_last_pipeline || null;
-// 提取 system message content
-```
-
-`smartpush_injection` 已有测试（retrieval-55 / smartpush-group-b），本测试专门覆盖 prompt 结构。
+v2 重构后 prompt 从"7 层结构 + 规则 1-9 + 叙事合成"切换为"三层结构 + 实体链分组 + 标注清单"。
+核心变化：
+- LLM 不再输出叙事散文，只输出 `[实体: X]` / `[KB: X=Y]` / `## 缺口`
+- 候选不再按 BM25 排序平铺，改为按实体链分组（代码层 groupCandidatesByEntity）
+- 末尾增加 `## 严格禁止` 段，含具体禁止短语
+- access() 调用限制从固定"最多 2 次"改为"最多 4 次"（vector）/ "最多 2 次"（BM25）
 
 ## 调用方式
 

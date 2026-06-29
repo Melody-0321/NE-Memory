@@ -31,12 +31,20 @@ function getMaxUnconsolidated() {
     return 5;
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {boolean}
+ */
 export function isLtmEnabled(vault) {
     const content = vault.content || {};
     const unconsolidated = (content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; });
     return unconsolidated.length >= getMaxUnconsolidated();
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {string|null}
+ */
 export function getNextEligibleStmId(vault) {
     var content = vault.content || {};
     var unc = (content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; });
@@ -50,14 +58,20 @@ export function getNextEligibleStmId(vault) {
     return unc[0].id;
 }
 
+/**
+ * @param {import('../../types.js').LTMEntry|null} openLtm
+ * @param {Array<import('../../types.js').STMEvent>} newStmEvents
+ * @returns {import('../../types.js').ClosureSignals|null}
+ */
 export function computeClosureSignals(openLtm, newStmEvents) {
     if (!openLtm) return null;
 
-    var openEntities = (openLtm.entities || []).map(function(e) { return e.name; });
+    var openEntities = (openLtm.entities || []).map(function(e) { return typeof e === 'string' ? e : e.name; });
     var newEntityNames = [];
     (newStmEvents || []).forEach(function(ev) {
         (ev.entities || []).forEach(function(e) {
-            if (newEntityNames.indexOf(e.name) === -1) newEntityNames.push(e.name);
+            var n = typeof e === 'string' ? e : e.name;
+            if (newEntityNames.indexOf(n) === -1) newEntityNames.push(n);
         });
     });
 
@@ -114,6 +128,10 @@ export function computeClosureSignals(openLtm, newStmEvents) {
     return { timeGap, sceneChange, entityOverlap, entityDetail, signalSummary, openScene, newScene };
 }
 
+/**
+ * @param {Array<import('../../types.js').LTMEntry>} ltmEntries
+ * @returns {string}
+ */
 export function formatLtmCatalog(ltmEntries) {
     var closedLtms = (ltmEntries || []).filter(function(e) { return e.status !== 'open'; });
     var recent = closedLtms.slice(-5);
@@ -123,6 +141,10 @@ export function formatLtmCatalog(ltmEntries) {
     }).join('\n');
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {{total: number, open: number, closed: number, openStmRefs: number, openTitle: string}}
+ */
 export function getLtmSummary(vault) {
     var content = vault.content || {};
     var ltms = content.ltm_entries || [];
@@ -137,6 +159,10 @@ export function getLtmSummary(vault) {
     };
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {import('../../types.js').LTMEntry|null}
+ */
 export function findOpenLtm(vault) {
     var content = vault.content || {};
     var openLtms = (content.ltm_entries || []).filter(function(e) { return e.status === 'open'; });
@@ -148,6 +174,12 @@ export function findOpenLtm(vault) {
     return openLtms.length === 1 ? openLtms[0] : null;
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @param {import('../../types.js').LTMDecision} ltmDecision
+ * @param {string[]} consumedStmIds
+ * @returns {void}
+ */
 export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     if (!ltmDecision) return;
 
@@ -202,14 +234,18 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
         sourceSTM.forEach(function(s) { if (s.timestamp && s.timestamp > maxTs) maxTs = s.timestamp; });
         openLtm.timestamp = maxTs || Date.now();
 
-        var ltmEntities = sourceSTM.reduce(function(acc, s) {
+        var ltmEntities = [];
+        var seen = {};
+        (openLtm.entities || []).forEach(function(e) {
+            var n = typeof e === 'string' ? e : e.name;
+            if (!seen[n]) { ltmEntities.push(n); seen[n] = true; }
+        });
+        sourceSTM.forEach(function(s) {
             (s.entities || []).forEach(function(e) {
-                if (!acc.find(function(a) { return a.name === e.name; })) {
-                    acc.push({ name: e.name, type: e.type || 'character' });
-                }
+                var n = typeof e === 'string' ? e : e.name;
+                if (!seen[n]) { ltmEntities.push(n); seen[n] = true; }
             });
-            return acc;
-        }, (openLtm.entities || []));
+        });
         openLtm.entities = ltmEntities;
 
         consumedStmIds.forEach(function(stmId) {
@@ -237,6 +273,11 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     globalThis.__ne_debug_last_ltm_state = getLtmSummary(vault);
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @param {Function} callMemoryPipeline
+ * @returns {Promise<{consumed: number}>}
+ */
 export async function runLtmRebatch(vault, callMemoryPipeline) {
     var content = vault.content || {};
     var orphans = (content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
@@ -299,9 +340,8 @@ export async function runLtmRebatch(vault, callMemoryPipeline) {
         var entities = [];
         sourceStm.forEach(function(s) {
             (s.entities || []).forEach(function(e) {
-                if (!entities.find(function(a) { return a.name === e.name; })) {
-                    entities.push({ name: e.name, type: e.type || 'character' });
-                }
+                var n = typeof e === 'string' ? e : e.name;
+                if (entities.indexOf(n) === -1) entities.push(n);
             });
         });
         ltm.entities = entities;
@@ -314,6 +354,11 @@ export async function runLtmRebatch(vault, callMemoryPipeline) {
     return { consumed: consumed };
 }
 
+/**
+ * @param {Array<import('../../types.js').STMEvent>} stms
+ * @param {number} tolerance
+ * @returns {Array<Array<import('../../types.js').STMEvent>>}
+ */
 export function splitStmsIntoContiguousGroups(stms, tolerance) {
     if (!stms || stms.length === 0) return [];
     tolerance = tolerance || 3;

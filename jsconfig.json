@@ -3,7 +3,7 @@
     "target": "ES2020",
     "module": "ESNext",
     "moduleResolution": "bundler",
-    "checkJs": false,
+    "checkJs": true,
     "strict": false,
     "allowJs": true,
     "noEmit": true,

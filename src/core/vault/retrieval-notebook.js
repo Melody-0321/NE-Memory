@@ -114,42 +114,6 @@ RetrievalNotebook.prototype.addChain = function(entityName, chainEntries) {
     this.version++;
 };
 
-RetrievalNotebook.prototype.addDispersedThread = function(label, stmIds) {
-    var self = this;
-    var threadId = 'dispersed:' + label;
-    var sortedIds = stmIds.slice();
-    var validIds = [];
-
-    sortedIds.forEach(function(id) {
-        var entry = self.map.get(id);
-        if (!entry) return;
-        validIds.push(id);
-        var hasThread = false;
-        for (var i = 0; i < entry.threads.length; i++) {
-            if (entry.threads[i].threadId === threadId) {
-                hasThread = true;
-                break;
-            }
-        }
-        if (!hasThread) {
-            entry.threads.push({ threadId: threadId, position: validIds.length, total: sortedIds.length });
-        }
-    });
-
-    if (validIds.length === 0) return;
-
-    this.threadIndex[threadId] = {
-        type: 'dispersed',
-        label: label,
-        stmIds: validIds,
-        dagLayer: 1,
-        parentThreadId: null,
-        id: null,
-        persisted: false
-    };
-    this.version++;
-};
-
 RetrievalNotebook.prototype.expand = function(stmId) {
     var entry = this.map.get(stmId);
     if (entry) {
@@ -160,17 +124,17 @@ RetrievalNotebook.prototype.expand = function(stmId) {
 
 // ─── 读取 ───
 
-RetrievalNotebook.prototype.describe = function() {
+RetrievalNotebook.prototype.describe = function(useVector) {
     var self = this;
     var threadKeys = Object.keys(this.threadIndex);
     var parts = [];
     var totalEntries = 0;
-    var bm25HitCount = 0;
+    var scoredCount = 0;
     var ltmDirCount = 0;
 
     this.map.forEach(function(entry) {
         totalEntries++;
-        if (entry.bm25Score > 0) bm25HitCount++;
+        if (entry.bm25Score > 0) scoredCount++;
         if (entry.type === 'ltm' && entry.sources && entry.sources.indexOf('ltm_dir') !== -1) ltmDirCount++;
     });
 
@@ -178,17 +142,17 @@ RetrievalNotebook.prototype.describe = function() {
         var t = self.threadIndex[tid];
         var stmCount = t.stmIds ? t.stmIds.length : 0;
         if (stmCount === 0) return;
-        var bm25InThread = 0;
+        var scoredInThread = 0;
         t.stmIds.forEach(function(id) {
             var e = self.map.get(id);
-            if (e && e.bm25Score > 0) bm25InThread++;
+            if (e && e.bm25Score > 0) scoredInThread++;
         });
-        var extra = bm25InThread > 0 ? ' [其中' + bm25InThread + '条BM25命中]' : '';
+        var extra = scoredInThread > 0 ? ' [其中' + scoredInThread + '条' + (useVector ? '检索命中' : 'BM25命中') + ']' : '';
         parts.push(t.label + ' ' + stmCount + '条' + extra);
     });
 
     var summary = threadKeys.length + ' 线程: ' + parts.join(', ');
-    summary += '\n共 ' + totalEntries + ' 条, 含 ' + bm25HitCount + ' 条 BM25 命中, ' + ltmDirCount + ' 条 LTM 目录';
+    summary += '\n共 ' + totalEntries + ' 条, 含 ' + scoredCount + ' 条 ' + (useVector ? '检索命中' : 'BM25 命中') + ', ' + ltmDirCount + ' 条 LTM 目录';
 
     this._snapshot = {
         entryIds: Array.from(this.map.keys()),
@@ -260,20 +224,29 @@ RetrievalNotebook.prototype.getThread = function(threadId) {
     return this.threadIndex[threadId] || null;
 };
 
-RetrievalNotebook.prototype.toPromptEntries = function() {
+RetrievalNotebook.prototype.toPromptEntries = function(useRRFOrdering) {
     var entries = [];
     this.map.forEach(function(entry, id) {
         entries.push(entry);
     });
 
-    // 排序: bm25 命中优先（降序），然后按第一条线程的 position
-    entries.sort(function(a, b) {
-        if (a.bm25Score > 0 && b.bm25Score === 0) return -1;
-        if (a.bm25Score === 0 && b.bm25Score > 0) return 1;
-        var aPos = a.threads.length > 0 ? a.threads[0].position : 9999;
-        var bPos = b.threads.length > 0 ? b.threads[0].position : 9999;
-        return aPos - bPos;
-    });
+    if (useRRFOrdering) {
+        entries.sort(function(a, b) {
+            var diff = (b.bm25Score || 0) - (a.bm25Score || 0);
+            if (diff !== 0) return diff;
+            var aPos = a.threads.length > 0 ? a.threads[0].position : 9999;
+            var bPos = b.threads.length > 0 ? b.threads[0].position : 9999;
+            return aPos - bPos;
+        });
+    } else {
+        entries.sort(function(a, b) {
+            if (a.bm25Score > 0 && b.bm25Score === 0) return -1;
+            if (a.bm25Score === 0 && b.bm25Score > 0) return 1;
+            var aPos = a.threads.length > 0 ? a.threads[0].position : 9999;
+            var bPos = b.threads.length > 0 ? b.threads[0].position : 9999;
+            return aPos - bPos;
+        });
+    }
 
     return entries;
 };

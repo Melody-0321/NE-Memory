@@ -20,12 +20,12 @@ export async function lookupEntityChains(content, entityNames) {
         var name = entityNames[ni];
         var chainEntries = [];
         allSTM.forEach(function(e) {
-            if (e.entities && e.entities.some(function(en) { return en.name === name; })) {
+            if (e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
                 chainEntries.push(e);
             }
         });
         allLTM.forEach(function(e) {
-            if (e.entities && e.entities.some(function(en) { return en.name === name; })) {
+            if (e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
                 chainEntries.push(e);
             }
         });
@@ -89,7 +89,8 @@ export function extractEntityNames(query, content) {
     allSTM.forEach(function(e) {
         if (e.entities) {
             e.entities.forEach(function(en) {
-                if (en.name && knownNames.indexOf(en.name) === -1) knownNames.push(en.name);
+                var n = typeof en === 'string' ? en : en.name;
+                if (n && knownNames.indexOf(n) === -1) knownNames.push(n);
             });
         }
     });
@@ -103,69 +104,6 @@ export function extractEntityNames(query, content) {
     // Limit to 5 most relevant (longest names first — more specific)
     matched.sort(function(a, b) { return b.length - a.length; });
     return matched.slice(0, 5);
-}
-
-// ─── Query classification ───
-
-export function classifyQuery(query, state, content) {
-    if (!query || typeof query !== 'string') return { type: 'open' };
-
-    var q = query.toLowerCase().trim();
-    var entities = [];
-    var stateChars = (state && state.characters) ? state.characters : {};
-    var stateFactions = (state && state.factions) ? state.factions : {};
-
-    // Collect entity names from state
-    var allNames = Object.keys(stateChars).concat(Object.keys(stateFactions));
-    // Add entities from STM annotations
-    var allSTM = sortStmByMsgOrder((content && content.unconsolidated_stm || []).concat(content && content.stm_entries || []));
-    for (var i = 0; i < allSTM.length; i++) {
-        var ents = allSTM[i].entities;
-        if (ents && Array.isArray(ents)) {
-            for (var j = 0; j < ents.length; j++) {
-                if (ents[j].name) allNames.push(ents[j].name);
-            }
-        }
-    }
-
-    // Deduplicate and find matching entities
-    var seen = {};
-    var matched = [];
-    for (var i = 0; i < allNames.length; i++) {
-        var name = allNames[i];
-        var key = name.toLowerCase();
-        if (seen[key]) continue;
-        seen[key] = true;
-        if (q.indexOf(key) !== -1 && key.length >= 1) {
-            matched.push(name);
-        }
-    }
-    matched.sort(function(a, b) { return b.length - a.length; });
-
-    // Entity query: query contains specific entity name + follow-up pattern
-    if (matched.length >= 1) {
-        var isFollowUp = /在哪|怎么样|后来|之后|现在|呢|吗|怎么|认识|还有|记得/.test(query);
-        var isShortEntity = matched.length === 1 && q.length < 20;
-        if (isFollowUp || isShortEntity) {
-            return { type: 'entity', entities: matched.slice(0, 3) };
-        }
-    }
-
-    // Scene query: query contains current scene name
-    var story_scene = content.story_scene || '';
-    if (story_scene) {
-        var sceneKey = story_scene.toLowerCase().substring(0, 4);
-        if (q.indexOf(sceneKey) !== -1) {
-            return { type: 'scene', scene: story_scene };
-        }
-    }
-
-    // Temporal query: query contains time words
-    if (/昨天|今天|刚才|刚刚|之前|上次|那天|那时候|几点|什么时候|何时|几时|hour|day|week|month|yesterday|today|last time|before|earlier/.test(q)) {
-        return { type: 'temporal' };
-    }
-
-    return { type: 'open' };
 }
 
 // ─── Helper: derive thread time range ───
@@ -229,7 +167,7 @@ function discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM) {
         for (var i = 0; i < allEntries.length; i++) {
             var entities = allEntries[i].entities;
             if (entities && Array.isArray(entities)) {
-                if (entities.some(function(en) { return en.name === name; })) total++;
+                if (entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) total++;
             }
         }
         result.push({ name: name, count: total });
@@ -239,6 +177,119 @@ function discoverAvailableChains(map, state, prefetchedNames, allSTM, allLTM) {
 }
 
 // ─── Pipeline merge (v2) ───
+
+// ─── Entity-grouped candidate formatting ───
+
+export function groupCandidatesByEntity(map, threadIndex) {
+    var groups = {};
+    var unassignedEntries = [];
+    var allEntries = [];
+    map.forEach(function(e) { allEntries.push(e); });
+
+    allEntries.forEach(function(e) {
+        var entityNames = [];
+        if (e.entry.entities && Array.isArray(e.entry.entities)) {
+            e.entry.entities.forEach(function(en) {
+                var n = typeof en === 'string' ? en : en.name;
+                if (n) entityNames.push(n);
+            });
+        }
+        Object.keys(threadIndex).forEach(function(tid) {
+            if (tid.indexOf('chain:') === 0) {
+                var name = tid.substring(6);
+                var stmIds = threadIndex[tid].stmIds || [];
+                if (stmIds.indexOf(e.entry.id) !== -1 && entityNames.indexOf(name) === -1) {
+                    entityNames.push(name);
+                }
+            }
+        });
+
+        if (entityNames.length === 0) {
+            unassignedEntries.push(e);
+            return;
+        }
+
+        var primaryName = entityNames[0];
+        if (!groups[primaryName]) groups[primaryName] = { entries: [], refs: [], name: primaryName };
+
+        groups[primaryName].entries.push(e);
+
+        for (var ci = 1; ci < entityNames.length; ci++) {
+            var refName = entityNames[ci];
+            if (!groups[refName]) groups[refName] = { entries: [], refs: [], name: refName };
+            groups[refName].refs.push({ entryId: e.entry.id, primaryName: primaryName });
+        }
+    });
+
+    Object.keys(groups).forEach(function(name) {
+        groups[name].entries.sort(function(a, b) {
+            var pa = a.entry.period || '';
+            var pb = b.entry.period || '';
+            return pa.localeCompare(pb);
+        });
+    });
+
+    unassignedEntries = unassignedEntries.filter(function(e) {
+        return e.bm25Score > 0.1;
+    });
+
+    return { groups: groups, unassigned: unassignedEntries };
+}
+
+export function formatEntityGroupedText(groupedResult) {
+    var lines = [];
+
+    Object.keys(groupedResult.groups).forEach(function(name) {
+        var group = groupedResult.groups[name];
+        var refCount = group.refs ? group.refs.length : 0;
+        var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
+        lines.push('## ' + name + ' (' + group.entries.length + ' events in chain' + refPart + ')');
+
+        group.entries.forEach(function(e, idx) {
+            var timePart = e.entry.period || '';
+            var scene = e.entry.scene || '';
+            var event = e.entry.event || e.entry.summary || '';
+            var score = e.bm25Score > 0 ? ' [RRF:' + e.bm25Score.toFixed(3) + ']' : '';
+            var msgIds = e.entry.msg_ids;
+            var msgs = (msgIds && msgIds.length > 0) ? ' [msgs:' + msgIds.join(',') + ']' : '';
+            var idRef = e.entry.id ? ' [' + e.entry.id + ']' : '';
+            lines.push((idx + 1) + '. [' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score + msgs + idRef);
+
+            if (e._originalText) {
+                lines.push('   ↓ ' + e._originalText.replace(/\n/g, '\n   '));
+            }
+        });
+
+        if (group.refs && group.refs.length > 0) {
+            lines.push('');
+            lines.push('### 关联条目');
+            var refMap = {};
+            group.refs.forEach(function(r) {
+                if (!refMap[r.primaryName]) refMap[r.primaryName] = [];
+                refMap[r.primaryName].push(r.entryId);
+            });
+            Object.keys(refMap).forEach(function(primary) {
+                lines.push('- See 「' + primary + '」: ' + refMap[primary].join(', '));
+            });
+        }
+
+        lines.push('');
+    });
+
+    if (groupedResult.unassigned.length > 0) {
+        lines.push('## 未标注条目 (' + groupedResult.unassigned.length + ' entries)');
+        groupedResult.unassigned.forEach(function(e, idx) {
+            var timePart = e.entry.period || '';
+            var scene = e.entry.scene || '';
+            var event = e.entry.event || e.entry.summary || '';
+            var score = e.bm25Score > 0 ? ' [RRF:' + e.bm25Score.toFixed(3) + ']' : '';
+            lines.push((idx + 1) + '. [' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score);
+        });
+        lines.push('');
+    }
+
+    return lines.join('\n');
+}
 
 /**
  * Merge BM25 results, entity chains, and LTM groups into a unified Map + ThreadIndex.
@@ -306,10 +357,17 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
                     existing.sources.push('chain:' + entityName);
                 }
             } else {
+                var chainScore = 0;
+                for (var ci = 0; ci < bm25Results.length; ci++) {
+                    if ((bm25Results[ci].__id || bm25Results[ci].id) === id) {
+                        chainScore = bm25Results[ci].__score || 0;
+                        break;
+                    }
+                }
                 map.set(id, {
                     entry: e,
                     type: 'stm',
-                    bm25Score: 0,
+                    bm25Score: chainScore,
                     threads: [{ threadId: threadId, position: idx + 1, total: entries.length }],
                     sources: ['chain:' + entityName],
                     _expanded: false,
@@ -399,10 +457,17 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
                                 existing.sources.push('chain:' + entityName);
                             }
                         } else {
+                            var shortChainScore = 0;
+                            for (var sci = 0; sci < bm25Results.length; sci++) {
+                                if ((bm25Results[sci].__id || bm25Results[sci].id) === id) {
+                                    shortChainScore = bm25Results[sci].__score || 0;
+                                    break;
+                                }
+                            }
                             map.set(id, {
                                 entry: e,
                                 type: 'stm',
-                                bm25Score: 0,
+                                bm25Score: shortChainScore,
                                 threads: [{ threadId: threadId, position: idx + 1, total: entries.length }],
                                 sources: ['chain:' + entityName],
                                 _expanded: false,
@@ -437,6 +502,9 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
     isSummaryMode = isSummaryMode || false;
     var conversationContext = extraOptions && extraOptions.conversationContext;
     var visibleWindow = extraOptions && extraOptions.visibleWindow;
+    var useVectorScore = extraOptions && extraOptions.useVectorScore;
+    var entityGrouped = extraOptions && extraOptions.entityGrouped;
+    var bannerMetadata = extraOptions && extraOptions.bannerMetadata || '';
     var content = vault.content || {};
     var lang = (content.language === 'en') ? 'en' : 'zh';
     var state = content.state || {};
@@ -445,40 +513,36 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
     if (content.story_date) timeParts.push(content.story_date);
     var currentTime = timeParts.join(' ─ ');
 
-    var entries = notebook.toPromptEntries();
-    var bm25Entries = entries.filter(function(e) { return e.bm25Score > 0; });
+    var entries = notebook.toPromptEntries(useVectorScore);
     var dirEntries = entries.filter(function(e) { return e.type === 'ltm' && e.sources && e.sources.indexOf('ltm_dir') !== -1; });
 
-    // Build candidates text with thread context
-    var candidatesText = entries.filter(function(e) { return !(e.type === 'ltm' && e.sources && e.sources.indexOf('ltm_dir') !== -1); }).map(function(e, i) {
-        var event = e.entry.event || e.entry.summary || '';
-        var timePart = (e.entry.time_range || e.entry.period || '');
-        if (e.entry.time_label) timePart = timePart + '·' + e.entry.time_label;
-        var idRef = e.entry.id || '';
-
-        // Build thread annotation
-        var threadTags = [];
-        e.threads.forEach(function(t) {
-            var prefix = '';
-            if (t.threadId.indexOf('chain:') === 0) prefix = 'L:' + t.threadId.substring(6);
-            else if (t.threadId.indexOf('ltm:') === 0) prefix = 'G:' + t.threadId.substring(4);
-            else if (t.threadId.indexOf('dispersed:') === 0) prefix = 'D:' + t.threadId.substring(10);
-            threadTags.push(prefix + '#' + t.position + '/' + t.total);
-        });
-        var threadAnno = threadTags.length > 0 ? ' {' + threadTags.join(', ') + '}' : '';
-
-        // BM25 score
-        var scoreAnno = e.bm25Score > 0 ? ' [BM25:' + e.bm25Score.toFixed(2) + ']' : '';
-
-        var msgIds = e.entry.msg_ids;
-        var msgsTag = (msgIds && msgIds.length > 0) ? ' [msgs: ' + msgIds.join(',') + ']' : '';
-
-        var line = (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + msgsTag + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
-        if (e._originalText) {
-            line += '\n   ↓ ' + e._originalText.replace(/\n/g, '\n   ');
-        }
-        return line;
-    }).join('\n');
+    var candidatesBlock;
+    if (entityGrouped) {
+        candidatesBlock = formatEntityGroupedText(entityGrouped);
+    } else {
+        candidatesBlock = entries.filter(function(e) { return !(e.type === 'ltm' && e.sources && e.sources.indexOf('ltm_dir') !== -1); }).map(function(e, i) {
+            var event = e.entry.event || e.entry.summary || '';
+            var timePart = (e.entry.time_range || e.entry.period || '');
+            if (e.entry.time_label) timePart = timePart + '·' + e.entry.time_label;
+            var idRef = e.entry.id || '';
+            var threadTags = [];
+            e.threads.forEach(function(t) {
+                var prefix = '';
+                if (t.threadId.indexOf('chain:') === 0) prefix = 'L:' + t.threadId.substring(6);
+                else if (t.threadId.indexOf('ltm:') === 0) prefix = 'G:' + t.threadId.substring(4);
+                threadTags.push(prefix + '#' + t.position + '/' + t.total);
+            });
+            var threadAnno = threadTags.length > 0 ? ' {' + threadTags.join(', ') + '}' : '';
+            var scoreAnno = e.bm25Score > 0 ? ' [RRF:' + e.bm25Score.toFixed(3) + ']' : '';
+            var msgIds = e.entry.msg_ids;
+            var msgsTag = (msgIds && msgIds.length > 0) ? ' [msgs:' + msgIds.join(',') + ']' : '';
+            var line = (i + 1) + '. [' + timePart + '] ' + (e.entry.scene || '') + ': ' + event + scoreAnno + msgsTag + threadAnno + (idRef ? ' [id:' + idRef + ']' : '');
+            if (e._originalText) {
+                line += '\n   ↓ ' + e._originalText.replace(/\n/g, '\n   ');
+            }
+            return line;
+        }).join('\n');
+    }
 
     var dirBlock = '';
     if (dirEntries.length > 0) {
@@ -491,7 +555,7 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
     }
 
     // Notebook overview
-    var overview = notebook.describe();
+    var overview = notebook.describe(useVectorScore);
 
     // Available chains hint
     var availableChains = notebook._availableChains || [];
@@ -548,90 +612,140 @@ export function buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMo
 
     var toolGuidanceEn = '## Context Overview\n' + overview + '\n\n' +
         '## Thread Notation\n' +
-        'Each candidate is annotated with thread tags: {L:entityName#pos/total} = entity chain position, {G:ltm_id#pos/total} = LTM group position, {D:label#pos/total} = dispersed narrative thread.\n' +
-        '[BM25:X.XX] = relevance score. Higher = more relevant to the query.\n\n' +
+        'Each candidate is annotated with thread tags: {L:entityName#pos/total} = entity chain position. {G:ltm_id#pos/total} = LTM group position.\n' +
+        (useVectorScore
+            ? '[RRF:X.XXX] = fused BM25+vector relevance score. Higher = more relevant.\n\n'
+            : '[BM25:X.XX] = relevance score. Higher = more relevant to the query.\n\n') +
         '## Reference Tools (fallback use)\n' +
         'The following tools are available for verification when needed:\n' +
         '- access(msg_id): view original chat message (only when prefetched ↓ text is missing or incomplete)\n' +
-        '- access(chain.X): get full timeline of entity X\n' +
-        '- note_thread(label, stm_ids): register a cross-entity narrative thread if you identify events spanning multiple entities and time gaps that share an underlying narrative line\n\n' +
-        'You may call access() at most 2 times — prioritize entries with highest BM25 scores whose ↓ prefetched text is missing.\n\n';
+        '- access(chain.X): get full timeline of entity X\n\n' +
+        (useVectorScore
+            ? 'You may call access() at most 2 times — prioritize entries with highest relevance scores whose ↓ prefetched text is missing.\n\n'
+            : 'You may call access() at most 2 times — prioritize entries with highest BM25 scores whose ↓ prefetched text is missing.\n\n');
 
     var toolGuidanceZh = '## 上下文总览\n' + overview + '\n\n' +
         '## 线程标注\n' +
-        '每条候选带有线程标签：{L:实体名#位置/总数} = 实体链位置, {G:ltm_id#位置/总数} = LTM 分组位置, {D:标签#位置/总数} = 散列叙事线。\n' +
-        '[BM25:X.XX] = 相关性评分。越高越相关。\n\n' +
+        '每条候选带有线程标签：{L:实体名#位置/总数} = 实体链位置, {G:ltm_id#位置/总数} = LTM 分组位置。\n' +
+        (useVectorScore
+            ? '[RRF:X.XXX] = BM25+向量融合评分。越高越相关。\n\n'
+            : '[BM25:X.XX] = 相关性评分。越高越相关。\n\n') +
         '## 参考工具（保底使用）\n' +
         '以下工具在你需要精确验证时可用：\n' +
         '- access(msg_id): 查看原始对话消息（仅当候选条目未附带 ↓ 预取原文时使用）\n' +
-        '- access(chain.X): 获取实体 X 的完整事件时间线\n' +
-        '- note_thread(label, stm_ids): 注册跨实体叙事线\n\n' +
-        '最多 2 次 access() 调用——优先预取原文缺失且 BM25 最高的条目。\n\n';
+        '- access(chain.X): 获取实体 X 的完整事件时间线\n\n' +
+        (useVectorScore
+            ? '最多 4 次 access() 调用——优先预取原文缺失且评分最高的条目。\n\n'
+            : '最多 2 次 access() 调用——优先预取原文缺失且 BM25 最高的条目。\n\n');
 
     if (lang === 'en') {
-        var systemEn = 'You are the Memory Vault for an ongoing roleplay. Current story time: ' + currentTime + '. You have tracked ' + stmCount + ' STM entries and ' + ltmCount + ' LTM entries.\n\n' +
-            'Your task: given a query and a shortlist of memory candidates, determine which entries are relevant, group them by narrative thread, and return a detailed synthesized answer.\n\n' +
-            'Rules:\n' +
-            '1. RELEVANCE: remove entries unrelated to the query. If relevance is uncertain, keep.\n' +
-            '2. GROUPING: group remaining entries into narrative threads. Each thread = one related storyline.\n' +
-            '3. EXPAND: write each thread as a coherent narrative paragraph. Expand key details for each event — who was present, what was said, what was done. If the original event contains dialogue, retell it in the narrative. Only expand details relevant to the query.\n' +
-            '4. TIME COORDINATES: use the entry\'s period·scene as temporal context. Do NOT add current-time anchors or source markers.\n' +
-            '5. COMPLETENESS: at the end of each narrative thread, if there are related events not fully expanded, state how many and their time span. Format: "另有 X 条相关事件未展开，跨度 <time range>". Do NOT include internal IDs (stm_, ltm_, msg_ patterns).\n' +
-            '6. SELF-CONTAINED: your output must be semantically self-sufficient — every paragraph can stand alone. This is about your output format: do not use cross-references ("see above"), dangling pronouns (name the subject explicitly), or internal IDs (stm_xx). The visible window tells you which original dialogue the main LLM already knows — but structured facts extracted from those entries (who did what, relationships, key outcomes) are still your responsibility to include, because the main LLM has not extracted them as memory.\n' +
-            '7. UNCERTAINTY: for any fact where the source entry is ambiguous or incomplete, explicitly mark it. Format: "cause unknown" / "具体原因不明".\n\n' +
-            '8. KNOWLEDGE BOUNDARY: Identify active characters from the entities[] annotations and thread tags {L:entityName} in candidate entries — characters appearing most frequently in recent candidates are the active cast (prioritize top 1-4). Then, for each narrative thread, evaluate what each active character knows:\n' +
-            '   - 直接知晓 (DIRECT): the character is present in the events — see entities[] or {L:name} thread tags containing the character\n' +
-            '   - 间接知晓 (INDIRECT): the character was not present, but could learn through relayed information, shared-scene dialogue, or observable consequences\n' +
-            '   - 线索 (CLUES): the character has only fragments, insufficient to reconstruct the full picture\n' +
-            '   - 未知 (UNKNOWN): no traceable connection between the character and this thread\n' +
-            '   Judgment sources: candidate entities[] annotations, thread tags {L:entity}, original text excerpts, time/scene relationships. When uncertain, default to 线索 with a brief reason.\n\n' +
-            'CRITICAL FACT CONSTRAINT: Only include facts directly stated in the candidate entries. Do NOT infer motives, emotions, or causes unless explicitly stated in the source text. If a cause is not stated, say "cause unknown" / "原因不明". If two entries describe the same event with conflicting details, report both and note the time difference.\n\n' +
-            'Output format:\n' +
-            '## <narrative thread title>\n<detailed narrative paragraphs, each event unfolded>\n[KB: <characterName>=<level>]\n[KB: <characterName>=<level>(<reason>)]\n' +
-            'SELF-VERIFICATION: before returning, check for internal contradictions. If two entries describe the same entity/event with conflicting info, note which is more recent and explain the resolution.\n\n' +
-            'MULTI-TOPIC: If the query contains ";;" separators, process each segment independently. Output one "## <topic>" section per segment.\n\n' +
-            (conversationContext ? '## Current Context\nThe main LLM is about to respond to this dialogue:\n' + conversationContext + '\n\n' : '') +
+        var systemEn =
+            '## Role\n' +
+            'You are the Memory Analyst for an ongoing roleplay. Current story time: ' + currentTime + '. Tracked ' + stmCount + ' STM + ' + ltmCount + ' LTM.\n\n' +
+            '## Input\n' +
+            'Below are memory candidates grouped by entity. Each block: chain entries (time-ordered, RRF score annotated), cross-entity references.\n\n' +
+            candidatesBlock + '\n' + dirBlock + '\n' +
+            '## To Do\n' +
+            '1. KB Cognitive Boundary Annotation (core)\n' +
+            '   For each entity block, annotate awareness levels for active characters:\n' +
+            '   - 直接知晓 (DIRECT): character is present — see entities[] or entity block name match\n' +
+            '   - 间接知晓 (INDIRECT): not present, but could learn via relayed info, shared scenes, observable consequences\n' +
+            '   - 线索 (CLUES): only fragments, cannot reconstruct full picture\n' +
+            '   - 未知 (UNKNOWN): no traceable connection\n' +
+            '   Basis: entity block name, entities[], original text excerpts, time/scene relations.\n' +
+            '   When uncertain, default to 线索 with brief reason.\n\n' +
+            '   Output format:\n' +
+            '   [实体: entity_name]\n' +
+            '   [KB: character_name=level]\n' +
+            '   [KB: character_name=level(reason)]\n\n' +
+            '2. Gap Detection\n' +
+            '   Use tools to fill gaps during analysis. At most 4 access() calls.\n' +
+            '   Triggers:\n' +
+            '   - Entity chain truncated: total > displayed → access(chain.X) to expand\n' +
+            '   - Missing original text: no prefetch → access(ref) to fetch\n'
+            '   Do NOT expand fully populated chains or entries that already have ↓ text.\n\n' +
+            '3. Residual Gaps (output after recursion exhausted)\n' +
+            '   Format:\n' +
+            '   ## 缺口\n' +
+            '   - description\n\n' +
+            (bannerMetadata ? bannerMetadata + '\n\n' : '') +
+            (conversationContext ? '## Current Context\nMain LLM is about to respond to this dialogue:\n' + conversationContext + '\n\n' : '') +
             visibleWindowBlock +
             toolGuidanceEn +
             availChainHint +
-            'Query: ' + query + '\n\nCandidates:\n' + candidatesText + dirBlock;
+            '\n## Empty Output\n' +
+            'If no annotatable content across all entity blocks:\n' +
+            '[KB: 无]\n\n' +
+            'If no gaps:\n' +
+            '## 缺口\n' +
+            '无\n\n' +
+            '## Strictly Forbidden\n' +
+            'Do NOT output:\n' +
+            '- Any narrative paragraphs, prose, or event descriptions\n' +
+            '- "she felt" "he thought" "this means" "inner" "emotion" psychological language\n' +
+            '- "## " narrative headers (only "[实体: ...]" annotation format is valid)\n' +
+            '- "由此可见" "这表明" "标志着" "这段展示了" evaluative phrases\n' +
+            '- Any deletion, omission, or filtering of candidates\n' +
+            '- Any inference of causality, motives, or emotions';
 
         return {
             system: systemEn,
-            user: 'Synthesize the relevant memories. Return only the formatted answer, no preamble.'
+            user: 'Analyze the candidates above. Only return KB annotations and gaps, in the specified format. No preamble.'
         };
     }
 
-    var systemZh = '你是这个角色扮演的记忆中枢。当前故事时间：' + currentTime + '。你已追踪 ' + stmCount + ' 条 STM 条目和 ' + ltmCount + ' 条 LTM 条目。\n\n' +
-        '任务：根据查询和候选记忆清单，判断相关性，按叙事线分组，返回详细展开的叙事合成答案。\n\n' +
-        '规则：\n' +
-        '1. 相关性：剔除与查询无关的条目。不确定时保留。\n' +
-        '2. 分组：将剩余条目按叙事线分组。每条线 = 一个相关联的故事线。\n' +
-        '3. 展开：每条线写成连贯叙事段落，每个事件独立展开——谁在场、说了什么、做了什么。如果事件原文包含对话关键句，在叙事中复述。仅展开与查询相关的信息，不展开无关细节。\n' +
-        '4. 时间坐标：仅使用条目的 period·scene 作为时间语境。不要添加当前时间锚点或来源标记。\n' +
-        '5. 信息完整性：每条叙事线末尾，如有未展开的相关事件，标注条数和时间跨度。格式："另有 X 条相关事件未展开，跨度 <时间范围>"。不要包含内部 ID（stm_、ltm_、msg_ 等模式）。\n' +
-        '6. 自包含：你的输出必须语义自足——每个段落可独立阅读。这是对输出格式的要求：不要使用"参见上文"等交叉引用，不要出现无主语的"他/她说"（显式写出主语），不出现内部 ID（stm_xx）。可见窗口告诉你哪些对话原文主 LLM 已知——但那些条目中已提取的结构化事实（谁做了什么、人物关系、关键结论）仍需你写入合成结果，因为主 LLM 并未将这些提取为记忆。\n' +
-        '7. 不确定性：当来源条目中的事实模糊或不完整时，显式标注。格式："具体原因不明" / "死因未见记录"。\n\n' +
-        '8. 认知边界：从候选条目的 entities[] 标注和线程标签 {L:角色名} 中识别活跃角色——最近候选条目中出现频率最高的 1-4 位即为活跃阵容。然后对每条合成叙事线，从各活跃角色的视角判断知晓程度：\n' +
-        '   - 直接知晓：该角色在事件中在场——看候选的 entities[] 或线程标注 {L:角色名} 中是否有该角色\n' +
-        '   - 间接知晓：该角色不在场，但可通过以下方式获悉——他人转述、共享场景的对话、可观察的后果\n' +
-        '   - 线索：该角色只有碎片信息，不足以还原事件全貌\n' +
-        '   - 未知：该角色与该叙事线无任何可追溯的连接\n' +
-        '   判断依据：候选条目的 entities[] 标注、线程标签 {L:实体名}、原文片段提及、时间/场景关联。不确定时标注为"线索"并注明原因。\n\n' +
-        '事实约束（必须遵守）：仅包含候选条目中直接陈述的事实。禁止推断动机、情感或因果——除非原文明确陈述。若事件原因未说明，写"原因不明"。若两条条目对同一事件有冲突描述，同时报告并标注时间差。\n\n' +
-        '输出格式：\n' +
-        '## <叙事线标题>\n<详细叙事段落，每个事件展开>\n[KB: <角色名>=<等级>]\n[KB: <角色名>=<等级>(<理由>)]\n' +
-        '自我一致性检查：返回前检查内部矛盾。若两个条目描述同一实体/事件的冲突信息，标注较近时间的条目并解释结论。\n\n' +
-        '多话题处理：如果查询中包含 ";;" 分隔符，独立处理每个片段。每个片段输出一个 "## <话题>" 节。\n\n' +
+    var systemZh =
+        '## Role\n' +
+        '你是角色扮演的记忆分析员。当前故事时间：' + currentTime + '。已追踪 ' + stmCount + ' STM + ' + ltmCount + ' LTM。\n\n' +
+        '## 输入\n' +
+        '下方是按实体分组的候选记忆。每个块包含：链条目（时间排序、RRF 评分标注）、关联实体引用。\n\n' +
+         candidatesBlock + '\n' + dirBlock + '\n' +
+         '## 需要做\n' +
+        '1. KB 认知标注（核心）\n' +
+        '   为每个实体块，标注活跃角色的知晓等级：\n' +
+        '   - 直接知晓：角色在事件中在场——entities[] 或实体块归属名匹配\n' +
+        '   - 间接知晓：不在场但可通过转述、共享场景、可观察后果获悉\n' +
+        '   - 线索：只有碎片，不足以还原全貌\n' +
+        '   - 未知：无任何可追溯连接\n' +
+        '   判断依据：实体块归属名、entities[] 标注、原文片段、时间/场景关联。\n' +
+        '   不确定时标注为"线索"并说明原因。\n\n' +
+        '   输出格式：\n' +
+        '   [实体: 实体名]\n' +
+        '   [KB: 角色名=等级]\n' +
+        '   [KB: 角色名=等级(理由)]\n\n' +
+        '2. 缺口检测\n' +
+        '   探索中如发现缺口，使用工具补全。最多 4 次 access() 调用。\n' +
+        '   触发条件：\n' +
+        '   - 实体链被截断：链总数 > 展示数 → access(chain.X) 展开\n' +
+        '   - 关键条目原文缺失：无预取文本 → access(ref) 获取\n' +
+        '   不要补全已满的链或已有原文的条目。\n\n' +
+        '3. 残余缺口（递归耗尽时输出）\n' +
+        '   格式：\n' +
+        '   ## 缺口\n' +
+        '   - 描述\n\n' +
+        (bannerMetadata ? bannerMetadata + '\n\n' : '') +
         (conversationContext ? '## 当前语境\n主 LLM 即将回复这轮对话：\n' + conversationContext + '\n\n' : '') +
         visibleWindowBlock +
         toolGuidanceZh +
         availChainHint +
-        '查询：' + query + '\n\n候选记忆：\n' + candidatesText + dirBlock;
+        '\n## 空输出\n' +
+        '若所有实体块均无可标注内容：\n' +
+        '[KB: 无]\n\n' +
+        '若无缺口：\n' +
+        '## 缺口\n' +
+        '无\n\n' +
+        '## 严格禁止\n' +
+        '不要输出：\n' +
+        '- 任何叙事段落、散文或事件过程描述\n' +
+        '- "她感到""他心想""这意味着""内心""情感"等心理描写\n' +
+        '- "## " 开头的叙事标题（仅 "[实体: ...]" 标注格式有效）\n' +
+        '- "由此可见""这表明""标志着""这段展示了"等评价性短语\n' +
+        '- 任何对候选条目的删除、省略或过滤\n' +
+        '- 任何因果/动机/情感的推断';
 
     return {
         system: systemZh,
-        user: '合成相关记忆。仅返回格式化答案，无前缀。'
+        user: '分析以上候选记忆。仅按格式返回 KB 标注和缺口，禁止叙事。'
     };
 }
 

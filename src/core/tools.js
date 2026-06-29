@@ -82,7 +82,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     var entityName = ref.replace('chain.', '');
                     var allSTM2 = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
                     var chainEntries = allSTM2.filter(function(e) {
-                        return e.entities && e.entities.some(function(en) { return en.name === entityName; });
+                        return e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === entityName; });
                     });
                     if (chainEntries.length === 0) result = 'No narrative chain found for: ' + entityName;
                     else {

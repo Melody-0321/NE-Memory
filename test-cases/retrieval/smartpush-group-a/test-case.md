@@ -1,26 +1,35 @@
-# SmartPush Group A — 基础质量（注入非空 + 无来源标记 + 去重）
+---
+name: smartpush-group-a
+folder: retrieval/smartpush-group-a
+title: "[组合] SmartPush 基础质量（注入非空 + 无来源标记 + 去重 + 实体链格式）"
+objective: 单次对话覆盖 TC-01/02/05 的 trace 和语义验证，验证 v2 实体链分块格式
+preconditions:
+  - NE-Memory 已初始化，SmartPush 启用
+  - stmBatch >= 4
+structural:
+  - { op: min_length, target: smartpush_injection, value: 50 }
+  - { op: not_contains, target: smartpush_injection, value: "→stm:" }
+  - { op: not_contains, target: smartpush_injection, value: "→[stm:" }
+  - { op: not_contains, target: smartpush_injection, value: "stm_" }
+semantic:
+  - "SmartPush 注入是否包含前几轮积累的记忆信息？"
+  - "注入是否以实体链分块格式呈现（## 实体记忆链 → ### 实体名 → 条目列表 + KB 标注）？"
+  - "注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？"
+  - "同一事件反复注入时（如果发生），内容是否稳定、无多余重复？"
+minRounds: 4
+maxRounds: 10
+expectedRounds: "5-7"
+timeoutPerRound: 120000
+---
+
+# SmartPush Group A — 基础质量（注入非空 + 无来源标记 + 去重 + 实体链格式）
 
 ## 目标
-覆盖三个 SmartPush 基础质量断言：
+覆盖四个 SmartPush 基础质量断言：
 1. 注入非空（TC-01）— 有 STM 时注入包含记忆内容，非 state-only 降级
-2. 无来源标记（TC-02）— 注入不含 `→stm:` / `→[stm:` / `stm_` 内部标记
+2. 无来源标记（TC-02）— 注入不含 →stm: / →[stm: / stm_ 内部标记
 3. 注入去重（TC-05）— 同一事件反复注入时内容稳定、无多余重复
-
-## 前置条件
-- NE-Memory 已初始化，SmartPush 启用
-- stmBatch >= 4（完整管线可触发）
-
-## 对话设计（给 LLM Driver 的指导）
-Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
-Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。
-
-轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。
-
-引导策略：
-- 前 5-6 轮自然推进，在每轮中引入新的细节或事件，让对话持续积累内容
-- 引入多个角色或情节线，让对话丰富起来
-- 第 7 轮及之后，可以提到之前发生的事来触发 SmartPush 检索
-- 重复问两次同一个话题（验证去重），观察注入是否稳定
+4. 实体链格式（v2）— 注入为 buildEntityBlock 生成的实体链分块文档
 
 ## 断言
 
@@ -32,12 +41,11 @@ Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思�
 
 ### 语义性断言（LLM 评估）
 1. SmartPush 注入是否包含前几轮积累的记忆信息？
-2. 注入是否以自然语言呈现，而非原始数据转储？
-3. 注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？
-4. 同一事件反复注入时（如果发生），内容是否稳定、无多余重复？
+2. 注入是否以实体链分块格式呈现（实体链块 + KB 标注）？
+3. 注入文本是否完全从玩家视角可读，没有任何内部 ID 或标识符泄露？
+4. 同一事件反复注入时，内容是否稳定、无多余重复？
 
 ## 运行参数
 - minRounds: 4
 - maxRounds: 10
 - expectedRounds: 5-7
-- timeoutPerRound: 120000

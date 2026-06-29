@@ -1,6 +1,6 @@
 import { sortStmByMsgOrder } from '../vault/store.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
-import { extractEntityNames, lookupEntityChains, mergePipelines, buildRetrievalMessages } from './retrieval.js';
+import { extractEntityNames, lookupEntityChains, mergePipelines, buildRetrievalMessages, groupCandidatesByEntity } from './retrieval.js';
 import { resolveAmbiguousReferences } from './ambiguity.js';
 import { RetrievalNotebook } from '../vault/retrieval-notebook.js';
 import { callMemoryRetrievalWithTools, recordTelemetry } from '../api/llm.js';
@@ -73,7 +73,36 @@ function computeVisibleWindow(chatMessages, maxContext) {
     return visible;
 }
 
-export async function formatSmartContext(vault, chatMessages, budget) {
+var NE_BANNER_RE = /<!--NE-BANNER-->([\s\S]*?)<!--\/NE-BANNER-->/;
+
+function extractBannerMetadata(chatMessages) {
+    if (!chatMessages || chatMessages.length === 0) return '';
+
+    for (var i = chatMessages.length - 1; i >= 0; i--) {
+        var msg = chatMessages[i];
+        var text = typeof msg.mes === 'string' ? msg.mes : (msg.content || '');
+        var match = text.match(NE_BANNER_RE);
+        if (match) {
+            var raw = match[1].trim();
+            if (!raw) return '';
+            var parts = raw.split('|');
+            var scene = parts[0] ? parts[0].trim() : '';
+            var time = parts[1] ? parts[1].trim() : '';
+            var day = parts[2] ? parts[2].trim() : '';
+            var event = parts[3] ? parts[3].trim() : '';
+            var chars = parts[4] ? parts[4].trim() : '';
+            var line = '## 当前场景元数据\n';
+            line += '场景：' + (scene || '未知') + ' | 时间：' + (time || day || '未知');
+            if (event) line += ' | 事件摘要：' + event;
+            if (chars) line += ' | 活跃角色：' + chars;
+            return line;
+        }
+    }
+
+    return '';
+}
+
+export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     if (!budget) {
         budget = estimateComplexityBudget(chatMessages);
     }
@@ -119,7 +148,8 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         }
         if (contextParts.length > 0) {
             conversationContext = contextParts.join('\n').substring(0, 1200);
-            query = conversationContext;
+            var prefix = buildRetrievalPrefix(content, state);
+            query = prefix ? prefix + '\n' + conversationContext.substring(0, 1200 - prefix.length - 1) : conversationContext;
         }
     }
     if (!query) {
@@ -184,7 +214,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         });
 
         try {
-            topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap);
+            topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap, chatId);
         } catch (e) {
             console.warn('[NE] BM25 filter failed, falling back to all entries:', e);
             topCandidates = [];
@@ -200,6 +230,8 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         }
     }
     var bm25Ms = Date.now() - bm25Start;
+
+    var useVector = topCandidates && topCandidates._vectorUsed;
 
     if (!topCandidates || topCandidates.length === 0) {
         return buildStateOnlyInjection(vault);
@@ -226,6 +258,11 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         prefetchOriginalTexts(notebook, chatMessages, visibleWindow, 3);
     } catch (e) {}
 
+    var entityGrouped = (pipelineMerged && pipelineMerged.map && pipelineMerged.threadIndex)
+        ? groupCandidatesByEntity(pipelineMerged.map, pipelineMerged.threadIndex)
+        : { groups: {}, unassigned: [] };
+    var bannerMetadata = extractBannerMetadata(chatMessages);
+
     globalThis.__ne_debug_last_merge = pipelineMerged ? {
         mapSize: pipelineMerged.map ? pipelineMerged.map.size : 0,
         threadCount: pipelineMerged.threadIndex ? Object.keys(pipelineMerged.threadIndex).length : 0,
@@ -244,7 +281,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     var synthesized;
     var smPushMethod;
     try {
-        var messages = await buildRetrievalMessages(notebook, query, vault, budget, false, { conversationContext: conversationContext, visibleWindow: visibleWindow });
+        var messages = await buildRetrievalMessages(notebook, query, vault, budget, false, { conversationContext: conversationContext, visibleWindow: visibleWindow, useVectorScore: useVector, entityGrouped: entityGrouped, bannerMetadata: bannerMetadata });
         globalThis.__ne_debug_last_smartpush_prompt = (messages[0] && messages[0].content) ? messages[0].content : null;
         var accessTool = {
             type: 'function',
@@ -252,21 +289,6 @@ export async function formatSmartContext(vault, chatMessages, budget) {
                 name: 'access',
                 description: 'Deep-search memory by reference.',
                 parameters: { type: 'object', properties: { ref: { type: 'string' } }, required: ['ref'] }
-            }
-        };
-        var noteThreadTool = {
-            type: 'function',
-            function: {
-                name: 'note_thread',
-                description: 'Register a cross-entity narrative thread (time-discontiguous but thematically linked events).',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        label: { type: 'string', description: 'Short descriptive label for the thread' },
-                        stm_ids: { type: 'array', items: { type: 'string' }, description: 'Ordered list of stm_ids in this thread' }
-                    },
-                    required: ['label', 'stm_ids']
-                }
             }
         };
         var accessExecutor = function(args) {
@@ -297,22 +319,13 @@ export async function formatSmartContext(vault, chatMessages, budget) {
             }
             return executeAccess(ref, null, getChatId, getChatMessages);
         };
-        var noteThreadExecutor = function(args) {
-            var label = args.label || '';
-            var stmIds = args.stm_ids || [];
-            if (label && stmIds.length > 0) {
-                notebook.addDispersedThread(label, stmIds);
-                return 'Registered dispersed thread: ' + label + ' (' + stmIds.length + ' events)';
-            }
-            return 'No valid thread to register';
-        };
-        var result = await callMemoryRetrievalWithTools(messages, [accessTool, noteThreadTool], { access: accessExecutor, note_thread: noteThreadExecutor }, { timeout: 8, maxTokens: 2048 });
+        var result = await callMemoryRetrievalWithTools(messages, [accessTool], { access: accessExecutor }, { timeout: 8, maxTokens: 1024 });
         synthesized = result;
         smPushMethod = 'llm_synthesis';
     } catch (e) {
-        console.warn('[NE] Retrieval LLM failed, using BM25 top results:', e);
+        console.warn('[NE] Retrieval LLM failed, using top results:', e);
         synthesized = formatBM25Results(query, topCandidates.slice(0, 5));
-        smPushMethod = 'bm25_fallback';
+        smPushMethod = (useVector ? 'vector' : 'bm25') + '_fallback';
     }
     globalThis.__ne_debug_last_notebook = {
         version: notebook.version,
@@ -327,6 +340,7 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         sm_push_method: smPushMethod,
         bm25_candidate_count: topCandidates ? topCandidates.length : 0,
         bm25_ms: bm25Ms,
+        vector_used: useVector || false,
         retrieval_api_ms: retrievalApiMs,
         smart_push_total_ms: smartPushTotalMs,
         injection_token_count: synthesized ? (typeof synthesized === 'string' ? synthesized.length : 0) : 0,
@@ -339,24 +353,25 @@ export async function formatSmartContext(vault, chatMessages, budget) {
         parts.push(vault.memory_system_prompt);
     }
 
-    if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
-        var synthText = synthesized.trim();
+    if (entityGrouped && (Object.keys(entityGrouped.groups).length > 0 || entityGrouped.unassigned.length > 0)) {
+        var parseResult = (synthesized && typeof synthesized === 'string')
+            ? parseEntityAnnotations(synthesized.trim())
+            : { entityAnnotations: {}, gaps: [], hasKB: false };
 
-        var kbParseResult = parseKBAnnotations(synthText);
-        if (kbParseResult.annotations.length > 0) {
-            var kbBlock = buildKBInstructionBlock(kbParseResult);
-            if (kbBlock) {
-                if (parts.length > 0) parts.push('---');
-                parts.push(kbBlock);
-            }
+        var entityBlock = buildEntityBlock(entityGrouped, parseResult.entityAnnotations);
+        if (entityBlock) {
+            if (parts.length > 0) parts.push('---');
+            parts.push(entityBlock);
         }
 
-        var narrativeText = kbParseResult.cleanText
-            ? kbParseResult.cleanText.replace(/\(?(stm_|ltm_)\d+\)?/g, '')
-            : synthText.replace(/\(?(stm_|ltm_)\d+\)?/g, '');
-        if (narrativeText) {
+        var usageGuide = buildMemoryUsageGuide();
+        parts.push(usageGuide);
+
+        if (parseResult.gaps.length > 0) {
+            var gapLines = ['## 缺口'];
+            parseResult.gaps.forEach(function(g) { gapLines.push('- ' + g); });
             if (parts.length > 0) parts.push('---');
-            parts.push(narrativeText);
+            parts.push(gapLines.join('\n'));
         }
 
         if (entityNames && entityNames.length > 0 && entityChains && Object.keys(entityChains).length > 0) {
@@ -371,8 +386,16 @@ export async function formatSmartContext(vault, chatMessages, budget) {
                 }
             });
             if (gapMarkers.length > 0) {
+                if (parts.length > 0) parts.push('---');
                 parts.push(gapMarkers.join('\n'));
             }
+        }
+    } else if (synthesized && typeof synthesized === 'string' && synthesized.trim()) {
+        var synthText = synthesized.trim();
+        var narrativeText = synthText.replace(/\(?(stm_|ltm_)\d+\)?/g, '');
+        if (narrativeText) {
+            if (parts.length > 0) parts.push('---');
+            parts.push(narrativeText);
         }
     }
 
@@ -392,35 +415,64 @@ export async function formatSmartContext(vault, chatMessages, budget) {
     return parts.join('\n\n');
 }
 
-function parseKBAnnotations(text) {
-    var sections = [];
-    var cleanSections = [];
+function parseEntityAnnotations(text) {
+    var entityAnnotations = {};
+    var gaps = [];
+    var hasKB = false;
 
-    var contentParts = text.split(/(?=## )/);
+    var lines = text.split('\n');
+    var inGaps = false;
+    var currentEntity = null;
 
-    contentParts.forEach(function(part) {
-        var kbLines = [];
-        var cleanPart = part.replace(/^\s*\[KB:\s*([^\]]+)\]\s*$/gm, function(_match, content) {
-            var parsed = parseKBLine(content.trim());
-            if (parsed) kbLines.push(parsed);
-            return '';
-        }).trim();
+    for (var i = 0; i < lines.length; i++) {
+        var line = lines[i].trim();
+        if (!line) continue;
 
-        if (kbLines.length > 0) {
-            var threadTitle = extractKBThreadTitle(part);
-            sections.push({ threadTitle: threadTitle, chars: kbLines });
-            var perspectiveLine = '> 角色视角：' + kbLines.map(function(kb) {
-                return kb.name + '=' + kb.level + (kb.reason ? '(' + kb.reason + ')' : '');
-            }).join(' | ');
-            cleanSections.push(cleanPart + '\n' + perspectiveLine);
-        } else {
-            cleanSections.push(cleanPart);
+        var entityMatch = line.match(/^\[实体:\s*(.+?)\]/);
+        if (entityMatch) {
+            currentEntity = entityMatch[1].trim();
+            if (!entityAnnotations[currentEntity]) {
+                entityAnnotations[currentEntity] = [];
+            }
+            inGaps = false;
+            continue;
         }
-    });
+
+        if (/^##\s*缺口/.test(line)) {
+            inGaps = true;
+            currentEntity = null;
+            continue;
+        }
+
+        if (inGaps) {
+            var gapMatch = line.match(/^[-*]\s+(.+)/);
+            if (gapMatch && gapMatch[1].trim() !== '无') {
+                gaps.push(gapMatch[1].trim());
+            }
+            continue;
+        }
+
+        var kbMatch = line.match(/^\[KB:\s*(.+?)\]/);
+        if (kbMatch) {
+            var kbContent = kbMatch[1].trim();
+            if (kbContent === '无') {
+                hasKB = false;
+                continue;
+            }
+            if (currentEntity) {
+                var parsed = parseKBLine(kbContent);
+                if (parsed) {
+                    entityAnnotations[currentEntity].push(parsed);
+                    hasKB = true;
+                }
+            }
+        }
+    }
 
     return {
-        cleanText: cleanSections.join('\n\n').trim(),
-        annotations: sections
+        entityAnnotations: entityAnnotations,
+        gaps: gaps,
+        hasKB: hasKB
     };
 }
 
@@ -440,39 +492,75 @@ function parseKBLine(line) {
     };
 }
 
-function extractKBThreadTitle(part) {
-    var match = part.match(/^## (.+?)(?:\n|$)/m);
-    return match ? match[1].trim() : '';
+
+function buildEntityBlock(entityGrouped, entityAnnotations) {
+    var lines = [];
+    lines.push('## 实体记忆链');
+    lines.push('');
+
+    Object.keys(entityGrouped.groups).forEach(function(name) {
+        var group = entityGrouped.groups[name];
+        var annotations = entityAnnotations[name] || [];
+
+        var kbLine = '';
+        if (annotations.length > 0) {
+            kbLine = ' [KB: ' + annotations.map(function(a) {
+                return a.name + '=' + a.level + (a.reason ? '(' + a.reason + ')' : '');
+            }).join(' | ') + ']';
+        }
+
+        var refCount = group.refs ? group.refs.length : 0;
+        var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
+        lines.push('### ' + name + ' (' + group.entries.length + ' events' + refPart + ')' + kbLine);
+
+        group.entries.forEach(function(e, idx) {
+            var timePart = e.entry.period || '';
+            var scene = e.entry.scene || '';
+            var event = e.entry.event || e.entry.summary || '';
+            lines.push((idx + 1) + '. [' + timePart + '] ' + (scene ? scene + ': ' : '') + event);
+
+            if (e._originalText) {
+                lines.push('   > ' + e._originalText.replace(/\n/g, '\n   > '));
+            }
+        });
+
+        if (group.refs && group.refs.length > 0) {
+            lines.push('');
+            var refMap = {};
+            group.refs.forEach(function(r) {
+                if (!refMap[r.primaryName]) refMap[r.primaryName] = [];
+                refMap[r.primaryName].push(r.entryId);
+            });
+            Object.keys(refMap).forEach(function(primary) {
+                lines.push('   关联: 见「' + primary + '」' + refMap[primary].join(', '));
+            });
+        }
+
+        lines.push('');
+    });
+
+    if (entityGrouped.unassigned && entityGrouped.unassigned.length > 0) {
+        lines.push('### 未标注条目 (' + entityGrouped.unassigned.length + ' entries)');
+        entityGrouped.unassigned.forEach(function(e, idx) {
+            var timePart = e.entry.period || '';
+            var scene = e.entry.scene || '';
+            var event = e.entry.event || e.entry.summary || '';
+            lines.push((idx + 1) + '. [' + timePart + '] ' + (scene ? scene + ': ' : '') + event);
+        });
+        lines.push('');
+    }
+
+    return lines.join('\n');
 }
 
-function buildKBInstructionBlock(parseResult) {
-    var allChars = {};
-    parseResult.annotations.forEach(function(section) {
-        section.chars.forEach(function(ch) {
-            if (!allChars[ch.name]) allChars[ch.name] = ch.name;
-        });
-    });
-    var activeChars = Object.keys(allChars);
-    if (activeChars.length === 0) return '';
-
+function buildMemoryUsageGuide() {
     var lines = [];
-    lines.push('## 角色认知边界');
-    lines.push('当前场景活跃角色：' + activeChars.join('、'));
-    lines.push('');
-    lines.push('以下记忆已按各角色的知晓程度分类。你同时扮演这些角色，每个角色的行动和发言必须严格基于其对应认知等级：');
-    lines.push('- **直接知晓** = 该角色亲自在场或经历，完全知情。可以此为基础主动行动和发言。');
-    lines.push('- **间接知晓** = 该角色通过他人转述、书面记录、或可观察后果推断得知。可以提及但应保持细节不确定性。');
-    lines.push('- **线索** = 该角色只有碎片信息。角色只能基于碎片推理，不应表现出完全知情。');
-    lines.push('- 叙事线中未提到的角色 = 该角色**不知道**此叙事线的事件。仅供你理解故事全局语境，禁止该角色在对话中表现出知情。');
-    lines.push('');
-
-    parseResult.annotations.forEach(function(section) {
-        var charEntries = section.chars.map(function(ch) {
-            return ch.name + '：' + ch.level;
-        });
-        lines.push('[' + section.threadTitle + '] ' + charEntries.join(' | '));
-    });
-
+    lines.push('## 记忆使用指南');
+    lines.push('以上记忆按实体分链，时间排序。每条链顶部的 KB 标注表示各角色对该链事件集合的知晓程度：');
+    lines.push('- **直接知晓** = 该角色亲自在场或经历，完全知情。可自由使用链中所有事件来驱动决策和对话。');
+    lines.push('- **间接知晓** = 该角色通过转述、书面记录或可观察后果推断得知。可引用链中事件但需保持细节不确定性。');
+    lines.push('- **线索** = 该角色只有碎片信息。仅能基于碎片做有限推理，不应表现出全知。');
+    lines.push('- 链中未提到的角色 = 该角色**不知道**此链中的事件。仅供你理解全局故事语境，禁止该角色在对话中表现出知情。');
     return lines.join('\n');
 }
 

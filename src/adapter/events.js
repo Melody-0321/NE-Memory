@@ -8,7 +8,7 @@ import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
-import { formatContextMemory, computeWindowStartMsgId } from '../core/engine/context-window.js';
+import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
@@ -20,13 +20,14 @@ import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, ge
 import { t_narrative } from '../core/i18n.js';
 
 var MEMORY_INJECTION_WRAPPER = [
-    '[以下是你在故事中积累的记忆。]',
+    '[以下是你在故事中积累的记忆，按实体分链组织。]',
     '',
-    '每个记忆章节末尾的 [KB: 角色=等级] 标明了该故事线中各个角色的知情程度。',
+    '每条实体链顶部的 [KB: 角色=等级] 标明了各角色对该链事件的知晓程度。',
     '当你扮演某个角色或从这个角色的视角写作时，只能写出该角色知情的内容：',
     '  直接知晓 — 该角色亲身经历了该事件，可以自由谈论或回忆',
-    '  线索       — 该角色可能间接了解，只能模糊或不确指地提及',
-    '  未知       — 该角色对此事完全不知情：不要从其口中说出，也不要从其内心视角呈现',
+    '  间接知晓 — 该角色通过转述或推断得知，可提及但保持细节不确定性',
+    '  线索     — 该角色只有碎片信息，只能模糊或不确指地提及',
+    '  链中未列出的角色 — 该角色对此事完全不知情：不要从其口中说出，也不要从其内心视角呈现',
     '如果你以旁白/叙述者身份写作，只需遵循事实，不区分角色视角。'
 ].join('\n');
 
@@ -42,10 +43,11 @@ var retroCapturedChatId = null; // 追捕开场白只执行一次
 var _isInjecting = false;
 const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
+const PIPELINE_TIMEOUT_MS = 30000;
 let lastGenerationTime = 0;
 
 function persistPending() {
-    try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) {}
+    try { localStorage.setItem('ne_pending', JSON.stringify(pendingMessages)); } catch (e) { console.warn('[NE] persistPending failed:', e.message); }
 }
 
 export function restorePending() {
@@ -109,7 +111,7 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
     var turnPressure = 0;
     if (chatMessages && pendingMessages && pendingMessages.length > 0) {
         var cwRounds = 10;
-        try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.contextWindowRounds) || 10; } } catch (e) {}
+        try { var rawC = localStorage.getItem('ne_settings'); if (rawC) { var sC = JSON.parse(rawC); cwRounds = Number(sC.dialogWindowRounds) || 10; } } catch (eC) {}
         var windowStartId = computeWindowStartMsgId(chatMessages, cwRounds);
         var outOfWindowCount = 0;
         for (var i = 0; i < pendingMessages.length; i++) {
@@ -123,11 +125,37 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
 
     return Math.max(tokenPressure, turnPressure);
 }
+function adjustDialogWindow() {
+    var cwRounds = 10;
+    try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
+    var minRounds = 6;
+    if (cwRounds < minRounds) cwRounds = minRounds;
+
+    var chat = runtime.getChat ? runtime.getChat() : [];
+    if (!chat || chat.length === 0) return;
+
+    var overrideEnabled = false;
+    try { var raw2 = localStorage.getItem('ne_settings'); if (raw2) { var s2 = JSON.parse(raw2); overrideEnabled = !!s2.dialogOverrideEnabled; } } catch (e) {}
+    if (overrideEnabled) {
+        runtime.maxContext = Number.MAX_SAFE_INTEGER;
+    }
+
+    var windowStartId = computeWindowStartMsgId(chat, cwRounds);
+    if (windowStartId <= 0) return;
+
+    for (var i = 0; i < chat.length; i++) {
+        var m = chat[i];
+        if ((m.mes_id || 0) > windowStartId) {
+            if (i > 0) chat.splice(0, i);
+            return;
+        }
+    }
+}
 function notifyVaultChanged() {
     try {
         var doc = window.parent && window.parent !== window ? window.parent.document : document;
         doc.dispatchEvent(new CustomEvent('ne:vault-changed'));
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] notifyVaultChanged failed:', e.message); }
 }
 
 export function neSyncChatId(chatId) {
@@ -395,7 +423,7 @@ export async function onMessageReceived(messageIndex) {
 async function flushPendingMessages() {
     if (!tryAcquire('stm')) {
         console.log('[NE] flushPendingMessages: waiting for state pipeline — state=' + getState());
-        await waitForPipelineTrackIdle(15000);
+        await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
         if (!tryAcquire('stm')) {
             console.log('[NE] flushPendingMessages: guard still blocked after wait, deferring');
             return;
@@ -413,7 +441,7 @@ async function flushPendingMessages() {
     }
     const batch = pendingMessages.splice(0);
     persistPending();
-    try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) {}
+    try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) { console.warn('[NE] ne_inflight write failed:', e.message); }
     console.log('[NE] Pipeline starting: batch=' + batch.length);
     const chatId = runtime.getChatId() || 'default';
     var pipelineStart = Date.now();
@@ -466,7 +494,7 @@ async function flushPendingMessages() {
 
                 if (!tryAcquire('ltm')) {
                     console.log('[NE] LTM pass ' + (ltmPass+1) + ': waiting for pipeline track — state=' + getState());
-                    await waitForPipelineTrackIdle(15000);
+                    await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
                     if (!tryAcquire('ltm')) {
                         console.log('[NE] LTM: guard still blocked, deferring remaining passes');
                         break;
@@ -792,6 +820,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         incrementChatTurn(chatId);
         console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
+        adjustDialogWindow();
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
         var stateProtoName = (vault.content.state && vault.content.state.protagonist_name) || '';
         var ctxName1 = (ctx && ctx.name1) || null;
@@ -825,17 +854,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             globalThis.__ne_debug_last_faction_state = { total: fnames.length, hidden: fhidden, visible: fvisible, names: fnames };
         }
 
-        var cwRounds = neSettings.contextWindowRounds || 10;
-        var ctxMemory = formatContextMemory(vault, chatMessages, cwRounds);
-        if (ctxMemory) {
-            runtime.injectPrompt('ne_context_memory', ctxMemory, 'in_chat', 2, 'system');
-            globalThis.__ne_debug_last_context_memory = ctxMemory;
-        }
-
         try {
             var formatted;
             try {
-                formatted = await formatSmartContext(vault, chatMessages);
+                formatted = await formatSmartContext(vault, chatMessages, null, chatId);
             } catch (e) {
                 console.warn('[NE] formatSmartContext failed, falling back to state-only:', e);
                 formatted = buildStateOnlyInjection(vault);

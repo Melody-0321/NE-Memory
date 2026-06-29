@@ -4,28 +4,74 @@ import path from 'path';
 
 var __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-var tests = [
-    'text-utils.test.js',
-    'state-discovery.test.js',
-    'pipeline-guard.test.js',
-    'consolidate.test.js'
-];
+var testMap = {
+    'text-utils': 'text-utils.test.js',
+    'pipeline-guard': 'pipeline-guard.test.js',
+    'consolidate': 'consolidate.test.js',
+    'context-window': 'context-window.test.js',
+    'dialog-window': 'dialog-window.test.js',
+    'concurrency-guard': 'concurrency-guard.test.js',
+    'ltm-rebatch-call': 'ltm-rebatch-call-pattern.test.js',
+    'bm25-scoring': 'bm25-scoring.test.js',
+    'time-filter': 'time-filter.test.js',
+    'turn-segmenter': 'turn-segmenter.test.js',
+    'stm-validate': 'stm-validate.test.js',
+    'ltm-validate': 'ltm-validate.test.js',
+    'merge-story-period': 'merge-story-period.test.js',
+    'consolidate-core': 'consolidate-core.test.js',
+    'consolidate-apply': 'consolidate-apply.test.js',
+    'entity-grouping': 'entity-grouping.test.js',
+    'entity-seed': 'entity-seed.test.js',
+    'ltm-rebatch': 'ltm-rebatch.test.js',
+    'notebook-core': 'notebook-core.test.js',
+    'notebook-sort': 'notebook-sort.test.js',
+    'kb-annotations': 'kb-annotations.test.js',
+    'smartpush-query': 'smartpush-query.test.js',
+    'schema': 'schema.test.js',
+    'json-fallback': 'json-fallback.test.js',
+    'bm25-grouper': 'bm25-grouper.test.js'
+};
 
-var totalPassed = 0;
+var batchMap = {
+    'p0': ['text-utils', 'pipeline-guard', 'consolidate', 'context-window', 'concurrency-guard', 'ltm-rebatch-call']
+};
+
+var args = process.argv.slice(2);
+var batchArg = null;
+for (var i = 0; i < args.length; i++) {
+    if (args[i] === '--batch' && args[i + 1]) {
+        batchArg = args[i + 1];
+        break;
+    }
+}
+
+var testKeys;
+if (batchArg && batchMap[batchArg]) {
+    testKeys = batchMap[batchArg];
+} else {
+    testKeys = Object.keys(testMap);
+}
+
 var totalFailed = 0;
 var failures = [];
 
-for (var i = 0; i < tests.length; i++) {
-    var testFile = path.join(__dirname, tests[i]);
-    var result = spawnSync('node', ['--input-type=module', '-e', 'import("./' + testFile.replace(/\\/g, '/') + '")'], {
+for (var i = 0; i < testKeys.length; i++) {
+    var testFile = path.resolve(__dirname, testMap[testKeys[i]]);
+    var urlPath = 'file:///' + testFile.replace(/\\/g, '/');
+    var result = spawnSync('node', ['--input-type=module', '-e', 'import("' + urlPath + '")'], {
         stdio: 'inherit',
         timeout: 30000
     });
 
     if (result.error) {
         totalFailed++;
-        failures.push(tests[i] + ' — ERROR: ' + result.error.message);
+        failures.push(testKeys[i] + ' — ERROR: ' + result.error.message);
         continue;
+    }
+
+    if (result.status !== 0) {
+        totalFailed++;
+        failures.push(testKeys[i] + ' — exit code ' + result.status);
     }
 }
 
@@ -34,5 +80,5 @@ if (failures.length > 0) {
     failures.forEach(function(f) { console.log('  ' + f); });
     process.exit(1);
 } else {
-    console.log('\n=== All ' + tests.length + ' test files completed ===');
+    console.log('\n=== All ' + testKeys.length + ' test files passed ===');
 }

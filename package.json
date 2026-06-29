@@ -6,7 +6,10 @@
   "scripts": {
     "build": "node scripts/generate-test-data.cjs && rollup -c",
     "watch": "rollup -c -w",
-    "prepare": "git config core.hooksPath .githooks || true"
+    "prepare": "git config core.hooksPath .githooks || true",
+    "test:unit": "node test/run.mjs",
+    "test:ratchet": "node test/run-ratchets.mjs",
+    "test": "npm run test:unit && npm run test:ratchet"
   },
   "keywords": [],
   "author": "",

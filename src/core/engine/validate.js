@@ -9,6 +9,7 @@ export function validateSTMOutput(parsed, vault, messageCount) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('stm_entries[' + i + '].event is REQUIRED');
         }
+        if (!Array.isArray(e.entities)) e.entities = [];
     }
 
     // 新增：msgRange 验证
@@ -43,6 +44,35 @@ export function postFillSTM(parsed, vault) {
     }
     if (!content.story_scene) { content.story_scene = '未知'; }
 
+    // entities 后处理：NE-BANNER seed + 文本匹配兜底
+    var state = content.state || {};
+    var characters = state.characters || {};
+    var factions = state.factions || {};
+    var activeChars = content._active_characters || [];
+    var allKnownNames = Object.keys(characters).concat(Object.keys(factions));
+    if (allKnownNames.length > 0 || activeChars.length > 0) {
+        stmEntries.forEach(function(e) {
+            var entities = [];
+
+            // NE-BANNER 在场角色 seed
+            activeChars.forEach(function(name) {
+                if (entities.indexOf(name) === -1) entities.push(name);
+            });
+
+            // 文本匹配兜底
+            var eventText = (e.event || '') + (e.scene || '') + (e.summary || '');
+            allKnownNames.forEach(function(name) {
+                if (entities.indexOf(name) === -1 && eventText.indexOf(name) !== -1) {
+                    entities.push(name);
+                }
+            });
+
+            e.entities = entities;
+        });
+    } else {
+        stmEntries.forEach(function(e) { e.entities = []; });
+    }
+
     return parsed;
 }
 
@@ -75,6 +105,7 @@ export function validateLTMOutput(result) {
         if (e.stm_refs && e.stm_refs.length < getStmMinLtmMerge()) {
             errors.push('ltm_entries[' + i + '] must have at least ' + getStmMinLtmMerge() + ' stm_refs');
         }
+        if (!Array.isArray(e.entities)) e.entities = [];
     }
 
     return errors;
@@ -153,6 +184,19 @@ export function postFillLTM(result, sourceSTMList) {
         if (!e.status) {
             e.status = 'closed';
         }
+
+        // 从 stm_refs 聚合 entities
+        var eEnts = e.entities || [];
+        (e.stm_refs || []).forEach(function(refId) {
+            var stm = sourceSTMList.find(function(s) { return s.id === refId; });
+            if (stm && stm.entities) {
+                stm.entities.forEach(function(en) {
+                    var n = typeof en === 'string' ? en : en.name;
+                    if (n && eEnts.indexOf(n) === -1) eEnts.push(n);
+                });
+            }
+        });
+        if (eEnts.length > 0) e.entities = eEnts;
     }
 
     return result;

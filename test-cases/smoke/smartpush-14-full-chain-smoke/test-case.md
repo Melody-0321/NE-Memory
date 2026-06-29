@@ -2,7 +2,7 @@
 name: smartpush-14
 folder: smoke/smartpush-14-full-chain-smoke
 title: 全链路冒烟测试（STM + LTM + SmartPush + State + 注入）
-objective: 验证全链路（STM 提取 → LTM 合流 → SmartPush 检索 → State 管线 → 滑动窗口上下文 → ne_state_table 注入 → ne_char_block 注入 → ne_memory_vault 注入）无断裂，pipeline LLM 响应有效，无报错或 fallback
+objective: 验证全链路无断裂，pipeline LLM 响应有效，无报错或 fallback，注入内容为实体链分块格式
 preconditions:
   - NE-Memory 已初始化，SmartPush 启用，State Schema 已开启
   - 副 API 可用
@@ -25,94 +25,76 @@ structural:
   - { op: min_length, target: state_block_instruction, value: 20 }
   - { op: exists, target: context_memory }
 semantic:
-  - "SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？"
-  - "注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？"
+  - "SmartPush 注入是否以实体链分块格式呈现（## 实体记忆链 → ### 实体名 (N events) → 条目列表 + KB 标注）？"
+  - "注入是否包含 ## 记忆使用指南 段？"
   - "STM 提取事件是否覆盖了该轮对话中的重要情节？"
-  - "STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？"
-  - "State 管线是否正常执行，state_changes 是否有实际的字段路径（characters.* 而非空对象）？检查 pipeline_changes 是否至少有一轮包含非空变更。"
-  - "ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？检查 trace 中这两项注入的文本长度和关键标记。"
+  - "STM+LTM 合流管线是否正常工作（含 ltm_decision：action + updated_title）？"
+  - "State 管线是否正常执行，state_changes 是否有实际的字段路径（characters.* 而非空对象）？"
+  - "ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？"
   - "trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？"
-  - "trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？"
-  - "context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？检查 trace 中 ne_context_memory 注入内容。"
+  - "trace 中是否出现过 pipeline LLM 调用 fallback？如有，是否仍正常工作？"
+  - "context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？"
 minRounds: 4
 maxRounds: 8
 expectedRounds: "5-7"
 timeoutPerRound: 120000
 ---
 
-# smartpush-14: 全链路冒烟测试（STM + LTM + SmartPush + State + 注入）
+# smartpush-14: 全链路冒烟测试
 
 ## 目标
-
-验证完整管线链路无断裂。每个 push 前跑。
-
-**覆盖管线**：
-- STM 提取（三层边界检测 → Phase 2 批量摘要）
-- LTM 合流（STM+LTM 同次调用，ltm_decision）
-- SmartPush 检索（BM25 + 实体链 + 记忆合成 → ne_memory_vault 注入）
-- State 管线（State LLM → state_changes → mergeStateChanges → vault）
-- 滑动窗口上下文（formatContextMemory → ne_context_memory）
-- Main LLM 注入（ne_state_table + ne_char_block + ne_state_block + ne_memory_vault）
+全面验证 v2 重构后的 NE-Memory 全链路无断裂：
+1. SmartPush 注入为实体链分块格式（buildEntityBlock 拼装）
+2. Pipeline LLM 响应有效（JSON 完整无 parse error）
+3. STM+LTM+State 三条管线均正常运行
+4. fallback 路径不破坏现有行为
 
 ## 前置条件
-
-- NE-Memory 已初始化，SmartPush 启用，State Schema 已开启
+- NE-Memory 已初始化，SmartPush 启用
+- State Schema 已开启
 - 副 API 可用
 - stmBatch >= 4
 
-## 对话设计（给 LLM Driver 的指导）
-
-Driver 跟随 AI 已有故事自然互动，**不编造特定故事背景**。
-Driver 可以看到 AI 的可见回复，如果 AI 的回复包含展开的思维链（`[思考过程]`），也会看到。
-
-轮次参考：预期 5-7 轮内自然完成。低于 4 轮时 [DONE] 无效。达到 maxRounds 时强制结束。
-
-引导策略：跟随 AI 已有故事自然互动。不需要引入特殊角色、场景切换或复杂事件。就正常聊 5-7 轮，积累对话内容，让管道自然运作。当 SmartPush 触发（注入非空）且 State 管线执行后即可结束。
+## 对话设计
+Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 
 ## 断言
 
-### 结构性断言（代码自动检查）
+### 结构性断言（16 条）
+| 断言 | 含义 |
+|------|------|
+| `exists: smartpush_injection` | SmartPush 触发成功 |
+| `min_length: smartpush_injection >= 50` | 注入非空 |
+| `not_contains: smartpush_injection →stm:` | 无内部标记 |
+| `exists: smartpush_prompt` | Memory LLM prompt 存在 |
+| `min_length: smartpush_prompt >= 200` | Prompt 非空 |
+| `exists: stm_events` | STM 提取成功 |
+| `min_length: pipeline_responses >= 50` | pipeline LLM 有输出 |
+| `not_contains: pipeline_responses "error"` | 无 pipeline 报错 |
+| `contains: pipeline_responses "ltm_decision"` | STM+LTM 合流正常 |
+| `exists: ltm_state` | LTM 快照有效 |
+| `exists: pipeline_changes` | State 管线执行过 |
+| `min_length: pipeline_changes >= 1` | 有 state_changes |
+| `not_contains: pipeline_changes error` | State 无报错 |
+| `exists: state_block_instruction` | 注入指令存在 |
+| `min_length: state_block_instruction >= 20` | 指令非空 |
+| `exists: context_memory` | 滑动窗口上下文已注入 |
 
-| # | 断言 | 含义 |
-|---|------|------|
-| 1 | `exists: smartpush_injection` | SmartPush 触发成功 |
-| 2 | `min_length: smartpush_injection >= 50` | 注入非空壳 |
-| 3 | `not_contains: smartpush_injection [→stm:]` | 无内部标记泄漏 |
-| 4 | `exists: smartpush_prompt` | Memory LLM 收到 system prompt |
-| 5 | `min_length: smartpush_prompt >= 200` | Prompt 非空 |
-| 6 | `exists: stm_events` | STM 提取成功 |
-| 7 | `min_length: pipeline_responses >= 50` | 至少一条 pipeline LLM 有有效输出 |
-| 8 | `not_contains: pipeline_responses ["error"]` | 无 pipeline 报错 |
-| 9 | `contains: pipeline_responses ["ltm_decision"]` | STM+LTM 合流管线正常工作 |
-| 10 | `exists: ltm_state` | LTM 状态快照有效 |
-| 11 | `exists: pipeline_changes` | State 管线执行过 |
-| 12 | `min_length: pipeline_changes >= 1` | 有 state_changes |
-| 13 | `not_contains: pipeline_changes [error]` | State 管线无报错 |
-| 14 | `exists: state_block_instruction` | NE-BANNER + NE-CHAR 指令已注入 |
-| 15 | `min_length: state_block_instruction >= 20` | 指令非空 |
-| 16 | `exists: context_memory` | 滑动窗口上下文已注入 |
-
-### 语义性断言（LLM 评估 trace）
-
-1. SmartPush 注入是否包含与对话内容相关的具体记忆信息（而非空话/占位符）？
-2. 注入内容是否以自然语言叙事呈现（而非 JSON dump 或碎片化 stm_xxx 列表）？
-3. STM 提取事件是否覆盖了该轮对话中的重要情节？
-4. STM+LTM 合流管线是否正常工作（STM 提取同时输出了 ltm_decision，包含 action + updated_title）？
-5. State 管线是否正常执行，state_changes 是否有实际的字段路径（characters.* 而非空对象）？
-6. ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？
-7. trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？
-8. trace 中是否出现过 pipeline LLM 调用 fallback（secondary API → TH）？如有，是否仍正常工作？
-9. context_memory（滑动窗口上下文摘要）是否非空、以自然语言呈现？检查 trace 中 ne_context_memory 注入内容。
+### 语义性断言
+1. SmartPush 注入是否以实体链分块格式呈现（实体链块 + KB 标注 + 使用指南）？
+2. STM 提取是否覆盖重要情节？
+3. STM+LTM 合流是否正常（ltm_decision）？
+4. State 管线是否正常（state_changes 含 characters.*）？
+5. 注入指令是否非空且格式正确？
+6. pipeline LLM response 是否有效 JSON、无 parse error？
+7. fallback 路径是否正常？
+8. context_memory 是否非空、自然语言？
 
 ## 运行参数
-
 - minRounds: 4
 - maxRounds: 8
 - expectedRounds: 5-7
 - timeoutPerRound: 120000
 
-## 调用方式
-
-```javascript
-await __ne_debug.runTestByName('smartpush-14')
-```
+## 说明
+v2 重构后注入格式从"LLM 叙事散文"切换为"代码拼装实体链块"。buildEntityBlock + buildMemoryUsageGuide 自动生成注入文档。

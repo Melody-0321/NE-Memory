@@ -4,7 +4,7 @@ folder: retrieval/smartpush-02-no-markers
 status: passed
 last_run: 2026-06-16
 title: SmartPush 注入无来源标记
-objective: 验证 SmartPush 注入文本不包含内部来源标记（→st: 或 →[stm: 格式）
+objective: 验证 SmartPush 注入文本不包含内部来源标记（→st: 或 stm_ 格式），以实体链分块形式的自然描述呈现
 preconditions:
   - NE-Memory 已初始化
   - 副 API 可用
@@ -16,56 +16,46 @@ structural:
   - { op: not_contains, target: smartpush_injection, value: "stm_" }
 semantic:
   - "注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？"
-  - "即使有多条记忆，注入是否以流畅的自然语言呈现？"
+  - "即使有多条记忆，注入是否以清晰的实体链分块格式呈现（## 实体记忆链 标题下的事件条目）？"
 minRounds: 4
 maxRounds: 10
 expectedRounds: "5-7"
 timeoutPerRound: 120000
 ---
 
-# SmartPush-02: 注入无来源标记
+# smartpush-02: 注入无来源标记
 
 ## 目标
-验证 SmartPush 注入文本不包含内部来源标记（`→stm:` 或 `→[stm:` 格式）。
-这些是 NE-Memory 内部使用的标记，不应该暴露给主 LLM。
+验证 SmartPush 注入文本不含任何内部标记：
+1. 无 `→stm:` 格式
+2. 无 `→[stm:` 格式
+3. 无 `stm_` 前缀（数据库 ID 泄漏）
+4. 注入以实体链分块格式呈现，从玩家视角可读
 
 ## 前置条件
 - NE-Memory 已初始化
 - 副 API 可用
-- 已有足够的 STM 条目触发 SmartPush（>= 4 条）
+- STM >= 4 条触发 SmartPush
 
-## 对话设计（给 LLM Driver 的指导）
-Driver 跟随 AI 已有故事自然互动。**不编造特定故事背景。**
-
-引导策略：
-1. 前 5 轮——跟随 AI 的故事推进，引入多个角色或情节线让对话丰富
-2. 第 6 轮——询问与之前讨论过的事件相关的问题，触发 SmartPush 检索
-
-关键：Driver 的目标是让 NE 积累足够的 STM 条目来触发 SmartPush，
-然后检查注入文本是否格式干净。
+## 对话设计
+自然互动 4-5 轮积累 STM，提出与对话相关的问题触发 SmartPush。
 
 ## 断言
-### 结构性
-- `min_length`: smartpush_injection >= 80
-- `not_contains`: smartpush_injection 不含 `→stm:`
-- `not_contains`: smartpush_injection 不含 `→[stm:`
-- `not_contains`: smartpush_injection 不含 `stm_`
 
-### 语义性
-- 注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？
-- 即使有多条记忆，注入是否以流畅的自然语言呈现？
+### 结构性断言
+| 断言 | 含义 |
+|------|------|
+| `min_length: 80` | 注入非空 |
+| `not_contains: →stm:` | 三重标记检查 |
+| `not_contains: →[stm:` | 三重标记检查 |
+| `not_contains: stm_` | 无 stm_ 前缀泄漏 |
+
+### 语义性断言
+1. 注入文本是否完全从玩家视角可读，无任何内部 ID 或标识符泄露？
+2. 注入是否以清晰的实体链分块格式呈现？
 
 ## 运行参数
 - minRounds: 4
 - maxRounds: 10
 - expectedRounds: 5-7
 - timeoutPerRound: 120000
-
-## 调用方式
-
-```javascript
-await __ne_debug.runTestByName('smartpush-02')
-```
-
-> **注意**：运行前确保聊天框中已加载角色卡且有开场白。Driver 通过 AI 回复自然感知故事世界。
-> 测试期间请不要手动操作聊天框。

@@ -353,7 +353,7 @@ updateVaultViewerPopout(getChatId);     // 传入函数引用
 
 | 属性 | 值 |
 |---|---|
-| **状态** | 🟡 待解决 |
+| **状态** | ✅ 已解决 |
 | **发现** | 2026-06-16（用户报告）→ 2026-06-17（根因定位） |
 | **严重程度** | **P0** |
 | **影响** | 用户 152 条消息（76 轮对话），面板始终空白。Process History 显示"Completed (10 轮)"，但记忆仍为空。Pipeline 每 12 条消息触发一次，共 ~6 次，每次 LLM 调用成功（或返回空事件），每次零产出，每次 vault 不保存，每次下轮重新扫描——死循环。 |
@@ -674,7 +674,7 @@ system prompt 说"覆盖全部消息不得跳过"，user prompt 说"如果没有
 | 11 | 内联编辑保存无效 / 取消后无法再编辑 / 无删除 | **High** | ✅ 已解决 |
 | 12 | Process History `force=true` 导致消息全部重复处理 | **High** | ✅ 已解决 |
 | 13 | cursor 窗口 2+ msg_ids 全部丢失（msgRange 全局偏移未减 position） | **High** | ✅ 已解决 |
-| 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 | **P0** | 🟡 待解决 |
+| 14 | Pipeline 零产出死循环：`return []` 合约破坏 + `added > 0` 跳过保存 | **P0** | ✅ 已解决 |
 | 15 | Gemini 中转站副 API 401（用户侧配置错误） | — | ❌ 非 Bug |
 | 16 | `processed_msg_ids` 毒化 vault → pipeline 消息全部被过滤 | **High** | ✅ 已解决 |
 | 17 | `\|\|` 吞 `msg_id=0` → 消息 0 永远穿透去重 | **High** | ✅ 已解决 |

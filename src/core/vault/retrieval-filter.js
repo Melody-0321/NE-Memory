@@ -11,30 +11,21 @@
 
 import { isAuto, computeTopK, computeMinResults, computeLtmDirCount } from '../params.js';
 import { tokenize } from '../engine/text-utils.js';
+import { isVectorSearchEnabled, computeEmbedding, loadEmbeddingApiConfig } from '../engine/embedding.js';
+import { ensureVectorIndex, vectorSearch, rrfFuse, getVectorIndex } from '../engine/retrieval-fusion.js';
 
-function buildSearchableText(entry, aliasesMap) {
-    var parts = [];
-    if (entry.period) parts.push(entry.period);
-    if (entry.time_range) parts.push(entry.time_range);
-    if (entry.time_label) parts.push(entry.time_label);
-    if (entry.scene) parts.push(entry.scene);
-    if (entry.event) parts.push(entry.event);
-    if (entry.translation) parts.push(entry.translation);
-    if (entry.entities && Array.isArray(entry.entities)) {
-        entry.entities.forEach(function(en) {
-            if (en.name) {
-                parts.push(en.name);
-                var aliases = aliasesMap ? aliasesMap[en.name] : null;
-                if (aliases && Array.isArray(aliases)) {
-                    aliases.forEach(function(a) { if (a) parts.push(a); });
-                }
-            }
-        });
-    }
-    return parts.join(' ');
-}
+import { buildSearchableText } from '../engine/retrieval-text.js';
+export { buildSearchableText };
 
-function bm25Score(queryTokens, docTokens, avgDocLen, totalDocs, docFreq) {
+/**
+ * @param {string[]} queryTokens
+ * @param {string[]} docTokens
+ * @param {number} avgDocLen
+ * @param {number} totalDocs
+ * @param {Object<string, number>} docFreq
+ * @returns {number}
+ */
+export function bm25Score(queryTokens, docTokens, avgDocLen, totalDocs, docFreq) {
     var k1 = 1.5;
     var b = 0.75;
     var docLen = docTokens.length;
@@ -69,6 +60,10 @@ function bm25Score(queryTokens, docTokens, avgDocLen, totalDocs, docFreq) {
 
 // ─── Time constraint parsing ───
 
+/**
+ * @param {string} query
+ * @returns {Object|null}
+ */
 export function parseTimeConstraint(query) {
     if (!query || typeof query !== 'string') return null;
 
@@ -114,6 +109,11 @@ export function parseTimeConstraint(query) {
     return null;
 }
 
+/**
+ * @param {Array<Object>} entries
+ * @param {Object} constraint
+ * @returns {Array<Object>}
+ */
 export function applyTimeFilter(entries, constraint) {
     if (!constraint) return entries.slice();
 
@@ -180,6 +180,11 @@ function isTimeWord(word) {
     return false;
 }
 
+/**
+ * @param {string} query
+ * @param {Object|null} timeConstraint
+ * @returns {boolean}
+ */
 export function isTimeOnlyQuery(query, timeConstraint) {
     if (!timeConstraint || !query) return false;
 
@@ -251,7 +256,17 @@ function denoiseResults(results, minResults) {
     return merged.slice(0, 40);
 }
 
-export async function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap) {
+/**
+ * @param {string} query
+ * @param {Array<import('../../types.js').STMEvent>} allSTM
+ * @param {Array<import('../../types.js').LTMEntry>} allLTM
+ * @param {number} topK
+ * @param {number} minResults
+ * @param {Object} aliasesMap
+ * @param {string} chatId
+ * @returns {Promise<Array<Object>>}
+ */
+export async function filterCandidates(query, allSTM, allLTM, topK, minResults, aliasesMap, chatId) {
     var totalSTM = (allSTM || []).length;
     var totalLTM = (allLTM || []).length;
     topK = isAuto('topK') ? computeTopK(totalSTM) : (topK || 40);
@@ -367,6 +382,50 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
 
     // ── Noise filtering ──
     results = denoiseResults(results, minResults);
+
+    // ── Vector search + RRF fusion (optional) ──
+    var _vectorUsed = false;
+    if (isVectorSearchEnabled()) {
+        var embConfig = loadEmbeddingApiConfig();
+        if (embConfig && embConfig.url) {
+            try {
+                var chatIdResolved = chatId || 'default';
+                var queryEmb = await computeEmbedding(query);
+                if (queryEmb) {
+                    await ensureVectorIndex(allSTM, aliasesMap, chatIdResolved);
+                    var vecIdx = getVectorIndex(chatIdResolved);
+                    if (vecIdx && vecIdx.vectors.length > 0) {
+                        var vecResults = vectorSearch(queryEmb, vecIdx, topK * 2);
+                        if (vecResults.length > 0) {
+                            var fused = rrfFuse(results, vecResults, 60, topK);
+                            fused.forEach(function(f) {
+                                f.__score = f._rrf_score != null ? f._rrf_score : (f.__score || 0);
+                            });
+                            results = fused.map(function(f) {
+                                if (f.__type) return f;
+                                if (f.id) {
+                                    var stmEntry = allSTM.find(function(s) { return s.id === f.id; });
+                                    if (stmEntry) {
+                                        var c = JSON.parse(JSON.stringify(stmEntry));
+                                        c.__type = 'stm';
+                                        c.__id = stmEntry.id;
+                                        c.__score = f.__score;
+                                        return c;
+                                    }
+                                }
+                                return f;
+                            });
+                            _vectorUsed = true;
+                            console.log('[NE] Vector search fused: BM25=' + (results.length - vecResults.length) + ' vec=' + vecResults.length + ' fused=' + fused.length + ' vectorUsed=' + _vectorUsed);
+                        }
+                    }
+                }
+            } catch (e) {
+                console.warn('[NE] Vector search fallback to BM25 only:', e && e.message);
+            }
+        }
+    }
+    results._vectorUsed = _vectorUsed;
 
     // ── LTM directory: append recent LTM entries as view-only catalog (not BM25 scored) ──
     if (allLTM.length > 0) {

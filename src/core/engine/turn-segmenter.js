@@ -5,6 +5,10 @@
  * 输出 turns[] 供语义切分和 STM 提取使用。
  */
 
+/**
+ * @param {Array<import('../../types.js').Message>} messages
+ * @returns {Array<import('../../types.js').Turn>}
+ */
 export function groupMessagesIntoTurns(messages) {
     var turns = [];
     var pendingUser = null;
@@ -44,6 +48,11 @@ export function groupMessagesIntoTurns(messages) {
 /**
  * 将 turns 格式化为 LLM prompt 可读文本
  */
+/**
+ * @param {Array<import('../../types.js').Turn>} turns
+ * @param {number[]} [turnIndices]
+ * @returns {string}
+ */
 export function formatTurnsText(turns, turnIndices) {
     var indices = turnIndices;
     if (!indices) {
@@ -73,6 +82,11 @@ export function formatTurnsText(turns, turnIndices) {
 /**
  * 从 turn 范围提取 msg_ids
  */
+/**
+ * @param {Array<import('../../types.js').Turn>} turns
+ * @param {number[]} [turnIndices]
+ * @returns {string[]}
+ */
 export function collectMsgIdsFromTurns(turns, turnIndices) {
     var ids = [];
     var seen = {};
@@ -100,6 +114,10 @@ export function collectMsgIdsFromTurns(turns, turnIndices) {
 
 /**
  * 获取原始 messages 中从 msgStart 到 msgEnd 的最小/最大全局索引
+ */
+/**
+ * @param {import('../../types.js').Turn} turn
+ * @returns {number[]}
  */
 export function getTurnMsgRange(turn) {
     return [turn.msgStart, turn.msgEnd];

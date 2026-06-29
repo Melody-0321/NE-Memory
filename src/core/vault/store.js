@@ -37,10 +37,17 @@ export { openDB };
 
 var _storageBlocked = false;
 
+/**
+ * @returns {boolean}
+ */
 export function isStorageBlocked() {
     return _storageBlocked;
 }
 
+/**
+ * @param {string} chatId
+ * @returns {Promise<import('../../types.js').Vault|null>}
+ */
 export async function read(chatId) {
     var db;
     try {
@@ -82,6 +89,11 @@ export async function read(chatId) {
     });
 }
 
+/**
+ * @param {string} chatId
+ * @param {import('../../types.js').Vault} vault
+ * @returns {Promise<void>}
+ */
 export async function write(chatId, vault) {
     var db;
     try {
@@ -101,6 +113,12 @@ export async function write(chatId, vault) {
     });
 }
 
+/**
+ * @param {string} chatId
+ * @param {import('../../types.js').Vault} vault
+ * @param {Object} snapshotEntry
+ * @returns {Promise<void>}
+ */
 export async function writeWithSnapshot(chatId, vault, snapshotEntry) {
     var db;
     try {
@@ -147,6 +165,10 @@ function ensureCursorState(vault) {
     }
 }
 
+/**
+ * @param {string} chatId
+ * @returns {Promise<void>}
+ */
 export async function remove(chatId) {
     const db = await openDB();
     return new Promise((resolve, reject) => {
@@ -158,6 +180,10 @@ export async function remove(chatId) {
     });
 }
 
+/**
+ * @param {string} chatId
+ * @returns {import('../../types.js').Vault}
+ */
 export function emptyVault(chatId) {
     return {
         chat_id: chatId,
@@ -195,6 +221,11 @@ export function emptyVault(chatId) {
     };
 }
 
+/**
+ * @param {Array<import('../../types.js').Message>} messages
+ * @param {import('../../types.js').Vault} [existingVault]
+ * @returns {{vault: import('../../types.js').Vault, newMessages: Array<import('../../types.js').Message>}}
+ */
 export function mergeVaultFromMessages(messages, existingVault) {
     const vault = existingVault || emptyVault('');
     const processedIds = collectAllMsgIds(vault);
@@ -209,6 +240,10 @@ export function mergeVaultFromMessages(messages, existingVault) {
     return { vault, newMessages };
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {Set<string>}
+ */
 export function collectAllMsgIds(vault) {
     const ids = new Set();
     const content = vault.content || {};
@@ -225,6 +260,10 @@ export function collectAllMsgIds(vault) {
     return ids;
 }
 
+/**
+ * @param {Array<import('../../types.js').STMEvent>} entries
+ * @returns {Array<import('../../types.js').STMEvent>}
+ */
 export function sortStmByMsgOrder(entries) {
     if (!entries || entries.length < 2) return entries;
     return entries.slice().sort(function (a, b) {
@@ -234,6 +273,11 @@ export function sortStmByMsgOrder(entries) {
     });
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @param {Array<import('../../types.js').STMEvent>} stmEntries
+ * @returns {number}
+ */
 export function appendSTMEntries(vault, stmEntries) {
     const content = vault.content;
     const existingIds = new Set();
@@ -273,6 +317,11 @@ export function appendSTMEntries(vault, stmEntries) {
     return addedCount;
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @param {(number|string)[]} removedMsgIds
+ * @returns {{removedSTM: number, removedLTM: number}}
+ */
 export function rollbackByMsgIds(vault, removedMsgIds) {
     const content = vault.content || {};
     const ridSet = new Set(removedMsgIds);
@@ -312,15 +361,3 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     return updated;
 }
 
-// ─── Cursor State ───
-
-export function getCursorState(vault, mode) {
-    var cs = (vault.content || {}).cursor_state || {};
-    return cs[mode] || { position: 0, pending_partials: [] };
-}
-
-export function updateCursorState(vault, mode, state) {
-    if (!vault.content) vault.content = {};
-    if (!vault.content.cursor_state) vault.content.cursor_state = {};
-    vault.content.cursor_state[mode] = state;
-}

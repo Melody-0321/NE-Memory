@@ -18,18 +18,18 @@ import { t_field } from '../i18n.js';
 let _stateSchemaEnabled = false;
 let _dynamicStateMode = false;
 
+/** @returns {boolean} */
 export function isStateSchemaEnabled() {
     return _stateSchemaEnabled;
 }
 
+/** @param {boolean} val */
 export function setStateSchemaEnabled(val) {
     _stateSchemaEnabled = !!val;
 }
 
-export function isDynamicStateMode() {
-    return _stateSchemaEnabled && _dynamicStateMode;
-}
 
+/** @param {boolean} val */
 export function setDynamicStateMode(val) {
     _dynamicStateMode = !!val;
 }
@@ -313,6 +313,11 @@ export const DEFAULT_QUESTS_SCHEMA = {
 };
 
 // validateField — 类型检查 + max_length 截断 + enum 值校验
+/**
+ * @param {*} value
+ * @param {import('../../types.js').SchemaFieldDef|null} fieldSchema
+ * @returns {import('../../types.js').ValidationResult}
+ */
 export function validateField(value, fieldSchema) {
     if (!fieldSchema) return { ok: true, value: value };
 
@@ -357,6 +362,11 @@ export function validateField(value, fieldSchema) {
 }
 
 // resolveSchemaPath — 递归解析 dot-separated 路径到 Schema 定义
+/**
+ * @param {Object|null} stateSchema
+ * @param {string} dotPath
+ * @returns {Object|null}
+ */
 export function resolveSchemaPath(stateSchema, dotPath) {
     if (!stateSchema) return null;
     var parts = dotPath.split('.');
@@ -381,7 +391,11 @@ export function resolveSchemaPath(stateSchema, dotPath) {
     return current;
 }
 
-// validateStateChanges — 校验变更，未知字段警告但不阻塞（向后兼容）
+/**
+ * @param {Object} stateSchema
+ * @param {Object<string, any>} changes
+ * @returns {{validated: Object<string, any>, warnings: Array<{path: string, warning: string}>}}
+ */
 export function validateStateChanges(stateSchema, changes) {
     var validated = {};
     var warnings = [];
@@ -417,6 +431,10 @@ export function validateStateChanges(stateSchema, changes) {
 }
 
 // rebuildPresentCharacters — 从 characters.*.status==='活跃' 重建 present_characters
+/**
+ * @param {import('../../types.js').State|null} state
+ * @returns {import('../../types.js').State}
+ */
 export function rebuildPresentCharacters(state) {
     if (!state) return state;
     var characters = state.characters;
@@ -432,6 +450,11 @@ export function rebuildPresentCharacters(state) {
     return state;
 }
 
+/**
+ * @param {import('../../types.js').State} state
+ * @param {string} name
+ * @param {string} [schemeKey]
+ */
 export function ensureCharacterTemplate(state, name, schemeKey) {
     if (!state.characters) state.characters = {};
     if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
@@ -475,6 +498,11 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
 
 // mergeStateChanges — 按 dot-path 深度合并到状态对象
 // 每次合并后自动重建 present_characters
+/**
+ * @param {import('../../types.js').State} state
+ * @param {Object<string, any>} validatedChanges
+ * @returns {import('../../types.js').State}
+ */
 export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
 
@@ -562,19 +590,28 @@ export function mergeStateChanges(state, validatedChanges) {
     return newState;
 }
 
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {Object}
+ */
 export function getEffectiveSchema(vault) {
     return vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
 }
 
 // Fields injected for PC — derived from DEFAULT_CHARACTER_SCHEMA.protagonist
+/** @type {string[]} */
 export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
-export var NPC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'affection', 'relationship', 'current_mood', 'inner_thoughts', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 // Static field categories — used by buildStateInjectionTable to annotate unfilled required fields
 var STATIC_FIELD_CATEGORIES = { gender_age: true, physique: true, occupation: true, personality: true };
 
+/**
+ * @param {import('../../types.js').State} state
+ * @param {string} name
+ * @returns {string[]}
+ */
 export function getNpcInjectionFields(state, name) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var schemeKey = charData._scheme || 'default';
@@ -589,6 +626,13 @@ export function getNpcInjectionFields(state, name) {
     return fields;
 }
 
+/**
+ * @param {import('../../types.js').State|null} state
+ * @param {Array} messages
+ * @param {Object} maxItems
+ * @param {Object} world
+ * @returns {string}
+ */
 export function buildStateInjectionTable(state, messages, maxItems, world) {
     if (!state) return '';
     maxItems = maxItems || { characters: Infinity, factions: Infinity, quests: Infinity };
@@ -757,223 +801,4 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 
     return parts.join('\n');
 }
-
-// formatCharacterSummary — 将角色卡渲染为摘要文本行
-export function formatCharacterSummary(state, characterSchema) {
-    if (!state || !state.characters) return '';
-    var schema = characterSchema || DEFAULT_CHARACTER_SCHEMA;
-    var characters = state.characters;
-    var lines = [];
-
-    function getCardType(name) {
-        var npcNames = state.npc_names;
-        if (npcNames && Array.isArray(npcNames) && npcNames.indexOf(name) !== -1) return 'npc';
-        return 'protagonist';
-    }
-
-    Object.keys(characters).forEach(function (name) {
-        var card = characters[name];
-        if (!card || typeof card !== 'object') return;
-        var cardType = getCardType(name);
-        var cardSchema = schema[cardType] || schema.npc;
-        var fields = cardSchema.fields || {};
-
-        var summaryFields = [];
-        var status = card.status || '未知';
-        summaryFields.push('[' + status + ']');
-
-        Object.keys(fields).forEach(function (key) {
-            if (key === 'status') return;
-            if (key === 'name') return;
-            var val = card[key];
-            if (val !== undefined && val !== null && val !== '') {
-                var strVal;
-                if (typeof val === 'object') {
-                    try { strVal = JSON.stringify(val); } catch (e) { strVal = String(val); }
-                } else {
-                    strVal = String(val);
-                }
-                summaryFields.push(key + '=' + strVal.substring(0, 40));
-            }
-        });
-
-        if (summaryFields.length > 1) {
-            lines.push(name + ': ' + summaryFields.join(', '));
-        }
-    });
-
-    return lines.join('\n');
-}
-
-// formatActiveCharacterSummary — 只渲染 status==='活跃' 的角色摘要
-export function formatActiveCharacterSummary(state, characterSchema) {
-    if (!state || !state.characters) return '';
-    var activeState = { characters: {}, npc_names: state.npc_names };
-    var characters = state.characters;
-    Object.keys(characters).forEach(function (name) {
-        var card = characters[name];
-        if (card && card.status === '活跃') {
-            activeState.characters[name] = card;
-        }
-    });
-    if (Object.keys(activeState.characters).length === 0) return '';
-    return formatCharacterSummary(activeState, characterSchema);
-}
-
-// formatStateSummary — 有 Schema 时输出扁平摘要，无 Schema 时回退 JSON
-export function formatStateSummary(state, stateSchema) {
-    if (!stateSchema) {
-        if (!state || Object.keys(state).length === 0) return '';
-        try { return JSON.stringify(state); } catch (e) { return ''; }
-    }
-
-    var lines = [];
-
-    // translate a dotted path, only translating the leaf field name
-    function displayPath(fullPath) {
-        var parts = fullPath.split('.');
-        if (parts.length === 1) return t_field(parts[0]);
-        parts[parts.length - 1] = t_field(parts[parts.length - 1]);
-        return parts.join('.');
-    }
-
-    function walk(obj, prefix, sch) {
-        if (!sch) return;
-        if (sch.type !== 'object') return;
-
-        var fields = sch.fields;
-        if (!fields && sch.schema && sch.schema.type === 'object' && sch.schema.fields) {
-            fields = sch.schema.fields;
-        }
-        if (!fields) return;
-
-        var wildcardSch = fields['*'];
-        var coveredKeys = {};
-
-        Object.keys(fields).forEach(function (key) {
-            if (key === '*') return;
-            coveredKeys[key] = true;
-            var fieldSch = fields[key];
-            var fullPath = prefix ? prefix + '.' + key : key;
-            var val = obj && obj[key];
-
-            if (fieldSch.type === 'object' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
-                walk(val, fullPath, fieldSch);
-            } else {
-                if (val === null || val === undefined || val === '') {
-                    // 跳过空值，不显示 '-'
-                } else {
-                    var display = String(val).substring(0, 50);
-                    lines.push(displayPath(fullPath) + '=' + display);
-                }
-            }
-        });
-
-        if (wildcardSch && obj && typeof obj === 'object') {
-            Object.keys(obj).forEach(function (key) {
-                if (coveredKeys[key]) return;
-                var fullPath = prefix ? prefix + '.' + key : key;
-                var val = obj[key];
-                if (wildcardSch.type === 'object' && typeof val === 'object' && val !== null && !Array.isArray(val)) {
-                    walk(val, fullPath, wildcardSch);
-                } else {
-                    var display = val === null || val === undefined ? '-' : String(val).substring(0, 50);
-                    lines.push(displayPath(fullPath) + '=' + display);
-                }
-            });
-        }
-    }
-
-    walk(state, '', stateSchema);
-    return lines.join(', ');
-}
-
-// formatQuestSummary — bi-level: only name + status/deadline, no detail fields
-export function formatQuestSummary(state, currentTime) {
-    currentTime = currentTime || '';
-    if (!state || !state.quests) return '';
-    var quests = state.quests;
-    var sections = [];
-
-    function calcRemaining(deadline, currentTime) {
-        if (!deadline || !currentTime) return '';
-        try {
-            var d = new Date(deadline);
-            var c = new Date(currentTime);
-            if (isNaN(d.getTime()) || isNaN(c.getTime())) {
-                var dNum = parseInt(deadline, 10);
-                var cNum = parseInt(currentTime, 10);
-                if (!isNaN(dNum) && !isNaN(cNum)) return Math.max(0, dNum - cNum) + '天';
-            }
-            var diffMs = d.getTime() - c.getTime();
-            var diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
-            return diffDays > 0 ? diffDays + '天' : (diffDays === 0 ? '今天' : '');
-        } catch (e) { return ''; }
-    }
-
-    // Tasks
-    if (quests.tasks && typeof quests.tasks === 'object') {
-        var taskNames = Object.keys(quests.tasks);
-        if (taskNames.length > 0) {
-            var taskLines = ['【任务】'];
-            taskNames.forEach(function (name) {
-                var t = quests.tasks[name];
-                if (!t || typeof t !== 'object') return;
-                var remaining = calcRemaining(t.deadline, currentTime);
-                var suffix = remaining ? ' — 剩余' + remaining : ' — ' + (t.status || '未知');
-                taskLines.push('  ' + (t.name || name) + suffix);
-            });
-            sections.push(taskLines.join('\n'));
-        }
-    }
-
-    // Goals
-    if (quests.goals && typeof quests.goals === 'object') {
-        var goalNames = Object.keys(quests.goals);
-        if (goalNames.length > 0) {
-            var goalLines = ['【目标】'];
-            goalNames.forEach(function (name) {
-                var g = quests.goals[name];
-                if (!g || typeof g !== 'object') return;
-                goalLines.push('  ' + (g.name || name) + ' — ' + (g.status || '未知'));
-            });
-            sections.push(goalLines.join('\n'));
-        }
-    }
-
-    // Events
-    if (quests.events && typeof quests.events === 'object') {
-        var eventNames = Object.keys(quests.events);
-        if (eventNames.length > 0) {
-            var eventLines = ['【世界事件】'];
-            eventNames.forEach(function (name) {
-                var e = quests.events[name];
-                if (!e || typeof e !== 'object') return;
-                eventLines.push('  ' + (e.name || name) + ' — ' + (e.status || '未知'));
-            });
-            sections.push(eventLines.join('\n'));
-        }
-    }
-
-    return sections.join('\n\n');
-}
-
-export function formatEntityChainHeaders(activeCharNames, entityChains, entityNames) {
-    var headers = {};
-    if (!entityChains || !activeCharNames || !entityNames) return headers;
-    activeCharNames.forEach(function(name) {
-        var chains = entityChains[name];
-        if (!chains || !chains.length) return;
-        var mention = chains.slice(0, 2).join('; ');
-        if (mention) headers[name] = '\u2192 ' + mention;
-    });
-    return headers;
-}
-
-export function stringifyVal(val) {
-    if (val === null || val === undefined || val === '') return null;
-    if (typeof val === 'object') {
-        try { return JSON.stringify(val); } catch (e) { return String(val); }
-    }
-    return String(val);
-}
+

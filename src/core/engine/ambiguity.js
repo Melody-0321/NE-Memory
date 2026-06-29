@@ -206,12 +206,9 @@ function resolveEntityByDescriptor(descriptor, knownEntities) {
         return { exact: candidates[0].name, candidates: [] }
     }
 
-    // 多候选时，按实体 name 长度排序（越短越可能是精确匹配）+ 优先角色
+    // 多候选时，按实体 name 长度排序（越短越可能是精确匹配）
     candidates.sort(function(a, b) {
-        var typeScoreA = a.type === 'character' ? 0 : 1
-        var typeScoreB = b.type === 'character' ? 0 : 1
-        if (typeScoreA !== typeScoreB) return typeScoreA - typeScoreB
-        return a.name.length - b.name.length
+        return a.name.length - b.name.length;
     })
 
     return { exact: null, candidates: candidates }

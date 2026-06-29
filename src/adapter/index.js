@@ -5,6 +5,7 @@
  */
 import { runtime } from '../core/runtime.js';
 import { read, write } from '../core/vault/store.js';
+import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
@@ -14,6 +15,7 @@ import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { ensureStateWorldBook } from '../core/engine/worldbook-sync.js';
+import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner.js';
 import { getTestCaseMetadata } from '../core/test-runner/files.js';
 import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, getChatBreakdown, getAvailableMonths, getMonthlyStats } from '../core/engine/token-stats.js';
@@ -531,7 +533,11 @@ function _buildDebugApi(host) {
                 }
                 return { currentChatId: currentId, allKeys: keys, snapshots: snaps };
             } catch (e) { return 'Error: ' + e.message; }
-        }
+        },
+        resetVectorIndex: async function(chatId) { try { return await resetVectorIndex(chatId); } catch (e) { return 'Error: ' + e.message; } },
+        getVectorIndex: function(chatId) { try { return getVectorIndex(chatId); } catch (e) { return 'Error: ' + e.message; } },
+        gc: async function() { try { return await scanOrphans(); } catch (e) { return 'Error: ' + e.message; } },
+        purgeChat: async function(chatId) { try { return await purgeOrphanChatData(chatId); } catch (e) { return 'Error: ' + e.message; } },
     };
 }
 

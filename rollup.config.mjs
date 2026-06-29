@@ -17,7 +17,9 @@ export default {
     external: ['jQuery', '$', 'TavernHelper', 'SillyTavern', 'ToolManager'],
     plugins: [
         resolve({ browser: true }),
-        commonjs(),
+        commonjs({
+            include: 'node_modules/**'
+        }),
         babel({
             babelHelpers: 'bundled',
             presets: ['@babel/preset-env'],

@@ -301,7 +301,7 @@ export async function callMemoryLLMWithTools(messages, tools, toolExecutors, opt
             });
         } catch (e) {
             console.warn('[NE] Tool call round ' + (round + 1) + ' failed:', e.message);
-            break;
+            continue;
         }
     }
 

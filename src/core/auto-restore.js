@@ -8,7 +8,7 @@ function _getChatMetadataNeVault() {
         if (metadata && typeof metadata.ne_vault === 'string' && metadata.ne_vault.length > 0) {
             return metadata.ne_vault;
         }
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] _getChatMetadataNeVault failed:', e.message); }
     return null;
 }
 
@@ -18,13 +18,13 @@ function _setChatMetadataNeVault(vault) {
         if (metadata) {
             metadata.ne_vault = JSON.stringify(vault);
         }
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] _setChatMetadataNeVault failed:', e.message); }
 }
 
 function _saveChatFile() {
     try {
         runtime.saveChat().catch(function() {});
-    } catch (e) {}
+    } catch (e) { console.warn('[NE] _saveChatFile failed:', e.message); }
 }
 
 export function persistVaultToChatFile(vault) {
@@ -48,17 +48,17 @@ export async function loadVault(chatId) {
     var neVaultJson = _getChatMetadataNeVault();
     var chatVault = null;
     if (neVaultJson) {
-        try { chatVault = JSON.parse(neVaultJson); } catch (e) {}
+        try { chatVault = JSON.parse(neVaultJson); } catch (e) { console.warn('[NE] chat_metadata.ne_vault JSON parse failed:', e.message); }
     }
 
     var dbVault = null;
-    try { dbVault = await read(chatId); } catch (e) {}
+    try { dbVault = await read(chatId); } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
 
     var effectiveVersion = (dbVault && dbVault.version) || 0;
     var chatVersion = (chatVault && chatVault.version) || 0;
 
     if (chatVersion > 0 && chatVersion >= effectiveVersion) {
-        try { await write(chatId, chatVault); } catch (e) {}
+        try { await write(chatId, chatVault); } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
         return chatVault;
     }
 
