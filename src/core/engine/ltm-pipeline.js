@@ -1,7 +1,6 @@
 import { findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
-import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
-import { validateLTMOutput } from './validate.js';
+import { validateLtmDecision } from './validate.js';
 
 var EVENT_CLOSING_PUNCT = /[.。！？!?\"\”\)\}\]\>\」』）]$/;
 
@@ -113,10 +112,27 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline) {
     if (parsed) {
         var result = parsed.ltm_decision || null;
         if (result) {
-            var ltmErrors = validateLTMOutput(result);
-            if (ltmErrors.length > 0) {
-                console.warn('[NE] LTM validation warnings:', ltmErrors.join('; '));
-                recordTelemetry({ pipeline_task: 'ltm_decision', validation_warnings: ltmErrors }, vault.id);
+            result = validateLtmDecision(result);
+            if (!result) {
+                console.warn('[NE] LTM decision action invalid, retrying once');
+                try {
+                    responseText = await callMemoryPipeline([
+                        { role: 'system', content: prompt.system + '\n\n错误：上一轮的 action 值无效。action 必须是 "append" 或 "close_and_new"。' },
+                        { role: 'user', content: prompt.user }
+                    ], { operation: 'ltm_decision_retry' }, vault.id);
+                    var parsed2 = safeJsonParse(responseText);
+                    if (parsed2) {
+                        result = parsed2.ltm_decision || null;
+                        if (result) result = validateLtmDecision(result);
+                    }
+                } catch (e2) {
+                    console.warn('[NE] LTM decision retry failed:', e2.message);
+                    return null;
+                }
+                if (!result) {
+                    console.warn('[NE] LTM decision retry also invalid, abandoning');
+                    return null;
+                }
             }
         }
         if (result && result.updated_event) {

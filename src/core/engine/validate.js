@@ -1,5 +1,3 @@
-import { getStmMinLtmMerge } from '../settings.js';
-
 export function validateSTMOutput(parsed, vault, messageCount) {
     var errors = [];
     var stmEntries = parsed.stmEntries || [];
@@ -76,132 +74,17 @@ export function postFillSTM(parsed, vault) {
     return parsed;
 }
 
-export function mergeStoryPeriod(storyTime, storyDate) {
-    var parts = [];
-    if (storyTime) parts.push(storyTime);
-    if (storyDate) parts.push(storyDate);
-    return parts.join(' ─ ');
-}
-
-export function validateLTMOutput(result) {
-    var errors = [];
-    var entries = result.ltm_entries || [];
-
-    if (entries.length === 0) {
-        return errors;
+export function validateLtmDecision(result) {
+    var action = result.action;
+    if (action !== 'append' && action !== 'close_and_new') {
+        console.warn('[NE] LTM decision invalid action:', action);
+        return null;
     }
-
-    for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
-        if (!e.event || !String(e.event).trim()) {
-            errors.push('ltm_entries[' + i + '].event is REQUIRED');
-        }
-        if (e.title !== undefined && !String(e.title).trim()) {
-            errors.push('ltm_entries[' + i + '].title is empty — omit the field if not set');
-        }
-        if (!e.stm_refs || e.stm_refs.length === 0) {
-            errors.push('ltm_entries[' + i + '].stm_refs is REQUIRED');
-        }
-        if (e.stm_refs && e.stm_refs.length < getStmMinLtmMerge()) {
-            errors.push('ltm_entries[' + i + '] must have at least ' + getStmMinLtmMerge() + ' stm_refs');
-        }
-        if (!Array.isArray(e.entities)) e.entities = [];
+    if (result.updated_title && String(result.updated_title).length > 60) {
+        result.updated_title = String(result.updated_title).substring(0, 60);
     }
-
-    return errors;
-}
-
-export function postFillLTM(result, sourceSTMList) {
-    var entries = result.ltm_entries || [];
-
-    for (var i = 0; i < entries.length; i++) {
-        var e = entries[i];
-
-        if (!e.stm_refs || e.stm_refs.length === 0) {
-            e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
-        } else {
-            var validCount = 0;
-            var invalidCount = 0;
-            for (var j = 0; j < e.stm_refs.length; j++) {
-                if (sourceSTMList.find(function(s) { return s.id === e.stm_refs[j]; })) {
-                    validCount++;
-                } else {
-                    invalidCount++;
-                }
-            }
-            if (invalidCount > 0) {
-                // 尝试逐个修复（可能缺少 stm_ 前缀，或 LLM 用了数字序号）
-                var fixedRefs = [];
-                for (var j = 0; j < e.stm_refs.length; j++) {
-                    var ref = e.stm_refs[j];
-                    if (sourceSTMList.find(function(s) { return s.id === ref; })) {
-                        fixedRefs.push(ref);
-                    } else if (sourceSTMList.find(function(s) { return s.id === 'stm_' + ref; })) {
-                        fixedRefs.push('stm_' + ref);
-                    } else {
-                        // 尝试按序号匹配 (LLM 可能返回 "1" 对应 stmIds[0])
-                        var idx = parseInt(ref, 10);
-                        if (!isNaN(idx) && idx >= 1 && idx <= sourceSTMList.length) {
-                            var matchId = sourceSTMList[idx - 1].id;
-                            // 避免重复添加
-                            if (fixedRefs.indexOf(matchId) === -1) {
-                                fixedRefs.push(matchId);
-                            }
-                        }
-                    }
-                }
-                if (fixedRefs.length > 0) {
-                    console.log('[NE] postFillLTM: fixed ' + fixedRefs.length + ' stm_refs for LTM', e.id || '(new)', '(was ' + invalidCount + ' invalid)');
-                    e.stm_refs = fixedRefs;
-                } else {
-                    console.warn('[NE] postFillLTM: all stm_refs invalid, assigning all source STMs for LTM', e.id || '(new)');
-                    e.stm_refs = sourceSTMList.map(function(s) { return s.id; }).filter(Boolean);
-                }
-            }
-        }
-
-        if (!e.period || !String(e.period).trim()) {
-            var periods = [];
-            (e.stm_refs || []).forEach(function(refId) {
-                var found = sourceSTMList.find(function(s) { return s.id === refId; });
-                if (found && found.period) periods.push(found.period);
-            });
-            if (periods.length > 0) {
-                var unique = [];
-                periods.forEach(function(p) { if (unique.indexOf(p) === -1) unique.push(p); });
-                e.period = unique.join('→');
-            }
-        }
-
-        if (!e.id) {
-            e.id = 'ltm_' + (Math.floor(Date.now() / 1000));
-        }
-
-        if (!e.title && e.event) {
-            e.title = e.event.substring(0, 40);
-        }
-
-        if (!e.status) {
-            e.status = 'closed';
-        }
-
-        // 从 stm_refs 聚合 entities
-        var eEnts = e.entities || [];
-        (e.stm_refs || []).forEach(function(refId) {
-            var stm = sourceSTMList.find(function(s) { return s.id === refId; });
-            if (stm && stm.entities) {
-                stm.entities.forEach(function(en) {
-                    var n = typeof en === 'string' ? en : en.name;
-                    if (n && eEnts.indexOf(n) === -1) eEnts.push(n);
-                });
-            }
-        });
-        if (eEnts.length > 0) e.entities = eEnts;
-    }
-
     return result;
 }
-
 
 // ─── msgRange 验证 ───
 

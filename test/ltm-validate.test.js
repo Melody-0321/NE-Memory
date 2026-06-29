@@ -1,75 +1,47 @@
-import { validateLTMOutput, postFillLTM } from '../src/core/engine/validate.js';
+import { validateLtmDecision } from '../src/core/engine/validate.js';
 
 var passed = 0, failed = 0;
 function assert(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
 function eq(a, b, msg) { assert(a === b, msg + ' (expected ' + JSON.stringify(b) + ', got ' + JSON.stringify(a) + ')'); }
-function gt(a, b, msg) { assert(a > b, msg + ' (got ' + a + ')'); }
+function neq(a, b, msg) { assert(a !== b, msg + ' (expected !== ' + JSON.stringify(b) + ', got ' + JSON.stringify(a) + ')'); }
 
-console.log('\n=== ltm-validate: LTM output validation ===');
+console.log('\n=== ltm-validate: validateLtmDecision ===');
 
-// Setup localStorage for stmMinLtmMerge
-globalThis.localStorage = {
-    _data: {},
-    getItem: function(k) { return this._data[k] || null; },
-    setItem: function(k, v) { this._data[k] = v; }
-};
-localStorage.setItem('ne_settings', JSON.stringify({ stmMinLtmMerge: 3 }));
+// --- valid append ---
+var r1 = validateLtmDecision({ action: 'append', updated_title: '古城探索', updated_event: '主角探索古城遗迹' });
+neq(r1, null, 'action=append → passes');
+eq(r1.updated_title, '古城探索', 'title unchanged for short title');
 
-// --- validateLTMOutput: valid entry ---
-var validEntry = {
-    event: '主角探索了古城遗迹',
-    title: '古城探索',
-    stm_refs: ['stm_1', 'stm_2', 'stm_3']
-};
-var errors = validateLTMOutput({ ltm_entries: [validEntry] });
-eq(errors.length, 0, 'valid LTM entry produces no errors');
+// --- valid close_and_new ---
+var r2 = validateLtmDecision({ action: 'close_and_new', updated_title: '决战', updated_event: '与boss决战' });
+neq(r2, null, 'action=close_and_new → passes');
 
-// --- validateLTMOutput: missing event ---
-var missingEvent = {
-    event: '',
-    stm_refs: ['stm_1', 'stm_2', 'stm_3']
-};
-var errors2 = validateLTMOutput({ ltm_entries: [missingEvent] });
-gt(errors2.length, 0, 'empty event produces errors');
+// --- invalid action → null ---
+var r3 = validateLtmDecision({ action: 'delete', updated_title: 'test' });
+eq(r3, null, 'action=delete → null');
 
-// --- validateLTMOutput: missing stm_refs ---
-var missingRefs = {
-    event: 'something happened',
-    stm_refs: []
-};
-var errors3 = validateLTMOutput({ ltm_entries: [missingRefs] });
-gt(errors3.length, 0, 'empty stm_refs produces errors');
+// --- invalid action (random) → null ---
+var r4 = validateLtmDecision({ action: 'xyz', updated_title: 'test' });
+eq(r4, null, 'action=xyz → null');
 
-// --- validateLTMOutput: empty title ---
-var emptyTitle = {
-    event: 'something happened',
-    title: '',
-    stm_refs: ['stm_1', 'stm_2', 'stm_3']
-};
-var errors4 = validateLTMOutput({ ltm_entries: [emptyTitle] });
-gt(errors4.length, 0, 'empty title produces errors');
+// --- missing action → null ---
+var r5 = validateLtmDecision({ updated_title: 'test' });
+eq(r5, null, 'missing action → null');
 
-// --- validateLTMOutput: empty entries ---
-var errors5 = validateLTMOutput({ ltm_entries: [] });
-eq(errors5.length, 0, 'empty entries produces no errors');
+// --- title > 60 chars → truncated ---
+var longTitle = 'A'.repeat(80);
+var r6 = validateLtmDecision({ action: 'append', updated_title: longTitle });
+neq(r6, null, 'long title → still passes');
+eq(r6.updated_title.length, 60, 'title truncated to 60 chars');
+eq(r6.updated_title, 'A'.repeat(60), 'title truncated correctly');
 
-// --- postFillLTM: fills missing id ---
-var sourceSTM = [
-    { id: 'stm_1', event: '探索古城', period: 'Day 1' },
-    { id: 'stm_2', event: '发现秘境', period: 'Day 1' },
-    { id: 'stm_3', event: '进入秘境', period: 'Day 2' }
-];
-var ltmResult = { ltm_entries: [{ event: '探索古城秘境', stm_refs: ['stm_1', 'stm_2', 'stm_3'] }] };
-var filled = postFillLTM(ltmResult, sourceSTM);
-eq(filled.ltm_entries[0].id.indexOf('ltm_'), 0, 'postFillLTM generates ltm_ id');
-eq(filled.ltm_entries[0].status, 'closed', 'postFillLTM defaults status to closed');
-assert(filled.ltm_entries[0].title, 'postFillLTM fills title from event');
+// --- no title at all → passes (title optional) ---
+var r7 = validateLtmDecision({ action: 'append', updated_event: 'something' });
+neq(r7, null, 'no title → still passes');
 
-// --- postFillLTM: preserves existing id and title ---
-var ltmResult2 = { ltm_entries: [{ id: 'ltm_99', title: 'Custom Title', event: 'something', stm_refs: ['stm_1'] }] };
-var filled2 = postFillLTM(ltmResult2, sourceSTM);
-eq(filled2.ltm_entries[0].id, 'ltm_99', 'postFillLTM preserves existing id');
-eq(filled2.ltm_entries[0].title, 'Custom Title', 'postFillLTM preserves existing title');
+// --- no updated_event → passes (event not validated) ---
+var r8 = validateLtmDecision({ action: 'append', updated_title: 'test' });
+neq(r8, null, 'no event → still passes');
 
 console.log('\n--- ltm-validate: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);
