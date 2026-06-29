@@ -1,4 +1,5 @@
 import { read } from '../core/vault/store.js';
+import { loadVault } from '../core/auto-restore.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
