@@ -274,6 +274,18 @@ export function buildBatchPrompt(turns, vault) {
     }
 
     var userText = turnsText.join('\n');
+
+    var innerCache = globalThis.__ne_inner_thoughts_cache;
+    if (innerCache && Object.keys(innerCache).length > 0) {
+        userText += '\n\n## 角色心理状态（本轮对话区间内，由 Main LLM 直接输出）\n';
+        Object.keys(innerCache).forEach(function(charName) {
+            var thoughts = innerCache[charName] || [];
+            thoughts.sort(function(a, b) { return (a.msgIdx || 0) - (b.msgIdx || 0); });
+            userText += '- ' + charName + ': ' + thoughts.map(function(t) { return t.content; }).join(' → ') + '\n';
+        });
+        userText += '\n';
+    }
+
     var maxTurnLabel = turns.length - 1;
 
     var injectLtmContext = isLtmEnabled(vault);
@@ -503,6 +515,17 @@ function buildStmSummaryPrompt(segments, turns, vault) {
         segmentsText += '\n';
     }
 
+    var innerCache = globalThis.__ne_inner_thoughts_cache;
+    if (innerCache && Object.keys(innerCache).length > 0) {
+        segmentsText += '\n## 角色心理状态（本轮对话区间内，由 Main LLM 直接输出）\n';
+        Object.keys(innerCache).forEach(function(charName) {
+            var thoughts = innerCache[charName] || [];
+            thoughts.sort(function(a, b) { return (a.msgIdx || 0) - (b.msgIdx || 0); });
+            segmentsText += '- ' + charName + ': ' + thoughts.map(function(t) { return t.content; }).join(' → ') + '\n';
+        });
+        segmentsText += '\n';
+    }
+
     var system = lang === 'en'
         ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. If multiple time formats appear, pick the MOST PRECISE one — datetime > date > ordinal day > vague period. Use same format as prior events. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
         : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。如果消息中同时出现多种时间格式，请选择最精确的表达——具体日期+时刻 > 具体日期 > 第N天 > 泛化时段。参考往期事件的命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
@@ -610,6 +633,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
 
         cursorResult.totalAdded = events.length;
         newEntries = events;
+
+        globalThis.__ne_inner_thoughts_cache = {};
 
         // Persist — always save vault even with zero events to prevent infinite re-processing loop
         vault._meta = vault._meta || {};

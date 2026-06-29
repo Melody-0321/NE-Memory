@@ -66,6 +66,26 @@ export function postFillSTM(parsed, vault) {
             });
 
             e.entities = entities;
+
+            var innerCache = globalThis.__ne_inner_thoughts_cache;
+            if (innerCache && e.msgRange && e.msgRange.length === 2) {
+                var rangeStart = e.msgRange[0];
+                var rangeEnd = e.msgRange[1];
+                var thoughts = {};
+                entities.forEach(function(name) {
+                    var charThoughts = innerCache[name];
+                    if (charThoughts) {
+                        var matched = [];
+                        charThoughts.forEach(function(t) {
+                            if (t.msgIdx >= rangeStart && t.msgIdx <= rangeEnd) {
+                                matched.push(t.content);
+                            }
+                        });
+                        if (matched.length > 0) thoughts[name] = matched;
+                    }
+                });
+                if (Object.keys(thoughts).length > 0) e._inner_thoughts = thoughts;
+            }
         });
     } else {
         stmEntries.forEach(function(e) { e.entities = []; });

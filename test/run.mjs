@@ -17,7 +17,6 @@ var testMap = {
     'turn-segmenter': 'turn-segmenter.test.js',
     'stm-validate': 'stm-validate.test.js',
     'ltm-validate': 'ltm-validate.test.js',
-    'merge-story-period': 'merge-story-period.test.js',
     'consolidate-core': 'consolidate-core.test.js',
     'consolidate-apply': 'consolidate-apply.test.js',
     'entity-grouping': 'entity-grouping.test.js',

@@ -556,12 +556,31 @@ function renderStmRow(stm, opts) {
     var editCell = opts.showEdit
         ? '<td><span class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" title="Edit">\u270E</span></td>'
         : '<td></td>';
+    var eventHtml = escapeHtml(stm.event || stm.summary || '');
+    var entities = stm.entities || [];
+    if (entities.length > 0) {
+        eventHtml += '<div class="ne-stm-entities-row">';
+        entities.forEach(function(en) {
+            eventHtml += '<span class="ne-entity-pill">' + escapeHtml(en) + '</span>';
+        });
+        eventHtml += '</div>';
+    }
+    var innerThoughts = stm._inner_thoughts;
+    if (innerThoughts && Object.keys(innerThoughts).length > 0) {
+        eventHtml += '<div class="ne-stm-thoughts-row">';
+        Object.keys(innerThoughts).forEach(function(name) {
+            var thoughts = innerThoughts[name] || [];
+            var joined = thoughts.join(' \u2192 ');
+            eventHtml += '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(name) + '</span>: ' + escapeHtml(joined) + '</div>';
+        });
+        eventHtml += '</div>';
+    }
     return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + '>'
         + '<td style="text-align:center;color:#888;width:2em;font-size:' + fs + ';">' + no + '</td>'
         + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
         + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'
         + '<td style="font-size:' + fs + ';max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td>'
-        + '<td style="font-size:' + fs + ';">' + escapeHtml(stm.event || stm.summary || '') + '</td>'
+        + '<td style="font-size:' + fs + ';">' + eventHtml + '</td>'
         + editCell
         + '</tr>';
 }

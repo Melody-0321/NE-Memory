@@ -214,7 +214,7 @@ export function onMessageSent(messageIndex) {
     }
 }
 
-async function consumeNeCharBlocks() {
+async function consumeNeCharBlocks(messageIndex) {
     var pending = globalThis.__ne_pending_char_blocks;
     if (!pending || pending.length === 0) return;
     globalThis.__ne_pending_char_blocks = null;
@@ -266,6 +266,17 @@ async function consumeNeCharBlocks() {
             chars[cb.name].status = chars[cb.name].status || '活跃';
             console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
         });
+
+        if (messageIndex !== undefined) {
+            var cache = globalThis.__ne_inner_thoughts_cache || {};
+            pending.forEach(function(cb) {
+                if (!cb.name || !cb.fields || !cb.fields.inner_thoughts) return;
+                var thoughts = cache[cb.name] || [];
+                thoughts.push({ msgIdx: messageIndex, content: cb.fields.inner_thoughts });
+                cache[cb.name] = thoughts;
+            });
+            globalThis.__ne_inner_thoughts_cache = cache;
+        }
         charState.characters = charState.characters;
         vault.content.state = charState;
         await saveVaultWithSnapshot(chatId, vault);
@@ -378,7 +389,7 @@ export async function onMessageReceived(messageIndex) {
                     ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
             }
 
-            await consumeNeCharBlocks();
+            await consumeNeCharBlocks(messageIndex);
 
             pendingMessages.push(assistantMsg);
             persistPending();
