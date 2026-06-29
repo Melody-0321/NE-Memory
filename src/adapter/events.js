@@ -454,7 +454,7 @@ async function flushPendingMessages() {
     persistPending();
     try { localStorage.setItem('ne_inflight', JSON.stringify(batch)); } catch (e) { console.warn('[NE] ne_inflight write failed:', e.message); }
     console.log('[NE] Pipeline starting: batch=' + batch.length);
-    const chatId = runtime.getChatId() || 'default';
+    var chatId = runtime.getChatId() || 'default';
     var pipelineStart = Date.now();
     if (getChatTurnNumber(chatId) === 0) incrementChatTurn(chatId);
     try {

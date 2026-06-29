@@ -528,7 +528,7 @@ async function callCustomAPI(config, messages, options) {
         temperature: options.temperature || 0.3,
         max_tokens: options.max_tokens || 2048,
         ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
-        ...(options.thinking !== undefined ? { thinking: { type: options.thinking ? 'enabled' : 'disabled' } } : {})
+        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {})
     });
     const timeoutSec = options.timeout || 120;
 

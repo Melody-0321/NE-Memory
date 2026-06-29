@@ -43,6 +43,27 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
     return 1200;
 }
 
+function buildRetrievalPrefix(content, state) {
+    var parts = [];
+    if (content.story_scene) parts.push('场景: ' + content.story_scene);
+    if (content.story_time || content.story_date) {
+        var timePart = content.story_time || '';
+        if (content.story_date && content.story_date !== timePart) {
+            timePart = timePart ? content.story_date + ' ' + timePart : content.story_date;
+        }
+        if (timePart) parts.push('时间: ' + timePart);
+    }
+    if (state && state.main_event) parts.push('当前事件: ' + state.main_event);
+    if (state && state.characters) {
+        var activeChars = Object.keys(state.characters).filter(function(n) {
+            var c = state.characters[n];
+            return c && (c.status === '活跃' || c.status === 'active');
+        });
+        if (activeChars.length > 0) parts.push('活跃角色: ' + activeChars.join('、'));
+    }
+    return parts.length > 0 ? '【' + parts.join(' | ') + '】' : '';
+}
+
 function computeVisibleWindow(chatMessages, maxContext) {
     if (!chatMessages || chatMessages.length === 0) return [];
     if (!maxContext) {
@@ -149,7 +170,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         if (contextParts.length > 0) {
             conversationContext = contextParts.join('\n').substring(0, 1200);
             var prefix = buildRetrievalPrefix(content, state);
-            query = prefix ? prefix + '\n' + conversationContext.substring(0, 1200 - prefix.length - 1) : conversationContext;
+            query = prefix ? prefix + '\n' + conversationContext : conversationContext;
         }
     }
     if (!query) {

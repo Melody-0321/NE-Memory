@@ -1,4 +1,5 @@
 import { read, write } from './vault/store.js';
+import { runtime } from './runtime.js';
 
 var _loadedChatIds = {};
 
