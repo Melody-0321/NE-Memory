@@ -10,7 +10,6 @@ import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
 import { renderVaultPanel } from './panel-init.js';
 import { updateVaultViewerPopout } from './panel-content.js';
 import { renderSettingsTab } from './panel-settings.js';
-import { renderEntitiesTab } from './panel-entities.js';
 
 export function createVaultPopout(getChatId) {
     var overlay = byId('ne_vault_bottom_overlay');
@@ -22,9 +21,6 @@ export function createVaultPopout(getChatId) {
         overlay.classList.add('open');
         updateVaultViewerPopout(getChatId);
         renderSettingsTab();
-        if (window.__NE_DEV_MODE) {
-            read(getChatId()).then(function(v) { renderEntitiesTab(v); }).catch(function(e) { console.warn('[NE] Initial entities tab render failed:', e); });
-        }
     } else {
         overlay.classList.remove('open');
         if (chat) chat.style.display = '';

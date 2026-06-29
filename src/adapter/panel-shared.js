@@ -156,6 +156,7 @@ export function injectBottomDrawerCSS() {
         '.ne-inline-save{background:#4caf50;color:#fff;border:none;}' +
         '.ne-settings-section{margin-bottom:8px;}' +
         '#tab-settings{overflow-y:auto;max-height:100%;}' +
+        '#tab-usage{overflow-y:auto;max-height:100%;}' +
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
         '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
         '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
@@ -238,9 +239,6 @@ export function injectBottomDrawerCSS() {
         '.ne-settings-section-card .ne-settings-section-title{font-weight:bold;font-size:0.85em;color:var(--grey-70);margin-bottom:8px;display:flex;align-items:center;gap:4px;}' +
         '.ne-settings-section-card .ne-accordion-body{padding:4px 0 0 0;}' +
         '.ne-status-dot{font-size:0.7em;margin-left:4px;}' +
-        '.ne-entity-summary-bar{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:0.82em;}' +
-        '.ne-entity-summary-bar summary{cursor:pointer;color:var(--grey-60);font-weight:bold;}' +
-        '.ne-entity-summary-bar summary:hover{color:var(--text);}' +
         '.ne-state-global-summary{background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:6px 8px;margin-bottom:8px;font-size:0.82em;}' +
         '.ne-state-global-summary summary{cursor:pointer;color:var(--grey-60);font-weight:bold;}' +
         '.ne-state-global-summary summary:hover{color:var(--text);}' +
@@ -248,24 +246,6 @@ export function injectBottomDrawerCSS() {
         '.ne-entity-chain-tag{display:inline-block;padding:1px 6px;border-radius:3px;margin:2px 4px 2px 0;font-size:0.8em;white-space:nowrap;}' +
         '.ne-entity-chain-tag.short{background:rgba(76,175,80,.15);color:#66bb6a;border:1px solid rgba(76,175,80,.3);}' +
         '.ne-entity-chain-tag.long{background:rgba(255,152,0,.12);color:#ffb74d;border:1px solid rgba(255,152,0,.3);}' +
-        '#tab-entities{padding:4px 12px;}' +
-        '#tab-entities .ne-entity-list{display:flex;flex-direction:column;gap:4px;}' +
-        '#tab-entities .ne-entity-row{display:flex;align-items:center;gap:8px;padding:6px 8px;background:var(--black20a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;transition:background .15s;}' +
-        '#tab-entities .ne-entity-row:hover{background:var(--black30a);}' +
-        '#tab-entities .ne-entity-row.selected{border-color:#4caf50;background:rgba(76,175,80,.08);}' +
-        '#tab-entities .ne-entity-icon{font-size:1em;width:20px;text-align:center;flex-shrink:0;}' +
-        '#tab-entities .ne-entity-name{font-weight:bold;min-width:60px;}' +
-        '#tab-entities .ne-entity-type{color:var(--grey-50);font-size:0.8em;}' +
-        '#tab-entities .ne-entity-count{margin-left:auto;font-size:0.8em;color:var(--grey-50);}' +
-        '#tab-entities .ne-entity-status{font-size:0.75em;padding:1px 5px;border-radius:3px;}' +
-        '#tab-entities .ne-entity-status.inline{background:rgba(76,175,80,.15);color:#66bb6a;}' +
-        '#tab-entities .ne-entity-status.available{background:rgba(255,152,0,.12);color:#ffb74d;}' +
-        '#tab-entities .ne-chain-detail{margin-top:4px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;font-size:0.78em;}' +
-        '#tab-entities .ne-chain-entry{display:flex;gap:6px;padding:3px 0;border-bottom:1px solid var(--black20a);}' +
-        '#tab-entities .ne-chain-entry:last-child{border-bottom:none;}' +
-        '#tab-entities .ne-chain-time{color:var(--grey-50);white-space:nowrap;min-width:90px;}' +
-        '#tab-entities .ne-chain-scene{color:var(--grey-60);}' +
-        '#tab-entities .ne-empty-hint{color:var(--grey-50);font-size:0.85em;padding:20px;text-align:center;}' +
         '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
         '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
         '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +

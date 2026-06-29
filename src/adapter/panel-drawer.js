@@ -2,7 +2,6 @@ import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId } from './panel-shared.js';
 import { renderHistory, createVaultPopout } from './panel-popout.js';
-import { renderEntitiesTab } from './panel-entities.js';
 import { renderUsageTab } from './panel-usage.js';
 
 export var _currentCollapseState = {};
@@ -95,9 +94,6 @@ export function setupTabSwitching() {
             qsa('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
             var content = byId('tab-' + tabName);
             if (content) content.classList.add('active');
-            if (window.__NE_DEV_MODE && tabName === 'entities' && _pendingInlineStorage && _pendingInlineStorage.vault) {
-                try { renderEntitiesTab(_pendingInlineStorage.vault); } catch (e) { console.warn('[NE] Entities tab render failed:', e); }
-            }
             if (tabName === 'usage') {
                 try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab render failed:', e); }
             }

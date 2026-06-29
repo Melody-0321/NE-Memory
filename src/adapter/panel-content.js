@@ -11,7 +11,6 @@ import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
-import { renderEntitySummaryBar } from './panel-entities.js';
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
@@ -262,10 +261,6 @@ export async function updateVaultViewerPopout(getChatId) {
             };
         });
     } catch (e) { _logSection('event-handlers', e); }
-
-    if (window.__NE_DEV_MODE) {
-        try { renderEntitySummaryBar(vault); } catch (e) { console.warn('[NE] Entity summary bar render failed:', e); }
-    }
 
     if (loading) loading.style.display = 'none';
     setUpdatingPopout(false);

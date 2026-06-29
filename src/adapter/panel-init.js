@@ -22,7 +22,6 @@ import { updateVaultViewerPopout } from './panel-content.js';
 import { initTestRunner } from './panel-tools.js';
 import { renderUsageTab } from './panel-usage.js';
 import { renderSettingsTab } from './panel-settings.js';
-import { renderEntitiesTab } from './panel-entities.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -71,7 +70,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="entities" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '"><i class="fa-solid fa-diagram-project"></i> ' + t('Entities') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
             '<div class="ne-vault-tab" data-tab="usage">📊 ' + t('Usage') + '</div>' +
             '</div>' +
@@ -80,7 +78,6 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
             '<div id="tab-memory" class="ne-vault-tab-content active">' +
-            '<div id="ne_entity_summary" class="ne-entity-summary-bar" style="display:none;"></div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
@@ -148,11 +145,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
             '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
             '</div></div>' +
-            '</div></div>' +
-            '<div id="tab-entities" class="ne-vault-tab-content">' +
-            '<div style="padding:4px 0;">' +
-            '<div id="ne_entity_list" class="ne-entity-list"></div>' +
-            '<div id="ne_entity_chain_detail"></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
