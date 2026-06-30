@@ -168,7 +168,6 @@ async function runTestFromUI(name, maxRoundsOverride) {
         statusEl.className = 'ne-tr-status';
     } finally {
         runBtn.disabled = false;
-        updateSmokeSliderDefault();
     }
 }
 
