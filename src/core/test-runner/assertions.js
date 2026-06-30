@@ -117,6 +117,9 @@ function resolveTarget(collected, targetName) {
     case 'faction_state': return collected.factionState ? JSON.stringify(collected.factionState) : '';
     case 'truncation_count': return collected.truncationCount;
     case 'fallback_count': return collected.fallbackCount;
+    case 'vector_used': return collected.vectorUsed;
+    case 'vector_candidate_count': return collected.vectorCandidateCount;
+    case 'bm25_candidate_count': return collected.bm25CandidateCount;
     default: return '';
     }
 }

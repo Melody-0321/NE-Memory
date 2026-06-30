@@ -416,6 +416,9 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
                                 return f;
                             });
                             _vectorUsed = true;
+                            globalThis.__ne_debug_vector_used = true;
+                            globalThis.__ne_debug_vector_candidate_count = vecResults.length;
+                            globalThis.__ne_debug_bm25_candidate_count = results.length;
                             console.log('[NE] Vector search fused: BM25=' + (results.length - vecResults.length) + ' vec=' + vecResults.length + ' fused=' + fused.length + ' vectorUsed=' + _vectorUsed);
                         }
                     }
@@ -425,6 +428,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
             }
         }
     }
+    globalThis.__ne_debug_vector_used = _vectorUsed;
     results._vectorUsed = _vectorUsed;
 
     // ── LTM directory: append recent LTM entries as view-only catalog (not BM25 scored) ──

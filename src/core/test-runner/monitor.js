@@ -99,6 +99,9 @@ export function collectRoundData(roundTag) {
         pipelineResponses: globalThis.__ne_debug_all_pipeline_responses || null,
         truncationCount: truncationCount,
         fallbackCount: fallbackCount,
+        vectorUsed: globalThis.__ne_debug_vector_used || false,
+        vectorCandidateCount: globalThis.__ne_debug_vector_candidate_count || 0,
+        bm25CandidateCount: globalThis.__ne_debug_bm25_candidate_count || 0,
         vault: null,
         timestamp: new Date().toISOString()
     };
