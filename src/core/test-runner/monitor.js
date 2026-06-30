@@ -71,6 +71,14 @@ export function collectRoundData(roundTag) {
     var injection = globalThis.__ne_debug_last_injection || null;
     var pipelineCalls = roundTag != null ? _filterByRoundTag(roundTag) : _filterByRoundTag(null);
 
+    var truncationCount = 0;
+    var fallbackCount = 0;
+    for (var i = 0; i < pipelineCalls.length; i++) {
+        var c = pipelineCalls[i];
+        if (c.usage && c.usage.completion_tokens >= 2048) truncationCount++;
+        if (c.source === 'tavern') fallbackCount++;
+    }
+
     return {
         injection: injection,
         injectionLength: injection ? injection.length : 0,
@@ -89,6 +97,8 @@ export function collectRoundData(roundTag) {
         stateBlockInstruction: globalThis.__ne_debug_last_state_block_instruction || null,
         factionState: globalThis.__ne_debug_last_faction_state || null,
         pipelineResponses: globalThis.__ne_debug_all_pipeline_responses || null,
+        truncationCount: truncationCount,
+        fallbackCount: fallbackCount,
         vault: null,
         timestamp: new Date().toISOString()
     };

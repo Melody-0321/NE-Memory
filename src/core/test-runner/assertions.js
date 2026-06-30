@@ -67,33 +67,21 @@ export function evaluateAllStructural(collected, assertions) {
 /**
  * 语义性断言 — 用 LLM 评估
  * 支持三态结果：passed=true(通过), passed=false(不通过), passed=null(无法判断，需继续)
- * @param {string} injection - SmartPush 注入文本
+ * @param {string} pipelineResponses - 管线 LLM 调用记录
  * @param {Array<string>} questions - 语义问题列表
  * @param {Function} callLLM - 调用 LLM 的函数 (systemPrompt, userPrompt) => string
  * @param {number} round - 当前轮次
  * @returns {Array<object>} [{ question, passed, evaluation }]
  */
-export async function evaluateSemantic(injection, questions, callLLM, round, extraContext) {
-    if (!injection || injection.length === 0) {
-        return questions.map(function(q) { return { question: q, passed: null, evaluation: '尚无注入内容，无法判断。' }; });
+export async function evaluateSemantic(pipelineResponses, questions, callLLM, round) {
+    if (!pipelineResponses || pipelineResponses.length === 0) {
+        return questions.map(function(q) { return { question: q, passed: null, evaluation: '尚无管线数据，无法判断。' }; });
     }
-    var systemPrompt = '你是 NE Memory 的测试评估器。给定 SmartPush 注入内容和测试问题列表，对每个问题判断注入是否满足要求。\n' +
+    var systemPrompt = '你是 NE Memory 的测试评估器。给定管线 LLM 调用记录和测试问题，对每个问题判断是否满足要求。\n' +
         '注意：如果当前轮次的数据尚不足以判断（比如故事还在展开、记忆还在积累中），可以回答 "无法判断"。\n' +
         '回答 JSON 数组: [{"question_index": 1, "passed": true/false/null, "evaluation": "简短评估说明"}]。\n' +
         'passed=true = 确定通过; passed=false = 确定不通过; passed=null = 数据不足，尚且无法判断。';
-    var userPrompt = '(第 ' + (round || '?') + ' 轮)\n## 注入内容\n```\n' + injection.substring(0, 2000) + '\n```';
-    if (extraContext) {
-        var ecParts = [];
-        if (extraContext.pipelineResponses) {
-            ecParts.push('## 管线 LLM 调用记录（截取）\n```\n' + String(extraContext.pipelineResponses).substring(0, 3000) + '\n```');
-        }
-        if (extraContext.ltmDecision) {
-            ecParts.push('## LTM 决策\n```json\n' + JSON.stringify(extraContext.ltmDecision).substring(0, 1000) + '\n```');
-        }
-        if (ecParts.length > 0) {
-            userPrompt += '\n\n' + ecParts.join('\n\n');
-        }
-    }
+    var userPrompt = '(第 ' + (round || '?') + ' 轮)\n## 管线 LLM 调用记录\n```\n' + String(pipelineResponses).substring(0, 3000) + '\n```';
     userPrompt += '\n\n## 测试问题\n' + questions.map(function(q, i) { return (i + 1) + '. ' + q; }).join('\n') + '\n\n请对每个问题给出评估。回答 JSON 数组: [{"question_index": 1, "passed": true/false/null, "evaluation": "..."}]';
 
     try {
@@ -127,6 +115,8 @@ function resolveTarget(collected, targetName) {
     case 'state_block_instruction': return collected.stateBlockInstruction || '';
     case 'context_memory': return collected.contextMemory || '';
     case 'faction_state': return collected.factionState ? JSON.stringify(collected.factionState) : '';
+    case 'truncation_count': return collected.truncationCount;
+    case 'fallback_count': return collected.fallbackCount;
     default: return '';
     }
 }

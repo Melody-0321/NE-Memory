@@ -11,6 +11,10 @@ structural:
   - { op: exists, target: smartpush_injection }
   - { op: min_length, target: smartpush_injection, value: 50 }
   - { op: not_contains, target: smartpush_injection, value: "→stm:" }
+  - { op: contains, target: smartpush_injection, value: "## 实体记忆链" }
+  - { op: contains, target: smartpush_injection, value: "###" }
+  - { op: contains, target: smartpush_injection, value: "KB:" }
+  - { op: contains, target: smartpush_injection, value: "## 记忆使用指南" }
   - { op: exists, target: smartpush_prompt }
   - { op: min_length, target: smartpush_prompt, value: 200 }
   - { op: exists, target: stm_events }
@@ -23,16 +27,10 @@ structural:
   - { op: not_contains, target: pipeline_changes, value: "error" }
   - { op: exists, target: state_block_instruction }
   - { op: min_length, target: state_block_instruction, value: 20 }
+  - { op: equals, target: truncation_count, value: 0 }
+  - { op: equals, target: fallback_count, value: 0 }
 semantic:
-  - "SmartPush 注入是否以实体链分块格式呈现（## 实体记忆链 → ### 实体名 (N events) → 条目列表 + KB 标注）？"
-  - "注入是否包含 ## 记忆使用指南 段？"
-  - "STM 提取事件是否覆盖了该轮对话中的重要情节？"
-  - "STM+LTM 合流管线是否正常工作（含 ltm_decision：action + updated_title）？"
-  - "State 管线是否正常执行，state_changes 是否有实际的字段路径（characters.* 而非空对象）？"
-  - "ne_state_table 和 ne_char_block 注入指令是否非空且包含正确格式？"
-  - "trace 中所有 pipeline LLM 调用的 response 是否都成功返回了有效 JSON（无截断、无 parse error）？"
-  - "trace 中是否出现过 pipeline LLM 调用 fallback？如有，是否仍正常工作？"
-  - "context_memory（滑动窗口上下文摘要）是否已移除？在 Plan B 重构中 formatContextMemory / ne_context_memory 注入已被删除，SmartPush 实体链分块已覆盖其功能。"
+  - "STM 提取事件是否覆盖了该轮对话中的重要情节？对比 pipeline LLM 调用记录中 stm_extract 的输出与对话文本。如果 stm_extract 的事件描述明显遗漏了对话中的关键动作或情节转折，则为不通过。"
 minRounds: 4
 maxRounds: 8
 expectedRounds: "5-7"
@@ -59,12 +57,16 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 
 ## 断言
 
-### 结构性断言（15 条）
+### 结构性断言（21 条）
 | 断言 | 含义 |
 |------|------|
 | `exists: smartpush_injection` | SmartPush 触发成功 |
 | `min_length: smartpush_injection >= 50` | 注入非空 |
 | `not_contains: smartpush_injection →stm:` | 无内部标记 |
+| `contains: smartpush_injection "## 实体记忆链"` | 实体链分块头部 |
+| `contains: smartpush_injection "###"` | 实体子标题 |
+| `contains: smartpush_injection "KB:"` | KB 知晓度标注 |
+| `contains: smartpush_injection "## 记忆使用指南"` | 使用指南段 |
 | `exists: smartpush_prompt` | Memory LLM prompt 存在 |
 | `min_length: smartpush_prompt >= 200` | Prompt 非空 |
 | `exists: stm_events` | STM 提取成功 |
@@ -77,16 +79,11 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `not_contains: pipeline_changes error` | State 无报错 |
 | `exists: state_block_instruction` | 注入指令存在 |
 | `min_length: state_block_instruction >= 20` | 指令非空 |
+| `equals: truncation_count = 0` | 无 completion 截断（completion_tokens < 2048） |
+| `equals: fallback_count = 0` | 无 fallback 到 TavernHelper |
 
-### 语义性断言
-1. SmartPush 注入是否以实体链分块格式呈现（实体链块 + KB 标注 + 使用指南）？
-2. STM 提取是否覆盖重要情节？
-3. STM+LTM 合流是否正常（ltm_decision）？
-4. State 管线是否正常（state_changes 含 characters.*）？
-5. 注入指令是否非空且格式正确？
-6. pipeline LLM response 是否有效 JSON、无 parse error？
-7. fallback 路径是否正常？
-8. 对话轮数截断是否按预期生效（可通过 `__ne_debug.dumpVault()` 检查 vault 中的消息覆盖范围）？
+### 语义性断言（1 条）
+1. STM 提取事件是否覆盖了该轮对话中的重要情节？对比 pipeline LLM 调用记录中 stm_extract 的输出与对话文本。如果 stm_extract 的事件描述明显遗漏了对话中的关键动作或情节转折，则为不通过。
 
 ## 运行参数
 - minRounds: 4

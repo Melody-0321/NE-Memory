@@ -135,10 +135,7 @@ export async function runTestLoop(testCase, hostDoc) {
         var semanticQuestions = testCase.semantic;
         if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 3 === 0) {
             try {
-                var semResults = await evaluateSemantic(lastInjection, semanticQuestions, callMemoryApiForEval, round, {
-                    pipelineResponses: roundData.pipelineResponses,
-                    ltmDecision: roundData.ltmDecision
-                });
+                var semResults = await evaluateSemantic(roundData.pipelineResponses, semanticQuestions, callMemoryApiForEval, round);
                 semanticResults = semResults;
                 // 分类结果：明确通过、明确不通过、无法判断
                 var semPassed = semResults.filter(function(r) { return r.passed === true; }).length;
@@ -212,12 +209,9 @@ export async function runTestLoop(testCase, hostDoc) {
     if (testCase.semantic && testCase.semantic.length > 0) {
         if (semanticResults && semanticDefinitive) {
             console.log('[NE-TEST] Using loop-collected semantic results (definitive).');
-        } else if (lastRound && lastRound.injection) {
+        } else if (lastRound && lastRound.pipelineResponses) {
             console.log('[NE-TEST] Running final semantic assertions...');
-            semanticResults = await evaluateSemantic(lastRound.injection, testCase.semantic, callMemoryApiForEval, roundDataList.length, {
-                pipelineResponses: lastRound.pipelineResponses,
-                ltmDecision: lastRound.ltmDecision
-            });
+            semanticResults = await evaluateSemantic(lastRound.pipelineResponses, testCase.semantic, callMemoryApiForEval, roundDataList.length);
         } else {
             semanticResults = [];
         }
