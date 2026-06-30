@@ -370,7 +370,7 @@ export function appendTraceRound(trace, roundData) {
     return lines.join('\n');
 }
 
-export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults) {
+export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults, tokenRounds) {
     var lines = [];
     lines.push('# ' + testCase.title + ' — 测试报告');
     lines.push('运行时间: ' + new Date().toISOString());
