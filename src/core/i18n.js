@@ -468,6 +468,12 @@ export const CONFIG_I18N = {
             '推薦：矽基流動免費 BAAI/bge-m3。前往 siliconflow.cn 註冊獲取 API Key，然後點擊下方一鍵填充。',
         'One-key fill': '一鍵填充',
         'Pre-fill URL & Model with free SiliconFlow bge-m3': '使用免費矽基 bge-m3 預填 URL 與模型',
+        'Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.':
+            '執行語義檢索質量測試：嵌入測試集、用相似文本查詢、驗證最高相似度結果是否正確。',
+        'Quality Test': '質量測試',
+        'Running...': '執行中...',
+        'Passed': '通過',
+        'Failed': '失敗',
     }
 };
 

@@ -6,7 +6,7 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage,
   loadRetrievalApiConfig, saveRetrievalApiConfig,
   isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
-  testEmbeddingApiConnection } from '../core/engine/embedding.js';
+         testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t } from './panel-shared.js';
 
@@ -127,6 +127,10 @@ export function renderSettingsTab() {
             '<div style="display:flex;gap:8px;align-items:center;">' +
             '<button class="ne-api-btn" id="nes_embedding_connect">' + t('Connect') + '</button>' +
             '<button class="ne-api-btn" id="nes_embedding_preset" style="font-size:0.8em;opacity:0.85;" title="' + t('Pre-fill URL & Model with free SiliconFlow bge-m3') + '">' + t('One-key fill') + '</button>' +
+            '</div>' +
+            '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
+            '<button class="ne-api-btn" id="nes_embedding_quality" style="font-size:0.9em;" title="' + t('Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.') + '">' + t('Quality Test') + '</button>' +
+            '<span id="nes_embedding_quality_status" style="font-size:0.75em;color:var(--grey50);"></span>' +
             '</div>' +
             '<div class="ne-api-status"><span class="ne-api-dot" id="nes_embedding_dot"></span><span id="nes_embedding_status_text">' + t('Not connected') + '</span></div>'
             : '') +
@@ -377,6 +381,28 @@ export function renderSettingsTab() {
             var modelEl = byId('nes_embedding_model');
             if (urlEl) urlEl.value = 'https://api.siliconflow.cn/v1/embeddings';
             if (modelEl) modelEl.value = 'BAAI/bge-m3';
+        };
+        var embQualityBtn = byId('nes_embedding_quality');
+        var embQualityStat = byId('nes_embedding_quality_status');
+        if (embQualityBtn) embQualityBtn.onclick = function () {
+            var cfg = { url: byId('nes_embedding_url').value.trim(), key: byId('nes_embedding_key').value.trim(), model: byId('nes_embedding_model').value.trim() };
+            saveEmbeddingApiConfig(cfg);
+            if (embQualityStat) embQualityStat.textContent = t('Running...');
+            if (embQualityBtn) embQualityBtn.disabled = true;
+            runVectorQualityTest(cfg).then(function (r) {
+                if (embQualityBtn) embQualityBtn.disabled = false;
+                if (!embQualityStat) return;
+                if (r.pass) {
+                    embQualityStat.style.color = 'var(--green50)';
+                    embQualityStat.textContent = '✓ ' + t('Passed') + ' — ' + r.detail;
+                } else if (r.success === false) {
+                    embQualityStat.style.color = 'var(--red50)';
+                    embQualityStat.textContent = '✗ ' + t('Failed') + ' — ' + (r.error || r.detail || 'Unknown error');
+                } else {
+                    embQualityStat.style.color = 'var(--yellow50)';
+                    embQualityStat.textContent = '⚠ ' + r.detail + ' | ' + r.scoreSummary;
+                }
+            });
         };
     }
 }
