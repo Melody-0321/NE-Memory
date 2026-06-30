@@ -11,6 +11,7 @@
 import { collectRoundData, collectVaultSummary, startCollectingPipelineCalls, stopCollectingPipelineCalls, drainOrphanPipelineCalls } from '../core/test-runner/monitor.js';
 import { evaluateAllStructural, evaluateSemantic } from '../core/test-runner/assertions.js';
 import { createTrace, appendTraceRound, createReport } from '../core/test-runner/files.js';
+import { callMemoryLLM } from '../core/api/llm.js';
 
 function __ne_waitForPipelineDrain(timeoutMs) {
     var debug = globalThis.__ne_debug;
@@ -590,15 +591,14 @@ async function callMainApi(systemPrompt, userPrompt) {
 
 async function callMemoryApiForEval(systemPrompt, userPrompt) {
     try {
-        var ctx = SillyTavern.getContext();
-        if (ctx.generateQuietPrompt) {
-            var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
-            var result = await Promise.race([
-                ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true }),
-                new Promise(function(_, reject) { setTimeout(function() { reject(new Error('evaluator timeout')); }, 30000); })
-            ]);
-            return result || '';
-        }
+        var response = await callMemoryLLM(
+            [
+                { role: 'system', content: systemPrompt },
+                { role: 'user', content: userPrompt }
+            ],
+            { operation: 'test_eval', timeout: 30 }
+        );
+        return response || '';
     } catch (e) {
         console.warn('[NE-TEST] Evaluator LLM call failed:', e.message);
     }
