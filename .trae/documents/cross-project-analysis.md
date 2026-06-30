@@ -30,7 +30,7 @@
 
 | # | 项目 | 核心范式 | 记忆表示 | 运行环境 |
 |---|------|---------|---------|---------|
-| 1 | **ne-memory** | 叙事弧线引擎 | STM→LTM 分层事件 + State Schema 状态 | 浏览器 (TH + ST) |
+| 1 | **ne-memory** | 叙事弧线引擎 + 混合检索 + KB 认知边界 | STM→LTM 分层事件 + State Schema 状态 + SmartPush 结构化记忆链注入 | 浏览器 (TH + ST) |
 | 2 | **st-bme** | 记忆图谱生态 | 图数据库 (8种节点 + 8种关系) | 浏览器 (ST扩展) |
 | 3 | **shujuku** | 结构化数据库 | SQL/JSON 表格 | 浏览器 (油猴/ST扩展) |
 | 4 | **anima** | 记忆系统扩展 | 向量化切片 + Echo 回响 | 浏览器 + Node.js 后端 |
@@ -130,14 +130,20 @@
 
 ### 4.1 检索管线对比
 
-**ne-memory — SmartPush**（5 阶段）：
+**ne-memory — SmartPush**（4 阶段 + 可选向量 RRF 融合，输出结构化 KB 标注）：
 
 ```
-BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 合成
+BM25 检索 → (可选) 向量RRF融合 → 实体链查询 → 管道合并 → LLM KB标注
+                         │                                    │
+              rrfFuse(bm25Candidates,              [KB: 角色=知晓等级]
+                       vecResults, 60, topK)       ## 缺口
 ```
 
-- `mergePipelines` 将 BM25 结果与实体链融合，短链（≤5条）内联处理
+- `filterCandidates()` 内部检查 `isVectorSearchEnabled()`，若已配置 Embedding API 则在 BM25 打分后触发 `vectorSearch()` → `rrfFuse()` 按倒数排名融合，结果标记 `_vectorUsed`
+- `mergePipelines()` 将 BM25/向量融合结果与实体链融合为统一 Map + ThreadIndex，短链（≤5条）内联处理
+- `buildRetrievalPrompt()` 要求 LLM 输出 **KB 认知边界标注**（每个实体块标注各角色知晓等级），而非叙事合成文本。LLM 输出经 `parseEntityAnnotations()` 解析后由 `buildEntityBlock()` 组装为结构化实体链注入
 - 备选：未启用 SmartPush 时用 `formatContextMemory()` 按 `contextWindowRounds` 构建摘要
+- 回退：LLM 不可用时 `formatBM25Results()` 纯文本兜底
 
 **st-bme — 混合检索**（13 阶段）：
 
@@ -162,9 +168,9 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 
 | 维度 | ne-memory | st-bme | shujuku | anima | st-memo-enh | ST-BaiBai-Book |
 |------|-----------|--------|---------|-------|-------------|----------------|
-| 检索技术 | BM25 + LLM合成 | 向量+图扩散+DPP+LLM精排 | 世界书触发 | 向量+BM25双轨 | 格式化注入 | 注入即召回(常驻) + 可选向量 |
-| 管线复杂度 | 5阶段 | 13阶段 | 2层面 | 后端合并 | 1阶段 | 1阶段(常驻注入) / 5-6阶段(向量) |
-| 语义搜索 | 通过LLM工具调用 | ✅ 向量预筛 | 部分(交火索引) | ✅ 向量检索 | ❌ | ✅ 可选向量(embedding+rerank) |
+| 检索技术 | BM25 + 可选向量RRF + 实体链 + LLM KB标注（认知边界注解） | 向量+图扩散+DPP+LLM精排 | 世界书触发 | 向量+BM25双轨 | 格式化注入 | 注入即召回(常驻) + 可选向量 |
+| 管线复杂度 | 4阶段+可选RRF+结构化后组装 | 13阶段 | 2层面 | 后端合并 | 1阶段 | 1阶段(常驻注入) / 5-6阶段(向量) |
+| 语义搜索 | ✅ 可选向量RRF融合 | ✅ 向量预筛 | 部分(交火索引) | ✅ 向量检索 | ❌ | ✅ 可选向量(embedding+rerank) |
 | 图/关系探索 | 实体链查询 | ✅ PEDSA扩散 | ❌ | ❌ | ❌ | 确定性id隐式关联 |
 | 多样性保障 | ❌ | ✅ DPP采样 | ❌ | ✅ 分步策略 | ❌ | ❌ |
 | 记忆遗忘 | ❌ | ✅ 层级压缩+睡眠 | ❌ | ✅ Echo生命衰减 | ❌ | ✅ 坏链剪枝+压缩层级降级 |
@@ -178,8 +184,8 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 | 核心范式 | 适配器+DI | 控制面/数据面分离 | 严格三层 | 前后端分离 | Proxy响应式 | 派生式(纯函数fold) |
 | 分层约束 | 适配层↔核心层 | 控制面↔数据面 | 4层+合规检查 | 前后端 | 6命名空间 | 清晰(src/memory → src/api → src/st) |
 | 平台解耦 | runtime接口+external | runtime注入 | gateway模式 | 后端独立 | 紧密耦合 | 桥接层(src/st/),依赖最少 |
-| 架构检查 | 无 | 无 | 自动化检查(构建时) | 无 | 无 | 无 |
-| 重构记录 | 无 | 无 | 三轮重构 | 无 | 无 | v1→v2→v3三次记忆版本迁移 |
+| 架构检查 | ✅ 棘轮测试（构建时3项：分层、死导出、空catch） | 无 | 自动化检查(构建时) | 无 | 无 | 无 |
+| 重构记录 | update.js→3子管线, panel.js→9文件 | 无 | 三轮重构 | 无 | 无 | v1→v2→v3三次记忆版本迁移 |
 | 类型系统 | JSDoc部分 | 无 | TypeScript完整 | 部分d.ts | 无 | ✅ TypeScript完整 |
 
 ---
@@ -201,14 +207,14 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 
 | 项目 | 注入内容 | 注入方式 | 注入位置 |
 |------|---------|---------|---------|
-| ne-memory | LLM合成的叙事文本 | SmartPush(LLM合成) + ContextWindow(窗口前摘要) | 双模式可切换 |
+| ne-memory | 结构化实体记忆链 + KB 认知边界标注 + 缺口检测 | SmartPush(LLM KB标注 + 结构化注入) + ContextWindow(窗口前摘要) | 双模式可切换(SmartPush输出结构化 `[KB:角色=等级]` + 实体链；ContextWindow输出纯文本摘要) |
 | st-bme | 按POV/区域分桶的结构化表格 | `injector.js` 分桶：Summary/Core/Recalled/POV/Objective | prompt 注入 |
 | shujuku | 世界书条目 + 深度注入提示词 | 世界书条目机制 + 表格推送 | system/user/chat |
 | anima | 世界书容器注入 | `[ANIMA_RAG_Container]` + `[ANIMA_Knowledge_Container]` | 世界书 |
 | st-memo-enh | 表格文本(纯数据/含规则) | `{{macro::tablePrompt}}` / `{{macro::tableData}}` | 3位置(system/user/assistant) |
 | ST-BaiBai-Book | 历史叙事摘要 + 当前结构化状态 + 时间标签提示词 | `setExtensionPrompt` 三个槽位（HISTORY/STATE/TIMETAG），持久化常驻 | 全部 inChat=1, position='before'；摘要深度9999(聊天顶部)，状态D1/D2(贴近最近对话)，时间标签D0(最底) |
 
-**关键设计差异**：ST-BaiBai-Book 的注入是**持久化常驻**的——`setExtensionPrompt` 一次设置后每次生成自动带上，记忆变了才刷新。ne-memory 的 SmartPush 每次生成前按需检索合成，是**响应式按需**注入。两种哲学各有优劣。
+**关键设计差异**：ST-BaiBai-Book 的注入是**持久化常驻**的——`setExtensionPrompt` 一次设置后每次生成自动带上，记忆变了才刷新。ne-memory 的 SmartPush 每次生成前按需检索 + KB 标注 + 结构化注入，是**响应式按需**注入。两种哲学各有优劣。
 
 ---
 
@@ -220,6 +226,9 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 |------|---------|------|
 | ne-memory | **事实矛盾检测** | AI回复后 LLM 提取主张 → BM25 验证 → confidence≥0.6 触发重新生成 |
 | ne-memory | **自动调参系统** | `computeStmBatch/TopK/ChainDepth` 基于遥测数据动态调整 |
+| ne-memory | **KB 认知边界标注** | SmartPush 检索 LLM 的输出已改为结构化 KB 标注——判断每个实体块中的事件集合对各角色的可见性（直接知晓/间接知晓/线索/未知），输出 `[KB: 角色=等级]`。注入时 `buildEntityBlock` + `buildMemoryUsageGuide` 组装为结构化记忆链，主 LLM 获知"记忆以外"还有"哪些角色知道哪些事" |
+| ne-memory | **RRF 融合检索** | BM25 与向量候选项按 Reciprocal Rank Fusion 公式混合排序（`k=60`），无需 Embedding 时纯 BM25 兜底，两种检索器互备 |
+| ne-memory | **架构棘轮测试 + 重构方法论** | 3 个构建时棘轮测试（分层约束、空 catch 基线、死导出）；代码拆分使用精确行范围抽取脚本（`extract-precise.cjs`），先留备份再拆分 |
 | st-bme | **PEDSA图扩散 + 抑制边** | 种子节点沿边传播激活能量；`contradicts`(edgeType=255)反向传播负能量 |
 | st-bme | **层级压缩金字塔** | synopsis(80-220字) → summary_rollup(120-260字)多级折叠 |
 | st-bme | **Native/WASM加速** | Rust→WASM用于图谱布局和持久化，fail-open 回退 JS |
@@ -231,6 +240,7 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 | anima | **Zod Schema校验** | 成熟库替代自建校验，支持 UI 配置+Script 双通道 |
 | st-memo-enh | **tableEdit XML标签协议** | AI 通过 `<tableEdit>editRow(...)</tableEdit>` 表达编辑意图，兼容任何 LLM |
 | st-memo-enh | **Cell不可变追加设计** | 编辑不修改原 Cell，追加到 cellHistory，天然支持撤销/重做 |
+| ne-memory | **副 API 渠道（三通道分离）** | Pipeline 提取、SmartPush 检索、矛盾检测可分别配置独立 API 端点/模型，节省主 API Token。支持 tool-calling（`callMemoryRetrievalWithTools`）与纯文本双模式回落 |
 | **ST-BaiBai-Book** | **派生状态重放** | 物品/场景/NPC/计划全部从叶子delta按楼层顺序fold算出，不持久化。删叶子/陈旧→派生自动回退，无需维护最终一致性 |
 | **ST-BaiBai-Book** | **故事内时间标签协议** | AI 通过 `<bbs_start>`/`<bbs_end>` 在正文中自主标注故事内时间轴；插件解析→注入，让主模型感知时间流逝 |
 | **ST-BaiBai-Book** | **生成拦截 + 积压保护** | 每次生成前检查「除最后一条AI外其余都必须有摘要」的不变式，有洞则 abort 生成 + 插提示楼 |
@@ -246,13 +256,13 @@ BM25 检索 → 实体链查询 → 模糊引用解析 → 管道合并 → LLM 
 
 | 指标 | shujuku | st-bme | ne-memory | anima | st-memo-enh | ST-BaiBai-Book |
 |------|:---:|:---:|:---:|:---:|:---:|:---:|
-| 测试文件数 | 176 | 70+ | ~7(单元) + 30+(LLM集成) | 基本 | 调试工具 | 0 |
-| 测试用例数 | 538 | ~70+ | ~37 | 未公开 | 无 | 0 |
-| 测试框架 | Vitest 3.2.4 | 自建(裸Node子进程) | 自建+LLM断言 | 无公开 | 无 | 无 |
+| 测试文件数 | 176 | 70+ | **28（单元）** + 30+(LLM集成) | 基本 | 调试工具 | 0 |
+| 测试用例数 | 538 | ~70+ | **537（单元）** + 3(棘轮) | 未公开 | 无 | 0 |
+| 测试框架 | Vitest 3.2.4 | 自建(裸Node子进程) | 自建轻量+LLM断言 | 无公开 | 无 | 无 |
 | 模拟环境 | jsdom 29 | fake-indexeddb 6.2 | mock-runtime.js | 无公开 | 无 | 无 |
 | CI/CD | 无 | ✅ GitHub Actions | 无 | 无 | 无 | 无 |
 
-ne-memory 的 LLM 驱动语义性断言（三态：passed=true/false/null）是独特创新，但依赖实时 LLM 资源无法在 CI 中自动化。
+ne-memory 的 LLM 驱动语义性断言（三态：passed=true/false/null）是独特创新，但依赖实时 LLM 资源无法在 CI 中自动化。其确定性测试层（28 个文件、537 条断言）覆盖了 BM25 评分、Schema 校验、LTM 整合、RetrievalNotebook、实体分组等核心逻辑，加上 3 个棘轮测试（架构分层、空 catch 基线、死导出检测）做结构保障。
 
 ST-BaiBai-Book 当前无单元测试，但依赖 TypeScript 编译时类型检查来保障基础安全性——这在六项目中是唯一仅靠类型系统保质量的路径。
 
@@ -293,20 +303,32 @@ ST-BaiBai-Book 当前无单元测试，但依赖 TypeScript 编译时类型检�
 ### 12.1 设计谱系
 
 ```
-st-memo-enh ─── anima ─── ne-memory ─── shujuku ─── st-bme
-  (极简表)     (向量系统)  (叙事引擎)   (数据库)    (知识图谱)
+st-memo-enh ─── anima ─── ne-memory(当前) ─── shujuku ─── st-bme
+  (极简表)     (向量系统)  (叙事引擎+混合检索)  (数据库)   (知识图谱)
 
                              ST-BaiBai-Book
                           (混合记忆归档)
-                         ↑ 接近 ne-memory 的叙事线,
-                         但有自己独特的「派生式」哲学
+                          ↑ 与 ne-memory 同为"叙事"派,
+                          但走「派生式」哲学路线
+
+---
+
+ne-memory 当前的实际定位已从纯"叙事引擎"演化为**叙事引擎 + 混合检索 + KB 认知边界**：
+- 向下覆盖了 anima 的向量语义能力（可选 Embedding + RRF）
+- 向下部分覆盖了 st-memo-enh 的结构化状态（Schema 驱动的动态状态）
+- **独创了 st-bme 没有的认知边界视角**（KB 标注——不仅提供记忆，还标注各角色对记忆的知晓程度）
+- 向上接近 shujuku 的工程严谨性（537 测试 + 棘轮检查）
+- 但不做 st-bme 的全图谱建模
+
+这使其在六项目的设计谱系上处于**中间偏右**的位置：
+功能丰富度 > 极简方案，工程严谨性 > 纯前端方案，但不如 st-bme 全面也不如 shujuku 严谨。
 ```
 
 ### 12.2 成本结构
 
 | 成本维度 | ne-memory | st-bme | shujuku | anima | st-memo-enh | ST-BaiBai-Book |
 |----------|:---:|:---:|:---:|:---:|:---:|:---:|
-| LLM Token 成本 | 高(提取+合成+检索) | 极高(双阶段+后处理链) | 高(填表+剧情) | 中(状态更新+总结) | 低(仅格式化) | 中(摘要每楼+总结按阈值) |
+| LLM Token 成本 | 中到高（可副API分流：提取用低价模型、检索用低价模型、仅主对话用高质模型） | 极高(双阶段+后处理链) | 高(填表+剧情) | 中(状态更新+总结) | 低(仅格式化) | 中(摘要每楼+总结按阈值) |
 | Embedding 成本 | 可选 | ✅ 必选 | 可选 | ✅ 必选 | ❌ | 可选(需后端柏宝库) |
 | 存储成本 | 中(IndexedDB) | 极高(6层存储) | 中(SQLite/JSON) | 高(向量+BM25+Echo) | 低(酒馆原生) | 低(消息extra+metadata) |
 | 用户配置成本 | 高(多API+参数) | 极高(10种任务预设) | 高(模板+规则) | 高(4套API) | 低(6张表) | 中(副API渠道+向量参数) |
@@ -322,7 +344,7 @@ st-memo-enh ─── anima ─── ne-memory ─── shujuku ─── st-b
 | 项目 | 局限记录数 | 关键局限 |
 |------|:---:|------|
 | st-bme | 8条 | 记忆质量依赖LLM、Embedding决定召回下限、历史恢复优先正确性可能慢 |
-| ne-memory | 0条 | — |
+| ne-memory | 5条（本表自评） | LLM 质量依赖（所有核心功能依赖同一条 LLM 调用链）；只增不减的存储模型（STM/LTM 条目无自动遗忘机制）；无 POV/认知边界（所有角色看到相同的记忆）；无多样性保障（SmartPush 检索可能同质化）；文档需持续维护（CODE_WIKI 与代码同步需手动跟进） |
 | ST-BaiBai-Book | 0条 | — |
 | 其余三项 | 0条 | — |
 
@@ -332,12 +354,11 @@ st-memo-enh ─── anima ─── ne-memory ─── shujuku ─── st-b
 
 ### P0 — 应立即考虑
 
-#### 13.1 认知边界过滤 (POV)
+#### 13.1 认知边界过滤 (POV) — ⚠️ 已部分实现
 
 - **来源**：st-bme（`memory-scope.js` / `knowledge-state.js`，RoleRAG 启发）
-- **现状**：ne-memory 检索时所有记忆一视同仁，不区分角色的可见性
-- **改进**：扩展 STM/LTM Entry 增加 `pov` 字段；State Schema 增加 `known_facts`；SmartPush 检索时加过滤层
-- **可行性**：Schema 扩展 + 现有 pipeline 不变 + 已有 `entities[{name,type}]` 基础设施
+- **现状**：ne-memory 的 SmartPush 已通过 KB 认知边界标注（`[KB: 角色=知晓等级]`）实现了"哪些角色知道哪些事"的认知边界注解，与 st-bme 的 POV 系统属同源思路但实现路径不同——st-bme 在检索时过滤，ne-memory 在注入时标注让主 LLM 自主使用
+- **改进空间**：目前 KB 标注是由检索 LLM 判断各角色对每个实体块的知晓等级，仍未在检索阶段做过滤（检索时仍对所有条目一视同仁）。可考虑将 KB 信息回馈到 BM25 打分：被标注为"未知"的角色视角中，相关条目降权
 - **预估工作量**：小
 
 #### 13.2 已知局限文档
@@ -490,6 +511,7 @@ ne-memory 的矛盾检测是六项目中独一无二的能力。但目前定位�
 st-bme 的 `contradicts` 抑制边设计（在扩散中反向传播负能量）提示了一个方向：
 - 将矛盾纳入记忆演化：新事件与旧 LTM 矛盾时，标记旧 LTM 为"可能过时"而非直接覆盖
 - 矛盾检测结果可反馈给 SmartPush 检索排序：被标记为"当前上下文冲突"的记忆条目应降权
+- **此外，KB 认知边界标注为矛盾检测提供了新维度**：同一事件在不同角色的 KB 等级差异可能暗示信息不对称或误解，而非真正的记忆矛盾。SmartPush 的 KB 输出可被矛盾检测用于区分"角色不知情"和"记忆冲突"
 
 ### 启发三：需要确定性测试层补充 LLM 测试
 

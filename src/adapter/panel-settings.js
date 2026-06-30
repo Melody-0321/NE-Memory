@@ -116,14 +116,18 @@ export function renderSettingsTab() {
         '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
         '<label><input type="checkbox" id="nes_enable_vector_search" ' + (enableVectorSearch ? 'checked' : '') + '> <span>' + t('Enable Vector Search') + '</span></label>' +
         '</div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 12px;">' + t('Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.') + '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 12px;">' + t('Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.') +
+        '<br><span style="color:var(--green50);">' + t('Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.') + '</span></div>' +
         (enableVectorSearch ?
             '<div class="ne-settings-grid">' +
-            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_embedding_url" placeholder="https://api.openai.com/v1/embeddings" value="' + escapeHtml(embApi.url || '') + '"></div>' +
+            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_embedding_url" placeholder="https://api.siliconflow.cn/v1/embeddings" value="' + escapeHtml(embApi.url || '') + '"></div>' +
             '<div><label>' + t('API Key') + '</label><input type="password" id="nes_embedding_key" placeholder="sk-..." value="' + escapeHtml(embApi.key || '') + '"></div>' +
-            '<div><label>' + t('Model') + '</label><input type="text" id="nes_embedding_model" placeholder="text-embedding-3-small" value="' + escapeHtml(embApi.model || '') + '"></div>' +
+            '<div><label>' + t('Model') + '</label><input type="text" id="nes_embedding_model" placeholder="BAAI/bge-m3" value="' + escapeHtml(embApi.model || '') + '"></div>' +
             '</div>' +
-            '<div><button class="ne-api-btn" id="nes_embedding_connect">' + t('Connect') + '</button></div>' +
+            '<div style="display:flex;gap:8px;align-items:center;">' +
+            '<button class="ne-api-btn" id="nes_embedding_connect">' + t('Connect') + '</button>' +
+            '<button class="ne-api-btn" id="nes_embedding_preset" style="font-size:0.8em;opacity:0.85;" title="' + t('Pre-fill URL & Model with free SiliconFlow bge-m3') + '">' + t('One-key fill') + '</button>' +
+            '</div>' +
             '<div class="ne-api-status"><span class="ne-api-dot" id="nes_embedding_dot"></span><span id="nes_embedding_status_text">' + t('Not connected') + '</span></div>'
             : '') +
         '</div></div>';
@@ -366,6 +370,13 @@ export function renderSettingsTab() {
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (' + r.dimensions + 'd)') : (t('Not connected') + ' — ' + (r.error || ''));
                 if (embConnBtn) embConnBtn.disabled = false;
             });
+        };
+        var embPresetBtn = byId('nes_embedding_preset');
+        if (embPresetBtn) embPresetBtn.onclick = function () {
+            var urlEl = byId('nes_embedding_url');
+            var modelEl = byId('nes_embedding_model');
+            if (urlEl) urlEl.value = 'https://api.siliconflow.cn/v1/embeddings';
+            if (modelEl) modelEl.value = 'BAAI/bge-m3';
         };
     }
 }

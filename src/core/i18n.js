@@ -461,6 +461,13 @@ export const CONFIG_I18N = {
         'URL must point to /v1/chat/completions endpoint. ST local proxy users: http://127.0.0.1:8000/llm/chat. Key can be empty for local proxy.':
             'URL 必須指向 /v1/chat/completions 端點。ST 本地代理用戶：http://127.0.0.1:8000/llm/chat。本地代理可留空 Key。',
         '以上参数将应用于记忆区 LLM 调用，数值越大消耗越多 token。': '以上參數將應用於記憶區 LLM 調用，數值越大消耗越多 token。',
+        'Enable Vector Search': '啟用向量搜尋',
+        'Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.':
+            '需要 OpenAI 相容的 Embedding API。停用或未設定時，將降級為純 BM25 檢索。',
+        'Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.':
+            '推薦：矽基流動免費 BAAI/bge-m3。前往 siliconflow.cn 註冊獲取 API Key，然後點擊下方一鍵填充。',
+        'One-key fill': '一鍵填充',
+        'Pre-fill URL & Model with free SiliconFlow bge-m3': '使用免費矽基 bge-m3 預填 URL 與模型',
     }
 };
 

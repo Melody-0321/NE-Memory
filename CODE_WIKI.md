@@ -37,17 +37,18 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 
 | 能力 | 说明 |
 |------|------|
-| **STM/LTM 分层记忆** | 短期记忆 (STM) 自动从对话轮次中提取；长期记忆 (LTM) 合并整合 STM，形成叙事弧线 |
-| **增量更新** | 代码级保证不重复处理同一消息，事件记忆消耗不随对话长度增长 |
-| **三层穿透检索** | LTM 摘要 → STM 详情 → 原始对话原文，层层下钻 |
-| **版本管理** | IndexedDB 快照存储，最多 30 个历史快照 + 精确回滚 |
-| **状态维护** | Schema 驱动的字段级约束，LLM 只修改变化字段，不重写全量 |
-| **Tool-calling** | 4 个注册工具：`access`（统一引用查询）、`recall_memory`（开放语义检索）、`extract_stm`（STM 事件提取）、`update_state`（状态变更） |
-| **副 API 支持** | 记忆提取可使用独立 API（维护 API + 检索 API 分离），节省主 API Token |
+| **STM/LTM 分层记忆** | 短期记忆 (STM) 自动从对话轮次中提取；长期记忆 (LTM) 合并整合 STM，形成叙事弧线（`consolidate.js`，参数 `k1=1.5, b=0.75`） |
+| **增量更新** | 代码级保证不重复处理同一消息（msg_id 去重 + cursor 游标追踪），事件记忆消耗不随对话长度增长 |
+| **三层穿透检索** | LTM 摘要 → STM 详情 → 原始对话原文，层层下钻（`access` Tool / RetrievalNotebook） |
+| **版本管理** | IndexedDB 快照存储，最多 30 个历史快照 + 精确回滚（`versions.js`） |
+| **状态维护** | Schema 驱动的字段级约束，LLM 只修改变化字段，不重写全量（`schema.js`） |
+| **Tool-calling** | 5 个注册工具：`access`（统一引用查询）、`recall_memory`（开放语义检索）、`extract_stm`（STM 事件提取）、`update_state`（状态变更） + `fn_update_state`（Power Slots 战力值） |
+| **副 API 渠道** | 记忆 Pipeline、SmartPush 检索、矛盾检测可分别配置独立 API（`callMemoryPipeline` / `callMemoryRetrieval` / `callMemoryLLM`），节省主 API Token |
 | **三语界面** | 简体中文 / 繁體中文 / English，包含 Narrative 面板、Config 设置和 State 字段三级翻译表 |
-| **智能检索 (SmartPush)** | 每次 LLM 生成前，自动检索相关记忆并注入到对话上下文（BM25 + LLM 合成双路径） |
-| **Embedding API** | 可选的向量相似度增强检索（余弦相似度），独立配置 Embedding API |
-| **自动调参** | 根据历史 Telemetry 统计数据自动调优 stmBatch / topK / chainDepth 等阈值 |
+| **智能检索 (SmartPush)** | 每次 LLM 生成前，自动检索相关记忆并注入到对话上下文。**四阶段管线**：BM25 检索 → 可选向量 RRF 融合 → 实体链时间线 → LLM 输出结构化 KB 标注（认知边界注解 + 缺口检测） |
+| **RRF 融合检索** | BM25 候选与向量候选按 Reciprocal Rank Fusion 公式融合（`k=60`），无需 Embedding 时纯 BM25 兜底 |
+| **Embedding API** | 可选的向量相似度增强检索（余弦相似度），独立配置 Embedding API，索引按 chat 维度就地维护 |
+| **自动调参** | 根据历史 Telemetry 统计数据自动调优 stmBatch / topK / chainDepth 等阈值（`params.js`） |
 | **Token 用量统计** | Session / 月度 / 全局 / Per-chat 四级 Token 统计，按管线操作细分 |
 
 ---
@@ -441,19 +442,40 @@ export var runtime = {
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `formatSmartContext(vault, chatMessages, budget, chatId)` | `(Object, Array, number, string) → Promise<string>` | **主入口**：执行 BM25 检索 → 实体链查询 → 管道合并 → LLM 合成 → 返回格式化注入文本 |
+| `formatSmartContext(vault, chatMessages, budget, chatId)` | `(Object, Array, number, string) → Promise<string>` | **主入口**：执行 BM25 检索 → 实体链查询 → 管道合并 → LLM 输出 KB 标注 → 组装最终注入文本 |
 | `buildStateOnlyInjection(vault)` | `(Object) → string` | 纯状态注入（无记忆时的回退方案） |
 | `estimateComplexityBudget(chatMessages, defaultBudget)` | `(Array, number) → number` | 基于最后一条消息的复杂度估算检索 Token 预算 |
+| `parseEntityAnnotations(text)` | `(string) → Object` | 解析 LLM 输出的 `[KB: ...]` 标注和缺口段落 |
+| `buildEntityBlock(groupedResult, annotations)` | `(Object, Object) → string` | 组装实体记忆链块，将 KB 标注嵌入实体链标题行 |
+| `buildMemoryUsageGuide()` | `() → string` | 生成 KB 等级说明（直接知晓/间接知晓/线索/未知） |
+| `compileRetrievalBudget(content, query, entityNames, chains, tokens)` | `(Object, string, Array, Object, number) → string` | 按 Token 预算分配相关实体事件摘要 |
 
 **内部处理流程**：
 1. `computeVisibleWindow` — 计算当前在主 LLM 上下文窗口中的消息范围
-2. BM25 检索 — 调用 `retrieval-filter.js` 获取 top-K 相关记忆条目
-3. 实体链查询 — 从备选中提取实体，调用 `retrieval.js` 的 `lookupEntityChains`
-4. 模糊引用解析 — 调用 `ambiguity.js` 的 `resolveAmbiguousReferences`
-5. 管道合并 — 调用 `retrieval.js` 的 `mergePipelines`
-6. `prefetchOriginalTexts` — 为 top-K 候选预取原文
-7. `compileRetrievalBudget` — 按实体评分分配 Token 预算
-8. LLM 合成 — 调用 `callMemoryRetrievalWithTools` 生成最终注入文本
+2. 构建查询（query） — 从最近 2 轮对话 + 当前故事时间/场景/活跃角色构建检索查询
+3. BM25 检索 — 调用 `retrieval-filter.js` 的 `filterCandidates()` 获取 top-40 候选
+4. **可选向量 RRF 融合** — 若 `isVectorSearchEnabled()` 且 Embedding API 已配置，`filterCandidates()` 内部触发 `vectorSearch()` → `rrrFuse(bm25Candidates, vecResults, 60, topK)` 按倒数排名融合，结果标记 `_vectorUsed`
+5. 实体链查询 — 从候选结果中提取实体，调用 `retrieval.js` 的 `lookupEntityChains`
+6. 模糊引用解析 — 调用 `ambiguity.js` 的 `resolveAmbiguousReferences`
+7. 管道合并 — 调用 `retrieval.js` 的 `mergePipelines`（BM25/向量结果 + 实体链 + LTM 目录 → 多源融合）
+8. `prefetchOriginalTexts` — 为 top-3 候选预取原文
+9. 按实体分组 — `groupCandidatesByEntity()` 将候选按实体名归类
+10. 调用 `buildRetrievalMessages()` 构建 LLM prompt，要求 LLM 输出：
+    - `[KB: 角色名=知晓等级(理由)]` 每个实体块的角色认知标注
+    - `## 缺口` 未覆盖的信息缺口
+    - **严格禁止输出叙事性段落或事件描述**
+11. LLM 输出解析 — `parseEntityAnnotations()` 分析 LLM 回复，提取 `[KB: ...]` 标注和缺口
+12. 最终注入文本组装：
+    - `buildEntityBlock()` — 实体记忆链（含 KB 标注）
+    - `buildMemoryUsageGuide()` — 如何使用认知边界标注
+    - 缺口段落（如有）
+    - 未展开链的跨度标注
+    - `compileRetrievalBudget()` — Token 预算分配后的实体事件摘要（可选）
+
+**关键设计变更**：检索 LLM 的输出已从"叙事文本合成"改为**结构化 KB（认知边界）标注**。LLM 不再负责为每条候选条目编写自然语言描述，而是判断每个实体块中的事件集合对每个活跃角色的可见性。最终注入结果由 `buildEntityBlock` 从结构化数据组装，而非 LLM 直接生成的自由文本。这确保了：
+- 注入格式稳定：主 LLM 收到的记忆格式一致，不受 LLM 合成质量波动影响
+- Token 可控：结构化注入可精确限长
+- 可解析：`parseEntityAnnotations` 将 LLM 的 KB 输出拆分为结构化数据供后续处理
 
 #### 3.4.10 [retrieval.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/retrieval.js) — 检索服务
 
@@ -463,12 +485,13 @@ export var runtime = {
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `lookupEntityChains(content, entityNames)` | `(Object, Array) → Object` | 根据实体名查询其在 STM/LTM 中的所有关联条目 |
-| `extractEntityNames(query, content)` | `(string, Object) → Array` | 从查询中提取已知实体名 |
-| `classifyQuery(query, state, content)` | `(string, Object, Object) → string` | 查询分类：entity / scene / temporal / open |
-| `mergePipelines(bm25Results, entityChains, allLTM, state, allSTM)` | `(Array, Object, Array, Object, Array) → Array` | 合并 BM25 结果与实体链 |
-| `buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode, extraOptions)` | `(RetrievalNotebook, string, Object, number, boolean, Object) → Array` | v2 检索消息构建（接受 RetrievalNotebook） |
-| `buildRetrievalMessagesLegacy(query, candidates, vault, budget, isSummaryMode)` | `(string, Array, Object, number, boolean) → Array` | 旧版检索消息构建（接受原始 candidates） |
+| `lookupEntityChains(content, entityNames)` | `(Object, Array) → Object` | 根据实体名查询其在 STM/LTM 中的所有关联条目（含自动深度采样：head + recent + mid 三段式） |
+| `extractEntityNames(query, content)` | `(string, Object) → Array` | 从查询中提取已知实体名（从 characters/factions/STM entities 收集，最长 5 个） |
+| `mergePipelines(bm25Results, entityChains, allLTM, state, allSTM)` | `(Array, Object, Array, Object, Array) → Object` | 合并 BM25 结果与实体链为统一 Map + ThreadIndex（含隐式实体发现 + 短链内联） |
+| `groupCandidatesByEntity(map, threadIndex)` | `(Map, Object) → Object` | 将候选按实体名分组，支持跨实体引用标注 |
+| `formatEntityGroupedText(groupedResult)` | `(Object) → string` | 格式化按实体分组后的文本（含 RRF 分数标记、关联条目、预取原文） |
+| `buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode, extraOptions)` | `(Object, string, Object, number, boolean, Object) → Object` | **核心 prompt 构建**：输出 `{system, user}` messages，指示 LLM 执行 KB 认知标注（`[KB: 角色名=知晓等级]`），**严格禁止输出叙事文本** |
+| `buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode, extraOptions)` | `(Object, string, Object, number, boolean, Object) → Promise<Array>` | 封装 buildRetrievalPrompt 为 messages 格式（失败时回退 legacy） |
 
 #### 3.4.11 [retrieval-fusion.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/retrieval-fusion.js) — 向量融合检索
 
@@ -478,10 +501,11 @@ export var runtime = {
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `resetVectorIndex(chatId)` | `(string) → void` | 重置指定 chat 的向量索引 |
+| `resetVectorIndex(chatId)` | `(string) → void` | 重置指定/全部对话的向量索引 |
 | `getVectorIndex(chatId)` | `(string) → Object` | 获取向量索引引用 |
-| `ensureVectorIndex(allSTM, aliasesMap, chatId)` | `(Array, Object, string) → Promise<void>` | 对新增 STM 计算 Embedding 并加入索引 |
-| `queryVectorIndex(query, chatId, topK)` | `(string, string, number) → Promise<Array>` | 向量检索 top-K 候选 |
+| `ensureVectorIndex(allSTM, aliasesMap, chatId)` | `(Array, Object, string) → Promise<void>` | 确保向量索引与 STM 数据同步（新增计算 Embedding，清理已删除条目） |
+| `vectorSearch(queryEmbedding, vectorIndex, k)` | `(Float32Array, Object, number) → Array` | 纯向量搜索：余弦相似度，返回 top-k |
+| `rrfFuse(bm25Candidates, vectorCandidates, k, topK)` | `(Array, Array, number, number) → Array` | **RRF 融合**：BM25 与向量候选按倒数排名融合，`k` 默认为 60 |
 
 #### 3.4.12 [retrieval-text.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/retrieval-text.js) — 可搜索文本构建
 
@@ -894,12 +918,27 @@ Schema 验证 → mergeStateChanges → 保存 vault
      │
      ├─ 启用 SmartPush → formatSmartContext()
      │     │
-     │     ├─ BM25 检索 → filterCandidates()
+     │     ├─ 构建查询（最后2轮对话 + 故事时间/场景/活跃角色）
+     │     ├─ BM25 检索 → filterCandidates() top-40
+     │     │     └─ 可选: 向量搜索 + RRF 融合
+     │     │           │  ensureVectorIndex() 同步索引
+     │     │           │  vectorSearch() 余弦相似度
+     │     │           │  rrfFuse() 倒数排名融合
+     │     │           └─ 结果标记 _vectorUsed
      │     ├─ 实体链查询 → lookupEntityChains()
      │     ├─ 模糊引用解析 → resolveAmbiguousReferences()
-     │     ├─ 管道合并 → mergePipelines()
-     │     ├─ LLM 合成 → callMemoryRetrievalWithTools()
-     │     └─ 格式化注入文本
+     │     ├─ 管道合并 → mergePipelines() 多源融合（Map + ThreadIndex）
+     │     ├─ 按实体分组 → groupCandidatesByEntity()
+     │     ├─ LLM → callMemoryRetrievalWithTools(access)
+     │     │     ├─ 输入：按实体分组的候选 + 可见窗口 + KB 标注指令
+     │     │     ├─ 输出：[KB: 角色名=直接知晓|间接知晓|线索|未知] + ## 缺口
+     │     │     └─ 严格: 禁止叙事段落/事件描述/因果推断
+     │     │
+     │     ├─ parseEntityAnnotations() → 解析 KB 标注
+     │     ├─ buildEntityBlock() → 组装实体记忆链（含 KB 标注）
+     │     ├─ buildMemoryUsageGuide() → 认知边界说明
+     │     ├─ 组装缺口段落 + 未展开链跨度标注
+     │     └─ compileRetrievalBudget() → Token 预算实体摘要（可选）
      │
      └─ 未启用 SmartPush → formatContextMemory()
            │
@@ -909,7 +948,7 @@ Schema 验证 → mergeStateChanges → 保存 vault
 通过 injectPrompt() 注入到主 LLM 上下文
      │
      ▼
-LLM 收到带记忆上下文的 prompt → 生成回复
+LLM 收到带结构化记忆（实体链 + KB 标注 + 缺口）的 prompt → 生成回复
 ```
 
 ### 4.4 Tool-calling 检索路径
@@ -1336,6 +1375,7 @@ npm test
 | `test/concurrency-guard.test.js` | 并发守卫测试 |
 | `test/text-utils.test.js` | 文本工具测试 |
 | `test/context-window.test.js` | 上下文窗口测试 |
+| `test/dialog-window.test.js` | 对话框窗口上下文测试 |
 | `test/ltm-rebatch-call-pattern.test.js` | LTM 批处理模式测试 |
 | `test/ltm-rebatch.test.js` | `splitStmsIntoContiguousGroups` 分组测试 |
 | `test/ltm-validate.test.js` | `validateLTMOutput` / `postFillLTM` 验证测试 |
@@ -1344,6 +1384,8 @@ npm test
 | `test/bm25-scoring.test.js` | `buildSearchableText` / `bm25Score` 打分测试 |
 | `test/json-fallback.test.js` | `safeJsonParse` 五阶段降级测试 |
 | `test/kb-annotations.test.js` | KB 注释解析测试 |
+| `test/entity-seed.test.js` | 实体种子命名规则与提取测试 |
+| `test/entity-grouping.test.js` | 实体分组与去重测试 |
 | `test/merge-story-period.test.js` | `mergeStoryPeriod` 格式化测试 |
 | `test/notebook-core.test.js` | `RetrievalNotebook` 核心操作测试 |
 | `test/notebook-sort.test.js` | `RetrievalNotebook` 排序/边界测试 |
