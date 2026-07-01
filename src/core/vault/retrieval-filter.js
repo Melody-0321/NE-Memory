@@ -198,48 +198,18 @@ export function isTimeOnlyQuery(query, timeConstraint) {
 
 // ─── Noise filtering ───
 
-function eventTextSimilarity(a, b) {
-    if (!a || !b) return 0;
-    var len = Math.max(a.length, b.length);
-    if (len === 0) return 1;
-    var matches = 0;
-    for (var i = 0; i < a.length && i < b.length; i++) {
-        if (a[i] === b[i]) matches++;
-    }
-    return matches / len;
-}
-
 function denoiseResults(results, minResults) {
     if (results.length <= minResults) return results;
 
-    // Rule 1: deduplicate near-duplicate events (similarity > 0.85)
-    var deduped = [];
-    for (var i = 0; i < results.length; i++) {
-        var isDuplicate = false;
-        for (var j = 0; j < deduped.length; j++) {
-            var sim = eventTextSimilarity(
-                results[i].event || results[i].summary || '',
-                deduped[j].event || deduped[j].summary || ''
-            );
-            if (sim > 0.85) {
-                isDuplicate = true;
-                break;
-            }
-        }
-        if (!isDuplicate) deduped.push(results[i]);
-    }
-
-    // Rule 2: push transition-only events (single entity, no narrative content) to tail
+    // Rule: push transition-only events (single entity, no narrative content) to tail
     var heavy = [];
     var light = [];
-    for (var i = 0; i < deduped.length; i++) {
-        var e = deduped[i];
+    for (var i = 0; i < results.length; i++) {
+        var e = results[i];
         var entities = e.entities || [];
-        // Transition event: only 0-1 entities and event text is short / generic
         var isTransition = entities.length <= 1;
         if (e.event) {
             var ev = e.event;
-            // Short events with just movement/action are transitions
             if (isTransition && ev.length <= 20) {
                 light.push(e);
                 continue;
@@ -247,7 +217,6 @@ function denoiseResults(results, minResults) {
         }
         heavy.push(e);
     }
-    // Keep at least minResults in heavy group
     while (heavy.length < minResults && light.length > 0) {
         heavy.push(light.shift());
     }
@@ -395,9 +364,14 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
                     await ensureVectorIndex(allSTM, aliasesMap, chatIdResolved);
                     var vecIdx = getVectorIndex(chatIdResolved);
                     if (vecIdx && vecIdx.vectors.length > 0) {
-                        var vecResults = vectorSearch(queryEmb, vecIdx, topK * 2);
+                        var vecResults = vectorSearch(queryEmb, vecIdx, topK);
                         if (vecResults.length > 0) {
-                            var fused = rrfFuse(results, vecResults, 60, topK);
+                            var bm25ResultsSnapshot = results.slice();
+                            var _rrfK = 60;
+                            if (typeof process !== 'undefined' && process.env && process.env.NE_BENCHMARK_RRF_K) {
+                                _rrfK = parseInt(process.env.NE_BENCHMARK_RRF_K, 10) || 110;
+                            }
+                            var fused = rrfFuse(results, vecResults, _rrfK, topK);
                             fused.forEach(function(f) {
                                 f.__score = f._rrf_score != null ? f._rrf_score : (f.__score || 0);
                             });
@@ -419,7 +393,23 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
                             globalThis.__ne_debug_vector_used = true;
                             globalThis.__ne_debug_vector_candidate_count = vecResults.length;
                             globalThis.__ne_debug_bm25_candidate_count = results.length;
-                            console.log('[NE] Vector search fused: BM25=' + (results.length - vecResults.length) + ' vec=' + vecResults.length + ' fused=' + fused.length + ' vectorUsed=' + _vectorUsed);
+                            if (typeof globalThis !== 'undefined') {
+                                var rankMap = {};
+                                for (var bi = 0; bi < bm25ResultsSnapshot.length; bi++) {
+                                    var bid = bm25ResultsSnapshot[bi].__id || bm25ResultsSnapshot[bi].id;
+                                    if (bid) rankMap[bid] = { bm25Rank: bi + 1 };
+                                }
+                                for (var fi = 0; fi < results.length; fi++) {
+                                    var fid = results[fi].__id || results[fi].id;
+                                    if (fid && rankMap[fid]) {
+                                        rankMap[fid].fusedRank = fi + 1;
+                                    } else if (fid) {
+                                        rankMap[fid] = { bm25Rank: null, fusedRank: fi + 1, vectorOnly: true };
+                                    }
+                                }
+                                globalThis.__ne_debug_rank_map = rankMap;
+                            }
+                            console.log('[NE] Vector search fused: BM25=' + bm25ResultsSnapshot.length + ' vec=' + vecResults.length + ' fused=' + fused.length + ' vectorUsed=' + _vectorUsed);
                         }
                     }
                 }
@@ -451,6 +441,16 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
             }
             if (!alreadyInResults) results.push(ltm);
         }
+    }
+
+    if (!_vectorUsed && typeof globalThis !== 'undefined') {
+        var rankMap = {};
+        for (var ri = 0; ri < results.length; ri++) {
+            if (results[ri].__isDirectory) continue;
+            var rid = results[ri].__id || results[ri].id;
+            if (rid) rankMap[rid] = { bm25Rank: ri + 1, fusedRank: null };
+        }
+        globalThis.__ne_debug_rank_map = rankMap;
     }
 
     return results;

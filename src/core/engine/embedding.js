@@ -1,4 +1,3 @@
-import { loadRetrievalApiConfig } from '../api/llm.js';
 
 var EMBEDDING_DIM = 1536;
 
@@ -7,6 +6,13 @@ export function loadEmbeddingApiConfig() {
         var raw = localStorage.getItem('ne_embedding_api');
         if (raw) return JSON.parse(raw);
     } catch (e) {}
+    if (typeof process !== 'undefined' && process.env && process.env.EMBEDDING_URL) {
+        return {
+            url: process.env.EMBEDDING_URL,
+            model: process.env.EMBEDDING_MODEL || 'BAAI/bge-m3',
+            key: process.env.EMBEDDING_API_KEY || ''
+        };
+    }
     return null;
 }
 
@@ -16,10 +22,13 @@ export function saveEmbeddingApiConfig(config) {
 }
 
 export function isVectorSearchEnabled() {
+    if (typeof process !== 'undefined' && process.env && process.env.NE_BENCHMARK_VECTOR === '0') return false;
     try {
         var raw = localStorage.getItem('ne_settings');
         return raw ? !!JSON.parse(raw).enableVectorSearch : false;
-    } catch (e) { return false; }
+    } catch (e) {}
+    if (typeof process !== 'undefined' && process.env && process.env.EMBEDDING_URL) return true;
+    return false;
 }
 
 export async function computeEmbedding(text) {
@@ -52,25 +61,37 @@ export async function computeEmbeddings(texts) {
     if (!cfg || !cfg.url) return null;
     if (!texts || texts.length === 0) return [];
 
-    try {
-        var resp = await fetch(cfg.url, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': 'Bearer ' + (cfg.key || '')
-            },
-            body: JSON.stringify({ model: cfg.model, input: texts })
-        });
-        if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
-        var data = await resp.json();
-        var embeddings = data.data;
-        if (!embeddings || !Array.isArray(embeddings)) throw new Error('No embeddings in response');
-        EMBEDDING_DIM = embeddings[0].embedding.length;
-        return embeddings.map(function(d) { return new Float32Array(d.embedding); });
-    } catch (e) {
-        console.warn('[NE] computeEmbeddings failed:', e && e.message);
-        return null;
+    var BATCH_SIZE = 40;
+    var allEmbeddings = [];
+
+    for (var start = 0; start < texts.length; start += BATCH_SIZE) {
+        var batch = texts.slice(start, start + BATCH_SIZE);
+        try {
+            var resp = await fetch(cfg.url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + (cfg.key || '')
+                },
+                body: JSON.stringify({ model: cfg.model, input: batch })
+            });
+            if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
+            var data = await resp.json();
+            var embeddings = data.data;
+            if (!embeddings || !Array.isArray(embeddings)) throw new Error('No embeddings in response');
+            for (var i = 0; i < embeddings.length; i++) {
+                allEmbeddings.push(new Float32Array(embeddings[i].embedding));
+            }
+        } catch (e) {
+            console.warn('[NE] computeEmbeddings batch [' + start + '-' + (start + batch.length - 1) + '] failed:', e && e.message);
+            return null;
+        }
     }
+
+    if (allEmbeddings.length > 0) {
+        EMBEDDING_DIM = allEmbeddings[0].length;
+    }
+    return allEmbeddings;
 }
 
 export function cosineSimilarity(a, b) {

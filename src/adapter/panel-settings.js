@@ -2,9 +2,7 @@ import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { isStateSchemaEnabled, setStateSchemaEnabled } from '../core/vault/schema.js';
 import { testSecondaryApiConnection, sendSecondaryTestMessage,
-  saveSecondaryApiConfig, loadSecondaryApiConfig,
-  loadRetrievalApiConfig, saveRetrievalApiConfig,
-  isApiSplitMode, setApiSplitMode } from '../core/api/llm.js';
+  saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
@@ -19,11 +17,6 @@ export function renderSettingsTab() {
     var mc = settings.memoryConfig || {};
     var secApi = {};
     try { var rawApi = localStorage.getItem('ne_secondary_api'); if (rawApi) secApi = JSON.parse(rawApi); } catch (e) {}
-    var apiSplitMode = isApiSplitMode();
-    var retApi = {};
-    if (apiSplitMode) {
-        try { var rawRet = localStorage.getItem('ne_retrieval_api'); if (rawRet) retApi = JSON.parse(rawRet); } catch (e) {}
-    }
     var embApi = {};
     try { var rawEmb = localStorage.getItem('ne_embedding_api'); if (rawEmb) embApi = JSON.parse(rawEmb); } catch (e) {}
     var enableVectorSearch = settings.enableVectorSearch || false;
@@ -70,44 +63,13 @@ export function renderSettingsTab() {
         '<div class="ne-accordion open" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
-        '<label><input type="checkbox" id="nes_api_split" ' + (apiSplitMode ? 'checked' : '') + '> <span>' + t('Separate API for Retrieval') + '</span></label>' +
+        '<div class="ne-settings-grid">' +
+        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
+        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
         '</div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 12px;">' + t('Split retrieval from maintenance API. Maintenance handles STM/State/LTM extraction; retrieval handles Smart Push / recall.') + '</div>' +
-        (apiSplitMode ?
-            // ── Split mode ──
-            '<div style="margin-bottom:12px;padding:8px;border:1px solid var(--grey20);border-radius:6px;">' +
-            '<div style="font-weight:600;margin-bottom:6px;">\u25C8 ' + t('Maintenance API (Pipeline)') + '</div>' +
-            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">STM / State / LTM extraction. Needs faithful structured output, no tool calling required.</div>' +
-            '<div class="ne-settings-grid">' +
-            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_pipeline_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
-            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_pipeline_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
-            '<div><label>' + t('Model') + '</label><input type="text" id="nes_pipeline_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
-            '</div>' +
-            '<div><button class="ne-api-btn" id="nes_pipeline_connect">' + t('Connect') + '</button></div>' +
-            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_pipeline_dot"></span><span id="nes_pipeline_status_text">' + t('Not connected') + '</span></div>' +
-            '</div>' +
-            '<div style="padding:8px;border:1px solid var(--grey20);border-radius:6px;">' +
-            '<div style="font-weight:600;margin-bottom:6px;">\u25C8 ' + t('Retrieval API (Smart Push)') + '</div>' +
-            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">Smart Push / recall_memory. Needs long context + function calling.</div>' +
-            '<div class="ne-settings-grid">' +
-            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_retrieval_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(retApi.url || '') + '"></div>' +
-            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_retrieval_key" placeholder="sk-..." value="' + escapeHtml(retApi.key || '') + '"></div>' +
-            '<div><label>' + t('Model') + '</label><input type="text" id="nes_retrieval_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(retApi.model || '') + '"></div>' +
-            '</div>' +
-            '<div><button class="ne-api-btn" id="nes_retrieval_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_retrieval_test">' + t('Test Message') + '</button></div>' +
-            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_retrieval_dot"></span><span id="nes_retrieval_status_text">' + t('Not connected') + '</span></div>' +
-            '</div>'
-            :
-            // ── Unified mode ──
-            '<div class="ne-settings-grid">' +
-            '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
-            '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-..." value="' + escapeHtml(secApi.key || '') + '"></div>' +
-            '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash" value="' + escapeHtml(secApi.model || '') + '"></div>' +
-            '</div>' +
-            '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
-            '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>'
-        ) +
+        '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
+        '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
         '</div></div>' +
         // ── Embedding API (Vector Search) ──
         '<div class="ne-accordion" id="ne-set-embedding">' +
@@ -138,37 +100,16 @@ export function renderSettingsTab() {
     container.innerHTML = commonHtml;
 
     // Auto-initialize API status if config exists (from auto-connect on page load)
-    if (apiSplitMode) {
-        if (retApi.url && retApi.model) {
-            setTimeout(function () {
-                var dot = byId('nes_retrieval_dot'), text = byId('nes_retrieval_status_text');
-                testSecondaryApiConnection(retApi).then(function (r) {
-                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + retApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                });
-            }, 100);
-        }
-        if (secApi.url && secApi.model) {
-            setTimeout(function () {
-                var dot = byId('nes_pipeline_dot'), text = byId('nes_pipeline_status_text');
-                testSecondaryApiConnection(secApi).then(function (r) {
-                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                });
-            }, 100);
-        }
-    } else {
-        if (secApi.url && secApi.model) {
-            setTimeout(function () {
-                var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
-                testSecondaryApiConnection(secApi).then(function (r) {
-                    if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                    if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                    var hdr = byId('narrative_secondary_api_status');
-                    if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
-                });
-            }, 100);
-        }
+    if (secApi.url && secApi.model) {
+        setTimeout(function () {
+            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+            testSecondaryApiConnection(secApi).then(function (r) {
+                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                var hdr = byId('narrative_secondary_api_status');
+                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
+            });
+        }, 100);
     }
     if (enableVectorSearch && embApi.url && embApi.model) {
         setTimeout(function () {
@@ -189,9 +130,6 @@ export function renderSettingsTab() {
             '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
             '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
             '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Retrieval Temperature (rec. 0.3)') + '</span><span class="range-val" id="nes_retrieval_temp_val">' + (mc.retrieval_temperature || mc.temperature || 0.3).toFixed(1) + '</span></div>' +
-            '<input type="range" id="nes_retrieval_temperature" min="0" max="1" step="0.1" value="' + (mc.retrieval_temperature || mc.temperature || 0.3) + '" style="width:100%;">' +
-            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Smart retrieval and tool queries. Higher = more creative answers.') + '</div>' +
             '</div></div></div>' +
             '<div class="ne-accordion" id="ne-set-schema">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
@@ -206,8 +144,6 @@ export function renderSettingsTab() {
     // Range sliders — update value display + save
     var tEl = byId('nes_extraction_temperature');
     if (tEl) { tEl.oninput = function () { var v = byId('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); saveSettingsTab(); }; }
-    var rEl = byId('nes_retrieval_temperature');
-    if (rEl) { rEl.oninput = function () { var v = byId('nes_retrieval_temp_val'); if (v) v.textContent = Number(rEl.value).toFixed(1); saveSettingsTab(); }; }
     var bEl = byId('nes_memory_budget');
     if (bEl) { bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; saveSettingsTab(); }; }
     var sbEl = byId('nes_stm_batch');
@@ -237,84 +173,14 @@ export function renderSettingsTab() {
     var ta2 = byId('nes_character_schema');
     if (ta2) ta2.onblur = function () { saveSettingsTab(); };
     // Secondary API inputs — save on blur
-    // ── API split toggle ──
-    var splitToggle = byId('nes_api_split');
-    if (splitToggle) {
-        splitToggle.onchange = function () {
-            setApiSplitMode(splitToggle.checked);
-            renderSettingsTab(); // 重渲染以切换表单
-        };
-    }
-
-    var apiSplitModeNow = isApiSplitMode();
-    if (apiSplitModeNow) {
-        // ── Split mode handlers ──
-        // Pipeline auto-save
-        var pUrlEl = byId('nes_pipeline_url');
-        if (pUrlEl) pUrlEl.onchange = function () { saveSecApiOnly(); };
-        var pKeyEl = byId('nes_pipeline_key');
-        if (pKeyEl) pKeyEl.onchange = function () { saveSecApiOnly(); };
-        var pModelEl = byId('nes_pipeline_model');
-        if (pModelEl) pModelEl.onchange = function () { saveSecApiOnly(); };
-        var pConnBtn = byId('nes_pipeline_connect');
-        if (pConnBtn) pConnBtn.onclick = function () {
-            var cfg = { url: byId('nes_pipeline_url').value.trim(), key: byId('nes_pipeline_key').value.trim(), model: byId('nes_pipeline_model').value.trim() };
-            saveSecondaryApiConfig(cfg);
-            var dot = byId('nes_pipeline_dot'), text = byId('nes_pipeline_status_text');
-            if (dot) dot.className = 'ne-api-dot';
-            if (text) text.textContent = t('Connecting...');
-            if (pConnBtn) pConnBtn.disabled = true;
-            testSecondaryApiConnection(cfg).then(function (r) {
-                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                if (pConnBtn) pConnBtn.disabled = false;
-            });
-        };
-
-        // Retrieval auto-save
-        var rUrlEl = byId('nes_retrieval_url');
-        if (rUrlEl) rUrlEl.onchange = function () { saveRetApiOnly(); };
-        var rKeyEl = byId('nes_retrieval_key');
-        if (rKeyEl) rKeyEl.onchange = function () { saveRetApiOnly(); };
-        var rModelEl = byId('nes_retrieval_model');
-        if (rModelEl) rModelEl.onchange = function () { saveRetApiOnly(); };
-        var rConnBtn = byId('nes_retrieval_connect');
-        if (rConnBtn) rConnBtn.onclick = function () {
-            var cfg = { url: byId('nes_retrieval_url').value.trim(), key: byId('nes_retrieval_key').value.trim(), model: byId('nes_retrieval_model').value.trim() };
-            saveRetrievalApiConfig(cfg);
-            var dot = byId('nes_retrieval_dot'), text = byId('nes_retrieval_status_text');
-            if (dot) dot.className = 'ne-api-dot';
-            if (text) text.textContent = t('Connecting...');
-            if (rConnBtn) rConnBtn.disabled = true;
-            testSecondaryApiConnection(cfg).then(function (r) {
-                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                if (rConnBtn) rConnBtn.disabled = false;
-            });
-        };
-        var rTestBtn = byId('nes_retrieval_test');
-        if (rTestBtn) rTestBtn.onclick = function () {
-            var cfg = { url: byId('nes_retrieval_url').value.trim(), key: byId('nes_retrieval_key').value.trim(), model: byId('nes_retrieval_model').value.trim() };
-            if (!cfg.url) { alert('Please enter an API URL first.'); return; }
-            if (rTestBtn) rTestBtn.disabled = true;
-            sendSecondaryTestMessage(cfg).then(function () {
-                typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
-                if (rTestBtn) rTestBtn.disabled = false;
-            }).catch(function (e) {
-                typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
-                if (rTestBtn) rTestBtn.disabled = false;
-            });
-        };
-    } else {
-        // ── Unified mode handlers ──
-        var urlEl = byId('nes_secondary_url');
-        if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
-        var keyEl = byId('nes_secondary_key');
-        if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
-        var modelEl = byId('nes_secondary_model');
-        if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
-        var connBtn = byId('nes_api_connect');
-        if (connBtn) connBtn.onclick = function () {
+    var urlEl = byId('nes_secondary_url');
+    if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
+    var keyEl = byId('nes_secondary_key');
+    if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
+    var modelEl = byId('nes_secondary_model');
+    if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
+    var connBtn = byId('nes_api_connect');
+    if (connBtn) connBtn.onclick = function () {
             var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
             saveSecondaryApiConfig(cfg);
             var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
@@ -342,7 +208,6 @@ export function renderSettingsTab() {
                 if (testBtn) testBtn.disabled = false;
             });
         };
-    }
 
     var embEnable = byId('nes_enable_vector_search');
     if (embEnable) {
@@ -420,7 +285,6 @@ function saveSettingsTab() {
         dialogOverrideEnabled: byId('nes_dialog_override_enabled').checked,
         memoryConfig: {
             extraction_temperature: Number(byId('nes_extraction_temperature').value),
-            retrieval_temperature: Number(byId('nes_retrieval_temperature').value),
             temperature: Number(byId('nes_extraction_temperature').value)
         }
     };
@@ -451,15 +315,6 @@ function saveSecApiOnly() {
         model: byId('nes_secondary_model') ? byId('nes_secondary_model').value.trim() : ''
     };
     saveSecondaryApiConfig(secApi);
-}
-
-function saveRetApiOnly() {
-    var retApi = {
-        url: byId('nes_retrieval_url') ? byId('nes_retrieval_url').value.trim() : '',
-        key: byId('nes_retrieval_key') ? byId('nes_retrieval_key').value.trim() : '',
-        model: byId('nes_retrieval_model') ? byId('nes_retrieval_model').value.trim() : ''
-    };
-    saveRetrievalApiConfig(retApi);
 }
 
 function saveEmbeddingApiOnly() {

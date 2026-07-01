@@ -87,7 +87,7 @@ export function collectRoundData(roundTag) {
         pipelineCalls: pipelineCalls,
         tokenSummary: _computeTokenSummary(pipelineCalls),
         merge: globalThis.__ne_debug_last_merge || null,
-        notebook: globalThis.__ne_debug_last_notebook || null,
+        notebook: null,
         stmEvents: globalThis.__ne_debug_last_stm_events || null,
         consolidation: globalThis.__ne_debug_last_consolidation || null,
         ltmDecision: globalThis.__ne_debug_last_ltm_decision || null,

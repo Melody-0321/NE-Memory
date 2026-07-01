@@ -89,6 +89,7 @@ export function vectorSearch(queryEmbedding, vectorIndex, k) {
 
 export function rrfFuse(bm25Candidates, vectorCandidates, _k, topK) {
     var k = _k || 60;
+    var alpha = 0.20;
     var rrfScores = {};
     var entries = {};
 
@@ -96,7 +97,7 @@ export function rrfFuse(bm25Candidates, vectorCandidates, _k, topK) {
         var c = bm25Candidates[i];
         var id = c.__id || c.id;
         if (!id) continue;
-        rrfScores[id] = (rrfScores[id] || 0) + 1 / (k + i + 1);
+        rrfScores[id] = (rrfScores[id] || 0) + alpha / (k + i + 1);
         entries[id] = c;
     }
 
@@ -104,7 +105,7 @@ export function rrfFuse(bm25Candidates, vectorCandidates, _k, topK) {
         var v = vectorCandidates[j];
         var vid = v.entry.id;
         if (!vid) continue;
-        rrfScores[vid] = (rrfScores[vid] || 0) + 1 / (k + j + 1);
+        rrfScores[vid] = (rrfScores[vid] || 0) + (1 - alpha) / (k + j + 1);
         if (!entries[vid]) {
             entries[vid] = v.entry;
             entries[vid]._rrf_only = true;

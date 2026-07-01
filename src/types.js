@@ -188,16 +188,7 @@ export {};
  * @property {string} [scene]
  */
 
-// ============ 检索 / Notebook ============
-
-/**
- * @typedef {Object} RetrievalNotebook
- * @property {Map<string, UnifiedEntry>} map
- * @property {Object<string, ThreadDef>} threadIndex
- * @property {number} version
- * @property {number} lastDescribedVersion
- * @property {{entryIds: string[], threadIds: string[], expandedIds: string[]}} _snapshot
- */
+// ============ 检索类型 ============
 
 /**
  * @typedef {Object} UnifiedEntry

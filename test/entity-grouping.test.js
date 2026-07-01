@@ -1,11 +1,11 @@
-import { groupCandidatesByEntity, formatEntityGroupedText } from '../src/core/engine/retrieval.js';
+import { groupCandidatesByEntity } from '../src/core/engine/retrieval.js';
 
 var passed = 0, failed = 0;
 function assert(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
 function eq(a, b, msg) { assert(a === b, msg + ' (expected ' + JSON.stringify(b) + ', got ' + JSON.stringify(a) + ')'); }
 function gt(a, b, msg) { assert(a > b, msg + ' (got ' + a + ')'); }
 
-console.log('\n=== entity-grouping: groupCandidatesByEntity + formatEntityGroupedText ===');
+console.log('\n=== entity-grouping: groupCandidatesByEntity ===');
 
 console.log('--- groupCandidatesByEntity ---');
 
@@ -95,20 +95,6 @@ var threadIdx = { 'chain:王五': { stmIds: ['stm_001'], type: 'entity_chain' } 
 var r8 = groupCandidatesByEntity(m8, threadIdx);
 assert(r8.groups['张三'] !== undefined, 'entity from entities[] still present');
 assert(r8.groups['王五'] !== undefined, 'entity from threadIndex also detected');
-
-console.log('--- formatEntityGroupedText ---');
-
-var ftResult = formatEntityGroupedText(r2);
-assert(ftResult.indexOf('## 张三') !== -1, 'entity header in formatted text');
-assert(ftResult.indexOf('## 李四') !== -1, 'entity header in formatted text');
-assert(ftResult.indexOf('张三进入教室') !== -1, 'event text preserved');
-assert(ftResult.indexOf('[RRF:') !== -1, 'RRF score shown');
-
-var ftEmpty = formatEntityGroupedText({ groups: {}, unassigned: [] });
-assert(ftEmpty.indexOf('##') === -1, 'empty grouped result has no entity headers');
-
-var ftUnassigned = formatEntityGroupedText({ groups: {}, unassigned: [r3.unassigned[0]] });
-assert(ftUnassigned.indexOf('## 未标注条目') !== -1, 'unassigned section shown');
 
 console.log('\n--- entity-grouping: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);
