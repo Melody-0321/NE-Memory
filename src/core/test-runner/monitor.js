@@ -3,6 +3,8 @@
  */
 
 var _pipelineCallsPerRound = [];
+var _allInjectedEntries = {};
+var _prevRoundHitIds = [];
 
 export function startCollectingPipelineCalls() {
     _pipelineCallsPerRound = [];
@@ -67,7 +69,7 @@ function _computeTokenSummary(calls) {
     return { byOperation: summary, totalPrompt: totalPrompt, totalCompletion: totalCompletion, totalTokens: totalTokens };
 }
 
-export function collectRoundData(roundTag) {
+export function collectRoundData(roundTag, round) {
     var injection = globalThis.__ne_debug_last_injection || null;
     var pipelineCalls = roundTag != null ? _filterByRoundTag(roundTag) : _filterByRoundTag(null);
 
@@ -77,6 +79,29 @@ export function collectRoundData(roundTag) {
         var c = pipelineCalls[i];
         if (c.usage && c.usage.completion_tokens >= 2048) truncationCount++;
         if (c.source === 'tavern') fallbackCount++;
+    }
+
+    var merge = globalThis.__ne_debug_last_merge;
+    var diversity = { novelCount: 0, totalHits: 0, jaccard: null, cumulativeNovel: 0 };
+    if (merge && merge.map) {
+        var hitIds = [];
+        merge.map.forEach(function(v) {
+            if (v.relevance > 0 && !v._isDirectory && v.sources && v.sources.indexOf('ltm_dir') < 0) {
+                hitIds.push(v.entry.id);
+                if (!(v.entry.id in _allInjectedEntries)) {
+                    _allInjectedEntries[v.entry.id] = (round != null ? round : Object.keys(_allInjectedEntries).length + 1);
+                    diversity.novelCount++;
+                }
+            }
+        });
+        diversity.totalHits = hitIds.length;
+        if (_prevRoundHitIds.length > 0) {
+            var intersection = hitIds.filter(function(id) { return _prevRoundHitIds.indexOf(id) >= 0; }).length;
+            var union = new Set(hitIds.concat(_prevRoundHitIds)).size;
+            diversity.jaccard = union > 0 ? Math.round(intersection / union * 100) / 100 : 0;
+        }
+        diversity.cumulativeNovel = Object.keys(_allInjectedEntries).length;
+        _prevRoundHitIds = hitIds;
     }
 
     return {
@@ -102,6 +127,7 @@ export function collectRoundData(roundTag) {
         vectorUsed: globalThis.__ne_debug_vector_used || false,
         vectorCandidateCount: globalThis.__ne_debug_vector_candidate_count || 0,
         bm25CandidateCount: globalThis.__ne_debug_bm25_candidate_count || 0,
+        diversity: diversity,
         vault: null,
         timestamp: new Date().toISOString()
     };

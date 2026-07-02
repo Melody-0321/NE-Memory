@@ -101,7 +101,7 @@ export async function runTestLoop(testCase, hostDoc) {
         await sendMessageAndWait(userMessage, doc, testCase.timeoutPerRound);
         await __ne_waitForPipelineDrain(testCase.timeoutPerRound * 3);
 
-        var roundData = collectRoundData(round);
+        var roundData = collectRoundData(round, round);
         lastAiReply = getLastAiReply();
         lastInjection = roundData.injection || '';
 
@@ -229,7 +229,7 @@ export async function runTestLoop(testCase, hostDoc) {
 
     var totalDuration = Date.now() - startTime;
     var tokenRounds = roundDataList.map(function(rd) { return rd.tokenSummary; });
-    var report = createReport(testCase, roundDataList.length, totalDuration, structuralResults, semanticResults, tokenRounds);
+    var report = createReport(testCase, roundDataList.length, totalDuration, structuralResults, semanticResults, tokenRounds, roundDataList);
     report += '\n\n**结束类型**: ' + endType + '\n';
 
     if (gatedResult) {

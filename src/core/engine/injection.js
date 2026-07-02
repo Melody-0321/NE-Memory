@@ -41,7 +41,7 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
     return 1200;
 }
 
-function buildRetrievalPrefix(content, state) {
+function buildRetrievalPrefix(content, state, skipMainEvent) {
     var parts = [];
     if (content.story_scene) parts.push('场景: ' + content.story_scene);
     if (content.story_time || content.story_date) {
@@ -51,7 +51,7 @@ function buildRetrievalPrefix(content, state) {
         }
         if (timePart) parts.push('时间: ' + timePart);
     }
-    if (state && state.main_event) parts.push('当前事件: ' + state.main_event);
+    if (state && state.main_event && !skipMainEvent) parts.push('当前事件: ' + state.main_event);
     if (state && state.characters) {
         var activeChars = Object.keys(state.characters).filter(function(n) {
             var c = state.characters[n];
@@ -116,12 +116,20 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
 
     var visibleWindow = computeVisibleWindow(chatMessages);
 
+    var neSettings = {};
+    try {
+        var neRaw = localStorage.getItem('ne_settings');
+        if (neRaw) neSettings = JSON.parse(neRaw);
+    } catch (e) {}
+
     var conversationContext = '';
     var query;
     if (chatMessages && chatMessages.length > 0) {
         var aiTexts = [];
         var userTexts = [];
         var MAX_ROUNDS = 2;
+        var aiMaxRounds = (neSettings.queryAiWeight === 'low') ? 1 : 2;
+        var aiMaxChars  = (neSettings.queryAiWeight === 'low') ? 200 : 400;
         for (var i = chatMessages.length - 1; i >= 0; i--) {
             var mi = chatMessages[i];
             if (!mi) continue;
@@ -132,11 +140,11 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
                     userTexts.push(txt.trim().substring(0, 400));
                 }
             } else {
-                if (aiTexts.length < MAX_ROUNDS) {
-                    aiTexts.push(txt.trim().substring(0, 400));
+                if (aiTexts.length < aiMaxRounds) {
+                    aiTexts.push(txt.trim().substring(0, aiMaxChars));
                 }
             }
-            if (userTexts.length >= MAX_ROUNDS && aiTexts.length >= MAX_ROUNDS) break;
+            if (userTexts.length >= MAX_ROUNDS && aiTexts.length >= aiMaxRounds) break;
         }
         var contextParts = [];
         var rounds = Math.max(aiTexts.length, userTexts.length);
@@ -146,7 +154,16 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         }
         if (contextParts.length > 0) {
             conversationContext = contextParts.join('\n').substring(0, 1200);
-            var prefix = buildRetrievalPrefix(content, state);
+            var skipMainEvent = false;
+            if (state && state.main_event && conversationContext) {
+                var ek = state.main_event.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
+                if (ek.length >= 2) {
+                    skipMainEvent = ek.split('').every(function(ch) {
+                        return conversationContext.substring(0, 600).indexOf(ch) === -1;
+                    });
+                }
+            }
+            var prefix = buildRetrievalPrefix(content, state, skipMainEvent);
             query = prefix ? prefix + '\n' + conversationContext : conversationContext;
         }
     }
@@ -314,11 +331,6 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         }
     }
 
-    var neSettings = {};
-    try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) neSettings = JSON.parse(raw);
-    } catch (e) {}
     if (neSettings.retrievalBudgetEnabled) {
         var budgetText = compileRetrievalBudget(content, query, entityNames, entityChains, neSettings.retrievalBudgetTokens || 300);
         if (budgetText) {

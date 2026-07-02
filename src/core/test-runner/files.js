@@ -363,6 +363,13 @@ export function appendTraceRound(trace, roundData) {
     if (roundData.vault) {
         lines.push('- Vault: STM=' + roundData.vault.stmCount + ' LTM=' + roundData.vault.ltmCount + ' Unc=' + roundData.vault.unconsolidatedCount);
     }
+    if (roundData.diversity) {
+        var d = roundData.diversity;
+        lines.push('- 注入多样性: ' + d.novelCount + ' new / ' + d.totalHits + ' hits (累计唯一: ' + d.cumulativeNovel + ')');
+        if (d.jaccard !== null) {
+            lines.push('  Jaccard vs 上轮: ' + d.jaccard);
+        }
+    }
     lines.push('');
     lines.push('### 进度评估');
     lines.push(roundData.progressNote || '');
@@ -370,7 +377,7 @@ export function appendTraceRound(trace, roundData) {
     return lines.join('\n');
 }
 
-export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults, tokenRounds) {
+export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults, tokenRounds, roundDataList) {
     var lines = [];
     lines.push('# ' + testCase.title + ' — 测试报告');
     lines.push('运行时间: ' + new Date().toISOString());
@@ -450,6 +457,26 @@ export function createReport(testCase, roundCount, totalDurationMs, structuralRe
         lines.push('> 列名格式: `{operation}_P` = prompt tokens, `{operation}_C` = completion tokens, Total = prompt + completion。');
     }
     lines.push('');
+    if (roundDataList && roundDataList.length > 0) {
+        var diversityRounds = [];
+        for (var dri = 0; dri < roundDataList.length; dri++) {
+            var rd = roundDataList[dri];
+            if (rd && rd.diversity && rd.diversity.totalHits > 0) {
+                diversityRounds.push({ round: dri + 1, d: rd.diversity });
+            }
+        }
+        if (diversityRounds.length > 1) {
+            lines.push('## 注入多样性');
+            lines.push('| 轮次 | 新条目 | 总命中 | Jaccard | 累计唯一 |');
+            lines.push('|---:|---:|---:|---:|---:|');
+            for (var di = 0; di < diversityRounds.length; di++) {
+                var dr = diversityRounds[di];
+                var dd = dr.d;
+                lines.push('| ' + dr.round + ' | ' + dd.novelCount + ' | ' + dd.totalHits + ' | ' + (dd.jaccard !== null ? dd.jaccard : '—') + ' | ' + dd.cumulativeNovel + ' |');
+            }
+            lines.push('');
+        }
+    }
     lines.push('## 总结');
     lines.push(allPassed ? '**通过。** 所有断言通过。' : '**未通过。** 存在失败的断言，详见上方。');
     return lines.join('\n');
