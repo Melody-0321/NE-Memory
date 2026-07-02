@@ -15,8 +15,6 @@ structural:
   - { op: contains, target: smartpush_injection, value: "###" }
   - { op: contains, target: smartpush_injection, value: "KB:" }
   - { op: contains, target: smartpush_injection, value: "## 记忆使用指南" }
-  - { op: exists, target: smartpush_prompt }
-  - { op: min_length, target: smartpush_prompt, value: 200 }
   - { op: exists, target: stm_events }
   - { op: min_length, target: pipeline_responses, value: 50 }
   - { op: not_contains, target: pipeline_responses, value: "\"error\"" }
@@ -57,7 +55,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 
 ## 断言
 
-### 结构性断言（21 条）
+### 结构性断言（19 条）
 | 断言 | 含义 |
 |------|------|
 | `exists: smartpush_injection` | SmartPush 触发成功 |
@@ -67,8 +65,6 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `contains: smartpush_injection "###"` | 实体子标题 |
 | `contains: smartpush_injection "KB:"` | KB 知晓度标注 |
 | `contains: smartpush_injection "## 记忆使用指南"` | 使用指南段 |
-| `exists: smartpush_prompt` | Memory LLM prompt 存在 |
-| `min_length: smartpush_prompt >= 200` | Prompt 非空 |
 | `exists: stm_events` | STM 提取成功 |
 | `min_length: pipeline_responses >= 50` | pipeline LLM 有输出 |
 | `not_contains: pipeline_responses "error"` | 无 pipeline 报错 |
@@ -92,4 +88,4 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 - timeoutPerRound: 120000
 
 ## 说明
-v2 重构后注入格式从"LLM 叙事散文"切换为"代码拼装实体链块"。buildEntityBlock + buildMemoryUsageGuide 自动生成注入文档。
+v2 重构后注入格式从"LLM 叙事散文"切换为"代码拼装实体链块"。buildEntityBlock 自动生成注入文档。Memory LLM 调用环节尚未实现，smartpush_prompt 断言由专用测试 smartpush-12 覆盖。
