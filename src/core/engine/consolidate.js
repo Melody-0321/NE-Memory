@@ -191,8 +191,14 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     var openLtm = findOpenLtm(vault);
 
     if (action === 'close_and_new') {
-        if (openLtm) openLtm.status = 'closed';
+        if (openLtm) {
+            if (updatedTitle) openLtm.title = updatedTitle;
+            if (updatedEvent) openLtm.event = updatedEvent;
+            openLtm.status = 'closed';
+        }
         openLtm = null;
+        updatedTitle = '';
+        updatedEvent = '';
         action = 'append';
     }
 
@@ -202,7 +208,7 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
                 id: findNextId(vault),
                 status: 'open',
                 stm_refs: [],
-                title: updatedTitle || 'New Arc',
+                title: updatedTitle || '',
                 event: updatedEvent || '',
                 period: '',
                 entities: [],
@@ -291,15 +297,15 @@ export function createMinimalLtm(vault, stmId) {
     if (openLtm) {
         return {
             action: 'append',
-            updated_title: (openLtm.title || stmEvent).substring(0, 40),
-            updated_event: ((openLtm.event || '') + ' ' + stmEvent).trim().substring(0, 140)
+            updated_title: '',
+            updated_event: ''
         };
     }
 
     return {
         action: 'append',
-        updated_title: stmEvent.substring(0, 40),
-        updated_event: stmEvent.substring(0, 140)
+        updated_title: '',
+        updated_event: ''
     };
 }
 
