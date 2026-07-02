@@ -275,17 +275,6 @@ export function buildBatchPrompt(turns, vault) {
 
     var userText = turnsText.join('\n');
 
-    var innerCache = globalThis.__ne_inner_thoughts_cache;
-    if (innerCache && Object.keys(innerCache).length > 0) {
-        userText += '\n\n## 角色心理状态（本轮对话区间内，由 Main LLM 直接输出）\n';
-        Object.keys(innerCache).forEach(function(charName) {
-            var thoughts = innerCache[charName] || [];
-            thoughts.sort(function(a, b) { return (a.msgIdx || 0) - (b.msgIdx || 0); });
-            userText += '- ' + charName + ': ' + thoughts.map(function(t) { return t.content; }).join(' → ') + '\n';
-        });
-        userText += '\n';
-    }
-
     var maxTurnLabel = turns.length - 1;
 
     var injectLtmContext = isLtmEnabled(vault);
@@ -512,17 +501,6 @@ function buildStmSummaryPrompt(segments, turns, vault) {
         if (vault.content.story_date) segmentsText += '天数: ' + vault.content.story_date + '\n';
         if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
         if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
-        segmentsText += '\n';
-    }
-
-    var innerCache = globalThis.__ne_inner_thoughts_cache;
-    if (innerCache && Object.keys(innerCache).length > 0) {
-        segmentsText += '\n## 角色心理状态（本轮对话区间内，由 Main LLM 直接输出）\n';
-        Object.keys(innerCache).forEach(function(charName) {
-            var thoughts = innerCache[charName] || [];
-            thoughts.sort(function(a, b) { return (a.msgIdx || 0) - (b.msgIdx || 0); });
-            segmentsText += '- ' + charName + ': ' + thoughts.map(function(t) { return t.content; }).join(' → ') + '\n';
-        });
         segmentsText += '\n';
     }
 

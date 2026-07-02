@@ -193,8 +193,6 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     if (action === 'close_and_new') {
         if (openLtm) openLtm.status = 'closed';
         openLtm = null;
-        updatedTitle = '';
-        updatedEvent = '';
         action = 'append';
     }
 
@@ -271,6 +269,38 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     }
 
     globalThis.__ne_debug_last_ltm_state = getLtmSummary(vault);
+}
+
+/**
+ * LLM 不可用时，用 STM 自身数据拼接最小可用 LTM，保证不产生孤儿。
+ * 有 open LTM 时追加到现有弧；无 open LTM 时用 STM 的 event 字段直接创建闭合弧。
+ * @param {import('../../types.js').Vault} vault
+ * @param {string} stmId
+ * @returns {import('../../types.js').LTMDecision|null}
+ */
+export function createMinimalLtm(vault, stmId) {
+    var content = vault.content || {};
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var stm = allSTM.find(function(s) { return s.id === stmId; });
+    if (!stm) return null;
+
+    var stmEvent = (stm.event || '').trim();
+    if (!stmEvent) return null;
+
+    var openLtm = findOpenLtm(vault);
+    if (openLtm) {
+        return {
+            action: 'append',
+            updated_title: (openLtm.title || stmEvent).substring(0, 40),
+            updated_event: ((openLtm.event || '') + ' ' + stmEvent).trim().substring(0, 140)
+        };
+    }
+
+    return {
+        action: 'append',
+        updated_title: stmEvent.substring(0, 40),
+        updated_event: stmEvent.substring(0, 140)
+    };
 }
 
 /**
