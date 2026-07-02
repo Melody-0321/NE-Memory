@@ -206,6 +206,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
             Object.keys(s).forEach(function(k) { sc[k] = s[k]; });
             sc.__type = 'stm';
             sc.__id = s.id;
+            sc.__relevance = 1;
             topCandidates.push(sc);
         }
         for (var lj = 0; lj < allLTM.length; lj++) {
@@ -240,6 +241,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
                 Object.keys(s).forEach(function(k) { sc[k] = s[k]; });
                 sc.__type = 'stm';
                 sc.__id = s.id;
+                sc.__relevance = 1;
                 topCandidates.push(sc);
             }
         }

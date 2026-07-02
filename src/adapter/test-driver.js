@@ -517,6 +517,7 @@ function extractUserMessage(llmResponse, currentRound, minRounds) {
 
 function stripFormatTags(text) {
     return text
+        .replace(/<!--NE-CHAR:[^-]+-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g, '')
         .replace(/<\/?content>/gi, '')
         .replace(/<Time>.*?<\/Time>/gs, '')
         .replace(/<Time\/>/gi, '')
@@ -527,6 +528,7 @@ function stripFormatTags(text) {
 
 function cleanAiReply(text) {
     return text
+        .replace(/<!--NE-CHAR:[^-]+-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g, '')
         .replace(/<\/?content>/gi, '')
         .replace(/<Time>.*?<\/Time>/gs, '')
         .replace(/<Time\/>/gi, '')
