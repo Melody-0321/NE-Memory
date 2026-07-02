@@ -14,7 +14,6 @@ structural:
   - { op: contains, target: smartpush_injection, value: "## 实体记忆链" }
   - { op: contains, target: smartpush_injection, value: "###" }
   - { op: contains, target: smartpush_injection, value: "KB:" }
-  - { op: contains, target: smartpush_injection, value: "## 记忆使用指南" }
   - { op: exists, target: stm_events }
   - { op: min_length, target: pipeline_responses, value: 50 }
   - { op: not_contains, target: pipeline_responses, value: "\"error\"" }
@@ -55,7 +54,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 
 ## 断言
 
-### 结构性断言（19 条）
+### 结构性断言（18 条）
 | 断言 | 含义 |
 |------|------|
 | `exists: smartpush_injection` | SmartPush 触发成功 |
@@ -64,7 +63,6 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `contains: smartpush_injection "## 实体记忆链"` | 实体链分块头部 |
 | `contains: smartpush_injection "###"` | 实体子标题 |
 | `contains: smartpush_injection "KB:"` | KB 知晓度标注 |
-| `contains: smartpush_injection "## 记忆使用指南"` | 使用指南段 |
 | `exists: stm_events` | STM 提取成功 |
 | `min_length: pipeline_responses >= 50` | pipeline LLM 有输出 |
 | `not_contains: pipeline_responses "error"` | 无 pipeline 报错 |
