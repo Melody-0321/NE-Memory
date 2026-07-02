@@ -96,6 +96,20 @@ export const NARRATIVE_I18N = {
         'User Chat': 'User Chat',
         'Current Chat': 'Current Chat',
         'No data': 'No data',
+        'Vector Search (Embedding API)': 'Vector Search (Embedding API)',
+        'Enable Vector Search': 'Enable Vector Search',
+        'Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.':
+            'Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.',
+        'Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.':
+            'Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.',
+        'One-key fill': 'One-key fill',
+        'Pre-fill URL & Model with free SiliconFlow bge-m3': 'Pre-fill URL & Model with free SiliconFlow bge-m3',
+        'Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.':
+            'Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.',
+        'Quality Test': 'Quality Test',
+        'Running...': 'Running...',
+        'Passed': 'Passed',
+        'Failed': 'Failed',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -183,6 +197,20 @@ export const NARRATIVE_I18N = {
         'User Chat': '用户对话',
         'Current Chat': '当前对话',
         'No data': '暂无数据',
+        'Vector Search (Embedding API)': '向量搜索 (Embedding API)',
+        'Enable Vector Search': '启用向量搜索',
+        'Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.':
+            '需要 OpenAI 兼容的 Embedding API。停用或未配置时降级为纯 BM25 检索。',
+        'Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.':
+            '推荐：硅基流动免费 BAAI/bge-m3。前往 siliconflow.cn 注册获取 API Key，然后点击一键填充。',
+        'One-key fill': '一键填充',
+        'Pre-fill URL & Model with free SiliconFlow bge-m3': '用免费硅基 bge-m3 预填 URL 与模型',
+        'Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.':
+            '执行语义检索质量测试：嵌入测试集，用相似文本查询，验证最高相似度结果是否排在最前。',
+        'Quality Test': '质量测试',
+        'Running...': '执行中...',
+        'Passed': '通过',
+        'Failed': '失败',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -453,6 +481,7 @@ export const CONFIG_I18N = {
         'Running...': '執行中...',
         'Passed': '通過',
         'Failed': '失敗',
+        'Vector Search (Embedding API)': '向量搜尋 (Embedding API)',
     }
 };
 
