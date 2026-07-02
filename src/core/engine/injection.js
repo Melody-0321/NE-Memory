@@ -277,6 +277,13 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
 
     if (entityGrouped && (Object.keys(entityGrouped.groups).length > 0 || entityGrouped.unassigned.length > 0)) {
         var activeChars = getActiveCharacters(state);
+
+        var highlights = buildKeyHighlights(pipelineMerged.map, entityGrouped, 5);
+        if (highlights) {
+            if (parts.length > 0) parts.push('---');
+            parts.push(highlights);
+        }
+
         var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, entityChains);
         if (entityBlock) {
             if (parts.length > 0) parts.push('---');
@@ -291,7 +298,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
                 if (!chain || chain.length === 0) return;
                 if (mergedMap) {
                     var anyHit = chain.some(function(ce) {
-                        return mergedMap.has(ce.id) && mergedMap.get(ce.id).bm25Score > 0;
+                        return mergedMap.has(ce.id) && mergedMap.get(ce.id).relevance > 0;
                     });
                     if (anyHit) return;
                 }
@@ -323,7 +330,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     return parts.join('\n\n');
 }
 
-function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityChains) {
+export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityChains) {
     var lines = [];
     lines.push('## 实体记忆链');
     lines.push('');
@@ -342,11 +349,10 @@ function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityC
     });
 
     function formatEntry(e) {
-        var score = e.bm25Score > 0 ? ' [score:' + e.bm25Score.toFixed(3) + ']' : '';
         var timePart = e.entry.period || '';
         var scene = e.entry.scene || '';
         var event = e.entry.event || e.entry.summary || '';
-        var line = ' [' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score;
+        var line = ' [' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
         if (e._originalText) {
             line += '\n   > ' + e._originalText.replace(/\n/g, '\n   > ');
         }
@@ -370,7 +376,7 @@ function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityC
         }
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
-            var isHit = e.sources && e.sources.indexOf('bm25') !== -1 && e.bm25Score > 0;
+            var isHit = e.relevance > 0;
             if (isHit) {
                 flushMiss();
                 folded.push(e);
@@ -394,7 +400,7 @@ function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityC
         var hitCount = 0;
         var totalCount = group.entries.length;
         group.entries.forEach(function(e) {
-            if (e.sources && e.sources.indexOf('bm25') !== -1 && e.bm25Score > 0) hitCount++;
+            if (e.relevance > 0) hitCount++;
         });
         var refCount = group.refs ? group.refs.length : 0;
         var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
@@ -433,7 +439,7 @@ function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityC
     if (entityGrouped.unassigned && entityGrouped.unassigned.length > 0) {
         lines.push('### 未标注条目 (' + entityGrouped.unassigned.length + ' entries)');
         entityGrouped.unassigned.forEach(function(e, idx) {
-            var score = e.bm25Score > 0 ? ' [score:' + e.bm25Score.toFixed(3) + ']' : '';
+            var score = e.relevance > 0 ? ' [score:' + e.relevance.toFixed(3) + ']' : '';
             var timePart = e.entry.period || '';
             var scene = e.entry.scene || '';
             var event = e.entry.event || e.entry.summary || '';
@@ -452,6 +458,8 @@ function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityC
 
     return lines.join('\n');
 }
+
+
 
 function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens) {
     if (!entityChains || Object.keys(entityChains).length === 0) return ''
@@ -517,12 +525,51 @@ export function buildStateOnlyInjection(vault) {
     return '[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]';
 }
 
+export function buildKeyHighlights(pipelineMap, entityGrouped, topK) {
+    topK = topK || 5;
+    var entries = [];
+    pipelineMap.forEach(function(v) {
+        if (v._isDirectory || (v.sources && v.sources.indexOf('ltm_dir') >= 0)) return;
+        if (!v.relevance || v.relevance <= 0) return;
+        entries.push(v);
+    });
+
+    if (entries.length === 0) return '';
+
+    entries.sort(function(a, b) { return (b.relevance || 0) - (a.relevance || 0); });
+    entries = entries.slice(0, topK);
+
+    var entryToGroup = {};
+    var groups = entityGrouped.groups || {};
+    Object.keys(groups).forEach(function(name) {
+        groups[name].entries.forEach(function(ge) {
+            if (ge.entry && ge.entry.id) {
+                entryToGroup[ge.entry.id] = name;
+            }
+        });
+    });
+
+    var lines = ['## 关键记忆', ''];
+    entries.forEach(function(e, i) {
+        var period = e.entry.period || '';
+        var scene = e.entry.scene || '';
+        var summary = e.entry.event || e.entry.summary || '';
+        if (summary.length > 80) summary = summary.substring(0, 80) + '...';
+        var groupName = entryToGroup[e.entry.id] || '';
+        var ref = groupName ? ' \u2192 \u300c' + groupName + '\u300d' : '';
+        lines.push((i + 1) + '. [' + period + '] ' + (scene ? scene + ': ' : '') + summary + ref);
+    });
+    lines.push('');
+
+    return lines.join('\n');
+}
+
 function prefetchOriginalTexts(mapObj, chatMessages, visibleWindow, topK) {
     if (!chatMessages || chatMessages.length === 0) return;
     topK = topK || 3;
     var entries = [];
     mapObj.forEach(function(v) { entries.push(v); });
-    entries.sort(function(a, b) { return (b.bm25Score || 0) - (a.bm25Score || 0); });
+    entries.sort(function(a, b) { return (b.relevance || 0) - (a.relevance || 0); });
 
     entries.slice(0, topK).forEach(function(entry) {
         var raw = entry.entry;
@@ -539,21 +586,14 @@ function prefetchOriginalTexts(mapObj, chatMessages, visibleWindow, topK) {
         }
 
         var originalLines = [];
-        var totalLen = 0;
-        var MAX_TOTAL = 2000;
         msgIds.forEach(function(mid) {
-            if (totalLen >= MAX_TOTAL) return;
             var msg = chatMessages.find(function(m) { return String(m.id != null ? m.id : m.mes_id) === String(mid); });
             if (msg) {
                 var name = msg.name || (msg.role === 'user' ? 'User' : 'AI');
                 var text = typeof msg.mes === 'string' ? msg.mes : (msg.content || '');
                 if (text) {
                     var line = '[msg_' + mid + '] ' + name + ': ' + text.substring(0, 200);
-                    if (totalLen + line.length > MAX_TOTAL) {
-                        line = line.substring(0, MAX_TOTAL - totalLen);
-                    }
                     originalLines.push(line);
-                    totalLen += line.length;
                 }
             }
         });
@@ -562,3 +602,5 @@ function prefetchOriginalTexts(mapObj, chatMessages, visibleWindow, topK) {
         }
     });
 }
+
+
