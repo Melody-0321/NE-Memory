@@ -91,7 +91,7 @@ export function injectBottomDrawerCSS() {
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-radius:inherit;}' +
         (isShadow ? ':host(.open){' : '.ne-vault-bottom-overlay.open{') +
-        'display:flex;flex-grow:1;min-height:0;}' +
+        'display:flex;flex-direction:column;flex-grow:1;justify-content:flex-start;min-height:0;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
         '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
