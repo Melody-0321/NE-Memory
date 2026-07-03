@@ -380,9 +380,15 @@ export function injectBottomDrawerCSS() {
         '#ne-memory-search-input:focus-visible{outline:2px solid var(--ne-info);outline-offset:-1px;border-color:var(--ne-info-border);}' +
         '.ne-search-hidden{display:none!important;}' +
         '.ne-search-no-match{color:var(--ne-muted);font-style:italic;padding:8px;text-align:center;}' +
-        // Skeleton tokens need ST theme variables bound in Shadow DOM scope
+        // Bind all semantic tokens inside Shadow DOM scope (hardcoded — no external :root dependency)
         (isShadow ? ':host{' : ':root{') +
+        '--ne-success:#4caf50;--ne-success-bg:rgba(76,175,80,.12);--ne-success-border:rgba(76,175,80,.3);' +
+        '--ne-warning:#f0ad4e;--ne-warning-bg:rgba(240,173,78,.12);--ne-warning-border:rgba(240,173,78,.3);' +
+        '--ne-danger:#e53935;--ne-danger-bg:rgba(229,57,53,.12);--ne-danger-border:rgba(229,57,53,.3);' +
+        '--ne-info:#2196f3;--ne-info-bg:rgba(33,150,243,.12);--ne-info-border:rgba(33,150,243,.3);' +
+        '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,.08);' +
         '--ne-skeleton-base:var(--black30a);--ne-skeleton-shimmer:var(--black50a);' +
+        '--ne-radius-sm:4px;--ne-radius-md:8px;--ne-radius-lg:12px;' +
         '}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
