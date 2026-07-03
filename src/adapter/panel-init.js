@@ -161,7 +161,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
             '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
             '</div></div>' +
-            '</div></div>' +
+            '</div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
             '<div class="ne-settings-section-title"><i class="fa-solid fa-star"></i> ' + t('Common Settings') + '</div>' +
