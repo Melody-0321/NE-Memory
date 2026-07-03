@@ -47,7 +47,7 @@ export async function renderHistory(getChatId) {
             var stmCount = sc && sc.unconsolidated_stm ? sc.unconsolidated_stm.length : 0;
             html += '<tr><td>' + snap.version + '</td><td>' + formatLocalTime(snap.updated_at) + '</td><td>' + ltmCount + ' LTM</td><td>' + stmCount + ' STM</td>' +
                 '<td><button class="narrative_restore_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;">' + t('Restore') + '</button></td>' +
-                '<td><button class="narrative_del_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;color:#f44336;">' + t('Delete') + '</button></td></tr>';
+                '<td><button class="narrative_del_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;color:var(--ne-danger);">' + t('Delete') + '</button></td></tr>';
         });
         html += '</tbody></table>';
         container.innerHTML = html;
@@ -72,6 +72,6 @@ export async function renderHistory(getChatId) {
         });
     } catch (e) {
         console.error('[NE] renderHistory error:', e);
-        container.innerHTML = '<div style="color:#f44336;">' + t('Failed to load history') + '</div>';
+        container.innerHTML = '<div style="color:var(--ne-danger);">' + t('Failed to load history') + '</div>';
     }
 }

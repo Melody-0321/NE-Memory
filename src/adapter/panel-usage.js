@@ -16,7 +16,7 @@ export async function renderUsageTab() {
     }
 
     if (!window.Chart) {
-        container.innerHTML = '<div class="ne-usage-loading">📊 Loading Chart.js...</div>';
+        container.innerHTML = '<div class="ne-usage-loading"><i class="fa-solid fa-spinner fa-spin"></i> Loading Chart.js...</div>';
         try {
             await new Promise(function(resolve, reject) {
                 var script = document.createElement('script');
@@ -40,16 +40,16 @@ export async function renderUsageTab() {
 
     /* Section A: Cards */
     html += '<div class="ne-usage-section">' +
-        '<div class="ne-usage-section-title">📊 ' + t('This Session') + ' / ' + t('This Month') + ' / ' + t('All Time') + '</div>' +
+        '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('This Session') + ' / ' + t('This Month') + ' / ' + t('All Time') + '</div>' +
         '<div class="ne-usage-cards">' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">🔄 ' + fmt(overview.sessionTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.sessionChat) + '</div><div class="ne-usage-card-sub">' + (overview.sessionTurns || 0) + ' ' + t('Turns') + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">📅 ' + fmt(overview.monthTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.monthChat) + '</div><div class="ne-usage-card-sub">' + (overview.monthDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value">📊 ' + fmt(overview.allTotal) + '</div><div class="ne-usage-card-sub">⚙ ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + ' | 👤 ' + t('User Chat') + ': ' + fmt(overview.allChat) + '</div><div class="ne-usage-card-sub">' + (overview.totalDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-arrows-rotate"></i> ' + fmt(overview.sessionTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.sessionChat) + '</div><div class="ne-usage-card-sub">' + (overview.sessionTurns || 0) + ' ' + t('Turns') + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-calendar-days"></i> ' + fmt(overview.monthTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.monthChat) + '</div><div class="ne-usage-card-sub">' + (overview.monthDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-table"></i> ' + fmt(overview.allTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.allChat) + '</div><div class="ne-usage-card-sub">' + (overview.totalDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
         '</div></div>';
 
     /* Section B: Pipeline breakdown — pie chart with scope dropdown */
     html += '<div class="ne-usage-section">' +
-        '<div class="ne-usage-section-title">📊 ' + t('Pipeline Breakdown') + '</div>' +
+        '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('Pipeline Breakdown') + '</div>' +
         '<select id="ne-breakdown-scope" onchange="(function(){var s=document.getElementById(\'ne-breakdown-scope\').value;document.getElementById(\'ne-breakdown-month-wrap\').style.display=s===\'month\'?\'\':\'none\';window._renderBreakdownPie&&window._renderBreakdownPie();})()">' +
         '<option value="chat">' + t('Current Chat') + '</option>' +
         '<option value="month">' + t('This Month') + '</option>' +
@@ -64,7 +64,7 @@ export async function renderUsageTab() {
 
     /* Section C: Daily trend — bar chart with month dropdown */
     html += '<div class="ne-usage-section">' +
-        '<div class="ne-usage-section-title">📈 ' + t('Daily Trend') + '</div>' +
+        '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-line"></i> ' + t('Daily Trend') + '</div>' +
         '<select id="ne-daily-month" onchange="window._renderDailyBar&&window._renderDailyBar()"></select>' +
         '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-daily-bar-canvas"></canvas></div>' +
         '<div id="ne-daily-bar-empty" style="display:none;text-align:center;color:var(--grey-50);padding:12px;">' + t('No data') + '</div>' +
@@ -72,7 +72,7 @@ export async function renderUsageTab() {
 
     /* Section D: Per-chat table */
     html += '<div class="ne-usage-section">' +
-        '<div class="ne-usage-section-title">📋 ' + t('Per Chat') + '</div>';
+        '<div class="ne-usage-section-title"><i class="fa-solid fa-list-check"></i> ' + t('Per Chat') + '</div>';
     if (chats.length > 0) {
         html += '<table class="ne-usage-chat-table"><tr><th>Chat</th><th>' + t('Per Chat') + '</th><th>' + t('Total Tokens') + '</th><th>' + t('Avg / Turn') + '</th></tr>';
         for (var i = 0; i < chats.length; i++) {

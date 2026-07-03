@@ -3,6 +3,8 @@ import { loadVault } from '../core/auto-restore.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
+import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState } from '../core/engine/pipeline-guard.js';
+import { runLtmConsolidation } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -71,12 +73,12 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
             '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="usage">📊 ' + t('Usage') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="usage"><i class="fa-solid fa-chart-simple"></i> ' + t('Usage') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' + t('Loading...') + '</div>' +
-            '<div id="narrative_vault_panel_error" style="display:none;color:#f44336;"></div>' +
-            '<div id="narrative_vault_panel_storage_warn" style="display:none;color:#ff9800;font-size:0.85em;margin-bottom:4px;border:1px solid #ff9800;padding:4px;border-radius:4px;"></div>' +
+            '<div id="narrative_vault_panel_error" style="display:none;color:var(--ne-danger);"></div>' +
+            '<div id="narrative_vault_panel_storage_warn" style="display:none;color:var(--ne-warning);font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
             '<div id="tab-memory" class="ne-vault-tab-content active">' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
@@ -149,10 +151,10 @@ export async function renderVaultPanel(getChatId) {
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
             '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
-            '<div class="ne-settings-section-title">\u2B50 ' + t('Common Settings') + '</div>' +
+            '<div class="ne-settings-section-title"><i class="fa-solid fa-star"></i> ' + t('Common Settings') + '</div>' +
             '<div id="ne_common_settings"></div></div>' +
             '<div class="ne-settings-section-card">' +
-            '<div class="ne-settings-section-title">\uD83D\uDD2C ' + t('Advanced Settings') + '</div>' +
+            '<div class="ne-settings-section-title"><i class="fa-solid fa-flask"></i> ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
             '</div></div>' +
             '<div id="tab-usage" class="ne-vault-tab-content">' +
@@ -198,10 +200,10 @@ export async function renderVaultPanel(getChatId) {
                 consolidateBtn.disabled = true;
                 consolidateBtn.textContent = t('Processing...');
                 try {
-                    await executeIncrementalUpdate(getChatId(), [], true);
+                    await runLtmConsolidation(getChatId());
                     await updateVaultViewerPopout(getChatId);
                 } catch (e) {
-                    console.error('[NE] Process failed:', e);
+                    console.error('[NE] Consolidation failed:', e);
                     alert(t('Process failed') + ': ' + e.message);
                 } finally {
                     consolidateBtn.disabled = false;
@@ -285,6 +287,16 @@ export async function renderVaultPanel(getChatId) {
                     }
                 } catch (e) {}
 
+                var PIPELINE_TIMEOUT_MS = 60000;
+                if (!tryAcquire('stm')) {
+                    console.log('[NE] processHistory: waiting for pipeline — state=' + getState());
+                    await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
+                    if (!tryAcquire('stm')) {
+                        console.warn('[NE] processHistory: pipeline still blocked, forcing reset');
+                        reset();
+                        tryAcquire('stm');
+                    }
+                }
                 try {
                     var accumTurns = processedCount;
                     processHistoryBtn.textContent = t('Processing...') + ' (0' + '\u8f6e' + ')';
@@ -309,6 +321,7 @@ export async function renderVaultPanel(getChatId) {
                     alert(t('Process History') + ' failed: ' + e.message);
                     processHistoryBtn.textContent = t('Failed');
                 } finally {
+                    releasePipeline();
                     setTimeout(function () {
                         processHistoryBtn.textContent = prevText;
                         processHistoryBtn.disabled = false;

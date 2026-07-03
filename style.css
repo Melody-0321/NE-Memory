@@ -1,3 +1,49 @@
+/* ══════════════════════════════════════════
+   NE Memory Engine — Design Tokens
+   ══════════════════════════════════════════ */
+:root {
+  /* ── Semantic Color Tokens ── */
+  --ne-success: #4caf50;
+  --ne-success-bg: rgba(76, 175, 80, 0.12);
+  --ne-success-border: rgba(76, 175, 80, 0.25);
+  --ne-warning: #ff9800;
+  --ne-warning-bg: rgba(255, 152, 0, 0.10);
+  --ne-warning-border: rgba(255, 152, 0, 0.22);
+  --ne-danger: #f44336;
+  --ne-danger-bg: rgba(244, 67, 54, 0.10);
+  --ne-danger-border: rgba(244, 67, 54, 0.22);
+  --ne-info: #2196f3;
+  --ne-info-bg: rgba(33, 150, 243, 0.10);
+  --ne-info-border: rgba(33, 150, 243, 0.22);
+  --ne-muted: #888;
+  --ne-muted-bg: rgba(136, 136, 136, 0.08);
+
+  /* ── Spacing Scale (4px base) ── */
+  --ne-space-xs: 4px;
+  --ne-space-sm: 8px;
+  --ne-space-md: 12px;
+  --ne-space-lg: 16px;
+  --ne-space-xl: 20px;
+  --ne-space-2xl: 24px;
+  --ne-space-3xl: 32px;
+
+  /* ── Font Size Scale ── */
+  --ne-text-xs: 0.75em;
+  --ne-text-sm: 0.82em;
+  --ne-text-base: 0.9em;
+  --ne-text-lg: 1em;
+  --ne-text-xl: 1.1em;
+
+  /* ── Border Radius ── */
+  --ne-radius-sm: 4px;
+  --ne-radius-md: 6px;
+  --ne-radius-lg: 8px;
+
+  /* ── Transitions ── */
+  --ne-transition-fast: 0.15s ease;
+  --ne-transition-normal: 0.2s ease;
+}
+
 #narrative_settings {
     display: flex;
     flex-direction: column;
@@ -36,29 +82,6 @@
     font-size: 0.9em;
     color: var(--grey-70);
     margin-top: 0.5em;
-}
-
-.narrative_memory_table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.9em;
-}
-
-.narrative_memory_table th,
-.narrative_memory_table td {
-    padding: 4px 6px;
-    border-bottom: 1px solid var(--black50a);
-    text-align: left;
-}
-
-.narrative_memory_table th {
-    font-weight: bold;
-    color: var(--grey-50);
-    white-space: nowrap;
-}
-
-.narrative_memory_table tr:hover {
-    background: var(--black30a);
 }
 
 .narrative_link {
@@ -492,4 +515,21 @@
     max-height: 85vh;
     overflow-y: auto;
     box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+
+/* ══════════════════════════════════════════
+   Accessibility — Focus & Disabled States
+   ══════════════════════════════════════════ */
+.ne_vault_btn:focus-visible,
+.ne-api-btn:focus-visible,
+.ne-vault-tab:focus-visible,
+.ne-accordion-header:focus-visible {
+  outline: 2px solid var(--ne-info);
+  outline-offset: 1px;
+}
+
+.ne_vault_btn:disabled,
+.ne-api-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }

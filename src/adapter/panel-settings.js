@@ -20,7 +20,7 @@ export function renderSettingsTab() {
     var embApi = {};
     try { var rawEmb = localStorage.getItem('ne_embedding_api'); if (rawEmb) embApi = JSON.parse(rawEmb); } catch (e) {}
     var enableVectorSearch = settings.enableVectorSearch || false;
-    var statusDot = '<span class="ne-status-dot" style="color:#4caf50;">\u25CF</span>';
+    var statusDot = '<span class="ne-status-dot" style="color:var(--ne-success);">\u25CF</span>';
 
     // === Common Settings ===
     var stmBatchAuto = isAuto('stmBatch');
@@ -104,7 +104,7 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 var hdr = byId('narrative_secondary_api_status');
-                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
+                if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
             });
         }, 100);
     }
@@ -185,7 +185,7 @@ export function renderSettingsTab() {
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 if (connBtn) connBtn.disabled = false;
                 var hdr = byId('narrative_secondary_api_status');
-                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#666'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
+                if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
             });
         };
         var testBtn = byId('nes_api_test');

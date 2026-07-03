@@ -119,7 +119,7 @@ function renderCharacterGroup(label, names, characters, schema, state) {
         sorted = sorted.filter(function(n) { return n !== protoName; });
         sorted.unshift(protoName);
     }
-    var headerColor = label === '活跃' ? '#4caf50' : (label === '已退场' ? '#f44336' : '#ff9800');
+    var headerColor = label === '活跃' ? 'var(--ne-success)' : (label === '已退场' ? 'var(--ne-danger)' : 'var(--ne-warning)');
 
     var html = '<details class="ne_character_group" open style="margin:6px 0;">' +
         '<summary style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
@@ -241,8 +241,8 @@ export function renderFactionPanelHTML(state) {
 function renderQuestCard(key, entry, sectionType) {
     var statusLabel = entry.status || '未知';
 
-    var statusColors = { '已完成': '#4caf50', '已达成': '#4caf50', '已失败': '#f44336', '已过期': '#ff9800', '正在进行': '#2196f3', '进行中': '#2196f3', '已放弃': '#888', '持续中': '#ff9800', '已平息': '#4caf50', '已结束': '#888' };
-    var statusColor = statusColors[statusLabel] || '#888';
+    var statusColors = { '已完成': 'var(--ne-success)', '已达成': 'var(--ne-success)', '已失败': 'var(--ne-danger)', '已过期': 'var(--ne-warning)', '正在进行': 'var(--ne-info)', '进行中': 'var(--ne-info)', '已放弃': 'var(--ne-muted)', '持续中': 'var(--ne-warning)', '已平息': 'var(--ne-success)', '已结束': 'var(--ne-muted)' };
+    var statusColor = statusColors[statusLabel] || 'var(--ne-muted)';
 
     var iconMap = {
         task: { open: '\u25CB', closed: '\u2714' },
@@ -258,7 +258,7 @@ function renderQuestCard(key, entry, sectionType) {
         statusCls = 'progress';
     }
     var iconChar = isCompleted ? icons.closed : icons.open;
-    var iconColor = isCompleted ? '#4caf50' : '#888';
+    var iconColor = isCompleted ? 'var(--ne-success)' : 'var(--ne-muted)';
 
     var displayName = entry.name || key;
     var deadlineOrStatus = '';
@@ -274,13 +274,13 @@ function renderQuestCard(key, entry, sectionType) {
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
         if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
         if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
-        if (entry.reward) detailLines.push('<div style="margin:2px 0;color:#4caf50;">' + t_field('reward') + ': ' + escapeHtml(String(entry.reward)) + '</div>');
-        if (entry.penalty) detailLines.push('<div style="margin:2px 0;color:#f44336;">' + t_field('penalty') + ': ' + escapeHtml(String(entry.penalty)) + '</div>');
+        if (entry.reward) detailLines.push('<div style="margin:2px 0;color:var(--ne-success);">' + t_field('reward') + ': ' + escapeHtml(String(entry.reward)) + '</div>');
+        if (entry.penalty) detailLines.push('<div style="margin:2px 0;color:var(--ne-danger);">' + t_field('penalty') + ': ' + escapeHtml(String(entry.penalty)) + '</div>');
     } else if (sectionType === 'goal') {
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
         if (entry.progress) detailLines.push('<div style="margin:2px 0;color:#e2b714;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
         if (entry.posted_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
-        if (entry.completed_time) detailLines.push('<div style="margin:2px 0;color:#4caf50;">' + t_field('completed_time') + ': ' + escapeHtml(String(entry.completed_time)) + '</div>');
+        if (entry.completed_time) detailLines.push('<div style="margin:2px 0;color:var(--ne-success);">' + t_field('completed_time') + ': ' + escapeHtml(String(entry.completed_time)) + '</div>');
     } else if (sectionType === 'event') {
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
         if (entry.started_time) detailLines.push('<div style="margin:2px 0;font-size:0.83em;color:var(--grey50);">' + t_field('started_time') + ': ' + escapeHtml(String(entry.started_time)) + '</div>');
@@ -313,7 +313,7 @@ export function renderQuestPanelHTML(state) {
     // Tasks
     if (quests.tasks && typeof quests.tasks === 'object' && Object.keys(quests.tasks).length > 0) {
         var taskHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div style="font-weight:bold;font-size:0.9em;color:#2196f3;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25CB ' + t('Tasks') + '</div>';
+            '<div style="font-weight:bold;font-size:0.9em;color:var(--ne-info);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25CB ' + t('Tasks') + '</div>';
         Object.keys(quests.tasks).forEach(function (key) {
             taskHtml += renderQuestCard(key, quests.tasks[key], 'task');
         });
@@ -335,7 +335,7 @@ export function renderQuestPanelHTML(state) {
     // Events
     if (quests.events && typeof quests.events === 'object' && Object.keys(quests.events).length > 0) {
         var eventHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div style="font-weight:bold;font-size:0.9em;color:#ff9800;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B2 ' + t('World Events') + '</div>';
+            '<div style="font-weight:bold;font-size:0.9em;color:var(--ne-warning);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B2 ' + t('World Events') + '</div>';
         Object.keys(quests.events).forEach(function (key) {
             eventHtml += renderQuestCard(key, quests.events[key], 'event');
         });
@@ -508,8 +508,8 @@ function toggleInlineEdit(row, entryId, entryType) {
         idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
         '<td style="white-space:nowrap;"><button class="ne-inline-save" title="' + t('Save') + '">\u2714</button>' +
-        '<button class="ne-inline-cancel" style="background:#f44336;color:#fff;border:none;" title="' + t('Cancel') + '">\u2716</button>' +
-        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" title="' + t('Delete') + '">\uD83D\uDDD1</button></td>';
+        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" title="' + t('Cancel') + '"><i class="fa-solid fa-xmark"></i></button>' +
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" title="' + t('Delete') + '"><i class="fa-solid fa-trash"></i></button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;

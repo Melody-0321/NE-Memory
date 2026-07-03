@@ -80,7 +80,7 @@ export async function updateVaultViewerPopout(getChatId) {
                 if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
                     apiStatus.textContent = '\u26A1';
                     apiStatus.title = t('Secondary API:') + ' ' + secondaryConfig.model;
-                    apiStatus.style.color = '#4caf50';
+                    apiStatus.style.color = 'var(--ne-success)';
                 } else {
                     apiStatus.textContent = '';
                     apiStatus.title = t('No secondary API configured');
