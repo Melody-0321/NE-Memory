@@ -117,6 +117,7 @@ export const NARRATIVE_I18N = {
         'Search': 'Search', 'Search memory entries': 'Search memory entries',
         'NE Narrative Engine': 'NE Narrative Engine',
         'Pipeline:': 'Pipeline:',
+        'Active:': 'Active:',
         'Idle': 'Idle', 'State Extraction': 'State Extraction', 'STM Extraction': 'STM Extraction', 'LTM Consolidation': 'LTM Consolidation',
     },
     'zh-cn': {
@@ -226,6 +227,7 @@ export const NARRATIVE_I18N = {
         'Search': '搜索', 'Search memory entries': '搜索记忆条目',
         'NE Narrative Engine': 'NE-叙事引擎',
         'Pipeline:': '管线：',
+        'Active:': '活跃中：',
         'Idle': '空闲', 'State Extraction': '状态提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合并',
     },
     'zh-tw': {
@@ -323,6 +325,7 @@ export const NARRATIVE_I18N = {
         'Search': '搜尋', 'Search memory entries': '搜尋記憶條目',
         'NE Narrative Engine': 'NE-敘事引擎',
         'Pipeline:': '管線：',
+        'Active:': '活躍中：',
         'Idle': '空閒', 'State Extraction': '狀態提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合併',
     }
 };

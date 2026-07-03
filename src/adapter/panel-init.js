@@ -74,7 +74,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
-            '<span id="narrative_vault_activity" style="font-size:0.8em;color:var(--ne-muted);">\u25CF</span>' +
             '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
@@ -659,10 +658,10 @@ export async function renderVaultPanel(getChatId) {
             var el = panelById('ne_pipeline_status');
             if (!el) return;
             if (phase === 'idle') {
-                el.textContent = t('Pipeline:') + ' ' + t('Idle');
+                el.textContent = t('Idle');
                 el.style.color = 'var(--grey-50)';
             } else {
-                el.textContent = t('Pipeline:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
+                el.textContent = t('Active:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
                 el.style.color = 'var(--ne-warning)';
             }
         };
