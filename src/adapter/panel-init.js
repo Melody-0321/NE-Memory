@@ -230,13 +230,13 @@ export async function renderVaultPanel(getChatId) {
             });
         }
 
-        var ref = byId('narrative_vault_panel_refresh');
+        var ref = panelById('narrative_vault_panel_refresh');
         if (ref) ref.onclick = function () {
             setVaultActivity(true);
             busEmit('vault:updated', { getChatId: getChatId });
         };
 
-        var consolidateBtn = qs('.narrative_btn_consolidate');
+        var consolidateBtn = panelQS('.narrative_btn_consolidate');
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
                 var chatId = getChatId();
@@ -258,7 +258,7 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
-        var processHistoryBtn = byId('narrative_vault_process_history');
+        var processHistoryBtn = panelById('narrative_vault_process_history');
         if (processHistoryBtn) {
             processHistoryBtn.onclick = async function () {
                 if (!confirm(t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
@@ -377,7 +377,7 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
-        var exportBtn = byId('narrative_vault_export_json');
+        var exportBtn = panelById('narrative_vault_export_json');
         if (exportBtn) {
             exportBtn.onclick = async function () {
                 try {
@@ -399,7 +399,7 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
-        var importBtn = byId('narrative_vault_import_json');
+        var importBtn = panelById('narrative_vault_import_json');
         if (importBtn) {
             importBtn.onclick = function () {
                 var input = document.createElement('input');
@@ -426,7 +426,7 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
-        var embedBtn = byId('narrative_vault_embed_chat');
+        var embedBtn = panelById('narrative_vault_embed_chat');
         if (embedBtn) {
             embedBtn.onclick = async function () {
                 try {
@@ -446,7 +446,7 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
-        var cleanOrphansBtn = byId('narrative_vault_clean_orphans');
+        var cleanOrphansBtn = panelById('narrative_vault_clean_orphans');
         if (cleanOrphansBtn) {
             cleanOrphansBtn.onclick = async function () {
                 try {
@@ -506,8 +506,9 @@ export async function renderVaultPanel(getChatId) {
         }
 
         // Pin
-        byId('narrative_vault_pin').onchange = function () {
-            var pin = byId('narrative_vault_pin');
+        var pinEl = panelById('narrative_vault_pin');
+        if (pinEl) pinEl.onchange = function () {
+            var pin = panelById('narrative_vault_pin');
             if (!pin) return;
             var checked = pin.checked;
             var overlay = byId('ne_vault_bottom_overlay');

@@ -46,7 +46,7 @@ export function freezeIframeHeight() {
 }
 
 export function setVaultActivity(active) {
-    var el = byId('narrative_vault_activity');
+    var el = panelById('narrative_vault_activity');
     if (!el) return;
     if (active) {
         el.innerHTML = '&#9696;';

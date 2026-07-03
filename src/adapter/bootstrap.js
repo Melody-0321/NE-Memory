@@ -76,7 +76,18 @@ export async function bootstrapVault(chatId, locale, settings) {
     // ── L2: Global keyboard navigation for card toggle headers ──
     document.addEventListener('keydown', function(e) {
         if (e.key !== 'Enter' && e.key !== ' ') return;
-        var target = e.target.closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+        var target = null;
+        var path = e.composedPath && e.composedPath();
+        if (path) {
+            for (var i = 0; i < path.length; i++) {
+                if (path[i] && path[i].closest) {
+                    target = path[i].closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+                    if (target) break;
+                }
+            }
+        } else {
+            target = e.target.closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+        }
         if (!target) return;
         if (target.closest('input, textarea, select, button')) return;
         e.preventDefault();
