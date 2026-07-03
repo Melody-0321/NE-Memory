@@ -160,6 +160,7 @@ export function injectBottomDrawerCSS() {
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
         '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
         '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
+        '#tab-settings input::placeholder{color:#999 !important;opacity:1 !important;-webkit-text-fill-color:#999 !important;}' +
         '#tab-settings textarea{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
         '#tab-settings input[type=range]{width:100%;margin:4px 0;}' +
         '#tab-settings .range-val{font-size:0.8em;color:var(--grey-50);margin-left:6px;}' +
