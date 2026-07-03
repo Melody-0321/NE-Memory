@@ -26,7 +26,7 @@ export function renderSettingsTab() {
     var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' <span id="nes_pipeline_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;display:none;">\u25CF</span></div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + '</div>' +
         '<div class="ne-accordion-body">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('dialog_round_injection_control') + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
         '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
@@ -56,7 +56,7 @@ export function renderSettingsTab() {
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion open" id="ne-set-api">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + '</div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;color:var(--ne-success);display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
@@ -69,9 +69,8 @@ export function renderSettingsTab() {
         '</div></div>' +
         // ── Embedding API (Vector Search) ──
         '<div class="ne-accordion" id="ne-set-embedding">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Vector Search (Embedding API)') + '</div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Vector Search (Embedding API)') + ' <span id="nes_embedding_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;color:var(--ne-success);display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
-        '<div class="ne-api-status" style="margin-bottom:8px;"><span class="ne-api-dot" id="nes_retrieval_dot"></span><span id="nes_retrieval_status_text">' + t('BM25 only (vector disabled)') + '</span></div>' +
         '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
         '<label><input type="checkbox" id="nes_enable_vector_search" ' + (enableVectorSearch ? 'checked' : '') + '> <span>' + t('Enable Vector Search') + '</span></label>' +
         '</div>' +
@@ -96,22 +95,11 @@ export function renderSettingsTab() {
         '</div></div>';
     container.innerHTML = commonHtml;
 
-    // ── Pipeline header dot: green if secondary API is configured ──
-    var pipelineDot = panelById('nes_pipeline_header_dot');
-    if (pipelineDot) pipelineDot.style.display = (secApi.url && secApi.model) ? 'inline' : 'none';
-
-    // ── Retrieval dot: green if vector search enabled and embedding API configured ──
-    var retrievalDot = panelById('nes_retrieval_dot'), retrievalText = panelById('nes_retrieval_status_text');
-    if (enableVectorSearch && embApi.url && embApi.model) {
-        if (retrievalDot) retrievalDot.className = 'ne-api-dot ok';
-        if (retrievalText) retrievalText.textContent = t('Connected') + ': ' + embApi.model + ' (BM25+Vector)';
-    } else if (enableVectorSearch) {
-        if (retrievalDot) retrievalDot.className = 'ne-api-dot';
-        if (retrievalText) retrievalText.textContent = t('Not connected') + ' — ' + t('configure embedding API');
-    } else {
-        if (retrievalDot) retrievalDot.className = 'ne-api-dot';
-        if (retrievalText) retrievalText.textContent = t('BM25 only (vector disabled)');
-    }
+    // ── API header dots ──
+    var apiHdrDot = panelById('nes_api_header_dot');
+    if (apiHdrDot) apiHdrDot.style.display = (secApi.url && secApi.model) ? 'inline' : 'none';
+    var embHdrDot = panelById('nes_embedding_header_dot');
+    if (embHdrDot) embHdrDot.style.display = (enableVectorSearch && embApi.url && embApi.model) ? 'inline' : 'none';
 
     // Auto-initialize API status if config exists (from auto-connect on page load)
     if (secApi.url && secApi.model) {
@@ -201,9 +189,9 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 if (connBtn) connBtn.disabled = false;
-                // ── Also update pipeline header dot ──
-                var pHdrDot = panelById('nes_pipeline_header_dot');
-                if (pHdrDot) pHdrDot.style.display = r.success ? 'inline' : 'none';
+                // ── Also update API header dot ──
+                var aHdrDot = panelById('nes_api_header_dot');
+                if (aHdrDot) aHdrDot.style.display = r.success ? 'inline' : 'none';
                 var hdr = panelById('narrative_secondary_api_status');
                 if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
             });
@@ -231,15 +219,9 @@ export function renderSettingsTab() {
             localStorage.setItem('ne_settings', JSON.stringify(settings));
             var config = panelById('ne-embedding-config');
             if (config) config.style.display = embEnable.checked ? 'block' : 'none';
-            // ── Update retrieval dot on toggle ──
-            var rDot = panelById('nes_retrieval_dot'), rText = panelById('nes_retrieval_status_text');
-            if (embEnable.checked) {
-                if (rDot) rDot.className = 'ne-api-dot';
-                if (rText) rText.textContent = t('Not connected') + ' — ' + t('configure embedding API');
-            } else {
-                if (rDot) rDot.className = 'ne-api-dot';
-                if (rText) rText.textContent = t('BM25 only (vector disabled)');
-            }
+            // ── Update embedding header dot on toggle ──
+            var eHdrDot = panelById('nes_embedding_header_dot');
+            if (eHdrDot) eHdrDot.style.display = embEnable.checked ? 'inline' : 'none';
         };
     }
     if (enableVectorSearch) {
@@ -261,10 +243,9 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (' + r.dimensions + 'd)') : (t('Not connected') + ' — ' + (r.error || ''));
                 if (embConnBtn) embConnBtn.disabled = false;
-                // ── Also update retrieval dot ──
-                var rDot = panelById('nes_retrieval_dot'), rText = panelById('nes_retrieval_status_text');
-                if (rDot) rDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (rText) rText.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (BM25+Vector)') : (t('Not connected') + ' — ' + (r.error || ''));
+                // ── Also update embedding header dot ──
+                var eHdrDot2 = panelById('nes_embedding_header_dot');
+                if (eHdrDot2) eHdrDot2.style.display = r.success ? 'inline' : 'none';
             });
         };
         var embPresetBtn = panelById('nes_embedding_preset');
