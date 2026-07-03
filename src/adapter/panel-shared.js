@@ -105,7 +105,7 @@ export function injectBottomDrawerCSS() {
         '.ne-vault-tab:hover{color:var(--text,#ddd);}' +
         '.ne-vault-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor);font-weight:bold;}' +
         '.ne-vault-tab-content{display:none;}' +
-        '.ne-vault-tab-content.active{flex:1;overflow-y:auto;min-height:0;}' +
+        '.ne-vault-tab-content.active{display:block;flex:1;overflow-y:auto;min-height:0;}' +
         '.ne-quick-index{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:4px;padding:4px 12px;margin-bottom:6px;background:var(--SmartThemeBlurTintColor);border-radius:0 0 6px 6px;}' +
         '.ne-index-item{font-size:0.78em;padding:2px 8px;cursor:pointer;border-radius:4px;background:var(--black30a);color:var(--grey-70);white-space:nowrap;transition:background .15s,color .15s;}' +
         '.ne-index-item:hover{background:var(--black50a);color:var(--text,#ddd);}' +
