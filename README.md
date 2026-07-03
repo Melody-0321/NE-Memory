@@ -1,73 +1,235 @@
-# NE Memory Engine v6.0
+# NE Memory Engine — 让 AI 永远记得住
 
-SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern Helper) 运行。
+聊到 300 楼，AI 还在提 10 楼的那个约定。
 
-## 安装
+NE Memory Engine 是 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 的长对话记忆管理引擎。它自动从对话中提取事件、追踪角色状态、维护叙事脉络，再在需要的时刻把相关记忆精准注入给 LLM。**既省 token，又让长篇对话前后连贯、不崩人设。**
 
-1. 确保已安装 [酒馆助手 (JS-Slash-Runner)](https://github.com/N0VI028/JS-Slash-Runner)
-2. 在 TH 脚本管理器中点击**导入**，粘贴以下 JSON：
+基于 [酒馆助手 (JS-Slash-Runner)](https://github.com/N0VI028/JS-Slash-Runner) 运行。
+
+---
+
+## 它能做什么
+
+### 📖 自动记忆提取：短期的，长期的，它都帮你记
+
+- **STM 事件提取**：每轮对话自动提取关键事件（谁做了什么、发生了什么事），不重复处理同一条消息，Token 消耗不随对话增长。
+- **LTM 叙事弧线**：多条关联 STM 自动整合为 LTM 叙事弧（如"龙牙剑任务线"），支持开放弧持续追加、闭合弧归档。**原始数据永不丢失，每条 LTM 可追溯到源头 STM 和原始对话。**
+
+### 🔍 SmartPush 智能注入：生成前自动把相关记忆递进去
+
+每次 LLM 生成回复前，NE 会自动检索当前上下文最相关的记忆，注入到 LLM 可见的 prompt 中。**始终在线，无需手动开启。**
+
+- **纯本地管线，零额外 API 成本**：BM25 检索 → 可选向量 RRF 融合 → 实体链分组 → 代码组装注入文本。全程无 LLM 参与。
+- **按实体分组**：不是简单地塞一堆零散事件，而是按角色/势力/任务归类为"实体记忆链"，LLM 一看就知道谁是谁。
+- **可选向量增强**：开启 Vector Search 后，BM25 检索与向量语义相似度按倒数排名融合（RRF），检索精度进一步提升。
+
+### 🗺️ 状态追踪：角色、势力、任务，张张卡片一目了然
+
+- **角色卡**：自动追踪每个角色的当前状态（位置/外貌/装备/情感/内心想法），Schema 驱动字段级约束，LLM 只改变化的部分。
+- **势力面板**：势力关系网、对玩家态度、各势力间交往状态。
+- **任务/目标/事件**：追踪进行中、已完成的各类任务，自动记录起止时间。
+- **战力槽**：修仙（修为/真气/境界）、科幻（energy/shield）、现代（stamina/morale）等多套模板。
+
+### 📐 版本管理：写坏了随时回滚
+
+最多保存 **30 个历史快照**，精确回滚到任意版本。删除/滑动消息时自动级联回滚相关记忆。导出/导入 JSON 备份、Vault 数据嵌入聊天文件随导出迁移。
+
+### 🎛️ 灵活配置
+
+- **副 API 独立渠道**：记忆 Pipeline 和 Embedding 可分别配置独立的 LLM API，不占用主对话 API 额度。
+- **本地 LLM 零配置接入**：Ollama、vLLM、LM Studio 等本地模型填 URL + 模型名即可（Key 留空），自动跳过认证。
+- **自动调参**：根据历史 Telemetry 数据自动调优 stmBatch、topK、chainDepth 等参数。
+- **上下文窗口控制**：支持按对话轮数截断注入内容，可覆盖 ST 原生上下文限制。
+- **三语界面**：简体中文 / 繁體中文 / English。
+
+---
+
+## 快速开始
+
+### 前置条件
+
+- 已安装 [SillyTavern](https://github.com/SillyTavern/SillyTavern)
+- 已安装 [酒馆助手 (JS-Slash-Runner)](https://github.com/N0VI028/JS-Slash-Runner)
+
+### 安装
+
+1. 在酒馆助手的脚本管理器中点击**导入**
+2. 粘贴以下 JSON：
+
+<details>
+<summary>点击展开导入 JSON</summary>
 
 ```json
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine v6.0",
+  "name": "NE Memory Engine v6.1",
   "id": "ne_memory_engine",
-  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
-  "info": "🧠 v6.0 — Pipeline 架构重构 · 💰 Token 优化（角色心理状态 + LTM 弧占位符） · 🔍 向量 + BM25 混合检索 · 🛡️ NE-CHAR 泄漏修复 · ⚙️ 设置面板清理 · 🧪 27 项测试全部通过"
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.1/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.1/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.1 — 文档重写 · 配置指南修正 · 项目卫生清理"
 }
 ```
 
-3. 启用脚本，完成。Vault 面板会自动出现在 TH 弹窗中。
+</details>
 
-## 配置副 API
+3. 启用脚本，Memory Vault 面板会自动出现在酒馆助手弹窗中。
 
-NE 的记忆提取和管线处理需要 LLM。在设置面板的「Secondary API」中配置：
+### 首次配置
 
-**云 API**（推荐入门）：
-- URL: `https://api.deepseek.com/v1/chat/completions`（或其他 OpenAI 兼容地址）
-- Key: 填写 API Key
-- Model: `deepseek-v4-flash`
+**配副 API**
 
-**本地 LLM**（免费，需本地运行）：
-- URL: `http://localhost:1234/v1`（LM Studio / vLLM / Ollama 等）
-- Key: 留空
-- Model: 填写本地模型名（如 `qwen2.5-7b-instruct`）
+NE 的记忆提取需要 LLM。打开面板 → Settings → Secondary API：
 
-支持：DeepSeek、硅基流动、OpenRouter 等云平台，以及 Ollama、vLLM、LM Studio、LocalAI 等任何 OpenAI 兼容端点。
+- **云端 API**（推荐入门）：
+  - URL: `https://api.deepseek.com/v1/chat/completions`
+  - Key: 填写你的 API Key
+  - Model: `deepseek-v4-flash`（或其他模型）
 
-## 功能
+- **本地 LLM**（免费）：
+  - URL: `http://localhost:1234/v1`（LM Studio / vLLM / Ollama）
+  - Key: 留空
+  - Model: 填写本地模型名
 
-- **STM/LTM 分层记忆**：短期记忆自动从对话中提取事件，长期记忆按叙事弧整合关联 STM。整合不丢失原始数据，LTM 弧支持手动编辑标题/摘要。
-- **SmartPush 智能注入**：每次 LLM 生成前，自动检索相关记忆注入上下文。**纯本地管线**（无 LLM 参与）：BM25 检索 → 可选向量 RRF 融合 → 实体链分组 → 代码格式化实体记忆链。零额外 API 成本。
-- **向量搜索**：支持 OpenAI 兼容 Embedding API，一键预设硅基流动免费 BAAI/bge-m3。BM25 + 向量 RRF 混合检索，质量测试内建。
-- **增量更新**：代码级保证不重复处理同一消息，事件记忆消耗不随对话增长。独立 Pipeline 锁支持 STM/State 并行提取。
-- **三层穿透**：LTM 摘要 → STM 详情 → 原始对话原文，记忆溯源完整。
-- **版本管理**：30 个历史快照 + 精确回滚 + 垃圾回收器级联清理。
-- **状态维护**：Schema 驱动的字段级约束——角色卡、势力、关系、任务状态均由 LLM 提取并维护在 structured state 中。
-- **Tool-calling**：2 个注册工具 — `access`（统一引用查询：支持 STM/LTM/msg/实体链/角色卡/势力/任务等多种引用格式）和 `recall_memory`（开放语义检索）
-- **副 API 支持**：记忆 Pipeline 和 Embedding 可分别配置独立 API（`callMemoryPipeline` / `computeEmbeddings`），节省主 API Token。CORS-proxy 自动回退。
-- **上下文控制**：对话轮数注入控制（替代纯 token-budget 截断），支持 override ST 上下文窗口限制。
-- **三语界面**：简体中文 / 繁體中文 / English
-- **内建测试框架**：27 套端到端测试 + 全链路冒烟测试，支持从 TH 面板直接运行
+支持 DeepSeek、硅基流动、OpenRouter 等云端平台，以及任何 OpenAI 兼容端点。
 
-## 与 SP 记忆库的共存
+配好副 API 后即可开始聊天。NE 会在后台自动工作——SmartPush 始终在线，每次生成前自动检索相关记忆注入 LLM。Vault 面板里可以查看实时更新的记忆列表、状态面板和用量统计。如需微调各项参数，见下方配置指南。
 
-NE 和 SP 是互补方案：
-- **SP** 管理结构化事实（角色属性/物品/时间/NPC）→ 通过世界书注入
-- **NE** 管理叙事事件（剧情/情感/因果关系）→ 通过 setExtensionPrompt 注入
+---
 
-两者可以在同一 ST 实例共存。NE 支持世界书同步（自动创建 `NE_Memory_State` Lorebook）。
+## 配置指南
 
-## 项目结构
+所有设置通过面板的 Settings 标签页管理。各模块说明：
 
-详见 [CODE_WIKI.md](./CODE_WIKI.md)。
+| 模块 | 说明 | 必配 |
+|------|------|------|
+| **Secondary API** | 记忆 Pipeline 用的 LLM API（URL / Key / Model） | ✅ 是 |
+| **Vector Search** | 向量检索开关 + Embedding API 端点（可选；一键预设硅基流动免费 bge-m3） | 否 |
+| **Dialog Window Rounds** | 注入上下文的对话轮数（2-20，默认 10） | 否 |
+| **Dialog Override** | 覆盖 ST 原生 token-budget 截断，仅按对话轮数控制上下文 | 否 |
+| **Memory Budget** | SmartPush 注入的最大 Token 数（500-2000，默认 800） | 否 |
+| **STM Extraction Batch** | 触发记忆提取的累计消息数（1-30，默认 10；支持自动调优） | 否 |
+| **Max Unconsolidated STM** | 未整合 STM 条数上限（2-30，默认 5），超此阈值触发 LTM 整合 | 否 |
+| **Extraction Temperature** | 记忆提取 LLM 的温度参数（0-1，默认 0.2） | 否 |
+| **Schema Editors** | 自定义 State / Character Schema 的 JSON 编辑器 | 否 |
+
+### 关于 API 费用
+
+NE 的核心设计目标之一是降低 API 成本：
+
+- **副 API 独立配置**：记忆提取用小模型（如 DeepSeek v4-flash），主对话用大模型，互不干扰。
+- **SmartPush 纯本地管线**：生成前检索完全在浏览器内完成，不消耗任何 API Token。
+- **增量处理**：只处理新消息，不重复提取，Token 消耗随对话增长趋于平稳。
+
+可以通过 Settings → Usage 面板查看 Session / Monthly / Per-chat Token 用量明细。
+
+---
+## 更新
+
+NE 通过 jsDelivr CDN 分发，刷新 SillyTavern 页面即自动加载最新版本。若未生效，在酒馆助手中禁用再重新启用 NE 脚本即可。
+
+NE 的 Vault 数据结构具有向后兼容性，升级后首次加载会自动迁移数据格式。建议升级前通过面板的 Export JSON 功能备份数据。
+
+兼容性：
+
+| NE 版本 | SillyTavern 最低版本 | 酒馆助手 |
+|---------|---------------------|---------|
+| v6.1 | 1.12.x | 最新版 |
+| v6.0 | 1.12.x | 最新版 |
+| v5.x | 1.11.x | 最新版 |
+
+---
+
+## 常见问题
+
+<details>
+<summary><strong>副 API 连不上怎么办？</strong></summary>
+
+1. 确认 URL 格式正确，例如 DeepSeek 应填写 `https://api.deepseek.com/v1/chat/completions`（含完整路径）。
+2. 本地 LLM（如 Ollama）的 URL 应为 `http://localhost:11434/v1`，Key 留空。
+3. 点击 Settings 面板中的 **Test Connection** 按钮检测连通性。
+4. 如果云端 API 被 CORS 阻挡，NE 会自动通过 ST 的 CORS Proxy 回退。
+</details>
+
+<details>
+<summary><strong>Token 消耗太大怎么办？</strong></summary>
+
+1. 副 API 换用更小、更便宜的模型（如 DeepSeek v4-flash 或 Qwen 2.5-7B）。
+2. 降低 Memory Budget 或 Dialog Window Rounds 的值。
+3. 查看 Settings → Usage 面板中的 Token 统计，定位主要消耗环节。
+</details>
+
+<details>
+<summary><strong>面板打不开 / 显示异常？</strong></summary>
+
+1. 确认酒馆助手已启用且运行正常。
+2. 确认 NE 脚本在 TH 脚本管理器中处于"已启用"状态。
+3. 打开浏览器控制台（F12）查看是否有红色报错。
+4. 尝试清除 localStorage 中的 `ne_settings` 键，然后刷新页面。
+</details>
+
+<details>
+<summary><strong>数据存在哪里？隐私安全吗？</strong></summary>
+
+所有记忆数据存储在浏览器本地的 IndexedDB 中，不会上传到任何服务器。LLM API 调用只发送 prompt 文本，不包含原始记忆数据结构。Vault 数据还可以嵌入聊天文件（chat_metadata），随 ST 的聊天导出/备份一起迁移。各存储位置概览：
+
+| 位置 | 内容 |
+|------|------|
+| IndexedDB `ne_memory_vaults` | Vault 数据 + 历史快照 |
+| localStorage `ne_settings` | 用户设置 |
+| localStorage `ne_secondary_api` | 副 API 配置 |
+| localStorage `ne_embedding_api` | 向量 API 配置 |
+| chat_metadata `ne_vault` | Vault 随聊天文件导出 |
+</details>
+
+---
 
 ## 开发
 
+详见 [CODE_WIKI.md](./CODE_WIKI.md)（完整架构说明、模块详解、数据流图）。
+
 ```bash
+# 安装依赖
 npm install
-npm run build        # 构建 dist/index.js
-npm run test:unit    # 单元测试
-npm run test:ratchet # 架构棘轮测试
+
+# 构建 dist/index.js
+npm run build
+
+# 监听模式（文件变更自动重建）
+npm run watch
+
+# 单元测试
+npm run test:unit
+
+# 架构棘轮测试
+npm run test:ratchet
+
+# 全部测试
+npm test
 ```
+
+### 浏览器控制台调试
+
+加载 NE 后，可通过 `window.__ne_debug` 使用调试 API：
+
+```javascript
+// 手动触发 Pipeline
+__ne_debug.triggerPipeline()
+
+// 导出 Vault 数据
+__ne_debug.exportVault()
+
+// 列出所有测试用例
+__ne_debug.listTests()
+
+// 运行指定测试
+__ne_debug.runTestByName('smartpush-01-not-empty')
+```
+
+---
+
+## 贡献与许可
+
+- 作者：Melody
+- 仓库：[https://github.com/Melody-0321/NE-Memory](https://github.com/Melody-0321/NE-Memory)
+- 许可：[AGPL-3.0](./LICENSE)
+- 行为准则：基于 [Contributor Covenant](https://www.contributor-covenant.org/)

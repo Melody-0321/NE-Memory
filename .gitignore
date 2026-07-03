@@ -6,3 +6,27 @@ test/retrieval-benchmark/output/
 test/retrieval-benchmark/config.json
 test/retrieval-benchmark/chat-messages.js
 test/retrieval-benchmark/measure-context-size.js
+
+# AI assistant working files
+.trae/
+
+# Backup files from refactoring
+*.bak
+_old_*.js
+
+# Generated test artifacts
+test-cases/**/*-report.md
+test-cases/**/*-trace.md
+test-cases/**/*-postmortem.md
+src/core/test-runner/test-data.generated.js
+
+# One-off scripts
+scripts/extract-precise.cjs
+
+# Test-only dist files (keep dist/index.js)
+dist/test-harness.js
+dist/th-test.js
+
+# Legacy test configs
+testv4.*.json
+test5.*.json

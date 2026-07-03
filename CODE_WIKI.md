@@ -2,9 +2,9 @@
 
 > **SillyTavern 长对话结构化记忆管理引擎**
 >
-> 版本：v6.0.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
+> 版本：v6.1.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
 > 入口：`src/adapter/index.js` | 构建输出：`dist/index.js` (IIFE, 全局名 `NEMemoryEngine`)
-> 最后更新：2026-07-03（v6.0 Pipeline 架构重构后）
+> 最后更新：2026-07-04（v6.1 文档与项目卫生）
 
 ---
 
@@ -112,7 +112,6 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 │                  │  │  │  turn-segmenter.js   对话轮次分割      │  │  │
 │                  │  │  │  validate.js         STM/LTM 输出校验 │  │  │
 │                  │  │  │  embedding.js        向量嵌入支持      │  │  │
-│                  │  │  │  worldbook-sync.js   世界书同步        │  │  │
 │                  │  │  │  chat-telemetry.js   Per-chat 遥测    │  │  │
 │                  │  │  │  telemetry.js        遥测日志          │  │  │
 │                  │  │  │  token-stats.js      Token 统计面板    │  │  │
@@ -625,19 +624,7 @@ callMemoryLLM(messages, options)
 
 **职责**：Session / 月度 / 全局 Token 用量统计与面板展示。
 
-#### 3.4.23 [worldbook-sync.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/worldbook-sync.js) — 世界书同步
-
-**职责**：自动创建和管理 `NE_Memory_State` 世界书（Lorebook），用于在角色卡和世界书中同步状态信息。
-
-**常量**：`WORLD_BOOK_NAME = 'NE_Memory_State'`
-
-**关键函数**：
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `ensureStateWorldBook()` | `() → Promise<void>` | 确保 NE_Memory_State 世界书存在，不存在则创建并清除占位条目 |
-
-#### 3.4.24 [embedding.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/embedding.js) — 向量嵌入
+#### 3.4.23 [embedding.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/embedding.js) — 向量嵌入
 
 **职责**：可选的向量相似度增强检索。独立配置 Embedding API。
 
@@ -653,7 +640,7 @@ callMemoryLLM(messages, options)
 | `loadEmbeddingApiConfig()` | `() → Object\|null` | 从 localStorage `ne_embedding_api` 加载配置 |
 | `saveEmbeddingApiConfig(config)` | `(Object) → void` | 保存 Embedding API 配置 |
 
-#### 3.4.25 [json-fallback.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/json-fallback.js) — JSON 解析回退
+#### 3.4.24 [json-fallback.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/json-fallback.js) — JSON 解析回退
 
 **职责**：LLM 输出的 JSON 解析失败时的多级回退策略（修复截断 JSON、提取 JSON 块、多行拼接等）。
 
@@ -1282,10 +1269,10 @@ npm run build
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine v6.0",
+  "name": "NE Memory Engine v6.1",
   "id": "ne_memory_engine",
-  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
-  "info": "🧠 v6.0 — Pipeline 架构重构 · Token 优化 · 检索 0 命中修复 · 27 项测试通过"
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.1/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.1/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.1 — 文档重写 · 配置指南修正 · 项目卫生清理"
 }
 ```
 
