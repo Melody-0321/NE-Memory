@@ -222,3 +222,5 @@ export function buildEntityToStmIds() {
 }
 
 export var entityToStmIds = buildEntityToStmIds();
+
+export { allChatMessages } from './chat-messages.js';

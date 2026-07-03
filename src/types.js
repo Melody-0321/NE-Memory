@@ -194,7 +194,7 @@ export {};
  * @typedef {Object} UnifiedEntry
  * @property {(STMEvent|LTMEntry)} entry
  * @property {'stm'|'ltm'} type
- * @property {number} bm25Score
+ * @property {number} relevance
  * @property {ThreadRef[]} threads
  * @property {string[]} sources
  * @property {boolean} _expanded

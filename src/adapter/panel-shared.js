@@ -292,9 +292,6 @@ export function injectBottomDrawerCSS() {
         // ── L2: Quest card detail ──
         '.ne-quest-detail{display:none;background:var(--black10a);border-radius:4px;padding:6px 8px;}' +
         '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
-        // ── L2: Settings form consistency ──
-        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number],#tab-settings textarea,#tab-settings select{background:var(--black20a)!important;border:1px solid var(--SmartThemeBorderColor);color:var(--text)!important;border-radius:var(--ne-radius-sm);padding:6px 10px;font-size:0.9em;}' +
-        '#tab-settings input[type=text]:focus,#tab-settings input[type=password]:focus,#tab-settings input[type=number]:focus,#tab-settings textarea:focus{outline:none;border-color:var(--ne-info);box-shadow:0 0 0 1px var(--ne-info-border);}' +
         // ── L2: Inline edit row ──
         '.ne-inline-row input,.ne-inline-row textarea{background:var(--black20a)!important;border:1px solid var(--ne-info-border);color:var(--text)!important;}' +
         // ── L2: Faction card body ──

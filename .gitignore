@@ -4,3 +4,5 @@ node_modules/
 dist/index.js.map
 test/retrieval-benchmark/output/
 test/retrieval-benchmark/config.json
+test/retrieval-benchmark/chat-messages.js
+test/retrieval-benchmark/measure-context-size.js

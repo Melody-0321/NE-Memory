@@ -14,11 +14,6 @@ export var runtime = {
     on: function(name, fn) {},
     emit: function(name, data) {},
     injectPrompt: function(key, value, position, depth, role) {},
-    getLorebookEntries: function(bookName) { return Promise.resolve([]); },
-    setLorebookEntries: function(bookName, entries) { return Promise.resolve(); },
-    createLorebookEntries: function(bookName, entries) { return Promise.resolve(); },
-    deleteLorebookEntries: function(bookName, uids) { return Promise.resolve(); },
-    getLorebooks: function() { return Promise.resolve([]); },
     getParentDoc: function() { return document; },
     notify: function(msg, title, opts) {},
     confirm: function(msg) { return true; }

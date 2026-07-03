@@ -14,7 +14,6 @@ import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled,
 import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
-import { ensureStateWorldBook } from '../core/engine/worldbook-sync.js';
 import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner.js';
 import { getTestCaseMetadata } from '../core/test-runner/files.js';
@@ -191,46 +190,6 @@ Object.assign(runtime, {
                 }], { once: false });
             }
         } catch (e) {}
-    },
-    getLorebookEntries: function(bookName) {
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.getLorebookEntries) {
-                return TavernHelper.getLorebookEntries(bookName);
-            }
-        } catch (e) {}
-        return Promise.resolve([]);
-    },
-    setLorebookEntries: function(bookName, entries) {
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.setLorebookEntries) {
-                return TavernHelper.setLorebookEntries(bookName, entries);
-            }
-        } catch (e) {}
-        return Promise.resolve();
-    },
-    createLorebookEntries: function(bookName, entries) {
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.createLorebookEntries) {
-                return TavernHelper.createLorebookEntries(bookName, entries);
-            }
-        } catch (e) {}
-        return Promise.resolve();
-    },
-    deleteLorebookEntries: function(bookName, uids) {
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.deleteLorebookEntries) {
-                return TavernHelper.deleteLorebookEntries(bookName, uids);
-            }
-        } catch (e) {}
-        return Promise.resolve();
-    },
-    getLorebooks: function() {
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.getLorebooks) {
-                return TavernHelper.getLorebooks();
-            }
-        } catch (e) {}
-        return Promise.resolve([]);
     },
     getParentDoc: function() {
         try {

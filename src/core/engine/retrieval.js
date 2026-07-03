@@ -178,7 +178,7 @@ export function groupCandidatesByEntity(map, threadIndex) {
     });
 
     unassignedEntries = unassignedEntries.filter(function(e) {
-        return e.bm25Score > 0.1;
+        return e.relevance > 0;
     });
 
     return { groups: groups, unassigned: unassignedEntries };
@@ -197,7 +197,7 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
             map.set(id, {
                 entry: c,
                 type: 'ltm',
-                bm25Score: 0,
+                relevance: 0,
                 threads: [],
                 sources: ['ltm_dir'],
                 _expanded: false,
@@ -208,9 +208,9 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
         map.set(id, {
             entry: c,
             type: c.__type || 'stm',
-            bm25Score: c.__score || 0,
+            relevance: c.__relevance || 0,
             threads: [],
-            sources: ['bm25'],
+            sources: c.__rrfOnly ? ['vector'] : ['bm25'],
             _expanded: false,
             _lastDescribedVersion: 0
         });
@@ -250,14 +250,14 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
                 var chainScore = 0;
                 for (var ci = 0; ci < bm25Results.length; ci++) {
                     if ((bm25Results[ci].__id || bm25Results[ci].id) === id) {
-                        chainScore = bm25Results[ci].__score || 0;
+                        chainScore = bm25Results[ci].__relevance || 0;
                         break;
                     }
                 }
                 map.set(id, {
                     entry: e,
                     type: 'stm',
-                    bm25Score: chainScore,
+                    relevance: chainScore,
                     threads: [{ threadId: threadId, position: idx + 1, total: entries.length }],
                     sources: ['chain:' + entityName],
                     _expanded: false,

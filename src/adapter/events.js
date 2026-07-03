@@ -432,6 +432,111 @@ export async function onMessageReceived(messageIndex) {
     }
 }
 
+export async function runLtmConsolidation(chatId) {
+    var MAX_LTM_PASSES = 20;
+    var ranLtm = false;
+    for (var ltmPass = 0; ltmPass < MAX_LTM_PASSES; ltmPass++) {
+        var postStmVault = await read(chatId);
+        if (!postStmVault || !postStmVault.content) return;
+
+        var nextId = getNextEligibleStmId(postStmVault);
+        if (nextId === null) break;
+
+        if (!tryAcquire('ltm')) {
+            console.log('[NE] LTM pass ' + (ltmPass+1) + ': waiting for pipeline track — state=' + getState());
+            await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
+            if (!tryAcquire('ltm')) {
+                console.log('[NE] LTM: guard still blocked, deferring remaining passes');
+                break;
+            }
+        }
+        console.log('[NE-GUARD] acquire ltm (idle → ltm) — pass ' + (ltmPass+1) + ', stm=' + nextId);
+
+        ranLtm = true;
+        var openLtm = findOpenLtm(postStmVault);
+        var forceClose = openLtm && (openLtm.stm_refs || []).length >= MAX_OPEN_STM_REFS - 1;
+        if (forceClose) console.log('[NE] LTM: open arc approaching ref limit (' + (openLtm.stm_refs.length + 1) + '/' + MAX_OPEN_STM_REFS + '), will prompt LLM for title/event this round');
+        var ltmDecision = null;
+        var maxRetries = 3;
+
+        for (var retry = 0; retry < maxRetries; retry++) {
+            try {
+                ltmDecision = await runLtmDecision(postStmVault, [nextId], callMemoryPipeline, forceClose);
+                if (ltmDecision) break;
+            } catch (e) {
+                console.warn('[NE] LTM pass ' + (ltmPass+1) + ' attempt ' + (retry+1) + ' failed:', e);
+            }
+
+            if (ltmDecision === null && retry < maxRetries - 1) {
+                var delay = Math.min(Math.pow(2, retry) * 1000, 8000);
+                console.log('[NE] LTM retry #' + (retry+1) + ' for ' + nextId + ' in ' + delay + 'ms');
+                await new Promise(function(r) { setTimeout(r, delay); });
+                postStmVault = await read(chatId);
+            }
+        }
+
+        if (ltmDecision) {
+            applyLtmDecision(postStmVault, ltmDecision, [nextId]);
+            try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                console.warn('[NE] LTM save failed, rolling back vault');
+                postStmVault = await read(chatId);
+            }
+            globalThis.__ne_debug_last_ltm_decision = {
+                action: ltmDecision.action,
+                stmId: nextId,
+                pass: ltmPass + 1,
+                time: new Date().toISOString()
+            };
+            console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
+            notifyVaultChanged();
+        } else {
+            console.warn('[NE] LTM: all retries failed for ' + nextId + ', applying fallback');
+            var fallbackDecision = createMinimalLtm(postStmVault, nextId);
+            if (fallbackDecision) {
+                applyLtmDecision(postStmVault, fallbackDecision, [nextId]);
+                try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                    console.warn('[NE] LTM fallback save failed, rolling back vault');
+                    postStmVault = await read(chatId);
+                }
+                globalThis.__ne_debug_last_ltm_decision = {
+                    action: fallbackDecision.action,
+                    stmId: nextId,
+                    pass: ltmPass + 1,
+                    fallback: true,
+                    time: new Date().toISOString()
+                };
+                console.log('[NE] LTM: fallback decision applied — stm=' + nextId);
+                notifyVaultChanged();
+            } else {
+                console.warn('[NE] LTM: fallback also failed for ' + nextId + ', skipping');
+            }
+        }
+        releasePipeline();
+        console.log('[NE-GUARD] release pipeline (ltm → idle) — pass ' + (ltmPass+1));
+
+        var checkVault = await read(chatId);
+        if (getNextEligibleStmId(checkVault) === null) break;
+    }
+
+    try {
+        var rebatchVault = await read(chatId);
+        var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
+        if (orphans.length > 0 && ranLtm && tryAcquire('ltm')) {
+            console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
+            var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
+            if (rebatchResult.consumed > 0) {
+                await saveVaultWithSnapshot(chatId, rebatchVault);
+                notifyVaultChanged();
+                console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
+            }
+            releasePipeline();
+        }
+    } catch (e) {
+        console.warn('[NE] LTM rebatch failed:', e);
+        releasePipeline();
+    }
+}
+
 async function flushPendingMessages() {
     if (!tryAcquire('stm')) {
         console.log('[NE] flushPendingMessages: waiting for state pipeline — state=' + getState());
@@ -494,110 +599,7 @@ async function flushPendingMessages() {
         releasePipeline();
         persistPending();
 
-        (async function() {
-            var MAX_LTM_PASSES = 20;
-            var ranLtm = false;
-            for (var ltmPass = 0; ltmPass < MAX_LTM_PASSES; ltmPass++) {
-                var postStmVault = await read(chatId);
-                if (!postStmVault || !postStmVault.content) return;
-
-                var nextId = getNextEligibleStmId(postStmVault);
-                if (nextId === null) break;
-
-                if (!tryAcquire('ltm')) {
-                    console.log('[NE] LTM pass ' + (ltmPass+1) + ': waiting for pipeline track — state=' + getState());
-                    await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-                    if (!tryAcquire('ltm')) {
-                        console.log('[NE] LTM: guard still blocked, deferring remaining passes');
-                        break;
-                    }
-                }
-                console.log('[NE-GUARD] acquire ltm (idle → ltm) — pass ' + (ltmPass+1) + ', stm=' + nextId);
-
-                ranLtm = true;
-                var openLtm = findOpenLtm(postStmVault);
-                var forceClose = openLtm && (openLtm.stm_refs || []).length >= MAX_OPEN_STM_REFS - 1;
-                if (forceClose) console.log('[NE] LTM: open arc approaching ref limit (' + (openLtm.stm_refs.length + 1) + '/' + MAX_OPEN_STM_REFS + '), will prompt LLM for title/event this round');
-                var ltmDecision = null;
-                var maxRetries = 3;
-
-                for (var retry = 0; retry < maxRetries; retry++) {
-                    try {
-                        ltmDecision = await runLtmDecision(postStmVault, [nextId], callMemoryPipeline, forceClose);
-                        if (ltmDecision) break;
-                    } catch (e) {
-                        console.warn('[NE] LTM pass ' + (ltmPass+1) + ' attempt ' + (retry+1) + ' failed:', e);
-                    }
-
-                    if (ltmDecision === null && retry < maxRetries - 1) {
-                        var delay = Math.min(Math.pow(2, retry) * 1000, 8000);
-                        console.log('[NE] LTM retry #' + (retry+1) + ' for ' + nextId + ' in ' + delay + 'ms');
-                        await new Promise(function(r) { setTimeout(r, delay); });
-                        postStmVault = await read(chatId);
-                    }
-                }
-
-                if (ltmDecision) {
-                    applyLtmDecision(postStmVault, ltmDecision, [nextId]);
-                    try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
-                        console.warn('[NE] LTM save failed, rolling back vault');
-                        postStmVault = await read(chatId);
-                    }
-                    globalThis.__ne_debug_last_ltm_decision = {
-                        action: ltmDecision.action,
-                        stmId: nextId,
-                        pass: ltmPass + 1,
-                        time: new Date().toISOString()
-                    };
-                    console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
-                    notifyVaultChanged();
-                } else {
-                    console.warn('[NE] LTM: all retries failed for ' + nextId + ', applying fallback');
-                    var fallbackDecision = createMinimalLtm(postStmVault, nextId);
-                    if (fallbackDecision) {
-                        applyLtmDecision(postStmVault, fallbackDecision, [nextId]);
-                        try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
-                            console.warn('[NE] LTM fallback save failed, rolling back vault');
-                            postStmVault = await read(chatId);
-                        }
-                        globalThis.__ne_debug_last_ltm_decision = {
-                            action: fallbackDecision.action,
-                            stmId: nextId,
-                            pass: ltmPass + 1,
-                            fallback: true,
-                            time: new Date().toISOString()
-                        };
-                        console.log('[NE] LTM: fallback decision applied — stm=' + nextId);
-                        notifyVaultChanged();
-                    } else {
-                        console.warn('[NE] LTM: fallback also failed for ' + nextId + ', skipping');
-                    }
-                }
-                releasePipeline();
-                console.log('[NE-GUARD] release pipeline (ltm → idle) — pass ' + (ltmPass+1));
-
-                var checkVault = await read(chatId);
-                if (getNextEligibleStmId(checkVault) === null) break;
-            }
-
-            try {
-                var rebatchVault = await read(chatId);
-                var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
-                if (orphans.length > 0 && ranLtm && tryAcquire('ltm')) {
-                    console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
-                    var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
-                    if (rebatchResult.consumed > 0) {
-                        await saveVaultWithSnapshot(chatId, rebatchVault);
-                        notifyVaultChanged();
-                        console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
-                    }
-                    releasePipeline();
-                }
-            } catch (e) {
-                console.warn('[NE] LTM rebatch failed:', e);
-                releasePipeline();
-            }
-        })().catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
+        runLtmConsolidation(chatId).catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
 
         if (pendingMessages.length > 0) {
             (async function() {

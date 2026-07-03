@@ -26,8 +26,8 @@ export { buildSearchableText };
  * @returns {number}
  */
 export function bm25Score(queryTokens, docTokens, avgDocLen, totalDocs, docFreq) {
-    var k1 = 1.5;
-    var b = 0.75;
+    var k1 = (typeof process !== 'undefined' && process.env && process.env.BM25_K1) ? Number(process.env.BM25_K1) : 1.5;
+    var b = (typeof process !== 'undefined' && process.env && process.env.BM25_B) ? Number(process.env.BM25_B) : 0.75;
     var docLen = docTokens.length;
     var score = 0;
 
@@ -333,6 +333,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
     }
 
     var results = [];
+    var maxScore = entries.length > 0 ? entries[0]._score : 1;
     for (var i = 0; i < resultCount; i++) {
         var e = entries[i];
         if (e._score <= 0) {
@@ -346,6 +347,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         }
         result.__type = e._type;
         result.__id = e._id;
+        result.__relevance = maxScore > 0 ? e._score / maxScore : 0;
         results.push(result);
     }
 
@@ -372,8 +374,8 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
                                 _rrfK = parseInt(process.env.NE_BENCHMARK_RRF_K, 10) || 110;
                             }
                             var fused = rrfFuse(results, vecResults, _rrfK, topK);
-                            fused.forEach(function(f) {
-                                f.__score = f._rrf_score != null ? f._rrf_score : (f.__score || 0);
+                            fused.forEach(function(f, fi) {
+                                f.__relevance = 1 / (1 + fi);
                             });
                             results = fused.map(function(f) {
                                 if (f.__type) return f;
@@ -383,7 +385,8 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
                                         var c = JSON.parse(JSON.stringify(stmEntry));
                                         c.__type = 'stm';
                                         c.__id = stmEntry.id;
-                                        c.__score = f.__score;
+                                        c.__relevance = f.__relevance;
+                                        c.__rrfOnly = true;
                                         return c;
                                     }
                                 }

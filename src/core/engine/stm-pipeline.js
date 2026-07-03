@@ -7,7 +7,7 @@ import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } fr
 import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
-import { transitionTo } from './pipeline-guard.js';
+
 import { vocabularyOverlap } from './text-utils.js';
 
 export function buildSTMUpdatePrompt(newMessages, vault, partials) {
@@ -532,8 +532,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
         return { vault: vault, added: 0 };
     }
-
-    transitionTo('stm');
 
     console.log('[NE] STM pipeline starting — messages=' + filteredMessages.length);
     var cursorResult = { vault: vault, totalAdded: 0 };

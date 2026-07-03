@@ -8,10 +8,6 @@ declare var TavernHelper: {
     generateRaw(options: { ordered_prompts: any[]; should_stream: boolean }): Promise<string>;
     injectPrompts(prompts: Array<{ id: string; position: string; depth: number; role: string; content: string; should_scan: boolean }>, options?: { once?: boolean }): void;
     generate(options: any): Promise<any>;
-    getLorebookEntries(): any[];
-    setLorebookEntries(entries: any[]): void;
-    createLorebookEntries(entries: any[]): void;
-    deleteLorebookEntries(ids: string[]): void;
     tavern_events: {
         MESSAGE_SENT: string;
         MESSAGE_RECEIVED: string;
