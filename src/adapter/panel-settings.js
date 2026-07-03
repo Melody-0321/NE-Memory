@@ -20,17 +20,14 @@ export function renderSettingsTab() {
     var embApi = {};
     try { var rawEmb = localStorage.getItem('ne_embedding_api'); if (rawEmb) embApi = JSON.parse(rawEmb); } catch (e) {}
     var enableVectorSearch = settings.enableVectorSearch || false;
-    var statusDot = '<span class="ne-status-dot" style="color:var(--ne-success);">\u25CF</span>';
 
     // === Common Settings ===
     var stmBatchAuto = isAuto('stmBatch');
     var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' <span id="nes_pipeline_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
-        // ── Pipeline status indicator ──
-        '<div class="ne-api-status" style="margin-bottom:8px;"><span class="ne-api-dot" id="nes_pipeline_dot"></span><span id="nes_pipeline_status_text">' + t('Pipeline ready') + '</span></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('dialog_round_injection_control') + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
         '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.') + '</div>' +
@@ -99,15 +96,9 @@ export function renderSettingsTab() {
         '</div></div>';
     container.innerHTML = commonHtml;
 
-    // ── Pipeline dot: green if secondary API is configured ──
-    var pipelineDot = panelById('nes_pipeline_dot'), pipelineText = panelById('nes_pipeline_status_text');
-    if (secApi.url && secApi.model) {
-        if (pipelineDot) pipelineDot.className = 'ne-api-dot ok';
-        if (pipelineText) pipelineText.textContent = t('Connected') + ': ' + secApi.model;
-    } else {
-        if (pipelineDot) pipelineDot.className = 'ne-api-dot';
-        if (pipelineText) pipelineText.textContent = t('Not connected') + ' — ' + t('configure_secondary_api');
-    }
+    // ── Pipeline header dot: green if secondary API is configured ──
+    var pipelineDot = panelById('nes_pipeline_header_dot');
+    if (pipelineDot) pipelineDot.style.display = (secApi.url && secApi.model) ? 'inline' : 'none';
 
     // ── Retrieval dot: green if vector search enabled and embedding API configured ──
     var retrievalDot = panelById('nes_retrieval_dot'), retrievalText = panelById('nes_retrieval_status_text');
@@ -210,10 +201,9 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 if (connBtn) connBtn.disabled = false;
-                // ── Also update pipeline dot ──
-                var pDot = panelById('nes_pipeline_dot'), pText = panelById('nes_pipeline_status_text');
-                if (pDot) pDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (pText) pText.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                // ── Also update pipeline header dot ──
+                var pHdrDot = panelById('nes_pipeline_header_dot');
+                if (pHdrDot) pHdrDot.style.display = r.success ? 'inline' : 'none';
                 var hdr = panelById('narrative_secondary_api_status');
                 if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
             });
