@@ -50,13 +50,13 @@ export async function renderUsageTab() {
     /* Section B: Pipeline breakdown — pie chart with scope dropdown */
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('Pipeline Breakdown') + '</div>' +
-        '<select id="ne-breakdown-scope" onchange="(function(){var s=document.getElementById(\'ne-breakdown-scope\').value;document.getElementById(\'ne-breakdown-month-wrap\').style.display=s===\'month\'?\'\':\'none\';window._renderBreakdownPie&&window._renderBreakdownPie();})()">' +
+        '<select id="ne-breakdown-scope">' +
         '<option value="chat">' + t('Current Chat') + '</option>' +
         '<option value="month">' + t('This Month') + '</option>' +
         '<option value="all">' + t('All Time') + '</option>' +
         '</select>' +
         '<span id="ne-breakdown-month-wrap" style="display:none">' +
-        '<select id="ne-breakdown-month" onchange="window._renderBreakdownPie&&window._renderBreakdownPie()"></select>' +
+        '<select id="ne-breakdown-month"></select>' +
         '</span>' +
         '<div class="ne-usage-chart-wrap"><canvas id="ne-breakdown-pie-canvas"></canvas></div>' +
         '<div id="ne-breakdown-empty" style="display:none;text-align:center;color:var(--grey-50);padding:12px;">' + t('No data') + '</div>' +
@@ -65,7 +65,7 @@ export async function renderUsageTab() {
     /* Section C: Daily trend — bar chart with month dropdown */
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-line"></i> ' + t('Daily Trend') + '</div>' +
-        '<select id="ne-daily-month" onchange="window._renderDailyBar&&window._renderDailyBar()"></select>' +
+        '<select id="ne-daily-month"></select>' +
         '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-daily-bar-canvas"></canvas></div>' +
         '<div id="ne-daily-bar-empty" style="display:none;text-align:center;color:var(--grey-50);padding:12px;">' + t('No data') + '</div>' +
         '</div>';
@@ -86,6 +86,29 @@ export async function renderUsageTab() {
     html += '</div>';
 
     container.innerHTML = html;
+
+    /* Bind dropdown events (Shadow DOM-safe: use panelById) */
+    var scopeSel = panelById('ne-breakdown-scope');
+    var brMonthWrap = panelById('ne-breakdown-month-wrap');
+    var brMonthSel = panelById('ne-breakdown-month');
+    var dailyMonthSel2 = panelById('ne-daily-month');
+
+    if (scopeSel) {
+        scopeSel.addEventListener('change', function() {
+            if (brMonthWrap) brMonthWrap.style.display = scopeSel.value === 'month' ? '' : 'none';
+            if (window._renderBreakdownPie) window._renderBreakdownPie();
+        });
+    }
+    if (brMonthSel) {
+        brMonthSel.addEventListener('change', function() {
+            if (window._renderBreakdownPie) window._renderBreakdownPie();
+        });
+    }
+    if (dailyMonthSel2) {
+        dailyMonthSel2.addEventListener('change', function() {
+            if (window._renderDailyBar) window._renderDailyBar();
+        });
+    }
 
     /* Chart.js rendering */
     try {
