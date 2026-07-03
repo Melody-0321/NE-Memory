@@ -273,7 +273,48 @@ export function injectBottomDrawerCSS() {
         '.narrative_memory_table tbody tr:hover,.narrative_ltm_sub_table tbody tr:hover,.ne-usage-chat-table tr:hover{background:var(--black20a)!important;transition:background var(--ne-transition-fast);}' +
         '.ne-accordion-chevron{transition:transform var(--ne-transition-normal);}' +
         '.ne_vault_btn_small{padding:4px 10px;}' +
-        '.ne_vault_btn_tiny{padding:4px 8px;}';
+        '.ne_vault_btn_tiny{padding:4px 8px;}' +
+        // ── L2: Chevron toggle unified animations ──
+        '.ne-char-toggle,.ne-faction-toggle,.ne-quest-toggle{display:inline-block;transition:transform var(--ne-transition-normal);font-size:10px;margin-right:4px;cursor:pointer;user-select:none;}' +
+        '.ne-char-toggle:focus-visible,.ne-faction-toggle:focus-visible,.ne-quest-toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}' +
+        '.ne-char-card.open .ne-char-toggle,.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle,.ne-quest-card.open .ne-quest-toggle{transform:rotate(90deg);}' +
+        // ── L2: Card header keyboard focus ──
+        '.ne-char-card-header:focus-visible,.ne-faction-card-header:focus-visible,.ne-quest-header:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}' +
+        // ── L2: PC/NPC badge ──
+        '.ne-char-type{display:inline-block;padding:1px 7px;border-radius:3px;font-size:0.75em;font-weight:bold;margin-left:6px;}' +
+        '.ne-char-type-pc{background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);}' +
+        '.ne-char-type-npc{background:var(--ne-muted-bg);color:var(--ne-muted);border:1px solid rgba(136,136,136,0.25);}' +
+        // ── L2: Affection bar ──
+        '.ne-affection-bar{display:inline-block;width:80px;height:8px;background:var(--black50a);border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:4px;cursor:help;}' +
+        // ── L2: Faction hidden card ──
+        '.ne-faction-card.ne-faction-hidden{opacity:0.55;border-left-color:var(--ne-muted);border-left-style:dashed;}' +
+        '.ne-faction-card.ne-faction-hidden:hover{opacity:0.8;}' +
+        // ── L2: Quest card detail ──
+        '.ne-quest-detail{display:none;background:var(--black10a);border-radius:4px;padding:6px 8px;}' +
+        '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
+        // ── L2: Settings form consistency ──
+        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number],#tab-settings textarea,#tab-settings select{background:var(--black20a)!important;border:1px solid var(--SmartThemeBorderColor);color:var(--text)!important;border-radius:var(--ne-radius-sm);padding:6px 10px;font-size:0.9em;}' +
+        '#tab-settings input[type=text]:focus,#tab-settings input[type=password]:focus,#tab-settings input[type=number]:focus,#tab-settings textarea:focus{outline:none;border-color:var(--ne-info);box-shadow:0 0 0 1px var(--ne-info-border);}' +
+        // ── L2: Inline edit row ──
+        '.ne-inline-row input,.ne-inline-row textarea{background:var(--black20a)!important;border:1px solid var(--ne-info-border);color:var(--text)!important;}' +
+        // ── L2: Faction card body ──
+        '.ne-faction-card-body{display:none;padding:8px 12px;}' +
+        '.ne-faction-card.open>.ne-faction-card-body{display:block;}' +
+        // ── L2: Char card body padding ──
+        '.ne-char-card-body{padding:8px 12px;}' +
+        // ── L2: Global State Block ──
+        '.ne-state-global-block .ne-state-global-table td:first-child{color:var(--grey-50);width:90px;text-align:right;white-space:nowrap;}' +
+        '.ne-state-global-block+.ne-state-global-block{margin-top:6px;}' +
+        // ── L2: inline edit btn as button ──
+        '.ne-inline-edit-btn{cursor:pointer;font-size:0.85em;opacity:0.6;border:none;background:none;color:var(--SmartThemeBodyColor,#c1b9ad);padding:0 4px;}' +
+        '.ne-inline-edit-btn:hover{opacity:1;}' +
+        '.ne-inline-edit-btn:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}' +
+        // ── L2: collapse bar accessibility ──
+        '.ne-vault-collapse-bar:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}' +
+        // ── L2: LTM toggle accessibility ──
+        '.narrative_ltm_toggle{display:inline-block;cursor:pointer;transition:transform var(--ne-transition-normal);}' +
+        '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
+        '.narrative_ltm_toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}';
     pdHead().appendChild(style);
 }
 

@@ -83,11 +83,11 @@ function renderCharacterCard(name, card, schema, cardType) {
     }
 
     var html = '<div class="ne-char-card">';
-    html += '<div class="ne-char-card-header" onclick="this.parentElement.classList.toggle(\'open\')">';
+    html += '<div class="ne-char-card-header" tabindex="0" role="button" aria-label="' + t('Toggle details') + ': ' + escapeHtml(name) + '" onclick="this.parentElement.classList.toggle(\'open\')">';
     html += '<span class="ne-char-toggle">&#9654;</span>';
     html += '<b>' + escapeHtml(name) + '</b> ';
-    html += '<span class="ne-char-type">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
-    html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" onclick="event.stopPropagation()">&#9998;</button>';
+    html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
+    html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()"><i class="fa-solid fa-pen-to-square"></i></button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
     html += affectionHtml;
@@ -205,6 +205,7 @@ function renderFactionCard(name, faction) {
     var html = `
 <div class="ne-faction-card attitude-${attitudeCls}${cardCls}" data-faction="${escapeHtml(name)}">
   <div class="ne-faction-card-header"
+       tabindex="0" role="button" aria-label="${t('Toggle details')}: ${escapeHtml(name)}"
        onclick="this.parentElement.classList.toggle('open')">
     <span class="ne-faction-toggle">▶</span>
     <b>${escapeHtml(name)}</b>${hiddenBadge}
@@ -290,7 +291,8 @@ function renderQuestCard(key, entry, sectionType) {
     var html = `
 <div class="ne-quest-card status-${statusCls}">
   <div class="ne-quest-header"
-       onclick="var p=this.parentElement;p.classList.toggle('open');var d=p.querySelector('.ne-quest-detail');if(d)d.style.display=d.style.display==='block'?'none':'block';">
+       tabindex="0" role="button" aria-label="${t('Toggle details')}: ${escapeHtml(displayName)}"
+       onclick="this.parentElement.classList.toggle('open')">
     <span class="ne-quest-toggle">▶</span>
     <span style="color:${iconColor};">${iconChar}</span>
     <b>${escapeHtml(displayName)}</b>
@@ -498,7 +500,7 @@ function toggleInlineEdit(row, entryId, entryType) {
     }
 
     var idColumnCell = hasIdColumn
-        ? '<td style="font-size:0.75em;max-width:180px;color:#666;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(origIds) + '">' + escapeHtml(origIds) + '</td>'
+        ? '<td style="font-size:0.75em;max-width:180px;color:var(--ne-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(origIds) + '">' + escapeHtml(origIds) + '</td>'
         : '';
     var eventCellTarget = hasIdColumn ? 5 : 4;
 
@@ -507,9 +509,9 @@ function toggleInlineEdit(row, entryId, entryType) {
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
         idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
-        '<td style="white-space:nowrap;"><button class="ne-inline-save" title="' + t('Save') + '">\u2714</button>' +
-        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" title="' + t('Cancel') + '"><i class="fa-solid fa-xmark"></i></button>' +
-        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" title="' + t('Delete') + '"><i class="fa-solid fa-trash"></i></button></td>';
+        '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '"><i class="fa-solid fa-check"></i></button>' +
+        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" aria-label="' + t('Cancel') + '"><i class="fa-solid fa-xmark"></i></button>' +
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" aria-label="' + t('Delete') + '"><i class="fa-solid fa-trash"></i></button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
@@ -554,7 +556,7 @@ function renderStmRow(stm, opts) {
         subMsgDisplay = stm.id || '';
     }
     var editCell = opts.showEdit
-        ? '<td><span class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" title="Edit">\u270E</span></td>'
+        ? '<td><button class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td>'
         : '<td></td>';
     var eventHtml = escapeHtml(stm.event || stm.summary || '');
     var entities = stm.entities || [];
@@ -610,7 +612,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             var countLabel = groupStms.length + '\u6761';
             var groupTitle = '[' + t('Unfiled') + '] ' + msgLabel + ' / ' + countLabel;
             var groupPeriod = (firstStm && firstStm.period) ? firstStm.period : '';
-            var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + groupId + '" title="Toggle STM details">\u25B6</span> ';
+            var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + groupId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
 
             tbody.innerHTML += '<tr data-entry-id="' + groupId + '" class="ne-orphan-group-row">'
                 + '<td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td>'
@@ -639,9 +641,9 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListFull = refs.join(', ');
         var idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
-        var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" title="Toggle STM details">\u25B6</span> ';
+        var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
         var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? ' <span style="color:#4CAF50;font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><span class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" title="Edit">\u270E</span></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? ' <span style="color:var(--ne-success);font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td></tr>';
 
         var detailRows = '';
         refs.forEach(function (stmId, si) {

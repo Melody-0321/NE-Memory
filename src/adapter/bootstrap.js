@@ -6,7 +6,6 @@ import { renderVaultPanel } from './panel.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection } from '../core/api/llm.js';
-import { ensureStateWorldBook } from '../core/engine/worldbook-sync.js';
 import { restorePending } from './events.js';
 
 function loadSettings() {
@@ -74,8 +73,17 @@ export async function bootstrapVault(chatId, locale, settings) {
     restorePending();
     await renderVaultPanel(function() { return runtime.getChatId() || chatId; });
 
+    // ── L2: Global keyboard navigation for card toggle headers ──
+    document.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var target = e.target.closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+        if (!target) return;
+        if (target.closest('input, textarea, select, button')) return;
+        e.preventDefault();
+        target.click();
+    });
+
     autoConnectSecondaryApi();
-    ensureStateWorldBook().catch(function(e) { console.warn('[NE] World book init failed:', e.message); });
 
     console.log('[NE] Engine initialized — chatId=' + chatId + ', version=' + vault.version);
     return vault;

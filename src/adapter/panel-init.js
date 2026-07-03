@@ -52,7 +52,7 @@ export async function renderVaultPanel(getChatId) {
         console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
 
         var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
-            '<div class="ne-vault-collapse-bar" title="' + t('Collapse memory panel') + '">' +
+            '<div class="ne-vault-collapse-bar" tabindex="0" role="button" aria-label="' + t('Collapse memory panel') + '" title="' + t('Collapse memory panel') + '">' +
             '<span class="ne-vault-collapse-indicator"></span>' +
             '<span class="ne-vault-collapse-chevron"><i class="fa-solid fa-chevron-down"></i></span>' +
             '</div>' +
@@ -62,7 +62,7 @@ export async function renderVaultPanel(getChatId) {
             '<span id="narrative_vault_activity" style="font-size:0.8em;color:#888;">\u25CF</span>' +
             '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
-            '<span id="narrative_secondary_api_status" style="font-size:0.75em;color:#666;cursor:help;" title=""></span>' +
+            '<span id="narrative_secondary_api_status" style="font-size:0.75em;color:var(--ne-muted);cursor:help;" title=""></span>' +
             '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
             '<label for="narrative_vault_pin">' +
