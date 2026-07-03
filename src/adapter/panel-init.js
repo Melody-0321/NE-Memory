@@ -77,7 +77,7 @@ export async function renderVaultPanel(getChatId) {
             '<span id="narrative_vault_activity" style="font-size:0.8em;color:var(--ne-muted);">\u25CF</span>' +
             '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
-            '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:var(--ne-muted);cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
+            '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
             '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
             '<label for="narrative_vault_pin">' +
