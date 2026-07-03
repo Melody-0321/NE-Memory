@@ -79,15 +79,13 @@ export async function updateVaultViewerPopout(getChatId) {
                 var raw = localStorage.getItem('ne_secondary_api');
                 var secondaryConfig = raw ? JSON.parse(raw) : null;
                 if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
-                    apiStatus.innerHTML = '<i class="fa-solid fa-circle"></i>';
-                    apiStatus.title = t('Secondary API:') + ' ' + secondaryConfig.model;
                     apiStatus.style.color = 'var(--ne-success)';
+                    apiStatus.title = t('Secondary API:') + ' ' + secondaryConfig.model;
                 } else {
-                    apiStatus.innerHTML = '<i class="fa-regular fa-circle"></i>';
-                    apiStatus.title = t('No secondary API configured');
                     apiStatus.style.color = '';
+                    apiStatus.title = t('No secondary API configured');
                 }
-            } catch (e) { apiStatus.innerHTML = '<i class="fa-regular fa-circle"></i>'; apiStatus.style.color = ''; }
+            } catch (e) { apiStatus.style.color = ''; }
         }
     } catch (e) { _logSection('header', e); }
 
