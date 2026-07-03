@@ -20,6 +20,22 @@ SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern He
 
 3. 启用脚本，完成。Vault 面板会自动出现在 TH 弹窗中。
 
+## 配置副 API
+
+NE 的记忆提取和管线处理需要 LLM。在设置面板的「Secondary API」中配置：
+
+**云 API**（推荐入门）：
+- URL: `https://api.deepseek.com/v1/chat/completions`（或其他 OpenAI 兼容地址）
+- Key: 填写 API Key
+- Model: `deepseek-v4-flash`
+
+**本地 LLM**（免费，需本地运行）：
+- URL: `http://localhost:1234/v1`（LM Studio / vLLM / Ollama 等）
+- Key: 留空
+- Model: 填写本地模型名（如 `qwen2.5-7b-instruct`）
+
+支持：DeepSeek、硅基流动、OpenRouter 等云平台，以及 Ollama、vLLM、LM Studio、LocalAI 等任何 OpenAI 兼容端点。
+
 ## 功能
 
 - **STM/LTM 分层记忆**：短期记忆自动从对话中提取事件，长期记忆按叙事弧整合关联 STM。整合不丢失原始数据，LTM 弧支持手动编辑标题/摘要。

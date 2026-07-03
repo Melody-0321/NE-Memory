@@ -284,7 +284,32 @@ export var runtime = {
 
 #### 3.3.1 [llm.js](file:///d:/SillyTavern/xm/ne-memory/src/core/api/llm.js) — LLM 调用封装
 
-**职责**：统一的 LLM 调用入口，支持维护 API（Pipeline）和 Embedding API 分离。提供主/副 API 双通道和 CORS-proxy 自动回退。
+**职责**：统一的 LLM 调用入口，支持维护 API（Pipeline）单独配置。提供主/副 API 双通道和 CORS-proxy 自动回退。**支持 keyless 模式**接入本地 LLM（Ollama、vLLM、LM Studio 等）。
+
+**调用路径**：
+
+```
+callMemoryLLM(messages, options)
+  ├── 副 API 已配置 → callCustomAPI(config, messages, options)
+  │     ├── normalizeApiUrl(url) → 自动校正 http://localhost:11434 → localhost:11434/v1/chat/completions
+  │     ├── 无 Key → 跳过 Authorization header（本地 LLM keyless 模式）
+  │     ├── attemptFetch → POST OpenAI-compatible JSON {model,messages,temperature,max_tokens,response_format}
+  │     │     └── 解析响应 → data.choices[0].message.content
+  │     ├── 失败 → ST CORS proxy 回退（对 localhost 不生效，localhost 无 CORS 限制）
+  │     └── 失败 → callTavernHelper → generateQuiet/generateRaw 回退
+  └── 副 API 未配置 → callTavernHelper(messages, options)
+        ├── generateQuiet(messages[n-1].content, messages[0].content) → 静默背景处理
+        └── generateRaw({ordered_prompts, should_stream: false}) → 回退方案
+```
+
+**`normalizeApiUrl` 行为** ([llm.js:L182-198](file:///d:/SillyTavern/xm/ne-memory/src/core/api/llm.js#L182))：
+- `http://localhost:1234` → `http://localhost:1234/v1/chat/completions`（本地 LLM）
+- `https://api.deepseek.com/v1` → `https://api.deepseek.com/v1/chat/completions`
+- 已是 `/v1/chat/completions` → 原样返回
+- `/llm/chat` → 原样返回（ST 本地代理）
+- 任何不明路径 → 警告，原样返回
+
+**keyless 模式** ([llm.js:L245](file:///d:/SillyTavern/xm/ne-memory/src/core/api/llm.js#L245))：`if (config.key)` 条件跳过 `Authorization` header。本地 LLM 用户只需填写 URL 和 Model，Key 留空即可。这覆盖了 Ollama、vLLM、LM Studio、LocalAI 等所有 OpenAI 兼容的本地端点。
 
 **关键函数**：
 
