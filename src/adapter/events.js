@@ -2,6 +2,7 @@
  * events.js — ST 事件绑定（通过 TH API）
  */
 import { executeIncrementalUpdate, extractStateChangesOnly, runLtmDecision, saveVaultWithSnapshot } from '../core/engine/update.js';
+import { findOpenLtm, MAX_OPEN_STM_REFS } from '../core/engine/consolidate.js';
 import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
@@ -14,7 +15,7 @@ import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
-import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision } from '../core/engine/consolidate.js';
+import { getNextEligibleStmId, runLtmRebatch, applyLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
@@ -514,30 +515,66 @@ async function flushPendingMessages() {
                 console.log('[NE-GUARD] acquire ltm (idle → ltm) — pass ' + (ltmPass+1) + ', stm=' + nextId);
 
                 ranLtm = true;
-                try {
-                    var ltmDecision = await runLtmDecision(postStmVault, [nextId], callMemoryPipeline);
-                    if (ltmDecision) {
-                        applyLtmDecision(postStmVault, ltmDecision, [nextId]);
+                var openLtm = findOpenLtm(postStmVault);
+                var forceClose = openLtm && (openLtm.stm_refs || []).length >= MAX_OPEN_STM_REFS - 1;
+                if (forceClose) console.log('[NE] LTM: open arc approaching ref limit (' + (openLtm.stm_refs.length + 1) + '/' + MAX_OPEN_STM_REFS + '), will prompt LLM for title/event this round');
+                var ltmDecision = null;
+                var maxRetries = 3;
+
+                for (var retry = 0; retry < maxRetries; retry++) {
+                    try {
+                        ltmDecision = await runLtmDecision(postStmVault, [nextId], callMemoryPipeline, forceClose);
+                        if (ltmDecision) break;
+                    } catch (e) {
+                        console.warn('[NE] LTM pass ' + (ltmPass+1) + ' attempt ' + (retry+1) + ' failed:', e);
+                    }
+
+                    if (ltmDecision === null && retry < maxRetries - 1) {
+                        var delay = Math.min(Math.pow(2, retry) * 1000, 8000);
+                        console.log('[NE] LTM retry #' + (retry+1) + ' for ' + nextId + ' in ' + delay + 'ms');
+                        await new Promise(function(r) { setTimeout(r, delay); });
+                        postStmVault = await read(chatId);
+                    }
+                }
+
+                if (ltmDecision) {
+                    applyLtmDecision(postStmVault, ltmDecision, [nextId]);
+                    try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                        console.warn('[NE] LTM save failed, rolling back vault');
+                        postStmVault = await read(chatId);
+                    }
+                    globalThis.__ne_debug_last_ltm_decision = {
+                        action: ltmDecision.action,
+                        stmId: nextId,
+                        pass: ltmPass + 1,
+                        time: new Date().toISOString()
+                    };
+                    console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
+                    notifyVaultChanged();
+                } else {
+                    console.warn('[NE] LTM: all retries failed for ' + nextId + ', applying fallback');
+                    var fallbackDecision = createMinimalLtm(postStmVault, nextId);
+                    if (fallbackDecision) {
+                        applyLtmDecision(postStmVault, fallbackDecision, [nextId]);
                         try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
-                            console.warn('[NE] LTM save failed, rolling back vault');
+                            console.warn('[NE] LTM fallback save failed, rolling back vault');
                             postStmVault = await read(chatId);
                         }
                         globalThis.__ne_debug_last_ltm_decision = {
-                            action: ltmDecision.action,
+                            action: fallbackDecision.action,
                             stmId: nextId,
                             pass: ltmPass + 1,
+                            fallback: true,
                             time: new Date().toISOString()
                         };
-                        console.log('[NE] LTM: decision applied — pass ' + (ltmPass+1) + ', action=' + ltmDecision.action + ', stm=' + nextId);
+                        console.log('[NE] LTM: fallback decision applied — stm=' + nextId);
                         notifyVaultChanged();
+                    } else {
+                        console.warn('[NE] LTM: fallback also failed for ' + nextId + ', skipping');
                     }
-                } catch (e) {
-                    console.warn('[NE] LTM pass ' + (ltmPass+1) + ' failed:', e);
-                    postStmVault = await read(chatId);
-                } finally {
-                    releasePipeline();
-                    console.log('[NE-GUARD] release pipeline (ltm → idle) — pass ' + (ltmPass+1));
                 }
+                releasePipeline();
+                console.log('[NE-GUARD] release pipeline (ltm → idle) — pass ' + (ltmPass+1));
 
                 var checkVault = await read(chatId);
                 if (getNextEligibleStmId(checkVault) === null) break;

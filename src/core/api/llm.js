@@ -53,7 +53,8 @@ export async function callMemoryLLM(messages, options = {}) {
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
             console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
-            var callOpts = Object.assign({}, options, { responseFormat: { type: "json_object" } });
+            var defaultResponseFormat = options.hasOwnProperty('responseFormat') ? options.responseFormat : { type: "json_object" };
+            var callOpts = Object.assign({}, options, { responseFormat: defaultResponseFormat });
             var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
             usage = customResult.usage;
@@ -128,7 +129,9 @@ export async function callMemoryLLM(messages, options = {}) {
         roundTag: callRoundTag
     });
 
-    globalThis.__ne_debug_all_pipeline_responses = (globalThis.__ne_debug_all_pipeline_responses || '') + (response || '') + '\n---\n';
+    if (globalThis.__NE_DEV_MODE) {
+        globalThis.__ne_debug_all_pipeline_responses = (globalThis.__ne_debug_all_pipeline_responses || '') + (response || '') + '\n---\n';
+    }
 
     return response;
 }

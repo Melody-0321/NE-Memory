@@ -6,7 +6,7 @@
  * 渐进式追加 STM 直到弧自然终结或达到硬上限。
  */
 
-const MAX_OPEN_STM_REFS = 15;
+export const MAX_OPEN_STM_REFS = 15;
 
 import { sortStmByMsgOrder } from '../vault/store.js';
 
