@@ -163,18 +163,16 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div></div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
-            '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
             '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
             '<div class="ne-settings-section-title"><i class="fa-solid fa-star"></i> ' + t('Common Settings') + '</div>' +
             '<div id="ne_common_settings"></div></div>' +
             '<div class="ne-settings-section-card">' +
             '<div class="ne-settings-section-title"><i class="fa-solid fa-flask"></i> ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
-            '</div></div>' +
+            '</div>' +
             '<div id="tab-usage" class="ne-vault-tab-content">' +
-            '<div class="ne-settings-scroll" style="padding:4px 12px;">' +
             '<div id="ne-usage-container"></div>' +
-            '</div></div>' +
+            '</div>' +
             '</div></div>';
 
         var sheld = byId('sheld');
