@@ -279,7 +279,7 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
 
 /**
  * LLM 不可用时，用 STM 自身数据拼接最小可用 LTM，保证不产生孤儿。
- * 有 open LTM 时追加到现有弧；无 open LTM 时用 STM 的 event 字段直接创建闭合弧。
+ * 有 open LTM 时追加到现有弧；无 open LTM 时创建新闭合弧。
  * @param {import('../../types.js').Vault} vault
  * @param {string} stmId
  * @returns {import('../../types.js').LTMDecision|null}
@@ -290,21 +290,13 @@ export function createMinimalLtm(vault, stmId) {
     var stm = allSTM.find(function(s) { return s.id === stmId; });
     if (!stm) return null;
 
-    var stmEvent = (stm.event || '').trim();
-    if (!stmEvent) return null;
-
-    var openLtm = findOpenLtm(vault);
-    if (openLtm) {
-        return {
-            action: 'append',
-            updated_title: '',
-            updated_event: ''
-        };
-    }
+    var fallbackTitle = (stm.period || '').trim();
+    if (!fallbackTitle) fallbackTitle = (stm.scene || '').trim();
+    if (!fallbackTitle) fallbackTitle = '';
 
     return {
         action: 'append',
-        updated_title: '',
+        updated_title: fallbackTitle,
         updated_event: ''
     };
 }

@@ -2,7 +2,7 @@ import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
-import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 
 var ACTIVE_STATUSES = ['活跃'];
@@ -448,7 +448,7 @@ function saveCardFields(cardDiv) {
 
     var getChatId = stored.getChatId;
     write(getChatId(), vault).then(function() {
-        updateVaultViewerPopout(getChatId);
+        busEmit('vault:updated', { getChatId: getChatId });
     });
 }
 

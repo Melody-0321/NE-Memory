@@ -440,7 +440,14 @@ export async function runLtmConsolidation(chatId) {
         if (!postStmVault || !postStmVault.content) return;
 
         var nextId = getNextEligibleStmId(postStmVault);
-        if (nextId === null) break;
+        if (nextId === null) {
+            if (ltmPass === 0) {
+                var uncCount = ((postStmVault.content || {}).unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; }).length;
+                var threshold2 = (function() { try { var r = localStorage.getItem('ne_settings'); if (r) { var s2 = JSON.parse(r); return Number(s2.stmMaxUnconsolidated) || 5; } } catch(e) {} return 5; })();
+                console.log('[NE] LTM: no eligible STM — unconsolidated=' + uncCount + ' threshold=' + threshold2);
+            }
+            break;
+        }
 
         if (!tryAcquire('ltm')) {
             console.log('[NE] LTM pass ' + (ltmPass+1) + ': waiting for pipeline track — state=' + getState());

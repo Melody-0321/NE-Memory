@@ -11,7 +11,9 @@ import { setRetrievalEnabled } from '../core/settings.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   injectPinCSS, injectBottomDrawerCSS, setVaultActivity, freezeIframeHeight,
   vaultLLMLog, lastVaultStateJson, closeVaultOverlay, _currentGetChatId,
-  _vaultChangeBound, _updatingPopout, setCurrentGetChatId, setVaultChangeBound } from './panel-shared.js';
+  _vaultChangeBound, _updatingPopout, setCurrentGetChatId, setVaultChangeBound,
+  busOn, busEmit,
+  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA } from './panel-shared.js';
 import { _currentChatIdForCollapse, _currentCollapseState,
   _lazyRendered, _pendingInlineStorage,
   saveCollapseState, loadCollapseState, navigateToAccordion,
@@ -36,14 +38,24 @@ export async function renderVaultPanel(getChatId) {
                 if (_vaultRefreshDebounce) clearTimeout(_vaultRefreshDebounce);
                 _vaultRefreshDebounce = setTimeout(function() {
                     _vaultRefreshDebounce = null;
-                    if (_currentGetChatId) updateVaultViewerPopout(_currentGetChatId);
-                    var usageTab = document.querySelector('.ne-vault-tab.active[data-tab="usage"]');
-                    if (usageTab) {
-                        try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
-                    }
+                    if (_currentGetChatId) busEmit('vault:updated', { getChatId: _currentGetChatId });
                 }, 300);
             });
         }
+
+        // ── StateBus subscribers: vault:updated triggers full UI refresh ──
+        busOn('vault:updated', function(payload) {
+            var gc = payload && payload.getChatId;
+            if (typeof gc === 'function') {
+                updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
+            }
+        });
+        busOn('vault:updated', function() {
+            var usageTab = document.querySelector('.ne-vault-tab.active[data-tab="usage"]');
+            if (usageTab) {
+                try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
+            }
+        });
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
         injectPinCSS();
         injectBottomDrawerCSS();
@@ -189,19 +201,21 @@ export async function renderVaultPanel(getChatId) {
         var ref = byId('narrative_vault_panel_refresh');
         if (ref) ref.onclick = function () {
             setVaultActivity(true);
-            updateVaultViewerPopout(getChatId).finally(function () { setVaultActivity(false); });
+            busEmit('vault:updated', { getChatId: getChatId });
         };
 
         var consolidateBtn = qs('.narrative_btn_consolidate');
         if (consolidateBtn) {
             consolidateBtn.onclick = async function () {
+                var chatId = getChatId();
+                console.log('[NE] Consolidate button clicked, chatId=' + chatId);
                 if (!confirm(t('This will process pending STM entries. Continue?'))) return;
                 var prevText = consolidateBtn.textContent;
                 consolidateBtn.disabled = true;
                 consolidateBtn.textContent = t('Processing...');
                 try {
-                    await runLtmConsolidation(getChatId());
-                    await updateVaultViewerPopout(getChatId);
+                    await runLtmConsolidation(chatId);
+                    busEmit('vault:updated', { getChatId: chatId });
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
                     alert(t('Process failed') + ': ' + e.message);
@@ -326,7 +340,7 @@ export async function renderVaultPanel(getChatId) {
                         processHistoryBtn.textContent = prevText;
                         processHistoryBtn.disabled = false;
                     }, 1500);
-                    updateVaultViewerPopout(getChatId);
+                    busEmit('vault:updated', { getChatId: getChatId });
                 }
             };
         }
@@ -370,7 +384,7 @@ export async function renderVaultPanel(getChatId) {
                             return;
                         }
                         await write(getChatId(), vault);
-                        updateVaultViewerPopout(getChatId);
+                        busEmit('vault:updated', { getChatId: getChatId });
                     } catch (e) {
                         console.error('[NE] Import failed:', e);
                         alert(t('Import JSON') + ' failed: ' + e.message);
@@ -534,6 +548,28 @@ export async function renderVaultPanel(getChatId) {
                 return;
             }
         });
+
+        // ── L3: ResizeObserver for mobile responsive ──
+        (function setupMobileObserver() {
+            var sheld = byId('sheld');
+            if (!sheld) return;
+            var overlay = byId('ne_vault_bottom_overlay');
+            if (!overlay) return;
+            try {
+                var ro = new ResizeObserver(function(entries) {
+                    var width = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
+                    if (width <= 600) {
+                        overlay.classList.add('ne-mobile');
+                    } else {
+                        overlay.classList.remove('ne-mobile');
+                    }
+                });
+                ro.observe(sheld);
+                overlay._neResizeObserver = ro;
+            } catch (e) {
+                console.warn('[NE] ResizeObserver not supported, using CSS fallback:', e.message);
+            }
+        })();
 
         freezeIframeHeight();
 

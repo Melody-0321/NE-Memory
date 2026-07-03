@@ -241,6 +241,15 @@ export function renderSettingsTab() {
             localStorage.setItem('ne_settings', JSON.stringify(settings));
             var config = document.getElementById('ne-embedding-config');
             if (config) config.style.display = embEnable.checked ? 'block' : 'none';
+            // ── Update retrieval dot on toggle ──
+            var rDot = byId('nes_retrieval_dot'), rText = byId('nes_retrieval_status_text');
+            if (embEnable.checked) {
+                if (rDot) rDot.className = 'ne-api-dot';
+                if (rText) rText.textContent = t('Not connected') + ' — ' + t('configure embedding API');
+            } else {
+                if (rDot) rDot.className = 'ne-api-dot';
+                if (rText) rText.textContent = t('BM25 only (vector disabled)');
+            }
         };
     }
     if (enableVectorSearch) {

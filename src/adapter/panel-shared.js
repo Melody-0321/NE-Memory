@@ -13,6 +13,23 @@ export function pdCreate(tag) { return PD.createElement(tag); }
 export function pdHead() { return PD.head; }
 export function pdAddEventListener(type, fn, opts) { PD.addEventListener(type, fn, opts); }
 
+// ── Shadow DOM aware panel queries ──
+var _panelRoot = null;
+export function setPanelRoot(root) { _panelRoot = root; }
+export function getPanelRoot() { return _panelRoot; }
+export function panelById(id) {
+    if (_panelRoot) return _panelRoot.getElementById(id);
+    return byId(id);
+}
+export function panelQS(sel) {
+    if (_panelRoot) return _panelRoot.querySelector(sel);
+    return qs(sel);
+}
+export function panelQSA(sel) {
+    if (_panelRoot) return _panelRoot.querySelectorAll(sel);
+    return qsa(sel);
+}
+
 export function sortLtmByMsgOrder(ltmEntries, stmIndexMap) {
     if (!ltmEntries || ltmEntries.length < 2) return ltmEntries || [];
     return ltmEntries.slice().sort(function(a, b) {
@@ -54,7 +71,7 @@ export function injectPinCSS() {
         '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +
         '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}' +
         '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
-    pdHead().appendChild(style);
+    if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
 
 export function injectBottomDrawerCSS() {
@@ -311,8 +328,16 @@ export function injectBottomDrawerCSS() {
         // ── L2: LTM toggle accessibility ──
         '.narrative_ltm_toggle{display:inline-block;cursor:pointer;transition:transform var(--ne-transition-normal);}' +
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
-        '.narrative_ltm_toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}';
-    pdHead().appendChild(style);
+        '.narrative_ltm_toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}' +
+        // ── L3: Mobile responsive (controlled by .ne-mobile class on host) ──
+        '.ne-mobile .ne-vault-bottom-overlay::before{backdrop-filter:none;-webkit-backdrop-filter:none;}' +
+        '.ne-mobile .ne-vault-scroll-area{padding:0 6px 60px;}' +
+        '.ne-mobile .ne-vault-tab-bar{padding:0 6px 4px;}' +
+        '.ne-mobile .ne-accordion-header{padding:6px 8px;font-size:0.88em;}' +
+        '.ne-mobile .ne-quick-index{padding:2px 6px;}' +
+        '.ne-mobile .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
+        '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}';
+    if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
 
 export var vaultLLMLog = [];
@@ -333,3 +358,7 @@ export var _vaultChangeBound = false;
 export function setUpdatingPopout(v) { _updatingPopout = v; }
 export function setCurrentGetChatId(v) { _currentGetChatId = v; }
 export function setVaultChangeBound(v) { _vaultChangeBound = v; }
+
+// ── StateBus bridge ──
+import { on as busOn, off as busOff, emit as busEmit } from './stateBus.js';
+export { busOn, busOff, busEmit };

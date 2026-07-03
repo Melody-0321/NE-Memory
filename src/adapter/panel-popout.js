@@ -6,9 +6,8 @@ import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { read } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
-  closeVaultOverlay, sortLtmByMsgOrder } from './panel-shared.js';
+  closeVaultOverlay, sortLtmByMsgOrder, busEmit } from './panel-shared.js';
 import { renderVaultPanel } from './panel-init.js';
-import { updateVaultViewerPopout } from './panel-content.js';
 import { renderSettingsTab } from './panel-settings.js';
 
 export function createVaultPopout(getChatId) {
@@ -19,7 +18,7 @@ export function createVaultPopout(getChatId) {
     if (opening) {
         if (chat) chat.style.display = 'none';
         overlay.classList.add('open');
-        updateVaultViewerPopout(getChatId);
+        busEmit('vault:updated', { getChatId: getChatId });
         renderSettingsTab();
     } else {
         overlay.classList.remove('open');
@@ -57,7 +56,7 @@ export async function renderHistory(getChatId) {
                 var ver = parseInt(btn.getAttribute('data-ver'));
                 if (confirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
                     await restoreSnapshot(getChatId(), ver);
-                    updateVaultViewerPopout(getChatId);
+                    busEmit('vault:updated', { getChatId: getChatId });
                 }
             };
         });
