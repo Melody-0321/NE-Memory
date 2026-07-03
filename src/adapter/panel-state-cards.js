@@ -2,7 +2,7 @@ import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
-import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 
 var ACTIVE_STATUSES = ['活跃'];
@@ -37,7 +37,7 @@ function renderCharacterCard(name, card, schema, cardType) {
         if (typeof val === 'object' && val !== null) {
             try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
         } else if (val === undefined || val === null || val === '') {
-            displayVal = '<span class="ne-empty-value">(未填)</span>';
+            displayVal = '<span class="ne-empty-value">' + t('empty_value') + '</span>';
         } else {
             displayVal = String(val);
         }
@@ -119,7 +119,9 @@ function renderCharacterGroup(label, names, characters, schema, state) {
         sorted = sorted.filter(function(n) { return n !== protoName; });
         sorted.unshift(protoName);
     }
-    var headerColor = label === '活跃' ? 'var(--ne-success)' : (label === '已退场' ? 'var(--ne-danger)' : 'var(--ne-warning)');
+    var activeLabels = [t('活跃'), 'Active', '活跃'];
+    var departedLabels = [t('已退场'), 'Departed', '已退场'];
+    var headerColor = activeLabels.indexOf(label) !== -1 ? 'var(--ne-success)' : (departedLabels.indexOf(label) !== -1 ? 'var(--ne-danger)' : 'var(--ne-warning)');
 
     var html = '<details class="ne_character_group" open style="margin:6px 0;">' +
         '<summary style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
@@ -175,7 +177,9 @@ export function renderCharacterPanelHTML(state, characterSchema) {
 
 function renderFactionCard(name, faction) {
     var attitude = faction.attitude_toward_player || '未知';
-    var attitudeCls = attitude === '友好' ? 'friendly' : (attitude === '敌对' ? 'hostile' : 'neutral');
+    var friendlyLabels = ['友好', 'Friendly'];
+    var hostileLabels = ['敌对', 'Hostile'];
+    var attitudeCls = friendlyLabels.indexOf(attitude) !== -1 ? 'friendly' : (hostileLabels.indexOf(attitude) !== -1 ? 'hostile' : 'neutral');
     var isHidden = !!faction._hidden;
     var cardCls = isHidden ? ' ne-faction-hidden' : '';
 
@@ -201,7 +205,7 @@ function renderFactionCard(name, faction) {
     }
 
     var hasDetail = detailLines.length > 0;
-    var hiddenBadge = isHidden ? '<span style="margin-left:6px;font-size:0.75em;color:#888;border:1px solid #555;border-radius:3px;padding:0 4px;">未接触</span>' : '';
+    var hiddenBadge = isHidden ? '<span style="margin-left:6px;font-size:0.75em;color:#888;border:1px solid #555;border-radius:3px;padding:0 4px;">' + t('hidden_faction') + '</span>' : '';
     var html = `
 <div class="ne-faction-card attitude-${attitudeCls}${cardCls}" data-faction="${escapeHtml(name)}">
   <div class="ne-faction-card-header"
@@ -371,7 +375,7 @@ export function enterCardEditMode(editBtn) {
         var fieldType = td.getAttribute('data-type') || 'string';
         var span = td.querySelector('.ne-char-val-text');
         var textVal = span ? (span.textContent || '').trim() : '';
-        if (textVal === '(未填)' || textVal === '(Not filled)') textVal = '';
+        if (textVal === t('empty_value') || textVal === '(Not filled)') textVal = '';
 
         var editor;
         switch (fieldType) {
@@ -532,8 +536,8 @@ function toggleInlineEdit(row, entryId, entryType) {
         row.classList.remove('ne-inline-row');
         rebindEditBtn(row);
     };
-    row.querySelector('.ne-inline-delete').onclick = function() {
-        if (!confirm(t('Delete this entry? This cannot be undone.'))) return;
+    row.querySelector('.ne-inline-delete').onclick = async function() {
+        if (!await showConfirm(t('Delete this entry?'), t('This cannot be undone.'), t('Delete'), t('Cancel'), true)) return;
         deleteSingleEntry(entryType, entryId);
         row.remove();
     };
@@ -643,7 +647,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
         var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? ' <span style="color:var(--ne-success);font-size:0.8em;">[\u8FDB\u884C\u4E2D]</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td></tr>';
 
         var detailRows = '';
         refs.forEach(function (stmId, si) {

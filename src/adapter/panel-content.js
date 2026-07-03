@@ -7,7 +7,7 @@ import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
-  panelById, panelQS, panelQSA } from './panel-shared.js';
+  panelById, panelQS, panelQSA, showConfirm, emptyStateHtml } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
@@ -106,7 +106,7 @@ export async function updateVaultViewerPopout(getChatId) {
         if (charContainer && isStateSchemaEnabled()) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
-            charContainer.innerHTML = charHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No character data') + ')</div>';
+            charContainer.innerHTML = charHtml || emptyStateHtml('fa-user', t('No character data'), t('Send a message to start tracking'));
             setTimeout(function() {
                 var block = panelById('ne_character_block_container');
                 if (!block) return;
@@ -126,7 +126,7 @@ export async function updateVaultViewerPopout(getChatId) {
         var factionContainer = panelById('ne_faction_block_container');
         if (factionContainer && isStateSchemaEnabled()) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
-            factionContainer.innerHTML = factionHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No faction data') + ')</div>';
+            factionContainer.innerHTML = factionHtml || emptyStateHtml('fa-flag', t('No faction data'), t('Faction state will appear when detected'));
         }
     } catch (e) { _logSection('faction-block', e); }
 
@@ -135,7 +135,7 @@ export async function updateVaultViewerPopout(getChatId) {
         var questContainer = panelById('ne_quest_block_container');
         if (questContainer && isStateSchemaEnabled()) {
             var questHtml = renderQuestPanelHTML(c.state || {});
-            questContainer.innerHTML = questHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No quest data') + ')</div>';
+            questContainer.innerHTML = questHtml || emptyStateHtml('fa-scroll', t('No quest data'), t('Quest progress will be tracked automatically'));
         }
     } catch (e) { _logSection('quest-block', e); }
 
@@ -251,7 +251,7 @@ export async function updateVaultViewerPopout(getChatId) {
         panelQSA('.narrative_clear_state_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 try {
-                    if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {
+                    if (await showConfirm(t('Clear all state?'), t('LLM will regenerate from character card and world book on next turn.'), t('Clear'), t('Cancel'), true)) {
                         c.state = {};
                         await write(getChatId(), vault);
                         await updateVaultViewerPopout(getChatId);

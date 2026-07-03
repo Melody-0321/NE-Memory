@@ -83,15 +83,17 @@ export function injectBottomDrawerCSS() {
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = hostSel + '{' +
-        'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
-        'position:relative;z-index:35;background:transparent;' +
-        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;}' +
+        'display:flex;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
+        'position:absolute;inset:0;z-index:35;background:transparent;' +
+        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;' +
+        'transform:translateY(100%);pointer-events:none;' +
+        'transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);}' +
         hostSel + '::before{' +
         'content:"";position:absolute;inset:0;z-index:-1;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-radius:inherit;}' +
         (isShadow ? ':host(.open){' : '.ne-vault-bottom-overlay.open{') +
-        'display:flex;flex-direction:column;flex-grow:1;justify-content:flex-start;min-height:0;}' +
+        'transform:translateY(0);pointer-events:auto;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
         '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
@@ -345,14 +347,44 @@ export function injectBottomDrawerCSS() {
         '.ne-mobile .ne-quick-index{padding:2px 6px;}' +
         '.ne-mobile .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
         '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
+        // ── L3: Skeleton loading ──
+        '.ne-skeleton{background:var(--ne-skeleton-base);border-radius:var(--ne-radius-sm);' +
+        'animation:ne-shimmer 1.5s ease-in-out infinite;background-image:linear-gradient(90deg,var(--ne-skeleton-base) 40%,var(--ne-skeleton-shimmer) 50%,var(--ne-skeleton-base) 60%);background-size:200% 100%;}' +
+        '@keyframes ne-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}' +
+        '.ne-skeleton-text{height:1em;margin-bottom:0.5em;}' +
+        '.ne-skeleton-text:last-child{width:60%;}' +
+        '.ne-skeleton-card{height:80px;margin-bottom:8px;border-radius:var(--ne-radius-md);}' +
+        '.ne-skeleton-row{height:2em;margin-bottom:4px;border-radius:var(--ne-radius-sm);}' +
+        '.ne-skeleton-chart{height:200px;border-radius:var(--ne-radius-md);}' +
+        // ── L3: Empty & error states ──
+        '.ne-empty-state{text-align:center;padding:24px 16px;color:var(--ne-muted);}' +
+        '.ne-empty-state-icon{font-size:2em;margin-bottom:8px;opacity:.5;}' +
+        '.ne-empty-state-text{font-size:0.9em;margin-bottom:4px;}' +
+        '.ne-empty-state-hint{font-size:0.8em;opacity:.7;}' +
+        '.ne-error-state{text-align:center;padding:16px;color:var(--ne-danger);}' +
+        '.ne-error-retry{display:inline-block;margin-top:8px;padding:4px 12px;border-radius:var(--ne-radius-sm);' +
+        'border:1px solid var(--ne-danger);background:var(--ne-danger-bg);color:var(--ne-danger);cursor:pointer;font-size:0.85em;transition:background .15s;}' +
+        '.ne-error-retry:hover{background:var(--ne-danger-border);}' +
+        // ── L3: Micro-interactions ──
+        (isShadow ? ':host{' : '.ne-vault-bottom-overlay{') + 'touch-action:manipulation;}' +
+        '.ne-vault-btn:active,.ne-api-btn:active,.menu_button:active,' +
+        '.ne_vault_btn_small:active,.ne_vault_btn_tiny:active,' +
+        '.ne-confirm-btn:active,.ne-inline-save:active,.ne-inline-cancel:active,.ne-inline-delete:active,' +
+        '.ne-settings-save-btn:active,.ne-tr-btn:active,' +
+        '.ne-card-edit-btn:active,.ne-card-save-btn:active,.ne-card-cancel-btn:active,' +
+        '.ne-inline-edit-btn:active,.ne-error-retry:active,' +
+        '.ne-index-item:active,.ne-vault-tab:active,.ne-vault-collapse-bar:active{' +
+        'transform:scale(.97);transition:transform .1s var(--ne-easing-standard);}' +
+        '#tab-settings input:focus-visible,#tab-settings select:focus-visible{outline:2px solid var(--ne-info);outline-offset:-1px;}' +
+        // ── L3: Search / Filter ──
+        '#ne-memory-search-input:focus-visible{outline:2px solid var(--ne-info);outline-offset:-1px;border-color:var(--ne-info-border);}' +
+        '.ne-search-hidden{display:none!important;}' +
+        '.ne-search-no-match{color:var(--ne-muted);font-style:italic;padding:8px;text-align:center;}' +
+        // Skeleton tokens need ST theme variables bound in Shadow DOM scope
         (isShadow ? ':host{' : ':root{') +
-        '--ne-success:#4caf50;--ne-success-bg:rgba(76,175,80,0.12);--ne-success-border:rgba(76,175,80,0.3);' +
-        '--ne-warning:#f0ad4e;--ne-warning-bg:rgba(240,173,78,0.12);--ne-warning-border:rgba(240,173,78,0.3);' +
-        '--ne-danger:#e53935;--ne-danger-bg:rgba(229,57,53,0.12);--ne-danger-border:rgba(229,57,53,0.3);' +
-        '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,0.08);' +
-        '--ne-info:#2196f3;--ne-info-bg:rgba(33,150,243,0.12);--ne-info-border:rgba(33,150,243,0.3);' +
-        '--ne-transition-fast:0.15s;--ne-transition-normal:0.2s;' +
-        (isShadow ? '}' : '');
+        '--ne-skeleton-base:var(--black30a);--ne-skeleton-shimmer:var(--black50a);' +
+        '}' +
+        '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
 
@@ -363,14 +395,141 @@ export function setLastVaultStateJson(v) { lastVaultStateJson = v; }
 
 export function closeVaultOverlay() {
     var overlay = byId('ne_vault_bottom_overlay');
-    if (overlay) overlay.classList.remove('open');
+    if (overlay) {
+        overlay.classList.remove('open');
+        overlay.addEventListener('transitionend', function handler() {
+            overlay.removeEventListener('transitionend', handler);
+            overlay.style.display = 'none';
+        });
+    }
     var chat = byId('chat');
-    if (chat) chat.style.display = '';
+    if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+}
+
+// ── L3: Skeleton loading helper ──
+export function showSkeleton(container, type) {
+    if (!container) return;
+    var html = '';
+    if (type === 'cards') {
+        html = '<div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>';
+    } else if (type === 'rows') {
+        html = '<div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row" style="width:60%;"></div>';
+    } else if (type === 'text') {
+        html = '<div class="ne-skeleton ne-skeleton-text"></div><div class="ne-skeleton ne-skeleton-text"></div><div class="ne-skeleton ne-skeleton-text"></div>';
+    } else if (type === 'chart') {
+        html = '<div class="ne-skeleton ne-skeleton-chart"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>';
+    }
+    container.innerHTML = html;
+}
+
+// ── L3: Toast notification ──
+var _toastTimer = null;
+var _toastEl = null;
+var _toastCssInjected = false;
+function _ensureToastCss() {
+    if (_toastCssInjected) return;
+    _toastCssInjected = true;
+    var style = pdCreate('style');
+    style.id = 'ne_toast_style';
+    style.textContent =
+        '.ne-toast{position:fixed;bottom:80px;left:50%;transform:translateX(-50%) translateY(20px);z-index:9999;' +
+        'padding:10px 20px;border-radius:8px;font-size:0.9em;color:#fff;opacity:0;' +
+        'transition:opacity .2s,transform .2s cubic-bezier(0,0,0.2,1);pointer-events:none;max-width:90vw;text-align:center;}' +
+        '.ne-toast.show{opacity:1;transform:translateX(-50%) translateY(0);}' +
+        '.ne-toast.success{background:var(--ne-success);}' +
+        '.ne-toast.error{background:var(--ne-danger);}' +
+        '.ne-toast.warning{background:var(--ne-warning);color:#333;}' +
+        '.ne-toast.info{background:var(--ne-info);}' +
+        '.ne-confirm-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(0,0,0,.5);opacity:0;transition:opacity .15s;}' +
+        '.ne-confirm-overlay.show{opacity:1;}' +
+        '.ne-confirm-dialog{background:var(--SmartThemeBlurTintColor,#1e1e1e);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
+        'border:1px solid var(--SmartThemeBorderColor,#444);border-radius:12px;padding:20px 24px;min-width:280px;max-width:90vw;' +
+        'transform:scale(.9);transition:transform .2s cubic-bezier(0,0,0.2,1);}' +
+        '.ne-confirm-overlay.show .ne-confirm-dialog{transform:scale(1);}' +
+        '.ne-confirm-title{font-size:1.1em;font-weight:bold;margin-bottom:8px;}' +
+        '.ne-confirm-message{font-size:0.9em;color:var(--grey-70,#aaa);margin-bottom:16px;line-height:1.5;}' +
+        '.ne-confirm-actions{display:flex;gap:8px;justify-content:flex-end;}' +
+        '.ne-confirm-btn{padding:6px 18px;border-radius:4px;border:1px solid var(--SmartThemeBorderColor,#444);' +
+        'background:var(--black30a,rgba(0,0,0,.3));color:var(--text,#ddd);cursor:pointer;font-size:0.9em;transition:background .15s;}' +
+        '.ne-confirm-btn:hover{background:var(--black50a,rgba(0,0,0,.5));}' +
+        '.ne-confirm-btn.danger{background:#e53935;border-color:#e53935;color:#fff;}' +
+        '.ne-confirm-btn.danger:hover{background:#c62828;}';
+    pdHead().appendChild(style);
+}
+
+export function showToast(message, type, duration) {
+    _ensureToastCss();
+    type = type || 'info';
+    duration = duration || 3000;
+    if (!_toastEl) {
+        _toastEl = pdCreate('div');
+        _toastEl.className = 'ne-toast';
+        _toastEl.setAttribute('aria-live', 'polite');
+        pdBody().appendChild(_toastEl);
+    }
+    if (_toastTimer) clearTimeout(_toastTimer);
+    _toastEl.className = 'ne-toast ' + type;
+    _toastEl.textContent = message;
+    requestAnimationFrame(function() { _toastEl.classList.add('show'); });
+    _toastTimer = setTimeout(function() {
+        _toastEl.classList.remove('show');
+        _toastTimer = null;
+    }, duration);
+}
+
+// ── L3: Confirm dialog ──
+export function showConfirm(title, message, confirmLabel, cancelLabel, isDanger) {
+    _ensureToastCss();
+    confirmLabel = confirmLabel || 'OK';
+    cancelLabel = cancelLabel || 'Cancel';
+    return new Promise(function(resolve) {
+        var overlay = pdCreate('div');
+        overlay.className = 'ne-confirm-overlay';
+        var dangerClass = isDanger ? ' danger' : '';
+        overlay.innerHTML =
+            '<div class="ne-confirm-dialog">' +
+            '<div class="ne-confirm-title">' + escapeHtml(title) + '</div>' +
+            '<div class="ne-confirm-message">' + escapeHtml(message) + '</div>' +
+            '<div class="ne-confirm-actions">' +
+            '<button class="ne-confirm-btn" id="ne-confirm-cancel">' + escapeHtml(cancelLabel) + '</button>' +
+            '<button class="ne-confirm-btn' + dangerClass + '" id="ne-confirm-ok">' + escapeHtml(confirmLabel) + '</button>' +
+            '</div></div>';
+        pdBody().appendChild(overlay);
+
+        function close(val) {
+            overlay.classList.remove('show');
+            overlay.addEventListener('transitionend', function h() {
+                overlay.removeEventListener('transitionend', h);
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                resolve(val);
+            });
+        }
+
+        overlay.querySelector('#ne-confirm-ok').addEventListener('click', function() { close(true); });
+        overlay.querySelector('#ne-confirm-cancel').addEventListener('click', function() { close(false); });
+        overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
+        document.addEventListener('keydown', function escHandler(e) {
+            if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); close(false); }
+        });
+
+        requestAnimationFrame(function() { overlay.classList.add('show'); });
+    });
 }
 
 export var _updatingPopout = false;
 export var _currentGetChatId = null;
 export var _vaultChangeBound = false;
+
+// ── L3: Empty state helper ──
+export function emptyStateHtml(icon, text, hint) {
+    return '<div class="ne-empty-state">' +
+        (icon ? '<div class="ne-empty-state-icon"><i class="fa-solid ' + icon + '"></i></div>' : '') +
+        '<div class="ne-empty-state-text">' + text + '</div>' +
+        (hint ? '<div class="ne-empty-state-hint">' + hint + '</div>' : '') +
+        '</div>';
+}
+
 export function setUpdatingPopout(v) { _updatingPopout = v; }
 export function setCurrentGetChatId(v) { _currentGetChatId = v; }
 export function setVaultChangeBound(v) { _vaultChangeBound = v; }

@@ -69,6 +69,21 @@ export function setupAccordionHandlers(chatId) {
             if (acc.id === 'ne-tool-history') renderHistory(_currentGetChatId);
         }
     });
+    // ── L3: Accordion keyboard support (Enter/Space) ──
+    overlay.addEventListener('keydown', function(e) {
+        if (e.key !== 'Enter' && e.key !== ' ') return;
+        var path = e.composedPath();
+        var header = null;
+        for (var i = 0; i < path.length; i++) {
+            if (path[i] && path[i].closest) {
+                header = path[i].closest('.ne-accordion-header');
+                if (header) break;
+            }
+        }
+        if (!header) return;
+        e.preventDefault();
+        header.click();
+    });
 }
 
 export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
@@ -82,9 +97,9 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
     };
     addItem('ne-acc-stm', 'STM', stmCount, true);
     addItem('ne-acc-ltm', 'LTM', ltmCount, true);
-    addItem('ne-acc-characters', '角色', charCount, true);
-    addItem('ne-acc-quests', '任务', questCount, true);
-    addItem('ne-acc-factions', '势力', factionCount, true);
+    addItem('ne-acc-characters', t('Characters'), charCount, true);
+    addItem('ne-acc-quests', t('Quests & Events'), questCount, true);
+    addItem('ne-acc-factions', t('Factions'), factionCount, true);
     idx.innerHTML = html;
     panelQSA('.ne-index-item').forEach(function(item) {
         item.onclick = function() {
@@ -202,4 +217,49 @@ export function injectStateBanner(messageId) {
     if (globalThis.__ne_injectStateBanner) {
         globalThis.__ne_injectStateBanner(messageId);
     }
+}
+
+// ── L3: Mobile gesture swipe-down to close ──
+var _gestureBound = false;
+export function setupMobileGestureClose() {
+    if (_gestureBound) return;
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (!overlay) return;
+    _gestureBound = true;
+
+    var startY = 0, movedY = 0, tracking = false;
+    overlay.addEventListener('touchstart', function(e) {
+        var bar = e.composedPath().find(function(el) { return el && el.classList && el.classList.contains('ne-vault-collapse-bar'); });
+        if (!bar) return;
+        if (overlay.scrollTop > 5) return; // not at top
+        tracking = true;
+        startY = e.touches[0].clientY;
+        overlay.style.transition = 'none';
+    }, { passive: false });
+    overlay.addEventListener('touchmove', function(e) {
+        if (!tracking) return;
+        movedY = e.touches[0].clientY - startY;
+        if (movedY > 0) {
+            overlay.style.transform = 'translateY(' + movedY + 'px)';
+        } else {
+            overlay.style.transform = 'translateY(0)';
+        }
+    }, { passive: false });
+    overlay.addEventListener('touchend', function() {
+        if (!tracking) return;
+        tracking = false;
+        overlay.style.transition = '';
+        if (movedY > 60) {
+            overlay.classList.remove('open');
+            overlay.addEventListener('transitionend', function h() {
+                overlay.removeEventListener('transitionend', h);
+                overlay.style.display = 'none';
+            });
+            var chat = byId('chat');
+            if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+        } else {
+            overlay.style.transform = '';
+        }
+        movedY = 0;
+    });
 }

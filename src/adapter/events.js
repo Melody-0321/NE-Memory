@@ -7,6 +7,7 @@ import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
+import { showToast } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
@@ -818,11 +819,8 @@ function registerGlobalBannerRegex() {
         _ensureBannerCSS();
         _globalBannerRegexRegistered = true;
         if (updatedCount > 0) {
-            var msg = 'NE State Banner \u5df2\u66f4\u65b0\u5230 v' + _BANNER_VERSION;
-            if (typeof toastr !== 'undefined' && toastr.success) {
-                toastr.success(msg, '', { timeOut: 3000 });
-            }
-            console.log('[NE-BANNER] ' + msg + ' (' + updatedCount + ' entries)');
+            showToast('NE State Banner updated to v' + _BANNER_VERSION + ' (' + updatedCount + ' entries)', 'success');
+            console.log('[NE-BANNER] Updated to v' + _BANNER_VERSION + ' (' + updatedCount + ' entries)');
         }
         return true;
     } catch (e) {

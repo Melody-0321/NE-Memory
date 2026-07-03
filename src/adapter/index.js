@@ -10,6 +10,7 @@ import { registerAllTools } from '../core/tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
+import { showToast } from './panel-shared.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
 import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -199,10 +200,8 @@ Object.assign(runtime, {
     },
     notify: function(msg, title, opts) {
         try {
-            if (typeof toastr !== 'undefined') {
-                if (toastr.info) toastr.info(msg, title || '', opts || { timeOut: 3000 });
-                else toastr.success(msg, title || '', opts || { timeOut: 3000 });
-            }
+            var type = opts && opts.type ? opts.type : 'info';
+            showToast(msg, type, (opts && opts.timeOut) || 3000);
         } catch (e) {}
     },
     confirm: function(msg) {

@@ -6,7 +6,7 @@ import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { read } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
-  closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA } from './panel-shared.js';
+  closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA, showConfirm, emptyStateHtml } from './panel-shared.js';
 import { renderVaultPanel } from './panel-init.js';
 import { renderSettingsTab } from './panel-settings.js';
 
@@ -16,13 +16,21 @@ export function createVaultPopout(getChatId) {
     var opening = !overlay.classList.contains('open');
     var chat = byId('chat');
     if (opening) {
-        if (chat) chat.style.display = 'none';
-        overlay.classList.add('open');
+        if (chat) { chat.style.opacity = '0'; chat.style.pointerEvents = 'none'; chat.style.transition = 'opacity var(--ne-transition-normal)'; }
+        overlay.style.display = 'flex';
+        overlay.scrollTop = 0;
+        requestAnimationFrame(function() {
+            overlay.classList.add('open');
+        });
         busEmit('vault:updated', { getChatId: getChatId });
         renderSettingsTab();
     } else {
         overlay.classList.remove('open');
-        if (chat) chat.style.display = '';
+        overlay.addEventListener('transitionend', function handler() {
+            overlay.removeEventListener('transitionend', handler);
+            overlay.style.display = 'none';
+        });
+        if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
     }
 }
 
@@ -35,7 +43,7 @@ export async function renderHistory(getChatId) {
     try {
         var snapshots = await listSnapshots(getChatId());
         if (!snapshots || snapshots.length === 0) {
-            container.innerHTML = '<div style="color:#888;padding:8px 0;">' + t('No history yet') + '</div>';
+            container.innerHTML = emptyStateHtml('fa-clock-rotate-left', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
         }
         var html = '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.85em;">' +
@@ -54,7 +62,7 @@ export async function renderHistory(getChatId) {
         panelQSA('.narrative_restore_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 var ver = parseInt(btn.getAttribute('data-ver'));
-                if (confirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
+                if (await showConfirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
                     await restoreSnapshot(getChatId(), ver);
                     busEmit('vault:updated', { getChatId: getChatId });
                 }
@@ -63,7 +71,7 @@ export async function renderHistory(getChatId) {
         panelQSA('.narrative_del_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 var ver = parseInt(btn.getAttribute('data-ver'));
-                if (confirm(t('Confirm delete v{VER}?').replace('{VER}', ver))) {
+                if (await showConfirm(t('Confirm delete v{VER}?').replace('{VER}', ver), null, null, null, true)) {
                     await deleteSnapshot(getChatId(), ver);
                     renderHistory(getChatId);
                 }

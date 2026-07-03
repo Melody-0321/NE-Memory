@@ -111,6 +111,9 @@ export const NARRATIVE_I18N = {
         'Running...': 'Running...',
         'Passed': 'Passed',
         'Failed': 'Failed',
+        'count_label': ' entries', 'in_progress_label': ' [In Progress]', 'turns_suffix': ' turns',
+        'status_unknown': 'Unknown', 'empty_value': '(Not filled)', 'hidden_faction': 'Not contacted',
+        'Search': 'Search', 'Search memory entries': 'Search memory entries',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -213,6 +216,9 @@ export const NARRATIVE_I18N = {
         'Running...': '执行中...',
         'Passed': '通过',
         'Failed': '失败',
+        'count_label': '条', 'in_progress_label': ' [进行中]', 'turns_suffix': '轮',
+        'status_unknown': '未知', 'empty_value': '(未填)', 'hidden_faction': '未接触',
+        'Search': '搜索', 'Search memory entries': '搜索记忆条目',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -303,6 +309,9 @@ export const NARRATIVE_I18N = {
         'User Chat': '使用者對話',
         'Current Chat': '當前對話',
         'No data': '暫無數據',
+        'count_label': '條', 'in_progress_label': ' [進行中]', 'turns_suffix': '輪',
+        'status_unknown': '未知', 'empty_value': '(未填)', 'hidden_faction': '未接觸',
+        'Search': '搜尋', 'Search memory entries': '搜尋記憶條目',
     }
 };
 

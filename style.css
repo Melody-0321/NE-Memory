@@ -5,16 +5,16 @@
   /* ── Semantic Color Tokens ── */
   --ne-success: #4caf50;
   --ne-success-bg: rgba(76, 175, 80, 0.12);
-  --ne-success-border: rgba(76, 175, 80, 0.25);
-  --ne-warning: #ff9800;
-  --ne-warning-bg: rgba(255, 152, 0, 0.10);
-  --ne-warning-border: rgba(255, 152, 0, 0.22);
-  --ne-danger: #f44336;
-  --ne-danger-bg: rgba(244, 67, 54, 0.10);
-  --ne-danger-border: rgba(244, 67, 54, 0.22);
+  --ne-success-border: rgba(76, 175, 80, 0.3);
+  --ne-warning: #f0ad4e;
+  --ne-warning-bg: rgba(240, 173, 78, 0.12);
+  --ne-warning-border: rgba(240, 173, 78, 0.3);
+  --ne-danger: #e53935;
+  --ne-danger-bg: rgba(229, 57, 53, 0.12);
+  --ne-danger-border: rgba(229, 57, 53, 0.3);
   --ne-info: #2196f3;
-  --ne-info-bg: rgba(33, 150, 243, 0.10);
-  --ne-info-border: rgba(33, 150, 243, 0.22);
+  --ne-info-bg: rgba(33, 150, 243, 0.12);
+  --ne-info-border: rgba(33, 150, 243, 0.3);
   --ne-muted: #888;
   --ne-muted-bg: rgba(136, 136, 136, 0.08);
 
@@ -36,12 +36,25 @@
 
   /* ── Border Radius ── */
   --ne-radius-sm: 4px;
-  --ne-radius-md: 6px;
-  --ne-radius-lg: 8px;
+  --ne-radius-md: 8px;
+  --ne-radius-lg: 12px;
 
   /* ── Transitions ── */
-  --ne-transition-fast: 0.15s ease;
-  --ne-transition-normal: 0.2s ease;
+  --ne-transition-fast: 0.15s;
+  --ne-transition-normal: 0.2s;
+  --ne-transition-slow: 0.35s;
+
+  /* ── Easing ── */
+  --ne-easing-standard: cubic-bezier(0.4, 0, 0.2, 1);
+  --ne-easing-decelerate: cubic-bezier(0, 0, 0.2, 1);
+  --ne-easing-accelerate: cubic-bezier(0.4, 0, 1, 1);
+
+  /* ── Shadows ── */
+  --ne-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.12);
+  --ne-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+
+  /* ── Z-Index ── */
+  --ne-z-overlay: 1000;
 }
 
 #narrative_settings {

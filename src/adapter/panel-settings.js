@@ -6,7 +6,7 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage,
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
-import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast } from './panel-shared.js';
 
 export function renderSettingsTab() {
     var container = panelById('ne_common_settings');
@@ -202,10 +202,10 @@ export function renderSettingsTab() {
             if (!cfg.url) { alert('Please enter an API URL first.'); return; }
             if (testBtn) testBtn.disabled = true;
             sendSecondaryTestMessage(cfg).then(function () {
-                typeof toastr !== 'undefined' && toastr.success(t('API connection successful!'));
+                showToast(t('API connection successful!'), 'success');
                 if (testBtn) testBtn.disabled = false;
             }).catch(function (e) {
-                typeof toastr !== 'undefined' && toastr.error(t('API connection failed. Check browser console (F12) for details.'));
+                showToast(t('API connection failed. Check browser console (F12) for details.'), 'error');
                 if (testBtn) testBtn.disabled = false;
             });
         };

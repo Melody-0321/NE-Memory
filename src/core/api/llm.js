@@ -203,7 +203,7 @@ function notifySecondaryApiFailure(reason) {
     if (now - _lastSecondaryApiWarn < 60000) return; // at most once per minute
     _lastSecondaryApiWarn = now;
     try {
-        runtime.notify('Falling back to main API. ' + (reason || 'Connection failed'), 'Secondary API unreachable', { timeOut: 6000 });
+        runtime.notify('Falling back to main API. ' + (reason || 'Connection failed'), 'Secondary API unreachable', { timeOut: 6000, type: 'warning' });
     } catch (e) {}
 }
 
