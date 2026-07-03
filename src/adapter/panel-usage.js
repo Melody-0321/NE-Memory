@@ -38,13 +38,13 @@ export async function renderUsageTab() {
 
     var html = '';
 
-    /* Section A: Cards */
+    /* Section A: Cards — Chat / Today / Month */
     html += '<div class="ne-usage-section">' +
-        '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('This Session') + ' / ' + t('This Month') + ' / ' + t('All Time') + '</div>' +
+        '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('Current Chat') + ' / ' + t('Today') + ' / ' + t('This Month') + '</div>' +
         '<div class="ne-usage-cards">' +
         '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-arrows-rotate"></i> ' + fmt(overview.sessionTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.sessionNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.sessionChat) + '</div><div class="ne-usage-card-sub">' + (overview.sessionTurns || 0) + ' ' + t('Turns') + ' | ' + t('Avg / Turn') + ': ' + fmt(overview.sessionAvgPerTurn) + '</div></div>' +
+        '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-sun"></i> ' + fmt(overview.todayTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.todayNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.todayChat) + '</div><div class="ne-usage-card-sub">&nbsp;</div></div>' +
         '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-calendar-days"></i> ' + fmt(overview.monthTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.monthNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.monthChat) + '</div><div class="ne-usage-card-sub">' + (overview.monthDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.monthAvgPerDay) + '</div></div>' +
-        '<div class="ne-usage-card"><div class="ne-usage-card-value"><i class="fa-solid fa-table"></i> ' + fmt(overview.allTotal) + '</div><div class="ne-usage-card-sub"><i class="fa-solid fa-gears"></i> ' + t('NE Pipeline') + ': ' + fmt(overview.allNE) + ' | <i class="fa-solid fa-user"></i> ' + t('User Chat') + ': ' + fmt(overview.allChat) + '</div><div class="ne-usage-card-sub">' + (overview.totalDays || 0) + ' ' + t('Days') + ' | ' + t('Avg / Day') + ': ' + fmt(overview.allAvgPerDay) + '</div></div>' +
         '</div></div>';
 
     /* Section B: Pipeline breakdown — pie chart with scope dropdown */
@@ -52,8 +52,8 @@ export async function renderUsageTab() {
         '<div class="ne-usage-section-title"><i class="fa-solid fa-chart-bar"></i> ' + t('Pipeline Breakdown') + '</div>' +
         '<select id="ne-breakdown-scope">' +
         '<option value="chat">' + t('Current Chat') + '</option>' +
+        '<option value="today">' + t('Today') + '</option>' +
         '<option value="month">' + t('This Month') + '</option>' +
-        '<option value="all">' + t('All Time') + '</option>' +
         '</select>' +
         '<span id="ne-breakdown-month-wrap" style="display:none">' +
         '<select id="ne-breakdown-month"></select>' +
@@ -129,10 +129,12 @@ export async function renderUsageTab() {
         /* —— Breakdown pie chart —— */
         window._renderBreakdownPie = function() {
             var scopeSel = panelById('ne-breakdown-scope');
-            var scope = scopeSel ? scopeSel.value : 'all';
+            var scope = scopeSel ? scopeSel.value : 'today';
             var breakdown;
             if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
                 breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
+            } else if (scope === 'today') {
+                breakdown = overview.breakdown || { stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
             } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
                 var monthSel = panelById('ne-breakdown-month');
                 var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
