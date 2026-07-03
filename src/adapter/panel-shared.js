@@ -248,6 +248,7 @@ export function injectBottomDrawerCSS() {
         '.ne-btn-warning{background:var(--ne-warning-bg)!important;border-color:var(--ne-warning-border)!important;color:var(--ne-warning)!important;}' +
         '.ne-btn-danger{background:var(--ne-danger-bg)!important;border-color:var(--ne-danger-border)!important;color:var(--ne-danger)!important;}' +
         '.ne-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}' +
+        '.ne-settings-grid input, .ne-settings-grid select, .ne-settings-grid textarea{width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.9em;box-sizing:border-box;}' +
         '.ne-settings-grid>.ne-settings-full{grid-column:1/-1;}' +
         '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
         '.ne-settings-toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;margin:4px 0 6px;}' +
@@ -340,7 +341,15 @@ export function injectBottomDrawerCSS() {
         '.ne-mobile .ne-accordion-header{padding:6px 8px;font-size:0.88em;}' +
         '.ne-mobile .ne-quick-index{padding:2px 6px;}' +
         '.ne-mobile .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
-        '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}';
+        '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
+        (isShadow ? ':host{' : ':root{') +
+        '--ne-success:#4caf50;--ne-success-bg:rgba(76,175,80,0.12);--ne-success-border:rgba(76,175,80,0.3);' +
+        '--ne-warning:#f0ad4e;--ne-warning-bg:rgba(240,173,78,0.12);--ne-warning-border:rgba(240,173,78,0.3);' +
+        '--ne-danger:#e53935;--ne-danger-bg:rgba(229,57,53,0.12);--ne-danger-border:rgba(229,57,53,0.3);' +
+        '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,0.08);' +
+        '--ne-info:#2196f3;--ne-info-bg:rgba(33,150,243,0.12);--ne-info-border:rgba(33,150,243,0.3);' +
+        '--ne-transition-fast:0.15s;--ne-transition-normal:0.2s;' +
+        (isShadow ? '}' : '');
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
 
