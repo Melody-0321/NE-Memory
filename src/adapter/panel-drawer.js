@@ -1,3 +1,4 @@
+import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId } from './panel-shared.js';

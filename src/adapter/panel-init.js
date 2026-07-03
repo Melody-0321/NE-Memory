@@ -59,7 +59,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
-            '<span id="narrative_vault_activity" style="font-size:0.8em;color:#888;">\u25CF</span>' +
+            '<span id="narrative_vault_activity" style="font-size:0.8em;color:var(--ne-muted);">\u25CF</span>' +
             '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="font-size:0.75em;color:var(--ne-muted);cursor:help;" title=""></span>' +

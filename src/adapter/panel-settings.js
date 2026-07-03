@@ -29,6 +29,8 @@ export function renderSettingsTab() {
     var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + ' ' + statusDot + '</div>' +
         '<div class="ne-accordion-body">' +
+        // ── Pipeline status indicator ──
+        '<div class="ne-api-status" style="margin-bottom:8px;"><span class="ne-api-dot" id="nes_pipeline_dot"></span><span id="nes_pipeline_status_text">' + t('Pipeline ready') + '</span></div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('dialog_round_injection_control') + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
         '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.') + '</div>' +
@@ -72,6 +74,7 @@ export function renderSettingsTab() {
         '<div class="ne-accordion" id="ne-set-embedding">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Vector Search (Embedding API)') + '</div>' +
         '<div class="ne-accordion-body">' +
+        '<div class="ne-api-status" style="margin-bottom:8px;"><span class="ne-api-dot" id="nes_retrieval_dot"></span><span id="nes_retrieval_status_text">' + t('BM25 only (vector disabled)') + '</span></div>' +
         '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
         '<label><input type="checkbox" id="nes_enable_vector_search" ' + (enableVectorSearch ? 'checked' : '') + '> <span>' + t('Enable Vector Search') + '</span></label>' +
         '</div>' +
@@ -95,6 +98,29 @@ export function renderSettingsTab() {
         '</div>' +
         '</div></div>';
     container.innerHTML = commonHtml;
+
+    // ── Pipeline dot: green if secondary API is configured ──
+    var pipelineDot = byId('nes_pipeline_dot'), pipelineText = byId('nes_pipeline_status_text');
+    if (secApi.url && secApi.model) {
+        if (pipelineDot) pipelineDot.className = 'ne-api-dot ok';
+        if (pipelineText) pipelineText.textContent = t('Connected') + ': ' + secApi.model;
+    } else {
+        if (pipelineDot) pipelineDot.className = 'ne-api-dot';
+        if (pipelineText) pipelineText.textContent = t('Not connected') + ' — ' + t('configure_secondary_api');
+    }
+
+    // ── Retrieval dot: green if vector search enabled and embedding API configured ──
+    var retrievalDot = byId('nes_retrieval_dot'), retrievalText = byId('nes_retrieval_status_text');
+    if (enableVectorSearch && embApi.url && embApi.model) {
+        if (retrievalDot) retrievalDot.className = 'ne-api-dot ok';
+        if (retrievalText) retrievalText.textContent = t('Connected') + ': ' + embApi.model + ' (BM25+Vector)';
+    } else if (enableVectorSearch) {
+        if (retrievalDot) retrievalDot.className = 'ne-api-dot';
+        if (retrievalText) retrievalText.textContent = t('Not connected') + ' — ' + t('configure embedding API');
+    } else {
+        if (retrievalDot) retrievalDot.className = 'ne-api-dot';
+        if (retrievalText) retrievalText.textContent = t('BM25 only (vector disabled)');
+    }
 
     // Auto-initialize API status if config exists (from auto-connect on page load)
     if (secApi.url && secApi.model) {
@@ -184,6 +210,10 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 if (connBtn) connBtn.disabled = false;
+                // ── Also update pipeline dot ──
+                var pDot = byId('nes_pipeline_dot'), pText = byId('nes_pipeline_status_text');
+                if (pDot) pDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (pText) pText.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 var hdr = byId('narrative_secondary_api_status');
                 if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
             });
@@ -232,6 +262,10 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (' + r.dimensions + 'd)') : (t('Not connected') + ' — ' + (r.error || ''));
                 if (embConnBtn) embConnBtn.disabled = false;
+                // ── Also update retrieval dot ──
+                var rDot = byId('nes_retrieval_dot'), rText = byId('nes_retrieval_status_text');
+                if (rDot) rDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
+                if (rText) rText.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (BM25+Vector)') : (t('Not connected') + ' — ' + (r.error || ''));
             });
         };
         var embPresetBtn = byId('nes_embedding_preset');
