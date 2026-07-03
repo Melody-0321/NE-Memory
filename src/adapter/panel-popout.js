@@ -6,7 +6,7 @@ import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { read } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
-  closeVaultOverlay, sortLtmByMsgOrder, busEmit } from './panel-shared.js';
+  closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA } from './panel-shared.js';
 import { renderVaultPanel } from './panel-init.js';
 import { renderSettingsTab } from './panel-settings.js';
 
@@ -30,7 +30,7 @@ export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
 export { closeVaultOverlay };
 
 export async function renderHistory(getChatId) {
-    var container = byId('narrative_vault_history_list');
+    var container = panelById('narrative_vault_history_list');
     if (!container) return;
     try {
         var snapshots = await listSnapshots(getChatId());
@@ -51,7 +51,7 @@ export async function renderHistory(getChatId) {
         html += '</tbody></table>';
         container.innerHTML = html;
 
-        qsa('.narrative_restore_btn').forEach(function (btn) {
+        panelQSA('.narrative_restore_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 var ver = parseInt(btn.getAttribute('data-ver'));
                 if (confirm(t('Restore to version v{VER}?').replace('{VER}', ver))) {
@@ -60,7 +60,7 @@ export async function renderHistory(getChatId) {
                 }
             };
         });
-        qsa('.narrative_del_btn').forEach(function (btn) {
+        panelQSA('.narrative_del_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 var ver = parseInt(btn.getAttribute('data-ver'));
                 if (confirm(t('Confirm delete v{VER}?').replace('{VER}', ver))) {

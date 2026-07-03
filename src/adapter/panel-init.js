@@ -51,7 +51,7 @@ export async function renderVaultPanel(getChatId) {
             }
         });
         busOn('vault:updated', function() {
-            var usageTab = document.querySelector('.ne-vault-tab.active[data-tab="usage"]');
+            var usageTab = panelQS('.ne-vault-tab.active[data-tab="usage"]');
             if (usageTab) {
                 try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
             }
@@ -176,23 +176,49 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>';
 
         var sheld = byId('sheld');
-        if (sheld) {
-            sheld.insertAdjacentHTML('beforeend', drawerHtml);
-        } else {
+        if (!sheld) {
             console.error('[NE] #sheld not found');
             return;
+        }
+
+        // Create Shadow Root on #ne_vault_bottom_overlay for style isolation
+        var tempDiv = pdCreate('div');
+        tempDiv.innerHTML = drawerHtml;
+        var overlayEl = tempDiv.querySelector('#ne_vault_bottom_overlay');
+        if (!overlayEl) {
+            console.error('[NE] Failed to parse overlay from drawerHtml');
+            return;
+        }
+
+        var shadowRoot;
+        try {
+            shadowRoot = overlayEl.attachShadow({ mode: 'open' });
+        } catch (e) {
+            console.error('[NE] Shadow DOM not supported, falling back:', e.message);
+            shadowRoot = null;
+        }
+
+        if (shadowRoot) {
+            while (overlayEl.children.length > 0) {
+                shadowRoot.appendChild(overlayEl.children[0]);
+            }
+            setPanelRoot(shadowRoot);
+            sheld.appendChild(overlayEl);
+        } else {
+            setPanelRoot(null);
+            sheld.appendChild(overlayEl);
         }
 
         renderMemoryButton(getChatId);
         setupTabSwitching();
 
-        var collapseBar = qs('#ne_vault_bottom_overlay .ne-vault-collapse-bar');
+        var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
 
         setupAccordionHandlers(typeof getChatId === 'function' ? getChatId() : getChatId);
         var savedState = loadCollapseState(typeof getChatId === 'function' ? getChatId() : getChatId);
         if (savedState) {
-            qsa('#tab-memory .ne-accordion').forEach(function(acc) {
+            panelQSA('#tab-memory .ne-accordion').forEach(function(acc) {
                 if (acc.id && savedState[acc.id] === true) acc.classList.add('open');
                 else if (acc.id && savedState[acc.id] === false) acc.classList.remove('open');
             });
@@ -486,7 +512,8 @@ export async function renderVaultPanel(getChatId) {
 
         // LLM log entry & card expand/collapse
         pdAddEventListener('click', function (e) {
-            var header = e.target.closest('.ne_log_header');
+            var target = (e.composedPath && e.composedPath()[0]) || e.target;
+            var header = target.closest('.ne_log_header');
             if (header) {
                 var body = header.parentElement.querySelector('.ne_log_body');
                 if (!body) return;
@@ -496,10 +523,10 @@ export async function renderVaultPanel(getChatId) {
                 return;
             }
             // Character card toggle
-            var charHeader = e.target.closest('.ne_char_header');
+            var charHeader = target.closest('.ne_char_header');
             if (charHeader) {
                 var cardId = charHeader.getAttribute('data-card-id');
-                var detail = byId(cardId + '_detail');
+                var detail = panelById(cardId + '_detail');
                 var toggle = charHeader.querySelector('.ne_char_toggle');
                 if (detail) {
                     var vis = detail.style.display !== 'none';
@@ -509,10 +536,10 @@ export async function renderVaultPanel(getChatId) {
                 return;
             }
             // Faction card toggle
-            var factionHeader = e.target.closest('.ne_faction_header');
+            var factionHeader = target.closest('.ne_faction_header');
             if (factionHeader) {
                 var fCardId = factionHeader.getAttribute('data-card-id');
-                var fDetail = byId(fCardId + '_detail');
+                var fDetail = panelById(fCardId + '_detail');
                 var fToggle = factionHeader.querySelector('.ne_faction_toggle');
                 if (fDetail) {
                     var fVis = fDetail.style.display !== 'none';
@@ -522,7 +549,7 @@ export async function renderVaultPanel(getChatId) {
                 return;
             }
             // Quest card toggle
-            var questHeader = e.target.closest('.ne-quest-header');
+            var questHeader = target.closest('.ne-quest-header');
             if (questHeader) {
                 var qCard = questHeader.closest('.ne-quest-card');
                 var qDetail = qCard ? qCard.querySelector('.ne-quest-detail') : null;
@@ -530,15 +557,15 @@ export async function renderVaultPanel(getChatId) {
                 if (qDetail && qCard) {
                     qCard.classList.toggle('open');
                     qDetail.style.display = qCard.classList.contains('open') ? 'block' : 'none';
-                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '▾' : '▶';
+                    if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '\u25BE' : '\u25B6';
                 }
                 return;
             }
             // Character group toggle
-            var groupHeader = e.target.closest('.ne_group_header');
+            var groupHeader = target.closest('.ne_group_header');
             if (groupHeader) {
                 var groupId = groupHeader.getAttribute('data-group-id');
-                var cards = byId(groupId + '_cards');
+                var cards = panelById(groupId + '_cards');
                 var toggle = groupHeader.querySelector('.ne_group_toggle');
                 if (cards) {
                     var vis = cards.style.display !== 'none';

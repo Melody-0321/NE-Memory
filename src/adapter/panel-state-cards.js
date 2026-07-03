@@ -2,7 +2,7 @@ import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
-import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 
 var ACTIVE_STATUSES = ['活跃'];
@@ -588,7 +588,7 @@ function renderStmRow(stm, opts) {
 }
 
 export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
-    var tbody = qs(tbodyId);
+    var tbody = panelQS(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">(empty)</td></tr>'; return; }
@@ -674,7 +674,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         });
     }
     // Bind inline edit buttons
-    qsa(tbodyId + ' .ne-inline-edit-btn').forEach(function(btn) {
+    panelQSA(tbodyId + ' .ne-inline-edit-btn').forEach(function(btn) {
         btn.onclick = function() {
             var row = this.closest('tr');
             if (!row || row.classList.contains('ne-inline-row')) return;

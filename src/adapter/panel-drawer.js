@@ -1,7 +1,7 @@
 import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA } from './panel-shared.js';
 import { renderHistory, createVaultPopout } from './panel-popout.js';
 import { renderUsageTab } from './panel-usage.js';
 
@@ -11,7 +11,7 @@ export function setCurrentChatIdForCollapse(v) { _currentChatIdForCollapse = v; 
 
 export function saveCollapseState(chatId) {
     var state = {};
-    qsa('#tab-memory .ne-accordion').forEach(function(acc) {
+    panelQSA('#tab-memory .ne-accordion').forEach(function(acc) {
         if (acc.id) state[acc.id] = acc.classList.contains('open');
     });
     try { var k = 'ne_collapse_' + (chatId || _currentChatIdForCollapse || 'global');
@@ -28,7 +28,7 @@ export function loadCollapseState(chatId) {
 }
 
 export function navigateToAccordion(accId, chatId) {
-    var target = byId(accId);
+    var target = panelById(accId);
     if (!target) return;
     var parent = target.parentElement;
     while (parent) {
@@ -51,7 +51,14 @@ export function setupAccordionHandlers(chatId) {
     if (!overlay || overlay._neAccDel) return;
     overlay._neAccDel = true;
     overlay.addEventListener('click', function(e) {
-        var header = e.target.closest('.ne-vault-tab-content .ne-accordion-header');
+        var path = e.composedPath();
+        var header = null;
+        for (var i = 0; i < path.length; i++) {
+            if (path[i] && path[i].closest) {
+                header = path[i].closest('.ne-vault-tab-content .ne-accordion-header');
+                if (header) break;
+            }
+        }
         if (!header) return;
         var acc = header.closest('.ne-accordion');
         if (!acc) return;
@@ -65,7 +72,7 @@ export function setupAccordionHandlers(chatId) {
 }
 
 export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
-    var idx = byId('ne_quick_index');
+    var idx = panelById('ne_quick_index');
     if (!idx) return;
     var html = '';
     var addItem = function(id, label, count, show) {
@@ -79,7 +86,7 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
     addItem('ne-acc-quests', '任务', questCount, true);
     addItem('ne-acc-factions', '势力', factionCount, true);
     idx.innerHTML = html;
-    qsa('.ne-index-item').forEach(function(item) {
+    panelQSA('.ne-index-item').forEach(function(item) {
         item.onclick = function() {
             navigateToAccordion(this.getAttribute('data-target'), chatId);
         };
@@ -87,13 +94,13 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
 }
 
 export function setupTabSwitching() {
-    qsa('.ne-vault-tab').forEach(function(tab) {
+    panelQSA('.ne-vault-tab').forEach(function(tab) {
         tab.onclick = function() {
             var tabName = this.getAttribute('data-tab');
-            qsa('.ne-vault-tab').forEach(function(t) { t.classList.remove('active'); });
+            panelQSA('.ne-vault-tab').forEach(function(t) { t.classList.remove('active'); });
             this.classList.add('active');
-            qsa('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
-            var content = byId('tab-' + tabName);
+            panelQSA('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
+            var content = panelById('tab-' + tabName);
             if (content) content.classList.add('active');
             if (tabName === 'usage') {
                 try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab render failed:', e); }

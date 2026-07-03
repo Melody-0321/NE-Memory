@@ -6,7 +6,8 @@ import { t_narrative, t_field } from '../core/i18n.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
-  _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson } from './panel-shared.js';
+  _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
+  panelById, panelQS, panelQSA } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
@@ -20,11 +21,11 @@ export async function updateVaultViewerPopout(getChatId) {
     }
     console.log('[NE-VAULT] updateVaultViewerPopout start ts=' + Date.now());
     setUpdatingPopout(true);
-    var loading = byId('narrative_vault_loading');
-    var errDiv = byId('narrative_vault_panel_error');
+    var loading = panelById('narrative_vault_loading');
+    var errDiv = panelById('narrative_vault_panel_error');
     if (loading) loading.style.display = '';
     if (errDiv) errDiv.style.display = 'none';
-    var warnDiv = byId('narrative_vault_panel_storage_warn');
+    var warnDiv = panelById('narrative_vault_panel_storage_warn');
     if (warnDiv) {
         if (isStorageBlocked()) {
             warnDiv.textContent = t('Storage blocked: Memories cannot be saved. Disable tracking prevention for this site in your browser settings.');
@@ -56,14 +57,14 @@ export async function updateVaultViewerPopout(getChatId) {
 
     // ── Section A: Header (version + API status) ──
     try {
-        var verEl = byId('narrative_vault_panel_version');
+        var verEl = panelById('narrative_vault_panel_version');
         if (verEl) {
             var verText = t('Version:') + ' ' + (vault.version || 0);
             var ts = formatLocalTime(vault.updated_at);
             if (ts) verText += ' \u00b7 ' + ts;
             verEl.textContent = verText;
         }
-        var sceneEl = byId('narrative_vault_panel_scene');
+        var sceneEl = panelById('narrative_vault_panel_scene');
         if (sceneEl) {
             var sceneParts = [];
             if (c.story_time) sceneParts.push(c.story_time);
@@ -72,7 +73,7 @@ export async function updateVaultViewerPopout(getChatId) {
             if (c.state && c.state.main_event) sceneParts.push(c.state.main_event);
             sceneEl.textContent = sceneParts.join(' ─ ');
         }
-        var apiStatus = byId('narrative_secondary_api_status');
+        var apiStatus = panelById('narrative_secondary_api_status');
         if (apiStatus) {
             try {
                 var raw = localStorage.getItem('ne_secondary_api');
@@ -93,21 +94,21 @@ export async function updateVaultViewerPopout(getChatId) {
     if (!panelBody) { if (loading) loading.style.display = 'none'; setUpdatingPopout(false); return; }
 
     // 修复区域中嵌套 Accordion 面板的显示状态，将所有子 accordion-content 统一标记
-    qsa('.narrative_state_block').forEach(function (el) { el.remove(); });
-    qsa('.narrative_opening_block').forEach(function (el) { el.remove(); });
-    qsa('.narrative_faction_block').forEach(function (el) { el.remove(); });
-    qsa('.narrative_character_block').forEach(function (el) { el.remove(); });
-    qsa('.narrative_quest_block').forEach(function (el) { el.remove(); });
+    panelQSA('.narrative_state_block').forEach(function (el) { el.remove(); });
+    panelQSA('.narrative_opening_block').forEach(function (el) { el.remove(); });
+    panelQSA('.narrative_faction_block').forEach(function (el) { el.remove(); });
+    panelQSA('.narrative_character_block').forEach(function (el) { el.remove(); });
+    panelQSA('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
     // ── Section C: Character block ──
     try {
-        var charContainer = byId('ne_character_block_container');
+        var charContainer = panelById('ne_character_block_container');
         if (charContainer && isStateSchemaEnabled()) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             charContainer.innerHTML = charHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No character data') + ')</div>';
             setTimeout(function() {
-                var block = byId('ne_character_block_container');
+                var block = panelById('ne_character_block_container');
                 if (!block) return;
                 var buttons = block.querySelectorAll('.ne-card-edit-btn');
                 buttons.forEach(function(btn) {
@@ -122,7 +123,7 @@ export async function updateVaultViewerPopout(getChatId) {
 
     // ── Section D: Faction block ──
     try {
-        var factionContainer = byId('ne_faction_block_container');
+        var factionContainer = panelById('ne_faction_block_container');
         if (factionContainer && isStateSchemaEnabled()) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
             factionContainer.innerHTML = factionHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No faction data') + ')</div>';
@@ -131,7 +132,7 @@ export async function updateVaultViewerPopout(getChatId) {
 
     // ── Section E: Quest block ──
     try {
-        var questContainer = byId('ne_quest_block_container');
+        var questContainer = panelById('ne_quest_block_container');
         if (questContainer && isStateSchemaEnabled()) {
             var questHtml = renderQuestPanelHTML(c.state || {});
             questContainer.innerHTML = questHtml || '<div style="color:#888;font-size:0.85em;padding:4px 0;">(' + t('No quest data') + ')</div>';
@@ -198,9 +199,9 @@ export async function updateVaultViewerPopout(getChatId) {
 
     // ── Section H: Counts + quick index ──
     try {
-        var stmCountEl = byId('ne-stm-count');
+        var stmCountEl = panelById('ne-stm-count');
         if (stmCountEl) stmCountEl.textContent = '\u00B7 ' + stmCount + ' ' + t('entries');
-        var ltmCountEl = byId('ne-ltm-count');
+        var ltmCountEl = panelById('ne-ltm-count');
         if (ltmCountEl) ltmCountEl.textContent = '\u00B7 ' + ltmCount + ' ' + t('entries');
 
         var chars = (c.state && c.state.characters) ? c.state.characters : {};
@@ -210,11 +211,11 @@ export async function updateVaultViewerPopout(getChatId) {
         var quests = (c.state && c.state.quests) ? c.state.quests : {};
         var questCount = (quests.tasks ? Object.keys(quests.tasks).length : 0) + (quests.goals ? Object.keys(quests.goals).length : 0) + (quests.events ? Object.keys(quests.events).length : 0);
 
-        var charCountEl = byId('ne-char-count');
+        var charCountEl = panelById('ne-char-count');
         if (charCountEl) charCountEl.textContent = '\u00B7 ' + charCount;
-        var questCountEl = byId('ne-quest-count');
+        var questCountEl = panelById('ne-quest-count');
         if (questCountEl) questCountEl.textContent = '\u00B7 ' + questCount;
-        var factionCountEl = byId('ne-faction-count');
+        var factionCountEl = panelById('ne-faction-count');
         if (factionCountEl) factionCountEl.textContent = '\u00B7 ' + factionCount;
 
         var chatId = getChatId();
@@ -223,22 +224,22 @@ export async function updateVaultViewerPopout(getChatId) {
 
     // ── Section I: Event handlers ──
     try {
-        qsa('.ne-inline-state-edit-btn').forEach(function(btn) {
+        panelQSA('.ne-inline-state-edit-btn').forEach(function(btn) {
             btn.onclick = function() {
-                qs('.ne-inline-state-view').classList.add('hidden');
-                qs('.ne-inline-state-edit-area').classList.add('active');
+                panelQS('.ne-inline-state-view').classList.add('hidden');
+                panelQS('.ne-inline-state-edit-area').classList.add('active');
             };
         });
-        qsa('.ne-state-edit-cancel').forEach(function(btn) {
+        panelQSA('.ne-state-edit-cancel').forEach(function(btn) {
             btn.onclick = function() {
-                qs('.ne-inline-state-edit-area').classList.remove('active');
-                qs('.ne-inline-state-view').classList.remove('hidden');
+                panelQS('.ne-inline-state-edit-area').classList.remove('active');
+                panelQS('.ne-inline-state-view').classList.remove('hidden');
             };
         });
-        qsa('.ne-state-edit-save').forEach(function(btn) {
+        panelQSA('.ne-state-edit-save').forEach(function(btn) {
             btn.onclick = async function() {
                 try {
-                    var ta = byId('ne_state_edit_textarea');
+                    var ta = panelById('ne_state_edit_textarea');
                     var json = ta ? JSON.parse(ta.value) : {};
                     c.state = json;
                     await write(getChatId(), vault);
@@ -247,7 +248,7 @@ export async function updateVaultViewerPopout(getChatId) {
             };
         });
 
-        qsa('.narrative_clear_state_btn').forEach(function (btn) {
+        panelQSA('.narrative_clear_state_btn').forEach(function (btn) {
             btn.onclick = async function () {
                 try {
                     if (confirm(t('Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.'))) {

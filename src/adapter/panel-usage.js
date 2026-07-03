@@ -1,12 +1,12 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { isAuto, getTelemetryStats } from '../core/params.js';
-import { qs, qsa, byId, pdCreate, t, vaultLLMLog } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, vaultLLMLog, panelById, panelQS, panelQSA } from './panel-shared.js';
 
 var _chartInstances = {};
 
 export async function renderUsageTab() {
-    var container = byId('ne-usage-container');
+    var container = panelById('ne-usage-container');
     if (!container) return;
 
     var debug = globalThis.__ne_debug;
@@ -93,8 +93,8 @@ export async function renderUsageTab() {
 
         /* Populate month dropdowns */
         var months = debug2 && debug2.getAvailableMonths ? debug2.getAvailableMonths() : [];
-        var breakdownMonthSel = byId('ne-breakdown-month');
-        var dailyMonthSel = byId('ne-daily-month');
+        var breakdownMonthSel = panelById('ne-breakdown-month');
+        var dailyMonthSel = panelById('ne-daily-month');
         if (months.length > 0) {
             for (var mi = 0; mi < months.length; mi++) {
                 var m = months[mi];
@@ -105,13 +105,13 @@ export async function renderUsageTab() {
 
         /* —— Breakdown pie chart —— */
         window._renderBreakdownPie = function() {
-            var scopeSel = byId('ne-breakdown-scope');
+            var scopeSel = panelById('ne-breakdown-scope');
             var scope = scopeSel ? scopeSel.value : 'all';
             var breakdown;
             if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
                 breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
             } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
-                var monthSel = byId('ne-breakdown-month');
+                var monthSel = panelById('ne-breakdown-month');
                 var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
                 breakdown = debug2.getMonthlyBreakdown(monthVal);
             } else {
@@ -122,7 +122,7 @@ export async function renderUsageTab() {
             var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.sp) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
             var bSum = bData[0] + bData[1] + bData[2] + bData[3] + bData[4];
 
-            var emptyEl = byId('ne-breakdown-empty');
+            var emptyEl = panelById('ne-breakdown-empty');
             if (bSum === 0) {
                 if (emptyEl) emptyEl.style.display = '';
                 if (_chartInstances.pie) { _chartInstances.pie.destroy(); _chartInstances.pie = null; }
@@ -130,7 +130,7 @@ export async function renderUsageTab() {
             }
             if (emptyEl) emptyEl.style.display = 'none';
 
-            var pieCtx = byId('ne-breakdown-pie-canvas');
+            var pieCtx = panelById('ne-breakdown-pie-canvas');
             if (!pieCtx || !window.Chart) return;
             if (_chartInstances.pie) _chartInstances.pie.destroy();
             _chartInstances.pie = new Chart(pieCtx, {
@@ -155,11 +155,11 @@ export async function renderUsageTab() {
 
         /* —— Daily bar chart —— */
         window._renderDailyBar = function() {
-            var monthSel = byId('ne-daily-month');
+            var monthSel = panelById('ne-daily-month');
             var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
             var dailyData = debug2 && debug2.getMonthlyStats ? debug2.getMonthlyStats(monthVal) : [];
 
-            var emptyEl = byId('ne-daily-bar-empty');
+            var emptyEl = panelById('ne-daily-bar-empty');
             if (dailyData.length === 0) {
                 if (emptyEl) emptyEl.style.display = '';
                 if (_chartInstances.dailyBar) { _chartInstances.dailyBar.destroy(); _chartInstances.dailyBar = null; }
@@ -167,7 +167,7 @@ export async function renderUsageTab() {
             }
             if (emptyEl) emptyEl.style.display = 'none';
 
-            var barCtx = byId('ne-daily-bar-canvas');
+            var barCtx = panelById('ne-daily-bar-canvas');
             if (!barCtx || !window.Chart) return;
             if (_chartInstances.dailyBar) _chartInstances.dailyBar.destroy();
             _chartInstances.dailyBar = new Chart(barCtx, {

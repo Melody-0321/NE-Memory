@@ -1,10 +1,10 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, panelById, panelQS, panelQSA } from './panel-shared.js';
 
 export function initTestRunner() {
     if (!window.__NE_DEV_MODE) return;
-    var container = byId('ne-tr-container');
+    var container = panelById('ne-tr-container');
     if (!container) return;
 
     var debug = globalThis.__ne_debug;
@@ -59,8 +59,8 @@ export function initTestRunner() {
 }
 
 function setupTestRunnerEvents() {
-    var slider = byId('ne-tr-smoke-slider');
-    var sliderVal = byId('ne-tr-smoke-slider-value');
+    var slider = panelById('ne-tr-smoke-slider');
+    var sliderVal = panelById('ne-tr-smoke-slider-value');
     if (slider && sliderVal) {
         updateSmokeSliderDefault();
 
@@ -68,7 +68,7 @@ function setupTestRunnerEvents() {
             sliderVal.textContent = slider.value;
         };
 
-        var smokeSelect = byId('ne-tr-smoke-select');
+        var smokeSelect = panelById('ne-tr-smoke-select');
         if (smokeSelect) {
             smokeSelect.onchange = function() {
                 updateSmokeSliderDefault();
@@ -76,41 +76,41 @@ function setupTestRunnerEvents() {
         }
     }
 
-    var smokeRun = byId('ne-tr-smoke-run');
+    var smokeRun = panelById('ne-tr-smoke-run');
     if (smokeRun) {
         smokeRun.onclick = function() {
-            var select = byId('ne-tr-smoke-select');
+            var select = panelById('ne-tr-smoke-select');
             var name = select ? select.value : '';
             if (!name) return;
-            var slider = byId('ne-tr-smoke-slider');
+            var slider = panelById('ne-tr-smoke-slider');
             var maxRounds = slider ? parseInt(slider.value, 10) : undefined;
             runTestFromUI(name, maxRounds);
         };
     }
 
-    var smokeExport = byId('ne-tr-smoke-export');
+    var smokeExport = panelById('ne-tr-smoke-export');
     if (smokeExport) {
         smokeExport.onclick = function() {
-            var select = byId('ne-tr-smoke-select');
+            var select = panelById('ne-tr-smoke-select');
             _exportTestName = select ? select.value : '';
             exportTestResults();
         };
     }
 
-    var funcRun = byId('ne-tr-func-run');
+    var funcRun = panelById('ne-tr-func-run');
     if (funcRun) {
         funcRun.onclick = function() {
-            var select = byId('ne-tr-func-select');
+            var select = panelById('ne-tr-func-select');
             var name = select ? select.value : '';
             if (!name) return;
             runTestFromUI(name);
         };
     }
 
-    var funcExport = byId('ne-tr-func-export');
+    var funcExport = panelById('ne-tr-func-export');
     if (funcExport) {
         funcExport.onclick = function() {
-            var select = byId('ne-tr-func-select');
+            var select = panelById('ne-tr-func-select');
             _exportTestName = select ? select.value : '';
             exportTestResults();
         };
@@ -118,9 +118,9 @@ function setupTestRunnerEvents() {
 }
 
 function updateSmokeSliderDefault() {
-    var select = byId('ne-tr-smoke-select');
-    var slider = byId('ne-tr-smoke-slider');
-    var sliderVal = byId('ne-tr-smoke-slider-value');
+    var select = panelById('ne-tr-smoke-select');
+    var slider = panelById('ne-tr-smoke-slider');
+    var sliderVal = panelById('ne-tr-smoke-slider-value');
     if (!select || !slider || !sliderVal) return;
 
     var name = select.value;
@@ -140,11 +140,11 @@ var _lastTestResult = null;
 var _exportTestName = null;
 
 async function runTestFromUI(name, maxRoundsOverride) {
-    var runBtn = byId('ne-tr-smoke-run') || byId('ne-tr-func-run');
-    var exportBtn = byId('ne-tr-smoke-export') || byId('ne-tr-func-export');
-    var statusEl = byId('ne-tr-status');
-    var resultEl = byId('ne-tr-result');
-    var traceEl = byId('ne-tr-trace');
+    var runBtn = panelById('ne-tr-smoke-run') || panelById('ne-tr-func-run');
+    var exportBtn = panelById('ne-tr-smoke-export') || panelById('ne-tr-func-export');
+    var statusEl = panelById('ne-tr-status');
+    var resultEl = panelById('ne-tr-result');
+    var traceEl = panelById('ne-tr-trace');
     var debug = globalThis.__ne_debug;
 
     runBtn.disabled = true;
@@ -201,7 +201,7 @@ function renderTestResult(result, resultEl, traceEl) {
     var traceContent = (result.trace || result.report || '');
     traceEl.textContent = traceContent;
 
-    byId('ne-tr-toggle-trace').onclick = function() {
+    panelById('ne-tr-toggle-trace').onclick = function() {
         traceEl.classList.toggle('open');
         this.textContent = traceEl.classList.contains('open') ? t('Hide Trace') : t('Show Trace');
     };
@@ -239,9 +239,9 @@ async function exportTestResults() {
             await w2.close();
         }
 
-        byId('ne-tr-status').textContent = '\u2705 ' + t('Exported to') + ' ' + folder + '/';
+        panelById('ne-tr-status').textContent = '\u2705 ' + t('Exported to') + ' ' + folder + '/';
     } catch (e) {
         console.error('[NE] Export failed:', e);
-        byId('ne-tr-status').textContent = '\u274C ' + t('Export failed') + ': ' + e.message;
+        panelById('ne-tr-status').textContent = '\u274C ' + t('Export failed') + ': ' + e.message;
     }
 }

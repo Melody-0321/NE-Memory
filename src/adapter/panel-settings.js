@@ -6,11 +6,11 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage,
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
-import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA } from './panel-shared.js';
 
 export function renderSettingsTab() {
-    var container = byId('ne_common_settings');
-    var advContainer = byId('ne_advanced_settings');
+    var container = panelById('ne_common_settings');
+    var advContainer = panelById('ne_advanced_settings');
     if (!container) return;
     var settings = {};
     try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
@@ -100,7 +100,7 @@ export function renderSettingsTab() {
     container.innerHTML = commonHtml;
 
     // ── Pipeline dot: green if secondary API is configured ──
-    var pipelineDot = byId('nes_pipeline_dot'), pipelineText = byId('nes_pipeline_status_text');
+    var pipelineDot = panelById('nes_pipeline_dot'), pipelineText = panelById('nes_pipeline_status_text');
     if (secApi.url && secApi.model) {
         if (pipelineDot) pipelineDot.className = 'ne-api-dot ok';
         if (pipelineText) pipelineText.textContent = t('Connected') + ': ' + secApi.model;
@@ -110,7 +110,7 @@ export function renderSettingsTab() {
     }
 
     // ── Retrieval dot: green if vector search enabled and embedding API configured ──
-    var retrievalDot = byId('nes_retrieval_dot'), retrievalText = byId('nes_retrieval_status_text');
+    var retrievalDot = panelById('nes_retrieval_dot'), retrievalText = panelById('nes_retrieval_status_text');
     if (enableVectorSearch && embApi.url && embApi.model) {
         if (retrievalDot) retrievalDot.className = 'ne-api-dot ok';
         if (retrievalText) retrievalText.textContent = t('Connected') + ': ' + embApi.model + ' (BM25+Vector)';
@@ -125,18 +125,18 @@ export function renderSettingsTab() {
     // Auto-initialize API status if config exists (from auto-connect on page load)
     if (secApi.url && secApi.model) {
         setTimeout(function () {
-            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+            var dot = panelById('nes_api_dot'), text = panelById('nes_api_status_text');
             testSecondaryApiConnection(secApi).then(function (r) {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                var hdr = byId('narrative_secondary_api_status');
+                var hdr = panelById('narrative_secondary_api_status');
                 if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
             });
         }, 100);
     }
     if (enableVectorSearch && embApi.url && embApi.model) {
         setTimeout(function () {
-            var dot = byId('nes_embedding_dot'), text = byId('nes_embedding_status_text');
+            var dot = panelById('nes_embedding_dot'), text = panelById('nes_embedding_status_text');
             testEmbeddingApiConnection(embApi).then(function (r) {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + embApi.model + ' (' + r.dimensions + 'd)') : (t('Not connected') + ' — ' + (r.error || ''));
@@ -165,21 +165,21 @@ export function renderSettingsTab() {
 
     // --- Event bindings (save on every change) ---
     // Range sliders — update value display + save
-    var tEl = byId('nes_extraction_temperature');
-    if (tEl) { tEl.oninput = function () { var v = byId('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); saveSettingsTab(); }; }
-    var bEl = byId('nes_memory_budget');
-    if (bEl) { bEl.oninput = function () { var v = byId('nes_budget_val'); if (v) v.textContent = bEl.value; saveSettingsTab(); }; }
-    var sbEl = byId('nes_stm_batch');
-    if (sbEl) { sbEl.oninput = function () { var v = byId('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
-    var suEl = byId('nes_stm_max_unconsolidated');
-    if (suEl) { suEl.oninput = function () { var v = byId('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
-    var cwEl = byId('nes_dialog_window_rounds');
-    if (cwEl) { cwEl.oninput = function () { var v = byId('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
-    var ovEl = byId('nes_dialog_override_enabled');
+    var tEl = panelById('nes_extraction_temperature');
+    if (tEl) { tEl.oninput = function () { var v = panelById('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); saveSettingsTab(); }; }
+    var bEl = panelById('nes_memory_budget');
+    if (bEl) { bEl.oninput = function () { var v = panelById('nes_budget_val'); if (v) v.textContent = bEl.value; saveSettingsTab(); }; }
+    var sbEl = panelById('nes_stm_batch');
+    if (sbEl) { sbEl.oninput = function () { var v = panelById('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
+    var suEl = panelById('nes_stm_max_unconsolidated');
+    if (suEl) { suEl.oninput = function () { var v = panelById('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
+    var cwEl = panelById('nes_dialog_window_rounds');
+    if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
+    var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
     // Checkboxes — save on change
     // Auto toggles — save to params auto map and re-render
-    var autoSb = byId('nes_stm_batch_auto');
+    var autoSb = panelById('nes_stm_batch_auto');
     if (autoSb) {
         autoSb.onchange = function () {
             setAuto('stmBatch', autoSb.checked);
@@ -187,22 +187,22 @@ export function renderSettingsTab() {
         };
     }
     // Textareas — save on blur (not every keystroke to avoid perf issues)
-    var ta1 = byId('nes_state_schema');
+    var ta1 = panelById('nes_state_schema');
     if (ta1) ta1.onblur = function () { saveSettingsTab(); };
-    var ta2 = byId('nes_character_schema');
+    var ta2 = panelById('nes_character_schema');
     if (ta2) ta2.onblur = function () { saveSettingsTab(); };
     // Secondary API inputs — save on blur
-    var urlEl = byId('nes_secondary_url');
+    var urlEl = panelById('nes_secondary_url');
     if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
-    var keyEl = byId('nes_secondary_key');
+    var keyEl = panelById('nes_secondary_key');
     if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
-    var modelEl = byId('nes_secondary_model');
+    var modelEl = panelById('nes_secondary_model');
     if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
-    var connBtn = byId('nes_api_connect');
+    var connBtn = panelById('nes_api_connect');
     if (connBtn) connBtn.onclick = function () {
-            var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+            var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: panelById('nes_secondary_model').value.trim() };
             saveSecondaryApiConfig(cfg);
-            var dot = byId('nes_api_dot'), text = byId('nes_api_status_text');
+            var dot = panelById('nes_api_dot'), text = panelById('nes_api_status_text');
             if (dot) dot.className = 'ne-api-dot';
             if (text) text.textContent = t('Connecting...');
             if (connBtn) connBtn.disabled = true;
@@ -211,16 +211,16 @@ export function renderSettingsTab() {
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 if (connBtn) connBtn.disabled = false;
                 // ── Also update pipeline dot ──
-                var pDot = byId('nes_pipeline_dot'), pText = byId('nes_pipeline_status_text');
+                var pDot = panelById('nes_pipeline_dot'), pText = panelById('nes_pipeline_status_text');
                 if (pDot) pDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (pText) pText.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
-                var hdr = byId('narrative_secondary_api_status');
+                var hdr = panelById('narrative_secondary_api_status');
                 if (hdr) { hdr.style.color = r.success ? 'var(--ne-success)' : 'var(--ne-muted)'; hdr.textContent = r.success ? '\u26A1' : ''; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
             });
         };
-        var testBtn = byId('nes_api_test');
+        var testBtn = panelById('nes_api_test');
         if (testBtn) testBtn.onclick = function () {
-            var cfg = { url: byId('nes_secondary_url').value.trim(), key: byId('nes_secondary_key').value.trim(), model: byId('nes_secondary_model').value.trim() };
+            var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: panelById('nes_secondary_model').value.trim() };
             if (!cfg.url) { alert('Please enter an API URL first.'); return; }
             if (testBtn) testBtn.disabled = true;
             sendSecondaryTestMessage(cfg).then(function () {
@@ -232,17 +232,17 @@ export function renderSettingsTab() {
             });
         };
 
-    var embEnable = byId('nes_enable_vector_search');
+    var embEnable = panelById('nes_enable_vector_search');
     if (embEnable) {
         embEnable.onchange = function () {
             var settings = {};
             try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
             settings.enableVectorSearch = embEnable.checked;
             localStorage.setItem('ne_settings', JSON.stringify(settings));
-            var config = document.getElementById('ne-embedding-config');
+            var config = panelById('ne-embedding-config');
             if (config) config.style.display = embEnable.checked ? 'block' : 'none';
             // ── Update retrieval dot on toggle ──
-            var rDot = byId('nes_retrieval_dot'), rText = byId('nes_retrieval_status_text');
+            var rDot = panelById('nes_retrieval_dot'), rText = panelById('nes_retrieval_status_text');
             if (embEnable.checked) {
                 if (rDot) rDot.className = 'ne-api-dot';
                 if (rText) rText.textContent = t('Not connected') + ' — ' + t('configure embedding API');
@@ -253,17 +253,17 @@ export function renderSettingsTab() {
         };
     }
     if (enableVectorSearch) {
-        var embUrlEl = byId('nes_embedding_url');
+        var embUrlEl = panelById('nes_embedding_url');
         if (embUrlEl) embUrlEl.onchange = function () { saveEmbeddingApiOnly(); };
-        var embKeyEl = byId('nes_embedding_key');
+        var embKeyEl = panelById('nes_embedding_key');
         if (embKeyEl) embKeyEl.onchange = function () { saveEmbeddingApiOnly(); };
-        var embModelEl = byId('nes_embedding_model');
+        var embModelEl = panelById('nes_embedding_model');
         if (embModelEl) embModelEl.onchange = function () { saveEmbeddingApiOnly(); };
-        var embConnBtn = byId('nes_embedding_connect');
+        var embConnBtn = panelById('nes_embedding_connect');
         if (embConnBtn) embConnBtn.onclick = function () {
-            var cfg = { url: byId('nes_embedding_url').value.trim(), key: byId('nes_embedding_key').value.trim(), model: byId('nes_embedding_model').value.trim() };
+            var cfg = { url: panelById('nes_embedding_url').value.trim(), key: panelById('nes_embedding_key').value.trim(), model: panelById('nes_embedding_model').value.trim() };
             saveEmbeddingApiConfig(cfg);
-            var dot = byId('nes_embedding_dot'), text = byId('nes_embedding_status_text');
+            var dot = panelById('nes_embedding_dot'), text = panelById('nes_embedding_status_text');
             if (dot) dot.className = 'ne-api-dot';
             if (text) text.textContent = t('Connecting...');
             if (embConnBtn) embConnBtn.disabled = true;
@@ -272,22 +272,22 @@ export function renderSettingsTab() {
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (' + r.dimensions + 'd)') : (t('Not connected') + ' — ' + (r.error || ''));
                 if (embConnBtn) embConnBtn.disabled = false;
                 // ── Also update retrieval dot ──
-                var rDot = byId('nes_retrieval_dot'), rText = byId('nes_retrieval_status_text');
+                var rDot = panelById('nes_retrieval_dot'), rText = panelById('nes_retrieval_status_text');
                 if (rDot) rDot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (rText) rText.textContent = r.success ? (t('Connected') + ': ' + cfg.model + ' (BM25+Vector)') : (t('Not connected') + ' — ' + (r.error || ''));
             });
         };
-        var embPresetBtn = byId('nes_embedding_preset');
+        var embPresetBtn = panelById('nes_embedding_preset');
         if (embPresetBtn) embPresetBtn.onclick = function () {
-            var urlEl = byId('nes_embedding_url');
-            var modelEl = byId('nes_embedding_model');
+            var urlEl = panelById('nes_embedding_url');
+            var modelEl = panelById('nes_embedding_model');
             if (urlEl) urlEl.value = 'https://api.siliconflow.cn/v1/embeddings';
             if (modelEl) modelEl.value = 'BAAI/bge-m3';
         };
-        var embQualityBtn = byId('nes_embedding_quality');
-        var embQualityStat = byId('nes_embedding_quality_status');
+        var embQualityBtn = panelById('nes_embedding_quality');
+        var embQualityStat = panelById('nes_embedding_quality_status');
         if (embQualityBtn) embQualityBtn.onclick = function () {
-            var cfg = { url: byId('nes_embedding_url').value.trim(), key: byId('nes_embedding_key').value.trim(), model: byId('nes_embedding_model').value.trim() };
+            var cfg = { url: panelById('nes_embedding_url').value.trim(), key: panelById('nes_embedding_key').value.trim(), model: panelById('nes_embedding_model').value.trim() };
             saveEmbeddingApiConfig(cfg);
             if (embQualityStat) embQualityStat.textContent = t('Running...');
             if (embQualityBtn) embQualityBtn.disabled = true;
@@ -311,25 +311,25 @@ export function renderSettingsTab() {
 
 function saveSettingsTab() {
     var settings = {
-        enableStateSchema: byId('nes_enable_state_schema').checked,
+        enableStateSchema: panelById('nes_enable_state_schema').checked,
         useDynamicState: false,
-        retrievalEnabled: byId('nes_enable_retrieval').checked,
-        enableVectorSearch: byId('nes_enable_vector_search') ? byId('nes_enable_vector_search').checked : false,
-        memoryBudget: Number(byId('nes_memory_budget').value),
-        stmBatch: (byId('nes_stm_batch_auto') && byId('nes_stm_batch_auto').checked) ? 'auto' : Number(byId('nes_stm_batch').value),
-        stmMaxUnconsolidated: Number(byId('nes_stm_max_unconsolidated').value),
-        dialogWindowRounds: Number(byId('nes_dialog_window_rounds').value),
-        dialogOverrideEnabled: byId('nes_dialog_override_enabled').checked,
+        retrievalEnabled: panelById('nes_enable_retrieval').checked,
+        enableVectorSearch: panelById('nes_enable_vector_search') ? panelById('nes_enable_vector_search').checked : false,
+        memoryBudget: Number(panelById('nes_memory_budget').value),
+        stmBatch: (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked) ? 'auto' : Number(panelById('nes_stm_batch').value),
+        stmMaxUnconsolidated: Number(panelById('nes_stm_max_unconsolidated').value),
+        dialogWindowRounds: Number(panelById('nes_dialog_window_rounds').value),
+        dialogOverrideEnabled: panelById('nes_dialog_override_enabled').checked,
         memoryConfig: {
-            extraction_temperature: Number(byId('nes_extraction_temperature').value),
-            temperature: Number(byId('nes_extraction_temperature').value)
+            extraction_temperature: Number(panelById('nes_extraction_temperature').value),
+            temperature: Number(panelById('nes_extraction_temperature').value)
         }
     };
-    var schemaText = byId('nes_state_schema').value.trim();
+    var schemaText = panelById('nes_state_schema').value.trim();
     if (schemaText) {
         try { var parsed = JSON.parse(schemaText); if (typeof parsed === 'object' && parsed !== null) settings.stateSchema = parsed; } catch (e) {}
     }
-    var charSchemaText = byId('nes_character_schema').value.trim();
+    var charSchemaText = panelById('nes_character_schema').value.trim();
     if (charSchemaText) {
         try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
     }
@@ -337,9 +337,9 @@ function saveSettingsTab() {
     setStateSchemaEnabled(settings.enableStateSchema || false);
     setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
-        url: byId('nes_secondary_url').value.trim(),
-        key: byId('nes_secondary_key').value.trim(),
-        model: byId('nes_secondary_model').value.trim()
+        url: panelById('nes_secondary_url').value.trim(),
+        key: panelById('nes_secondary_key').value.trim(),
+        model: panelById('nes_secondary_model').value.trim()
     };
     saveSecondaryApiConfig(secApi);
     console.log('[NE] Settings saved from Settings tab');
@@ -347,18 +347,18 @@ function saveSettingsTab() {
 
 function saveSecApiOnly() {
     var secApi = {
-        url: byId('nes_secondary_url') ? byId('nes_secondary_url').value.trim() : '',
-        key: byId('nes_secondary_key') ? byId('nes_secondary_key').value.trim() : '',
-        model: byId('nes_secondary_model') ? byId('nes_secondary_model').value.trim() : ''
+        url: panelById('nes_secondary_url') ? panelById('nes_secondary_url').value.trim() : '',
+        key: panelById('nes_secondary_key') ? panelById('nes_secondary_key').value.trim() : '',
+        model: panelById('nes_secondary_model') ? panelById('nes_secondary_model').value.trim() : ''
     };
     saveSecondaryApiConfig(secApi);
 }
 
 function saveEmbeddingApiOnly() {
     var embApi = {
-        url: byId('nes_embedding_url') ? byId('nes_embedding_url').value.trim() : '',
-        key: byId('nes_embedding_key') ? byId('nes_embedding_key').value.trim() : '',
-        model: byId('nes_embedding_model') ? byId('nes_embedding_model').value.trim() : ''
+        url: panelById('nes_embedding_url') ? panelById('nes_embedding_url').value.trim() : '',
+        key: panelById('nes_embedding_key') ? panelById('nes_embedding_key').value.trim() : '',
+        model: panelById('nes_embedding_model') ? panelById('nes_embedding_model').value.trim() : ''
     };
     saveEmbeddingApiConfig(embApi);
 }
