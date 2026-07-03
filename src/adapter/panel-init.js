@@ -61,8 +61,6 @@ export async function renderVaultPanel(getChatId) {
             }
         });
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
-        injectPinCSS();
-        injectBottomDrawerCSS();
         var vault = await loadVault(getChatId());
         var c = vault.content || {};
         console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
@@ -212,6 +210,8 @@ export async function renderVaultPanel(getChatId) {
             sheld.appendChild(overlayEl);
         } else {
             setPanelRoot(null);
+            injectPinCSS();
+            injectBottomDrawerCSS();
             sheld.appendChild(overlayEl);
         }
 

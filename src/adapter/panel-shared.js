@@ -60,7 +60,8 @@ export function setVaultActivity(active) {
 }
 
 export function injectPinCSS() {
-    if (byId('ne_pin_style')) return;
+    var exists = _panelRoot ? _panelRoot.getElementById('ne_pin_style') : byId('ne_pin_style');
+    if (exists) return;
     var style = pdCreate('style');
     style.id = 'ne_pin_style';
     style.textContent = '#narrative_vault_pin_div{font-size:24px;display:inline;padding:1px;opacity:0.5;transition:0.2s}' +
@@ -75,19 +76,22 @@ export function injectPinCSS() {
 }
 
 export function injectBottomDrawerCSS() {
-    var old = byId('ne_vault_bottom_style');
-    if (old) old.remove();
+    var exists = _panelRoot ? _panelRoot.getElementById('ne_vault_bottom_style') : byId('ne_vault_bottom_style');
+    if (exists) exists.remove();
+    var isShadow = !!_panelRoot;
+    var hostSel = isShadow ? ':host' : '.ne-vault-bottom-overlay';
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
-    style.textContent = '.ne-vault-bottom-overlay{' +
+    style.textContent = hostSel + '{' +
         'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
         'position:relative;z-index:35;background:transparent;' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;}' +
-        '.ne-vault-bottom-overlay::before{' +
+        hostSel + '::before{' +
         'content:"";position:absolute;inset:0;z-index:-1;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-radius:inherit;}' +
-        '.ne-vault-bottom-overlay.open{display:flex;flex-grow:1;min-height:0;}' +
+        (isShadow ? ':host(.open){' : '.ne-vault-bottom-overlay.open{') +
+        'display:flex;flex-grow:1;min-height:0;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
         '.ne-vault-collapse-indicator{width:48px;height:5px;background:var(--SmartThemeBorderColor);' +
