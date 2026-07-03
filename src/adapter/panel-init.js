@@ -48,6 +48,10 @@ export async function renderVaultPanel(getChatId) {
             var gc = payload && payload.getChatId;
             if (typeof gc === 'function') {
                 updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
+            } else if (typeof gc === 'string' && _currentGetChatId) {
+                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
+            } else if (_currentGetChatId) {
+                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
             }
         });
         busOn('vault:updated', function() {
@@ -243,7 +247,7 @@ export async function renderVaultPanel(getChatId) {
                 consolidateBtn.textContent = t('Processing...');
                 try {
                     await runLtmConsolidation(chatId);
-                    busEmit('vault:updated', { getChatId: chatId });
+                    busEmit('vault:updated', { getChatId: getChatId });
                 } catch (e) {
                     console.error('[NE] Consolidation failed:', e);
                     alert(t('Process failed') + ': ' + e.message);
