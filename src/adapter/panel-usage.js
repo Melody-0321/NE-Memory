@@ -159,36 +159,109 @@ export async function renderUsageTab() {
             var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
             var dailyData = debug2 && debug2.getMonthlyStats ? debug2.getMonthlyStats(monthVal) : [];
 
+            /* Build all-date lookup for the month */
+            var parts = monthVal.split('-');
+            var year = parseInt(parts[0], 10), monthIdx = parseInt(parts[1], 10) - 1;
+            var daysInMonth = new Date(year, monthIdx + 1, 0).getDate();
+            var today = new Date();
+            var todayStr = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+
+            var dataMap = {};
+            for (var di = 0; di < dailyData.length; di++) {
+                dataMap[dailyData[di].date] = dailyData[di];
+            }
+
+            /* Generate all dates of the month */
+            var allDates = [];
+            for (var d = 1; d <= daysInMonth; d++) {
+                var dateStr = monthVal + '-' + String(d).padStart(2, '0');
+                allDates.push(dateStr);
+            }
+
+            var fill = function(dateStr) {
+                /* For future dates, show 0; for past dates without data, also 0 */
+                var entry = dataMap[dateStr];
+                if (entry) return entry;
+                return { date: dateStr, stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+            };
+
+            /* Check if all values are zero */
+            var allZero = true;
+            for (var dz = 0; dz < allDates.length; dz++) {
+                var ez = fill(allDates[dz]);
+                if (ez.stm || ez.ltm || ez.sp || ez.tool || ez.chat) { allZero = false; break; }
+            }
+
             var emptyEl = panelById('ne-daily-bar-empty');
-            if (dailyData.length === 0) {
-                if (emptyEl) emptyEl.style.display = '';
-                if (_chartInstances.dailyBar) { _chartInstances.dailyBar.destroy(); _chartInstances.dailyBar = null; }
-                return;
+            if (allZero) {
+                var hasRecentActivity = false;
+                /* For current month, always show even if all-zero today */
+                var curMonth = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0');
+                if (monthVal === curMonth) hasRecentActivity = true;
+                if (!hasRecentActivity) {
+                    if (emptyEl) emptyEl.style.display = '';
+                    if (_chartInstances.dailyBar) { _chartInstances.dailyBar.destroy(); _chartInstances.dailyBar = null; }
+                    return;
+                }
             }
             if (emptyEl) emptyEl.style.display = 'none';
 
             var barCtx = panelById('ne-daily-bar-canvas');
             if (!barCtx || !window.Chart) return;
             if (_chartInstances.dailyBar) _chartInstances.dailyBar.destroy();
+
+            var labels = allDates.map(function(ds) { return ds; });  /* full YYYY-MM-DD */
+            var stmData = allDates.map(function(ds) { return fill(ds).stm; });
+            var ltmData = allDates.map(function(ds) { return fill(ds).ltm; });
+            var spData  = allDates.map(function(ds) { return fill(ds).sp; });
+            var toolData = allDates.map(function(ds) { return fill(ds).tool; });
+            var chatData = allDates.map(function(ds) { return fill(ds).chat; });
+
             _chartInstances.dailyBar = new Chart(barCtx, {
                 type: 'bar',
                 data: {
-                    labels: dailyData.map(function(d) { return d.date.substring(5); }),
+                    labels: labels,
                     datasets: [
-                        { label: 'STM', data: dailyData.map(function(d) { return d.stm; }), backgroundColor: '#4CAF50' },
-                        { label: 'LTM', data: dailyData.map(function(d) { return d.ltm; }), backgroundColor: '#FF9800' },
-                        { label: 'SmartPush', data: dailyData.map(function(d) { return d.sp; }), backgroundColor: '#2196F3' },
-                        { label: 'Tool', data: dailyData.map(function(d) { return d.tool; }), backgroundColor: '#9C27B0' },
-                        { label: t('User Chat'), data: dailyData.map(function(d) { return d.chat; }), backgroundColor: '#9E9E9E' }
+                        { label: 'STM', data: stmData, backgroundColor: '#4CAF50' },
+                        { label: 'LTM', data: ltmData, backgroundColor: '#FF9800' },
+                        { label: 'SmartPush', data: spData, backgroundColor: '#2196F3' },
+                        { label: 'Tool', data: toolData, backgroundColor: '#9C27B0' },
+                        { label: t('User Chat'), data: chatData, backgroundColor: '#9E9E9E' }
                     ]
                 },
                 options: {
                     responsive: true,
                     maintainAspectRatio: false,
-                    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } } },
+                    plugins: {
+                        legend: { position: 'bottom', labels: { boxWidth: 12, font: { size: 10 } } },
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) {
+                                    if (items.length === 0) return '';
+                                    var d = items[0].label;
+                                    if (!d || d.length !== 10) return d;
+                                    return d.substring(5);  /* "MM-DD" */
+                                }
+                            }
+                        }
+                    },
                     scales: {
-                        x: { stacked: false },
-                        y: { stacked: false, ticks: { callback: function(v) { return fmt(v); } } }
+                        x: {
+                            stacked: true,
+                            ticks: {
+                                callback: function(val, index) {
+                                    if (index === 0) {
+                                        return labels[0].substring(5);  /* first: MM-DD */
+                                    }
+                                    if (index === labels.length - 1) {
+                                        return labels[labels.length - 1].substring(5);  /* last: MM-DD */
+                                    }
+                                    return '';
+                                },
+                                maxRotation: 0
+                            }
+                        },
+                        y: { stacked: true, ticks: { callback: function(v) { return fmt(v); } } }
                     }
                 }
             });
