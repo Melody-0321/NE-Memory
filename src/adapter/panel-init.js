@@ -203,6 +203,8 @@ export async function renderVaultPanel(getChatId) {
                 shadowRoot.appendChild(overlayEl.children[0]);
             }
             setPanelRoot(shadowRoot);
+            injectPinCSS();
+            injectBottomDrawerCSS();
             sheld.appendChild(overlayEl);
         } else {
             setPanelRoot(null);
