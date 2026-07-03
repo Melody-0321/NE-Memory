@@ -2,8 +2,9 @@
 
 > **SillyTavern 长对话结构化记忆管理引擎**
 >
-> 版本：基于 `4c04a31` | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
+> 版本：v6.0.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
 > 入口：`src/adapter/index.js` | 构建输出：`dist/index.js` (IIFE, 全局名 `NEMemoryEngine`)
+> 最后更新：2026-07-03（v6.0 Pipeline 架构重构后）
 
 ---
 
@@ -42,10 +43,10 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 | **三层穿透检索** | LTM 摘要 → STM 详情 → 原始对话原文，层层下钻（`access` Tool / RetrievalNotebook） |
 | **版本管理** | IndexedDB 快照存储，最多 30 个历史快照 + 精确回滚（`versions.js`） |
 | **状态维护** | Schema 驱动的字段级约束，LLM 只修改变化字段，不重写全量（`schema.js`） |
-| **Tool-calling** | 5 个注册工具：`access`（统一引用查询）、`recall_memory`（开放语义检索）、`extract_stm`（STM 事件提取）、`update_state`（状态变更） + `fn_update_state`（Power Slots 战力值） |
-| **副 API 渠道** | 记忆 Pipeline、SmartPush 检索、矛盾检测可分别配置独立 API（`callMemoryPipeline` / `callMemoryRetrieval` / `callMemoryLLM`），节省主 API Token |
+| **Tool-calling** | 2 个注册工具：`access`（统一引用查询）、`recall_memory`（开放语义检索） |
+| **副 API 渠道** | 记忆 Pipeline 和 Embedding 可分别配置独立 API（`callMemoryPipeline` / `computeEmbeddings`），节省主 API Token |
 | **三语界面** | 简体中文 / 繁體中文 / English，包含 Narrative 面板、Config 设置和 State 字段三级翻译表 |
-| **智能检索 (SmartPush)** | 每次 LLM 生成前，自动检索相关记忆并注入到对话上下文。**四阶段管线**：BM25 检索 → 可选向量 RRF 融合 → 实体链时间线 → LLM 输出结构化 KB 标注（认知边界注解 + 缺口检测） |
+| **智能检索 (SmartPush)** | 每次 LLM 生成前，自动检索并注入相关记忆。**纯本地管线**：BM25 检索 → 可选向量 RRF 融合 → 实体链分组 → 代码格式化实体记忆链，无 LLM 参与 |
 | **RRF 融合检索** | BM25 候选与向量候选按 Reciprocal Rank Fusion 公式融合（`k=60`），无需 Embedding 时纯 BM25 兜底 |
 | **Embedding API** | 可选的向量相似度增强检索（余弦相似度），独立配置 Embedding API，索引按 chat 维度就地维护 |
 | **自动调参** | 根据历史 Telemetry 统计数据自动调优 stmBatch / topK / chainDepth 等阈值（`params.js`） |
@@ -69,8 +70,8 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 │                  │  │  panel-shared.js / panel-init.js           │  │
 │                  │  │  panel-drawer.js / panel-popout.js         │  │
 │                  │  │  panel-content.js / panel-settings.js      │  │
-│                  │  │  panel-entities.js / panel-state-cards.js  │  │
-│                  │  │  panel-tools.js / panel-usage.js           │  │
+│                  │  │  panel-state-cards.js / panel-usage.js     │  │
+│                  │  │  panel-tools.js / test-driver.js            │  │
 │                  │  │  test-driver.js → test-runner.js          │  │
 │                  │  └──────────────┬──────────────────────────┘  │
 │                  │                 │                               │
@@ -90,7 +91,6 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 │                  │  │  │ api/llm.js   LLM 调用层             │  │  │
 │                  │  │  │   - callMemoryLLM (副API/TH双通道)   │  │  │
 │                  │  │  │   - callMemoryPipeline              │  │  │
-│                  │  │  │   - callMemoryRetrievalWithTools    │  │  │
 │                  │  │  └────────────────────────────────────┘  │  │
 │                  │  │                                          │  │
 │                  │  │  ┌────────────────────────────────────┐  │  │
@@ -101,13 +101,11 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 │                  │  │  │  state-pipeline.js   State 提取管线   │  │  │
 │                  │  │  │  stm-pipeline.js     STM 提取管线     │  │  │
 │                  │  │  │  ltm-pipeline.js     LTM 整合管线     │  │  │
-│                  │  │  │  stm-extractor.js    STM 批量提取     │  │  │
 │                  │  │  │  consolidate.js      STM→LTM 整合     │  │  │
 │                  │  │  │  injection.js        SmartPush 注入   │  │  │
 │                  │  │  │  retrieval.js        检索服务构建      │  │  │
 │                  │  │  │  retrieval-fusion.js 向量融合检索      │  │  │
 │                  │  │  │  retrieval-text.js   可搜索文本构建    │  │  │
-│                  │  │  │  context-window.js   上下文窗口管理    │  │  │
 │                  │  │  │  contradiction.js    事实矛盾检测      │  │  │
 │                  │  │  │  ambiguity.js        模糊引用解析      │  │  │
 │                  │  │  │  bm25-grouper.js     BM25 预分组      │  │  │
@@ -128,7 +126,6 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 │                  │  │  │  schema.js             状态Schema引擎│  │  │
 │                  │  │  │  versions.js           快照版本管理  │  │  │
 │                  │  │  │  retrieval-filter.js   BM25 检索过滤 │  │  │
-│                  │  │  │  retrieval-notebook.js 检索工作区    │  │  │
 │                  │  │  │  garbage-collector.js  IndexedDB GC  │  │  │
 │                  │  │  └────────────────────────────────────┘  │  │
 │                  │  │                                          │  │
@@ -195,7 +192,7 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 |------|------|
 | `onMessageSent()` | 用户发送消息 → 加入 `pendingMessages[]` 缓冲区 |
 | `onMessageReceived()` | AI 回复完成 → 触发增量更新 + 矛盾检测 |
-| `onBeforeGenerate()` | 生成前 → 执行 SmartPush 智能记忆注入或 context-window 记忆格式化 |
+| `onBeforeGenerate()` | 生成前 → 执行 SmartPush 智能记忆注入（或按对话轮数截断） |
 | `onMessageDeleted()` / `onMessageSwiped()` | 消息删除/滑动 → 回滚相关记忆 |
 | `onMessageUpdated()` | 消息编辑 → 标记待重处理 |
 | `onSettingsChanged()` | 设置变更回调 |
@@ -206,7 +203,7 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 1. 用户消息 → `onMessageSent` → 存入 `pendingMessages[]` 缓冲区
 2. `pendingMessages` 达到 `stmBatch` 阈值 → 在 `onMessageReceived` 时触发完整 pipeline
 3. Pipeline 顺序：`idle → state → stm → ltm → idle`（由 `pipeline-guard.js` 状态机保证串行）
-4. 每次生成前 → `onBeforeGenerate` → 根据设置注入 SmartPush 上下文或 Context Window 记忆摘要
+4. 每次生成前 → `onBeforeGenerate` → 根据设置注入 SmartPush 上下文（或按对话轮数截断 chat）
 5. 生成后 → 可选矛盾检测 (`contradiction.js`) → 若检测到矛盾则注入证据触发 LLM 重新生成
 
 #### 3.1.3 panel/ — Memory Vault UI（多文件拆分）
@@ -221,8 +218,7 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 | [panel-popout.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-popout.js) | 弹出层控制 — `createVaultPopout()` / `toggleVaultPanel()` / `renderHistory()` |
 | [panel-content.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-content.js) | Vault 查看器内容渲染 — `updateVaultViewerPopout()` |
 | [panel-settings.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-settings.js) | 设置标签页 — `renderSettingsTab()` |
-| [panel-entities.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-entities.js) | 实体管理 — `collectAllEntityNames()` / `renderEntitySummaryBar()` / `renderEntitiesTab()` |
-| [panel-state-cards.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-state-cards.js) | 角色/势力/任务卡片 — `renderCharacterPanelHTML()` / `renderFactionPanelHTML()` / `renderQuestPanelHTML()` / `enterCardEditMode()` / `renderMemoryTable()` |
+| [panel-state-cards.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-state-cards.js) | 角色/势力/任务卡片 + 记忆表格 + 内联编辑 — `renderCharacterPanelHTML()` / `renderFactionPanelHTML()` / `renderQuestPanelHTML()` / `enterCardEditMode()` / `renderMemoryTable()` / `saveCardFields()` |
 | [panel-tools.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-tools.js) | 测试工具 — `initTestRunner()`（仅 dev 模式生效） |
 | [panel-usage.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-usage.js) | 用量统计标签页 — `renderUsageTab()`（依赖 Chart.js） |
 
@@ -288,7 +284,7 @@ export var runtime = {
 
 #### 3.3.1 [llm.js](file:///d:/SillyTavern/xm/ne-memory/src/core/api/llm.js) — LLM 调用封装
 
-**职责**：统一的 LLM 调用入口，支持维护 API（Pipeline）和检索 API（SmartPush）分离。
+**职责**：统一的 LLM 调用入口，支持维护 API（Pipeline）和 Embedding API 分离。提供主/副 API 双通道和 CORS-proxy 自动回退。
 
 **关键函数**：
 
@@ -296,8 +292,7 @@ export var runtime = {
 |------|------|------|
 | `callMemoryLLM(messages, options)` | `(Array, Object) → Promise<string>` | 记忆 LLM 主调用（优先副 API，失败回退 TH `generateQuiet`） |
 | `callMemoryPipeline(messages, options, chatId)` | `(Array, Object, string) → Promise<string>` | Pipeline 专用调用（STM / State / LTM 提取），嵌入 LLM 调用钩子供测试监控 |
-| `callMemoryRetrieval(messages, options)` | `(Array, Object) → Promise<string>` | 检索专用调用（Smart Push / recall_memory） |
-| `callMemoryRetrievalWithTools(messages, tools, executors, options)` | `(Array, Array, Object, Object) → Promise<string>` | 带 tool-calling 的检索调用，支持多轮工具执行 |
+| `callMemoryRetrieval(messages, options)` | `(Array, Object) → Promise<string>` | `recall_memory` 工具专用调用（不参与 SmartPush 注入） |
 | `testSecondaryApiConnection(cfg)` | `(Object) → Promise<{success, error?}>` | 副 API 连通性测试 |
 | `recordTelemetry(entry, chatId)` | `(Object, string) → void` | 遥测数据记录到 localStorage `ne_telemetry` |
 | `initPowerSlots(state)` | `(Object) → void` | 初始化角色的战力槽（Power Slots）基于 Power Slots 模板 |
@@ -335,86 +330,69 @@ export var runtime = {
 |------|------|------|
 | `saveVaultWithSnapshot(chatId, vault)` | `(string, Object) → Promise<void>` | 原子写 vault + 快照（版本号+1） + 同步到 chat_metadata，并清理旧快照 |
 | `ensureStateStructure(vault)` | `(Object) → void` | 初始化/迁移 vault state 结构，含 `state_css` 字段 |
-| `parseSTMResponse(text, vault)` | `(string, Object) → Object\|null` | 解析 LLM 返回的 STM JSON（委托给 `json-fallback.js`） |
-| `handleQuestCompletion(vault, event)` | `(Object, Object) → void` | 检测事件是否涉及任务完成，更新 quests 状态 |
-
-#### 3.4.3 [update.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/update.js) — 增量更新引擎
-
-**职责**：Pipeline 的主 orchestrator。协调 State 提取 → STM 提取 → LTM 整合全流程。**注意**：`update.js` 已拆分出三个子管线文件（[state-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/state-pipeline.js)、[stm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/stm-pipeline.js)、[ltm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/ltm-pipeline.js)），每个阶段的具体 LLM prompt 构建逻辑已移入对应文件。
-
-**关键函数**：
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `executeIncrementalUpdate(chatId, messages)` | `(string, Array) → Promise<void>` | **核心增量更新入口**——收集已处理 msg_id → 过滤新消息 → 分组 turns → State 提取 → STM 批处理 → LTM 决策 → 保存快照 |
-| `extractStateChangesOnly(chatId, messages, vault)` | `(string, Array, Object) → Promise<Object>` | **逐轮轻量状态检测**（非阈值轮），仅提取 State 变更不处理 STM |
-| `runLtmDecision(vault, newStmIds, callMemoryPipeline)` | `(Object, Array, Function) → Promise<void>` | LTM 整合决策与执行（调用 consolidate.js 相关逻辑） |
-| `saveVaultWithSnapshot(chatId, vault)` | `(string, Object) → Promise<void>` | 原子写 vault + 快照 + 同步到 chat_metadata |
-| `ensureStateStructure(vault)` | `(Object) → void` | 初始化 / 迁移 vault state 结构 |
-| `resolveNpcSchemes(vault, chatId, messages)` | `(Object, string, Array) → Promise<void>` | NPC 方案发现与派系提取 |
 | `filterNewMessages(messages, processedIds)` | `(Array, Set) → Array` | 过滤已处理消息，返回新消息 |
+| `parseSTMResponse(llmResponse)` | `(string) → Object\|null` | 解析 LLM 返回的 STM JSON（委托给 `json-fallback.js`） |
+| `handleQuestCompletion(state, validatedChanges, currentTime)` | `(Object, Object, string) → void` | 检测状态变更中是否涉及任务完成，更新 quests 完成时间 |
+
+#### 3.4.3 [update.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/update.js) — 增量更新引擎（精简协调层）
+
+**职责**：Pipeline 的主协调入口。v5.6 重构后，**具体 LLM prompt 构建已移至三个子管线文件**，`update.js` 现只负责 `events.js` 事件的调度协调，将消息派发到 [state-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/state-pipeline.js)、[stm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/stm-pipeline.js)、[ltm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/ltm-pipeline.js)。原始 `update.js.bak` 保留作为历史参考。
 
 #### 3.4.4 [state-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/state-pipeline.js) — State 提取管线
 
-**职责**：从原 `update.js` 提取的 State 阶段 LLM prompt 构建与执行。负责构建角色卡摘要、发现新角色、构建 State injection table、调用 LLM 提取状态变更。
+**职责**：从原 `update.js` 提取的 State 阶段。负责构建角色卡摘要、发现新角色、构建 State injection table、派系提取、调用 LLM 提取状态变更。
 
-**关键函数**：
+**关键导出函数**：
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `executeStateExtraction(chatId, turns, vault)` | `(string, Array, Object) → Promise<Object>` | State 提取主入口：构建 Character Card 摘要、发现新角色名、抽取状态变更、Schema 验证与合并 |
-| `buildStatePrompt_Preset(vault, turns, partials)` | `(Object, Array, Object) → Array` | 构建 State 提取用的 LLM messages（含角色卡截面、当前状态表、world info 提示） |
-| `findNewCharacterNames(vault)` | `(Object) → Array` | 检测 state.characters 中所有字段均为空的角色名（新发现角色） |
+| `extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg)` | `(string, Object, Object) → Promise<Object>` | **逐轮轻量状态提取**：构建 State 提示词 → LLM 提取变更 → Schema 验证 → 合并到 state → 保存 |
+| `resolveNpcSchemes(vault, chatId, messages)` | `(Object, string, Array) → Promise<void>` | NPC 方案发现 + 派系关键词激活提取（含 Promise.all 并行派系扫描） |
+
+**内部函数**（未导出）：
+- `buildStatePrompt_Preset` — 角色卡 + 当前状态表 + World Book + 派系上下文 prompt 构建
+- `findNewCharacterNames` — 检测 state.characters 中所有静态字段为空的角色名
+- `scanMessageForFactions` / `buildFactionKeywords` — 从 World Book 获取派系关键词并扫描消息
 
 #### 3.4.5 [stm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/stm-pipeline.js) — STM 提取管线
 
-**职责**：从原 `update.js` 提取的 STM 阶段 prompt 构建。负责消息分组、BM25 预分组提示、LLM prompt 组装。
+**职责**：从原 `update.js` 提取的 STM 阶段 prompt 构建与执行。负责消息分组、BM25 预分组提示、LLM prompt 组装，**同时也是 `executeIncrementalUpdate` 的新家**（从 `update.js` 迁移）。
 
-**关键函数**：
+**关键导出函数**：
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `buildSTMUpdatePrompt(newMessages, vault, partials)` | `(Array, Object, Array) → string` | 构建 STM 提取用的 LLM prompt（含当前状态快照、BM25 分组提示、待续条目上下文） |
-| `processStmPipeline(chatId, turns, vault, callPipeline)` | `(string, Array, Object, Function) → Promise<Object>` | STM Pipeline 编排：调用 `stm-extractor.js` 批量提取 → `validate.js` 校验 → `store.js` 追加 |
+| `executeIncrementalUpdate(chatId, newMessages, force, onProgress)` | `(string, Array, boolean, Function) → Promise<void>` | **核心增量更新入口**：收集已处理 msg_id → 过滤新消息 → 状态提取 → STM 批处理 → LTM 决策 → 保存快照 |
+| `buildSTMUpdatePrompt(newMessages, vault, partials)` | `(Array, Object, Array) → string` | 构建单批消息的 STM 提取 prompt（含当前状态快照、BM25 预分组提示） |
+| `buildBatchPrompt(turns, vault)` | `(Array, Object) → string` | 构建批量 turns 的 STM + LTM 联合提取 prompt（含开放 LTM 决策上下文） |
+| `buildStmOnlyPrompt(turns, vault)` | `(Array, Object) → string` | 构建纯 STM 提取 prompt（无 LTM 决策上下文） |
+
+**内部函数**（未导出）：
+- `segmentTurns` — 三级切分（L1_CUT/L2_CUT/L2_KEEP/L3_ASK），结合 BM25 相似度矩阵
+- `computeTurnBoundarySignals` / `classifyBoundary` — 计算并分类 turn 边界信号
+- `askBoundaryJudge` — 模糊边界交由 LLM 裁决
 
 #### 3.4.6 [ltm-pipeline.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/ltm-pipeline.js) — LTM 整合管线
 
-**职责**：从原 `update.js` 提取的 LTM 阶段决策 prompt 构建。负责当前开放弧上下文、闭合信号、LLM 决策 prompt。
+**职责**：从原 `update.js` 提取的 LTM 阶段决策，构建 LLM prompt 并执行。负责当前开放弧上下文、闭合信号预计算、LLM 决策。
 
-**关键函数**：
+**关键导出函数**：
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `buildLtmDecisionPrompt(vault, newStmEntries)` | `(Object, Array) → Array` | 构建 LTM 决策用的 LLM messages（含当前开放弧、已闭合弧目录、闭合信号） |
-| `executeLtmDecision(chatId, vault, newStmEntries, callPipeline)` | `(string, Object, Array, Function) → Promise<Object>` | LTM 决策编排：构建 prompt → 调用 LLM → 校验输出 → 应用决策 |
+| `runLtmDecision(vault, newStmIds, callMemoryPipeline)` | `(Object, Array, Function) → Promise<void>` | **唯一导出入口**：构建 LTM 决策 prompt → 调用 LLM → 校验输出 → 应用 LTM 决策 |
 
-**处理流程**：
-1. 收集 `vault` 中所有已处理 msg_id 集合（去重）
-2. 过滤出新消息
-3. `turn-segmenter.js` 将消息分组为 `(user, assistant)` turns
-4. 如果启用 State Schema → 构建 State injection table → 提取 State 变更（通过 `buildStatePrompt_Preset`）
-5. `stm-extractor.js` 批处理 turns → 调用 LLM 提取 STM entries
-6. `consolidate.js` 如果 STM 未整合数 ≥ `stmMaxUnconsolidated` 阈值 → 触发 LTM 整合
-7. `saveVaultWithSnapshot` → 保存 vault + 快照 + 同步到 chat_metadata
+**内部函数**（未导出）：
+- `buildLtmDecisionPrompt(vault, newStmEntries)` — 构建 LTM 决策 prompt（含开放弧、已闭合弧目录、闭合信号）
+- `_validateLtmEventText` — 校验 LTM event 文本完整性（是否截断、长度是否过短）
 
-**Turn 切分层级常量**：
+**Turn 切分层级常量**（在 `stm-pipeline.js` 的 `segmentTurns` 中使用）：
 - `L1_CUT`：利用 BM25 相似度矩阵自动切分事件边界
 - `L2_CUT`：高置信度强制切分
 - `L2_KEEP`：高置信度保持连续
 - `L3_ASK`：模糊边界，交由 LLM 裁判决定
 
-#### 3.4.7 [stm-extractor.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/stm-extractor.js) — STM 批量提取器
-
-**职责**：将 turns 分批发送给 LLM，以 JSON 格式提取 STM 事件（通过 tool-calling `extract_stm` 或 JSON 输出）。
-
-**关键函数**：
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `runStmExtractorCore(turns, params)` | `(Array, Object) → Promise<Object>` | 单批 STM 提取核心（含 LTM 决策上下文） |
-| `processTurnsInBatches(turns, params)` | `(Array, Object) → Promise<Object>` | 多批轮转提取（带 cursor 状态跟踪） |
-
-#### 3.4.8 [consolidate.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/consolidate.js) — STM→LTM 流式整合
+#### 3.4.7 [consolidate.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/consolidate.js) — STM→LTM 流式整合
 
 **职责**：将多条未整合的 STM 条目合并为 LTM 叙事弧线。支持 **open/closed** LTM 状态——开放弧线的 LTM 可持续追加新 STM 直到弧线自然终结。
 
@@ -436,46 +414,35 @@ export var runtime = {
 
 #### 3.4.9 [injection.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/injection.js) — SmartPush 智能上下文注入
 
-**职责**：在每次 LLM 生成前构建 Smart Push 上下文，包含相关记忆和状态信息。是 SmartPush 的主入口。
+**职责**：在每次 LLM 生成前构建 SmartPush 上下文，包含相关记忆和状态信息。纯本地计算（无 LLM 参与），是 SmartPush 的主入口。
 
 **关键函数**：
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `formatSmartContext(vault, chatMessages, budget, chatId)` | `(Object, Array, number, string) → Promise<string>` | **主入口**：执行 BM25 检索 → 实体链查询 → 管道合并 → LLM 输出 KB 标注 → 组装最终注入文本 |
+| `formatSmartContext(vault, chatMessages, budget, chatId)` | `(Object, Array, number, string) → Promise<string>` | **主入口**：BM25 检索 → 可选向量 RRF 融合 → 实体链分组 → `buildEntityBlock` 代码组装最终注入文本 |
 | `buildStateOnlyInjection(vault)` | `(Object) → string` | 纯状态注入（无记忆时的回退方案） |
 | `estimateComplexityBudget(chatMessages, defaultBudget)` | `(Array, number) → number` | 基于最后一条消息的复杂度估算检索 Token 预算 |
-| `parseEntityAnnotations(text)` | `(string) → Object` | 解析 LLM 输出的 `[KB: ...]` 标注和缺口段落 |
-| `buildEntityBlock(groupedResult, annotations)` | `(Object, Object) → string` | 组装实体记忆链块，将 KB 标注嵌入实体链标题行 |
-| `buildMemoryUsageGuide()` | `() → string` | 生成 KB 等级说明（直接知晓/间接知晓/线索/未知） |
-| `compileRetrievalBudget(content, query, entityNames, chains, tokens)` | `(Object, string, Array, Object, number) → string` | 按 Token 预算分配相关实体事件摘要 |
+| `buildEntityBlock(groupedResult, annotations, activeChars, entityChains)` | `(Object, Object, Array, Object) → string` | 代码组装实体记忆链块（实体子标题 + KB 标注 + 事件列表） |
+| `buildKeyHighlights(topCandidates, entityChains)` | `(Array, Object) → string` | 提取 top-5 高相关度实体事件作为关键记忆 |
+| `compileRetrievalBudget(content, query, entityNames, chains, tokens)` | `(Object, string, Array, Object, number) → string` | 按 Token 预算分配相关实体事件摘要（可选） |
 
-**内部处理流程**：
+**内部处理流程**（纯本地，无线 LLM 调用）：
 1. `computeVisibleWindow` — 计算当前在主 LLM 上下文窗口中的消息范围
-2. 构建查询（query） — 从最近 2 轮对话 + 当前故事时间/场景/活跃角色构建检索查询
-3. BM25 检索 — 调用 `retrieval-filter.js` 的 `filterCandidates()` 获取 top-40 候选
-4. **可选向量 RRF 融合** — 若 `isVectorSearchEnabled()` 且 Embedding API 已配置，`filterCandidates()` 内部触发 `vectorSearch()` → `rrrFuse(bm25Candidates, vecResults, 60, topK)` 按倒数排名融合，结果标记 `_vectorUsed`
-5. 实体链查询 — 从候选结果中提取实体，调用 `retrieval.js` 的 `lookupEntityChains`
-6. 模糊引用解析 — 调用 `ambiguity.js` 的 `resolveAmbiguousReferences`
-7. 管道合并 — 调用 `retrieval.js` 的 `mergePipelines`（BM25/向量结果 + 实体链 + LTM 目录 → 多源融合）
-8. `prefetchOriginalTexts` — 为 top-3 候选预取原文
-9. 按实体分组 — `groupCandidatesByEntity()` 将候选按实体名归类
-10. 调用 `buildRetrievalMessages()` 构建 LLM prompt，要求 LLM 输出：
-    - `[KB: 角色名=知晓等级(理由)]` 每个实体块的角色认知标注
-    - `## 缺口` 未覆盖的信息缺口
-    - **严格禁止输出叙事性段落或事件描述**
-11. LLM 输出解析 — `parseEntityAnnotations()` 分析 LLM 回复，提取 `[KB: ...]` 标注和缺口
-12. 最终注入文本组装：
-    - `buildEntityBlock()` — 实体记忆链（含 KB 标注）
-    - `buildMemoryUsageGuide()` — 如何使用认知边界标注
-    - 缺口段落（如有）
-    - 未展开链的跨度标注
-    - `compileRetrievalBudget()` — Token 预算分配后的实体事件摘要（可选）
+2. 构建查询 — 从最近 2 轮对话 + 当前故事时间/场景/活跃角色 + 歧义消解构建检索查询
+3. BM25 检索 — 调用 `retrieval-filter.js` 的 `filterCandidates()` 获取 top-k 候选（默认 40，auto 模式自适应）
+4. **可选向量 RRF 融合** — 若向量搜索已启用且 Embedding API 已配置，`filterCandidates()` 内部触发 `vectorSearch()` → `rrfFuse()` 按倒数排名融合（α=0.20 BM25 权重, k=60），结果标记 `_vectorUsed`
+5. 实体链查询 — 从候选结果中提取实体名，调用 `retrieval.js` 的 `lookupEntityChains`
+6. 管道合并 — 调用 `retrieval.js` 的 `mergePipelines`（BM25/向量结果 + 实体链 + LTM 目录 → 多源融合到统一 Map）
+7. `prefetchOriginalTexts` — 为 top-3 候选预取原始对话文本
+8. 按实体分组 — `groupCandidatesByEntity()` 将候选按实体名归类
+9. 最终注入文本组装（纯代码拼接，无 LLM 参与）：
+   - `buildKeyHighlights()` — top-5 高相关度实体事件
+   - `buildEntityBlock()` — 实体记忆链（实体子标题 + 事件列表 + KB 认知标注）
+   - 未命中链跨度标注
+   - `compileRetrievalBudget()` — Token 预算分配后的实体事件摘要（可选）
 
-**关键设计变更**：检索 LLM 的输出已从"叙事文本合成"改为**结构化 KB（认知边界）标注**。LLM 不再负责为每条候选条目编写自然语言描述，而是判断每个实体块中的事件集合对每个活跃角色的可见性。最终注入结果由 `buildEntityBlock` 从结构化数据组装，而非 LLM 直接生成的自由文本。这确保了：
-- 注入格式稳定：主 LLM 收到的记忆格式一致，不受 LLM 合成质量波动影响
-- Token 可控：结构化注入可精确限长
-- 可解析：`parseEntityAnnotations` 将 LLM 的 KB 输出拆分为结构化数据供后续处理
+**设计要点**：v6.0 SmartPush 不经过任何 LLM 合成环节。检索结果由 `buildEntityBlock` 直接从结构化数据（`relevance`、`entity`、`event`、`stm_refs`）组装为固定格式的注入文本。这确保了注入格式稳定、Token 可控、零额外 API 成本。
 
 #### 3.4.10 [retrieval.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/retrieval.js) — 检索服务
 
@@ -490,8 +457,7 @@ export var runtime = {
 | `mergePipelines(bm25Results, entityChains, allLTM, state, allSTM)` | `(Array, Object, Array, Object, Array) → Object` | 合并 BM25 结果与实体链为统一 Map + ThreadIndex（含隐式实体发现 + 短链内联） |
 | `groupCandidatesByEntity(map, threadIndex)` | `(Map, Object) → Object` | 将候选按实体名分组，支持跨实体引用标注 |
 | `formatEntityGroupedText(groupedResult)` | `(Object) → string` | 格式化按实体分组后的文本（含 RRF 分数标记、关联条目、预取原文） |
-| `buildRetrievalPrompt(notebook, query, vault, budget, isSummaryMode, extraOptions)` | `(Object, string, Object, number, boolean, Object) → Object` | **核心 prompt 构建**：输出 `{system, user}` messages，指示 LLM 执行 KB 认知标注（`[KB: 角色名=知晓等级]`），**严格禁止输出叙事文本** |
-| `buildRetrievalMessages(notebook, query, vault, budget, isSummaryMode, extraOptions)` | `(Object, string, Object, number, boolean, Object) → Promise<Array>` | 封装 buildRetrievalPrompt 为 messages 格式（失败时回退 legacy） |
+| `buildRetrievalPromptLegacy(notebook, query, vault)` | `(Object, string, Object) → Object` | 仅为 `recall_memory` 工具提供 legacy prompt（非 SmartPush 使用） |
 
 #### 3.4.11 [retrieval-fusion.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/retrieval-fusion.js) — 向量融合检索
 
@@ -517,20 +483,7 @@ export var runtime = {
 |------|------|------|
 | `buildSearchableText(entry, aliasesMap)` | `(Object, Object) → string` | 拼接条目的 period / scene / event / entities / translation / aliases 为可搜索文本 |
 
-#### 3.4.13 [context-window.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/context-window.js) — 上下文窗口管理
-
-**职责**：管理对话窗口内可见的记忆注入策略。最近 N 轮用完整文本，更早的用记忆摘要。最多展示 20 条 STM。
-
-**常量**：`MAX = 20`（窗口前记忆条目展示上限）
-
-**关键函数**：
-
-| 函数 | 签名 | 说明 |
-|------|------|------|
-| `computeWindowStartMsgId(chatMessages, contextWindowRounds)` | `(Array, number) → number` | 计算窗口起点的 msg_id（从最新消息倒推 contextWindowRounds 轮） |
-| `formatContextMemory(vault, chatMessages, contextWindowRounds)` | `(Object, Array, number) → string` | 构建窗口前记忆摘要（过滤 pre-window STM/LTM 格式化） |
-
-#### 3.4.14 [contradiction.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/contradiction.js) — 矛盾检测
+#### 3.4.13 [contradiction.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/contradiction.js) — 矛盾检测
 
 **职责**：AI 生成回复后检测事实矛盾。若检测到矛盾，注入原文证据并触发 LLM 重新生成。
 
@@ -547,7 +500,7 @@ export var runtime = {
 2. `verifyClaim` — 对每条主张调用 BM25 检索验证，调用 LLM 比对矛盾
 3. `buildContradictionSystemMessage` — 构建包含矛盾证据的 system message 注入到主 LLM
 
-#### 3.4.15 [ambiguity.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/ambiguity.js) — 模糊引用解析
+#### 3.4.14 [ambiguity.js](file:///d:/SillyTavern/xm/ne-memory/src/core/engine/ambiguity.js) — 模糊引用解析
 
 **职责**：解析用户消息中的模糊引用（"那个铁匠"、"上次的事"），映射为具体实体名以提升 BM25 检索精度。
 
@@ -766,24 +719,7 @@ export var runtime = {
 | `parseTimeConstraint(query)` | `(string) → Object\|null` | 从查询中解析时间约束 |
 | `applyTimeFilter(entries, timeConstraint)` | `(Array, Object) → Array` | 按时间过滤记忆条目 |
 
-#### 3.5.5 [retrieval-notebook.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/retrieval-notebook.js) — 检索工作区
-
-**职责**：检索会话内维持的 mutable Notebook，跟踪已访问条目和线程，支持增量 diff。
-
-**类**: `RetrievalNotebook`
-- `constructor()` — 初始化 `version`, `map` (Map), `threadIndex`, `_availableChains`
-- `addChain(name, entries)` — 添加实体链
-- `addDispersedThread(label, stmIds)` — 注册散列叙事线
-- `addEntry(stmId, unifiedEntry)` — 添加条目
-- `addThread(threadId, threadDef)` — 注册线程
-- `extendThread(threadId, stmId)` — 扩展线程追加新 STM
-- `getEntry(ref)` — 通过引用获取条目
-- `expand(ref)` — 标记条目已展开
-- `diff()` — 获取增量（新增/展开的条目和线程）
-- `toPromptEntries(useVectorScore)` — 转换成提示词用的条目列表
-- `describe(useVectorScore)` — 生成 Notebook 概览文本
-
-#### 3.5.6 [garbage-collector.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/garbage-collector.js) — IndexedDB 孤儿数据 GC
+#### 3.5.5 [garbage-collector.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/garbage-collector.js) — IndexedDB 孤儿数据 GC
 
 **职责**：遍历 IndexedDB 中所有 vault 数据，与 ST `ctx.characters` / `ctx.groups` 做差集对比，找出并清理已删除聊天遗留的 vault + snapshot 数据。
 
@@ -791,9 +727,10 @@ export var runtime = {
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `collectSTChatIds()` | `() → Set<string>` | 从 ST context 中收集所有现存的聊天 ID（characters.chat + groups.chat_id + chatId） |
+| `collectSTChatIds()` | `() → Set<string>` | 从 ST context 中收集所有现存的聊天 ID |
 | `scanOrphans()` | `() → Promise<Array>` | 扫描所有 vault，返回不在现存 chat ID 中的孤儿列表 |
-| `purgeOrphanChatData(chatIds)` | `(Array<string>) → Promise<void>` | 批量删除孤儿 vault 及其对应的 snapshots |
+| `purgeOrphanChatData(chatId)` | `(string) → Promise<void>` | 删除单个孤儿 vault 及其对应的 snapshots |
+| `listAllChatIds()` | `() → Promise<Array>` | 列出 IndexedDB 中的所有 chat_id |
 
 ---
 
@@ -813,13 +750,13 @@ export var runtime = {
 | 文件 | 职责 |
 |------|------|
 | [runtime.js](file:///d:/SillyTavern/xm/ne-memory/src/core/runtime.js) | 抽象运行时接口定义，adapter 层通过 `Object.assign` 覆盖 |
-| [settings.js](file:///d:/SillyTavern/xm/ne-memory/src/core/settings.js) | 运行时标志位：`isRetrievalEnabled()` / `setRetrievalEnabled()` / `getStmMinLtmMerge()`（从 localStorage `ne_settings` 读取） |
+| [settings.js](file:///d:/SillyTavern/xm/ne-memory/src/core/settings.js) | 运行时标志位：`getStmMinLtmMerge()` / `getVectorSearchConfig()`（从 localStorage `ne_settings` 读取） |
 | [params.js](file:///d:/SillyTavern/xm/ne-memory/src/core/params.js) | 自动调参系统：`computeStmBatch` / `computeTopK` / `computeChainDepth` / `computeChainRecentWindow` / `computeLtmDirCount` / `computeMinResults` / `computeChainHeadCount` |
 | [tools.js](file:///d:/SillyTavern/xm/ne-memory/src/core/tools.js) | Tool-calling 注册与执行：`registerAllTools` — 注册 `access`（统一引用查询）和 `recall_memory`（开放语义检索）；`executeAccess` — 解释多种引用格式 |
 | [i18n.js](file:///d:/SillyTavern/xm/ne-memory/src/core/i18n.js) | 三级翻译表：`NARRATIVE_I18N`（面板文本）、`CONFIG_I18N`（设置弹窗文本）、`STATE_FIELD_I18N`（状态字段名）三语翻译（zh-cn/zh-tw/en） |
 | [auto-restore.js](file:///d:/SillyTavern/xm/ne-memory/src/core/auto-restore.js) | Vault 自动恢复：`loadVault` 分层加载（聊天文件优先 → IndexedDB 兜底 → 自动回填）；`persistVaultToChatFile` 增量同步 |
 | [globals.d.ts](file:///d:/SillyTavern/xm/ne-memory/src/globals.d.ts) | IDE 类型声明文件，声明 iframe 中由 TH 注入的全局变量类型（`TavernHelper`、`ToolManager`、`SillyTavern` 等） |
-| [types.js](file:///d:/SillyTavern/xm/ne-memory/src/types.js) | 纯 JSDoc `@typedef` 类型定义文件，零运行时开销，定义 `Vault`、`LTMEntry`、`STMEvent` 等核心数据结构的接口形状 |
+| [types.js](file:///d:/SillyTavern/xm/ne-memory/src/types.js) | 集中类型定义 — 25+ `@typedef` JSDoc 类型（Vault, VaultMeta, VaultContent, State, CharacterCard, Faction, QuestsState, STMEvent, LTMEntry, Entity, UnifiedEntry, ThreadRef, ThreadDef, Turn, Message, Snapshot, CursorState, ClosureSignals, LTMDecision, PipelineGuard, StateChanges, ValidationResult, SchemaFieldDef 等），零运行时开销 |
 
 ---
 
@@ -877,7 +814,7 @@ onMessageSent() → 消息加入 pendingMessages[]
                │    transitionTo('stm')                │
                │    turn-segmenter: 消息 → (User,AI) turns │
                │    bm25-grouper: 语义预分组            │
-               │    stm-extractor: 批处理 turns → LLM    │
+               │    stm-pipeline: buildBatchPrompt → LLM│
                │    validateSTMOutput: 校验输出          │
                │    appendSTMEntries: 追加到 vault       │
                ├──────────────────────────────────────┤
@@ -916,33 +853,24 @@ Schema 验证 → mergeStateChanges → 保存 vault
 ```
 每次 AI 生成前 → onBeforeGenerate()
      │
-     ├─ 启用 SmartPush → formatSmartContext()
+     ├─ 启用 SmartPush → formatSmartContext() (纯本地，无 LLM 调用)
      │     │
-     │     ├─ 构建查询（最后2轮对话 + 故事时间/场景/活跃角色）
-     │     ├─ BM25 检索 → filterCandidates() top-40
+     │     ├─ 构建查询（最后2轮对话 + 故事时间/场景/活跃角色 + 歧义消解）
+     │     ├─ BM25 检索 → filterCandidates() top-k（默认 40，auto 模式自适应）
      │     │     └─ 可选: 向量搜索 + RRF 融合
      │     │           │  ensureVectorIndex() 同步索引
      │     │           │  vectorSearch() 余弦相似度
-     │     │           │  rrfFuse() 倒数排名融合
+     │     │           │  rrfFuse() 倒数排名融合 (α=0.20, k=60)
      │     │           └─ 结果标记 _vectorUsed
      │     ├─ 实体链查询 → lookupEntityChains()
-     │     ├─ 模糊引用解析 → resolveAmbiguousReferences()
      │     ├─ 管道合并 → mergePipelines() 多源融合（Map + ThreadIndex）
      │     ├─ 按实体分组 → groupCandidatesByEntity()
-     │     ├─ LLM → callMemoryRetrievalWithTools(access)
-     │     │     ├─ 输入：按实体分组的候选 + 可见窗口 + KB 标注指令
-     │     │     ├─ 输出：[KB: 角色名=直接知晓|间接知晓|线索|未知] + ## 缺口
-     │     │     └─ 严格: 禁止叙事段落/事件描述/因果推断
-     │     │
-     │     ├─ parseEntityAnnotations() → 解析 KB 标注
-     │     ├─ buildEntityBlock() → 组装实体记忆链（含 KB 标注）
-     │     ├─ buildMemoryUsageGuide() → 认知边界说明
-     │     ├─ 组装缺口段落 + 未展开链跨度标注
+     │     ├─ buildEntityBlock() → 代码组装实体记忆链
+     │     │     └─ 实体子标题 + 事件列表 + KB 认知标注
+     │     ├─ buildKeyHighlights() → top-5 高相关度事件
      │     └─ compileRetrievalBudget() → Token 预算实体摘要（可选）
      │
-     └─ 未启用 SmartPush → formatContextMemory()
-           │
-           └─ 按 contextWindowRounds 构建窗口前记忆摘要
+     └─ 未启用 SmartPush → 按 dialogWindowRounds 截断对话
      │
      ▼
 通过 injectPrompt() 注入到主 LLM 上下文
@@ -1255,11 +1183,9 @@ adapter/index.js (入口)
   │      │                              │                         │
   │      ├── engine/contradiction.js    ├── engine/state-pipeline.js  ├── chat-telemetry.js
   │      ├── engine/injection.js        ├── engine/stm-pipeline.js   ├── token-stats.js
-  │      ├── engine/context-window.js   ├── engine/ltm-pipeline.js   └── embedding.js
   │      ├── vault/schema.js            ├── engine/pipeline-shared.js
-  │      ├── vault/versions.js          ├── engine/stm-extractor.js
-  │      └── vault/garbage-collector.js ├── engine/consolidate.js
-  │                                     ├── engine/pipeline-guard.js
+  │      ├── vault/versions.js          ├── engine/consolidate.js
+  │      └── vault/garbage-collector.js ├── engine/pipeline-guard.js
   │                                     ├── engine/retrieval-fusion.js
   │                                     ├── engine/retrieval-text.js
   │                                     ├── vault/store.js
@@ -1272,8 +1198,8 @@ adapter/index.js (入口)
   ├── adapter/panel-init.js (barrel: panel.js)
   │   ├── panel-shared.js ── panel-drawer.js / panel-popout.js
   │   │                    ── panel-content.js / panel-settings.js
-  │   │                    ── panel-entities.js / panel-state-cards.js
-  │   │                    ── panel-tools.js / panel-usage.js
+  │   │                    ── panel-state-cards.js / panel-usage.js
+  │   │                    ── panel-tools.js
   │   └── panel-popout.js ── panel-content.js
   ├── adapter/bootstrap.js ── core/auto-restore.js ── vault/store.js
   ├── adapter/test-driver.js ── core/test-runner/
@@ -1331,10 +1257,10 @@ npm run build
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine",
+  "name": "NE Memory Engine v6.0",
   "id": "ne_memory_engine",
-  "content": "import('https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@8b2af34/dist/index.js')",
-  "info": "长对话结构化记忆管理引擎。"
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.0 — Pipeline 架构重构 · Token 优化 · 检索 0 命中修复 · 27 项测试通过"
 }
 ```
 
@@ -1374,7 +1300,7 @@ npm test
 | `test/pipeline-guard.test.js` | Pipeline 守卫测试 |
 | `test/concurrency-guard.test.js` | 并发守卫测试 |
 | `test/text-utils.test.js` | 文本工具测试 |
-| `test/context-window.test.js` | 上下文窗口测试 |
+| `test/context-window.test.js` | ⚠ 上下文窗口测试（源文件已删除，测试待迁移） |
 | `test/dialog-window.test.js` | 对话框窗口上下文测试 |
 | `test/ltm-rebatch-call-pattern.test.js` | LTM 批处理模式测试 |
 | `test/ltm-rebatch.test.js` | `splitStmsIntoContiguousGroups` 分组测试 |
@@ -1510,4 +1436,18 @@ __ne_debug.runTestByName('smartpush-14-full-chain-smoke')
 
 ---
 
-> 本文档基于 `ne-memory` v4c04a31 生成。项目持续迭代中，请以实际代码为准。
+> 本文档基于 `ne-memory` v6.0.0 生成。项目持续迭代中，请以实际代码为准。
+
+## v5.6 → v6.0 核心变更
+
+| 类别 | 变更 |
+|------|------|
+| **SmartPush** | 检索 LLM 合成全面删除（`ce0fc40`）。`formatSmartContext` 改为纯本地管线：BM25 → 可选向量 RRF → 实体链分组 → `buildEntityBlock` 代码组装注入文本。零额外 API 成本。 |
+| **Pipeline** | `update.js`（1743 行）拆分为 `stm-pipeline.js` / `state-pipeline.js` / `ltm-pipeline.js` / `pipeline-guard.js` / `pipeline-shared.js`。STM/State 可并行执行（独立锁）。 |
+| **注入格式** | 从 LLM 叙事散文合成切换为 HL+GP 代码拼装实体链块。`buildEntityBlock` 自动生成实体子标题 + 事件列表 + KB 标注。 |
+| **工具** | 仅保留 `access` + `recall_memory`（从 5 个精简）。`update_state` / `rollback_memory` / `callMemoryLLMWithTools` 移除。 |
+| **上下文窗口** | `context-window.js` 删除，替换为 `dialogWindowRounds` 对话轮数截断。 |
+| **Token 优化** | 砍掉 STM prompt 中角色心理状态段；LTM 弧开放时用占位符互补标题/摘要。 |
+| **面板** | `panel.js` 拆分为 8 模块；移除 Entity 面板和 State Schema / Smart Retrieval 开关。 |
+| **向量搜索** | BM25+Vector RRF 融合（α=0.20 BM25 权重, k=60）+ 一键预设 SiliconFlow bge-m3。 |
+| **修复** | 检索 0 命中（STM<15 bypass 遗漏 `__relevance`）+ NE-CHAR 泄漏 + NE-BANNER 折叠 + i18n 补全。 |
