@@ -25,7 +25,7 @@ export function renderSettingsTab() {
     var stmBatchAuto = isAuto('stmBatch');
     var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
-    var commonHtml = '<div class="ne-accordion open" id="ne-set-engine">' +
+    var commonHtml = '<div class="ne-accordion" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + '</div>' +
         '<div class="ne-accordion-body">' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('dialog_round_injection_control') + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
@@ -55,7 +55,7 @@ export function renderSettingsTab() {
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '</div></div>' +
-        '<div class="ne-accordion open" id="ne-set-api">' +
+        '<div class="ne-accordion" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;color:var(--ne-success);display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-grid">' +
