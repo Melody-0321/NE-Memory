@@ -200,7 +200,7 @@ export function renderMemoryButton(getChatId) {
     var btn = pdCreate('div');
     btn.id = 'ne_memory_button';
     btn.className = 'fa-solid fa-book-bookmark interactable';
-    btn.title = t('Memory Vault');
+    btn.title = t('NE Narrative Engine');
     btn.style.fontSize = 'var(--bottomFormIconSize)';
     btn.onclick = function () { createVaultPopout(getChatId); };
     var extBtn = byId('extensionsMenuButton');

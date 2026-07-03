@@ -55,9 +55,9 @@ export async function updateVaultViewerPopout(getChatId) {
         return;
     }
 
-    // ── Section A: Header (version + API status) ──
+    // ── Section A: Header (pipeline status + API status) ──
     try {
-        var verEl = panelById('narrative_vault_panel_version');
+        var verEl = panelById('ne-memory-version');
         if (verEl) {
             var verText = t('Version:') + ' ' + (vault.version || 0);
             var ts = formatLocalTime(vault.updated_at);

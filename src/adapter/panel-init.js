@@ -3,7 +3,7 @@ import { loadVault } from '../core/auto-restore.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState } from '../core/engine/pipeline-guard.js';
+import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
 import { runLtmConsolidation } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
@@ -72,10 +72,10 @@ export async function renderVaultPanel(getChatId) {
             '<span class="ne-vault-collapse-chevron"><i class="fa-solid fa-chevron-down"></i></span>' +
             '</div>' +
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
-            '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('Memory Vault') + '</h3>' +
+            '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
             '<span id="narrative_vault_activity" style="font-size:0.8em;color:var(--ne-muted);">\u25CF</span>' +
-            '<span id="narrative_vault_panel_version" style="font-weight:bold;font-size:0.85em;"></span>' +
+            '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
             '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
@@ -100,6 +100,7 @@ export async function renderVaultPanel(getChatId) {
             '<div id="ne-memory-search-bar" style="padding:4px 12px 6px;">' +
             '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '</div>' +
+            '<div id="ne-memory-version" style="padding:2px 12px 4px;font-size:0.75em;color:var(--grey-50);"></div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
@@ -652,6 +653,21 @@ export async function renderVaultPanel(getChatId) {
                 closeVaultOverlay();
             }
         });
+
+        // ── Pipeline status callback (no polling — push from pipeline-guard) ──
+        var _updatePipelineUI = function(phase) {
+            var el = panelById('ne_pipeline_status');
+            if (!el) return;
+            if (phase === 'idle') {
+                el.textContent = t('Pipeline:') + ' ' + t('Idle');
+                el.style.color = 'var(--grey-50)';
+            } else {
+                el.textContent = t('Pipeline:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
+                el.style.color = 'var(--ne-warning)';
+            }
+        };
+        onPipelineChange(_updatePipelineUI);
+        _updatePipelineUI(getState());
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }

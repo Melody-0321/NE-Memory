@@ -2,9 +2,35 @@ import { addAnomaly } from './telemetry.js';
 
 var _pipelinePhase = 'idle'; // idle | state | stm | ltm
 var _pipelineWaiters = [];
+var _onChangeCallbacks = [];
 var _stateSince = 0;
 
 var PIPELINE_PHASES = ['state', 'stm', 'ltm'];
+
+function _notifyChange() {
+    var phase = _pipelinePhase;
+    var callbacks = _onChangeCallbacks.slice();
+    for (var i = 0; i < callbacks.length; i++) {
+        try { callbacks[i](phase); } catch (e) {}
+    }
+}
+
+/**
+ * @param {function(string):void} fn - receives current phase
+ * @returns {void}
+ */
+export function onPipelineChange(fn) {
+    if (_onChangeCallbacks.indexOf(fn) === -1) _onChangeCallbacks.push(fn);
+}
+
+/**
+ * @param {function(string):void} fn
+ * @returns {void}
+ */
+export function offPipelineChange(fn) {
+    var idx = _onChangeCallbacks.indexOf(fn);
+    if (idx !== -1) _onChangeCallbacks.splice(idx, 1);
+}
 
 /**
  * @param {string} targetState
@@ -15,6 +41,7 @@ export function tryAcquire(targetState) {
     if (PIPELINE_PHASES.indexOf(targetState) === -1) return false;
     _pipelinePhase = targetState;
     _stateSince = Date.now();
+    _notifyChange();
     console.log('[NE-GUARD] acquire ' + targetState + ' (idle → ' + targetState + ')');
     return true;
 }
@@ -28,6 +55,7 @@ export function transitionTo(newState) {
     var old = _pipelinePhase;
     _pipelinePhase = newState;
     _stateSince = Date.now();
+    _notifyChange();
     console.log('[NE-GUARD] transition ' + old + ' → ' + newState);
 }
 
@@ -37,6 +65,7 @@ export function transitionTo(newState) {
 export function releasePipeline() {
     _pipelinePhase = 'idle';
     _stateSince = 0;
+    _notifyChange();
     console.log('[NE-GUARD] release pipeline → idle');
     var waiters = _pipelineWaiters.splice(0);
     for (var i = 0; i < waiters.length; i++) {
@@ -71,6 +100,7 @@ export function getState() {
 export function reset() {
     _pipelinePhase = 'idle';
     _stateSince = 0;
+    _notifyChange();
     var waiters = _pipelineWaiters.splice(0);
     _pipelineWaiters = [];
     for (var i = 0; i < waiters.length; i++) {

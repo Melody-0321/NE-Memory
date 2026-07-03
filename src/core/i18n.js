@@ -114,6 +114,9 @@ export const NARRATIVE_I18N = {
         'count_label': ' entries', 'in_progress_label': ' [In Progress]', 'turns_suffix': ' turns',
         'status_unknown': 'Unknown', 'empty_value': '(Not filled)', 'hidden_faction': 'Not contacted',
         'Search': 'Search', 'Search memory entries': 'Search memory entries',
+        'NE Narrative Engine': 'NE Narrative Engine',
+        'Pipeline:': 'Pipeline:',
+        'Idle': 'Idle', 'State Extraction': 'State Extraction', 'STM Extraction': 'STM Extraction', 'LTM Consolidation': 'LTM Consolidation',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -219,6 +222,9 @@ export const NARRATIVE_I18N = {
         'count_label': '条', 'in_progress_label': ' [进行中]', 'turns_suffix': '轮',
         'status_unknown': '未知', 'empty_value': '(未填)', 'hidden_faction': '未接触',
         'Search': '搜索', 'Search memory entries': '搜索记忆条目',
+        'NE Narrative Engine': 'NE-叙事引擎',
+        'Pipeline:': '管线：',
+        'Idle': '空闲', 'State Extraction': '状态提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合并',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -312,6 +318,9 @@ export const NARRATIVE_I18N = {
         'count_label': '條', 'in_progress_label': ' [進行中]', 'turns_suffix': '輪',
         'status_unknown': '未知', 'empty_value': '(未填)', 'hidden_faction': '未接觸',
         'Search': '搜尋', 'Search memory entries': '搜尋記憶條目',
+        'NE Narrative Engine': 'NE-敘事引擎',
+        'Pipeline:': '管線：',
+        'Idle': '空閒', 'State Extraction': '狀態提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合併',
     }
 };
 
