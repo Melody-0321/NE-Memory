@@ -2,9 +2,9 @@
 
 > **SillyTavern 长对话结构化记忆管理引擎**
 >
-> 版本：v6.2.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
+> 版本：v6.3.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
 > 入口：`src/adapter/index.js` | 构建输出：`dist/index.js` (IIFE, 全局名 `NEMemoryEngine`)
-> 最后更新：2026-07-04（v6.2 面板交互打磨）
+> 最后更新：2026-07-04（v6.3 持久化 Bug 集中修复）
 
 ---
 
@@ -1269,10 +1269,10 @@ npm run build
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine v6.2",
-  "id": "ne_memory_engine",
-  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.2/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.2/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
-  "info": "🧠 v6.2 — UI 修复与面板交互打磨 · Shadow DOM 适配收尾 · i18n 补齐"
+  "name": "NE Memory Engine v6.3",
+  ...
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.3/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.3/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.3 — 持久化 Bug 集中修复 · 设置面板/记忆编辑/处理历史/滑动关闭"
 }
 ```
 

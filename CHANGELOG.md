@@ -1,3 +1,14 @@
+# NE-Memory v6.3 更新日志
+
+## Bug 修复
+
+- **设置面板全部控件不持久化** — `saveSettingsTab` 引用了渲染 HTML 中不存在的 DOM 元素（`nes_enable_state_schema` / `nes_enable_retrieval`），第一行 `.checked` 即抛 TypeError 导致整函数静默崩溃，`localStorage.setItem` 永远走不到。所有滑块、复选框、文本域的修改均未保存。修复：所有 `panelById` 访问改为空值安全 + 合理默认值。
+- **记忆编辑/删除不持久化** — `saveSingleEntry` / `deleteSingleEntry` 的 `write()` 是 fire-and-forget，写失败静默丢弃；`loadVault` 版本平局（IndexedDB 与 chat_metadata 同版本）时错误地用聊天文件旧数据覆盖 IndexedDB。修复：改为 `async/await write` + toast 错误提示；`loadVault` 版本比较改为严格大于（`>`），平局时 IndexedDB 为真源。
+- **处理历史按钮静默失败** — 三连坑：(1) `collectAllMsgIds` import 缺失导致 `ReferenceError`；(2) 确认弹窗 resolve 后到 `try` 块间无错误捕获，`read`/`waitForPipelineTrackIdle` 抛异常直接作为未捕获 rejection 消失；(3) `onProgress` 回调在 `executeIncrementalUpdate` 中从未被调用。修复：补齐 import、try/catch 扩展至全链路、`stm-pipeline.js` 开始/结束时调用 onProgress。
+- **手机端滑动关闭卡死** — 下拉 >60px 关闭面板后，inline `transform: translateY(movedY)` 未被清除，压住 CSS transition 导致面板钉在滑动位置、页面完全卡死。修复：`touchend` 中无条件先清除 `transform`。
+
+---
+
 # NE-Memory v6.2 更新日志
 
 ## Bug 修复
