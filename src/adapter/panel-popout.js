@@ -39,13 +39,10 @@ export { closeVaultOverlay };
 
 export async function renderHistory(getChatId) {
     var container = panelById('narrative_vault_history_list');
-    console.log('[NE-DEBUG] renderHistory called, getChatId type:', typeof getChatId, 'value:', JSON.stringify(getChatId), 'container:', !!container);
     if (!container) return;
     try {
         var snapshots = await listSnapshots(getChatId);
-        console.log('[NE-DEBUG] listSnapshots returned:', snapshots ? snapshots.length : 'null/undefined', 'items');
         if (!snapshots || snapshots.length === 0) {
-            console.log('[NE-DEBUG] No snapshots, showing empty state');
             container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
         }

@@ -66,7 +66,7 @@ export function setupAccordionHandlers(chatId) {
         if (acc.closest('#tab-memory')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
-            if (acc.id === 'ne-tool-history') { console.log('[NE-DEBUG] accordion handler: calling renderHistory, chatId type:', typeof chatId, 'value:', JSON.stringify(chatId)); renderHistory(chatId); }
+            if (acc.id === 'ne-tool-history') renderHistory(chatId);
         }
     });
     // ── L3: Accordion keyboard support (Enter/Space) ──
