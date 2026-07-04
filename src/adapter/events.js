@@ -72,7 +72,7 @@ export function restorePending() {
     } catch (e) { console.warn('[NE] restorePending error:', e); }
 }
 
-async function getStmBatchSize() {
+export async function getStmBatchSize() {
     if (isAuto('stmBatch')) {
         return computeStmBatch(getTelemetryStats().turnsPerEvent);
     }
