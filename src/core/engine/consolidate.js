@@ -59,6 +59,23 @@ export function getNextEligibleStmId(vault) {
 }
 
 /**
+ * @param {import('../../types.js').Vault} vault
+ * @returns {Array<string>}
+ */
+export function getEligibleStmIds(vault) {
+    var content = vault.content || {};
+    var unc = (content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; });
+    var threshold = getMaxUnconsolidated();
+    if (unc.length < threshold) return [];
+    unc.sort(function(a, b) {
+        var aStart = a.msgRange ? a.msgRange[0] : 999999;
+        var bStart = b.msgRange ? b.msgRange[0] : 999999;
+        return aStart - bStart;
+    });
+    return unc.map(function(s) { return s.id; });
+}
+
+/**
  * @param {import('../../types.js').LTMEntry|null} openLtm
  * @param {Array<import('../../types.js').STMEvent>} newStmEvents
  * @returns {import('../../types.js').ClosureSignals|null}
@@ -275,6 +292,23 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
     }
 
     globalThis.__ne_debug_last_ltm_state = getLtmSummary(vault);
+}
+
+/**
+ * @param {import('../../types.js').Vault} vault
+ * @param {Array<{stm_ids: Array<string>, action: string, target_ltm?: string, title?: string, event?: string}>} decisionGroups
+ */
+export function applyBatchLtmDecision(vault, decisionGroups) {
+    for (var i = 0; i < decisionGroups.length; i++) {
+        var group = decisionGroups[i];
+        var ltmDecision = {
+            action: group.action,
+            updated_title: group.title || '',
+            updated_event: group.event || '',
+            target_ltm: group.target_ltm || undefined
+        };
+        applyLtmDecision(vault, ltmDecision, group.stm_ids || []);
+    }
 }
 
 /**

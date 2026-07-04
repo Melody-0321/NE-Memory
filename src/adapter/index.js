@@ -560,7 +560,7 @@ function _dumpVaultKeys() {
     });
 }
 
-if (typeof window !== 'undefined' && !window.__NE_EXTENSION_MODE) {
+if (typeof window !== 'undefined' && typeof __NE_EXTENSION_BUILD__ === 'undefined' && !window.__NE_EXTENSION_MODE) {
     document.addEventListener('DOMContentLoaded', function () { bootNE(); });
     if (document.readyState === 'complete' || document.readyState === 'interactive') { bootNE(); }
 }

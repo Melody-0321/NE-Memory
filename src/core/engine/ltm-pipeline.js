@@ -156,3 +156,54 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline, force
     console.warn('[NE] LTM decision LLM returned non-JSON response');
     return null;
 }
+
+export async function runBatchLtmDecision(vault, eligibleIds, callMemoryPipeline) {
+    var allSTM = (vault.content.unconsolidated_stm || []).concat(vault.content.stm_entries || []);
+    var stmEntries = eligibleIds.map(function(id) { return allSTM.find(function(s) { return s.id === id; }); }).filter(Boolean);
+    if (stmEntries.length === 0) return [];
+
+    var groups = splitStmsIntoContiguousGroups(stmEntries, 3);
+    var batchResults = [];
+
+    for (var g = 0; g < groups.length; g++) {
+        var group = groups[g];
+        var groupIds = group.map(function(s) { return s.id; });
+        var result = await runLtmDecision(vault, groupIds, callMemoryPipeline, false);
+        if (result) {
+            batchResults.push({
+                stm_ids: groupIds,
+                action: result.action,
+                title: result.updated_title || '',
+                event: result.updated_event || '',
+                target_ltm: result.target_ltm || undefined
+            });
+        }
+    }
+
+    return batchResults;
+}
+
+function splitStmsIntoContiguousGroups(stms, tolerance) {
+    if (stms.length === 0) return [];
+    var sorted = stms.slice().sort(function(a, b) {
+        var aStart = a.msgRange ? a.msgRange[0] : 999999;
+        var bStart = b.msgRange ? b.msgRange[0] : 999999;
+        return aStart - bStart;
+    });
+    var groups = [];
+    var currentGroup = [sorted[0]];
+    for (var i = 1; i < sorted.length; i++) {
+        var prev = sorted[i - 1];
+        var curr = sorted[i];
+        var prevEnd = prev.msgRange ? prev.msgRange[1] : (prev.msgRange ? prev.msgRange[0] : 999999);
+        var currStart = curr.msgRange ? curr.msgRange[0] : 999999;
+        if (currStart - prevEnd <= tolerance) {
+            currentGroup.push(curr);
+        } else {
+            groups.push(currentGroup);
+            currentGroup = [curr];
+        }
+    }
+    groups.push(currentGroup);
+    return groups;
+}

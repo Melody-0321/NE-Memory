@@ -33,7 +33,8 @@ export default [
         input: 'src/adapter/extension.js',
         output: {
             file: 'dist/extension/index.js',
-            format: 'es'
+            format: 'es',
+            banner: 'var __NE_EXTENSION_BUILD__=true;'
         },
         external: ['jQuery', '$', 'SillyTavern', 'ToolManager'],
         plugins: [
