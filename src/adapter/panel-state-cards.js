@@ -88,7 +88,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<b>' + escapeHtml(name) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
-    html += '<button class="ne-card-delete-btn" data-char="' + escapeHtml(name) + '" aria-label="' + t('Delete') + '" onclick="event.stopPropagation()">\u2715</button>';
+    html += '<button class="ne-card-delete-btn" data-char="' + escapeHtml(name) + '" aria-label="' + t('Delete') + '" onclick="event.stopPropagation()" style="font-size:0.8em;padding:1px 6px;cursor:pointer;border:none;border-radius:3px;background:#d32f2f;color:#fff;margin-left:2px;">\u{1F5D1}</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
     html += affectionHtml;
@@ -532,8 +532,8 @@ function toggleInlineEdit(row, entryId, entryType) {
         idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
         '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
-        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2715</button>' +
-        '<button class="ne-inline-delete" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
+        '<button class="ne-inline-cancel" style="background:var(--grey-40);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2190</button>' +
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:2px;" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
