@@ -533,7 +533,7 @@ function toggleInlineEdit(row, entryId, entryType) {
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
         '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
         '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2715</button>' +
-        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" aria-label="' + t('Delete') + '">\u2715</button></td>';
+        '<button class="ne-inline-delete" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
