@@ -64,7 +64,14 @@ export function injectPinCSS() {
     if (exists) return;
     var style = pdCreate('style');
     style.id = 'ne_pin_style';
-    style.textContent = '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
+    style.textContent = '#narrative_vault_pin_div{font-size:24px;display:inline;padding:1px;opacity:0.5;transition:0.2s}' +
+        '#narrative_vault_pin_div:hover,#narrative_vault_pin_div:has(:focus-visible){opacity:1}' +
+        '#narrative_vault_pin{display:none}' +
+        '#narrative_vault_pin:checked+label #ne_pin_lock{display:inline}' +
+        '#narrative_vault_pin:checked+label #ne_pin_unlock{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label #ne_pin_lock{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label #ne_pin_unlock{display:inline}' +
+        '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
 
