@@ -1,3 +1,25 @@
+# NE-Memory v6.2 更新日志
+
+## Bug 修复
+
+- **聊天切换面板同步** — 修复先开面板再切换聊天时数据不更新的问题。`chat_id_changed` 事件现在正确触发面板刷新，STM/LTM 表格、角色卡、State Board 实时跟随当前聊天。
+- **历史快照表格修复** — 修复先展开历史再切换聊天后表格锁定为空的问题。History accordion 不再受一次性 lazy-render 限制，聊天切换和管线完成时自动刷新。
+
+## UI 改进
+
+- **Shadow DOM 图标适配** — 全部 Font Awesome 图标替换为 Unicode 字符，彻底解决 Shadow DOM 隔离下外部字体不可见的问题。删除 (🗑) / 取消 (←) / 编辑 (✎) / 保存 (✓) 等按钮视觉可区分。
+- **menu_button 样式修复** — 补齐 Shadow DOM 内 `menu_button` 的完整样式（padding / border / cursor / hover），工具 Tab 按钮恢复正常外观和点击反馈。
+- **副 API 状态提示增强** — 绿点 tooltip 现在同时显示副 API 和向量 API 的连接状态（分行）。
+- **i18n 补齐** — 14 处硬编码文本（Auto / Chat / (empty) / N/A / Msg 等）补充中英繁三语翻译。
+- **面板简化** — 移除面板锁定图标。
+- **历史表格对齐统一** — 表头与内容统一左对齐。
+
+### 从 v6.1 出发的外部变更统计
+
+共 8 个用户可见变更：聊天同步修复 / 历史快照修复 / Unicode 图标 / menu_button 样式 / 副 API tooltip / i18n 补齐 / 锁定图标移除 / 表格对齐修复。
+
+---
+
 # NE-Memory v6.1 更新日志
 
 ## 架构升级
