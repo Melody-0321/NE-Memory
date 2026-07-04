@@ -77,12 +77,7 @@ export async function renderVaultPanel(getChatId) {
             '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
-            '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
-            '<input type="checkbox" id="narrative_vault_pin">' +
-            '<label for="narrative_vault_pin">' +
-            '<div class="right_menu_button" id="ne_pin_unlock" alt="">\u{1F513}</div>' +
-            '<div class="right_menu_button" id="ne_pin_lock" alt="">\u{1F512}</div>' +
-            '</label></div></div></div>' +
+            '</div></div>' +
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools">\u{1F527} ' + t('Tools') + '</div>' +
@@ -536,16 +531,6 @@ export async function renderVaultPanel(getChatId) {
                 }
             };
         }
-
-        // Pin
-        var pinEl = panelById('narrative_vault_pin');
-        if (pinEl) pinEl.onchange = function () {
-            var pin = panelById('narrative_vault_pin');
-            if (!pin) return;
-            var checked = pin.checked;
-            var overlay = byId('ne_vault_bottom_overlay');
-            if (overlay) overlay.classList.toggle('pinned', checked);
-        };
 
         // Tools tab accordion lazy render handled by setupAccordionHandlers delegation
 
