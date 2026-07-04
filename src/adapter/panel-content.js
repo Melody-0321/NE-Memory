@@ -11,7 +11,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
-  renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel, deleteCharacterFromState } from './panel-state-cards.js';
+  renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
@@ -123,15 +123,6 @@ export async function updateVaultViewerPopout(getChatId) {
                     btn.onclick = function(e) {
                         e.stopPropagation();
                         enterCardEditMode(this);
-                    };
-                });
-                var delBtns = block.querySelectorAll('.ne-card-delete-btn');
-                delBtns.forEach(function(btn) {
-                    btn.onclick = async function(e) {
-                        e.stopPropagation();
-                        var name = this.getAttribute('data-char');
-                        if (!await showConfirm(t('Delete character "' + name + '"?'), t('This cannot be undone.'), t('Delete'), t('Cancel'), true)) return;
-                        deleteCharacterFromState(name);
                     };
                 });
             }, 50);

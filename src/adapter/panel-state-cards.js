@@ -88,7 +88,6 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<b>' + escapeHtml(name) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
-    html += '<button class="ne-card-delete-btn" data-char="' + escapeHtml(name) + '" aria-label="' + t('Delete') + '" onclick="event.stopPropagation()" style="font-size:0.8em;padding:1px 6px;cursor:pointer;border:none;border-radius:3px;background:#d32f2f;color:#fff;margin-left:2px;">\u{1F5D1}</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
     html += affectionHtml;
@@ -472,23 +471,6 @@ function exitCardEditMode(cardDiv) {
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
 
     cardDiv.classList.remove('ne-card-editing');
-}
-
-export function deleteCharacterFromState(name) {
-    var stored = _pendingInlineStorage;
-    if (!stored || !stored.vault) return;
-    var vault = stored.vault;
-    var c = vault.content || {};
-    var state = c.state || {};
-    var chars = state.characters || {};
-    if (!chars[name]) return;
-    delete chars[name];
-    state.characters = chars;
-    c.state = state;
-    var getChatId = stored.getChatId;
-    write(getChatId(), vault).then(function() {
-        busEmit('vault:updated', { getChatId: getChatId });
-    });
 }
 
 function toggleInlineEdit(row, entryId, entryType) {
