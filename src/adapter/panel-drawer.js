@@ -129,7 +129,7 @@ export function setupTabSwitching() {
 export var _pendingInlineStorage = null;
 export function setPendingInlineStorage(v) { _pendingInlineStorage = v; }
 
-export function saveSingleEntry(entryType, entryId, updates) {
+export async function saveSingleEntry(entryType, entryId, updates) {
     var stored = _pendingInlineStorage;
     if (!stored || !stored.vault) return;
     var vault = stored.vault;
@@ -153,14 +153,16 @@ export function saveSingleEntry(entryType, entryId, updates) {
             }
         }
     }
-    write(getChatId(), vault).then(function () {
+    try {
+        await write(getChatId(), vault);
         console.log('[NE] saveSingleEntry: persisted ' + entryType + ' ' + entryId);
-    }).catch(function (err) {
+    } catch (err) {
         console.error('[NE] saveSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
-    });
+        throw err;
+    }
 }
 
-export function deleteSingleEntry(entryType, entryId) {
+export async function deleteSingleEntry(entryType, entryId) {
     var stored = _pendingInlineStorage;
     if (!stored || !stored.vault) return;
     var vault = stored.vault;
@@ -188,11 +190,13 @@ export function deleteSingleEntry(entryType, entryId) {
 
         c.ltm_entries = (c.ltm_entries || []).filter(function(e) { return e.id !== entryId; });
     }
-    write(getChatId(), vault).then(function () {
+    try {
+        await write(getChatId(), vault);
         console.log('[NE] deleteSingleEntry: persisted deletion of ' + entryType + ' ' + entryId);
-    }).catch(function (err) {
+    } catch (err) {
         console.error('[NE] deleteSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
-    });
+        throw err;
+    }
 }
 
 export function renderMemoryButton(getChatId) {
@@ -251,6 +255,7 @@ export function setupMobileGestureClose() {
         if (!tracking) return;
         tracking = false;
         overlay.style.transition = '';
+        overlay.style.transform = '';
         if (movedY > 60) {
             overlay.classList.remove('open');
             overlay.addEventListener('transitionend', function h() {
@@ -259,8 +264,6 @@ export function setupMobileGestureClose() {
             });
             var chat = byId('chat');
             if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
-        } else {
-            overlay.style.transform = '';
         }
         movedY = 0;
     });

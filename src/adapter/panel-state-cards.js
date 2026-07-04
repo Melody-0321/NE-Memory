@@ -2,7 +2,7 @@ import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
-import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 
 var ACTIVE_STATUSES = ['活跃'];
@@ -516,11 +516,16 @@ function toggleInlineEdit(row, entryId, entryType) {
         '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
         '<button class="ne-inline-cancel" style="background:var(--grey-40);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2190</button>' +
         '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:2px;" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
-    row.querySelector('.ne-inline-save').onclick = function() {
+    row.querySelector('.ne-inline-save').onclick = async function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
         var event = row.querySelector('.ne-inline-event').value;
-        saveSingleEntry(entryType, entryId, { period: period, scene: scene, event: event });
+        try {
+            await saveSingleEntry(entryType, entryId, { period: period, scene: scene, event: event });
+        } catch (err) {
+            showToast(t('Save failed:') + ' ' + err.message, 'error', 4000);
+            return;
+        }
         row.innerHTML = row._neOrigHTML;
         row.classList.remove('ne-inline-row');
         row.querySelector('td:nth-child(2)').textContent = period;
@@ -538,7 +543,12 @@ function toggleInlineEdit(row, entryId, entryType) {
     };
     row.querySelector('.ne-inline-delete').onclick = async function() {
         if (!await showConfirm(t('Delete this entry?'), t('This cannot be undone.'), t('Delete'), t('Cancel'), true)) return;
-        deleteSingleEntry(entryType, entryId);
+        try {
+            await deleteSingleEntry(entryType, entryId);
+        } catch (err) {
+            showToast(t('Delete failed:') + ' ' + err.message, 'error', 4000);
+            return;
+        }
         row.remove();
     };
 }
