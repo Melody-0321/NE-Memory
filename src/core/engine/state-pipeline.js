@@ -167,7 +167,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var charCard = buildCharacterCardSection(vault);
 
     var rulesStaticEn = '\n## Field Rules\n' +
-        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience, affection, current_mood, inner_thoughts.\n' +
+        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, past_experience, current_mood, inner_thoughts.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Use the field key shown in parentheses in the table above (e.g. gender_age) as the JSON path.\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
@@ -179,7 +179,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '\n';
 
     var rulesStaticZh = '\n## 字段规则\n' +
-        '- 你管理: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, relationship, past_experience, affection, current_mood, inner_thoughts。\n' +
+        '- \u4f60\u7ba1\u7406: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, past_experience, current_mood, inner_thoughts\u3002\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- JSON 路径使用上方表格括号内的字段名（如 gender_age）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
@@ -193,8 +193,8 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var fallbackNote = '';
     if (neCharFallback) {
         fallbackNote = lang === 'en'
-            ? '\n## Emotion Fallback\nMain LLM did NOT output character emotion blocks this round. You MUST fill: affection (0-100 number), current_mood, inner_thoughts — infer from dialogue context.\n'
-            : '\n## 情感回退\n主 LLM 本轮未输出角色情感数据。你必须填充活跃 NPC 的: affection（0-100数值）、current_mood、inner_thoughts — 从对话上下文推断。\n';
+            ? '\n## Emotion Fallback\nMain LLM did NOT output character emotion blocks this round. You MUST fill: current_mood, inner_thoughts — infer from dialogue context.\n'
+            : '\n## 情感回退\n主 LLM 本轮未输出角色情感数据。你必须填充活跃 NPC 的: current_mood、inner_thoughts — 从对话上下文推断。\n';
     }
 
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';

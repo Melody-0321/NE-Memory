@@ -252,13 +252,7 @@ async function consumeNeCharBlocks(messageIndex) {
             }
             if (!chars[cb.name]) chars[cb.name] = {};
 
-            if (cb.fields.affection_delta !== undefined) {
-                var current = chars[cb.name].affection;
-                if (typeof current !== 'number') current = 0;
-                chars[cb.name].affection = Math.max(0, Math.min(100, current + Number(cb.fields.affection_delta)));
-            }
-
-            ['relationship', 'current_mood', 'inner_thoughts'].forEach(function(fk) {
+            ['current_mood', 'inner_thoughts'].forEach(function(fk) {
                 if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
                     chars[cb.name][fk] = cb.fields[fk];
                 }
@@ -951,20 +945,17 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
 
-                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u597d\u611f\u5ea6\u53d8\u5316\u548c\u5185\u5fc3\u72b6\u6001\uff1a\n' +
-                    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
-                    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: affection_delta, relationship, current_mood, inner_thoughts\n' +
-                    '\n\u683c\u5f0f\uff1a\n' +
-                    '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"affection_delta":5,"relationship":"\u2026","current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
-                    '\n\u89c4\u5219\uff1a\n' +
-                    '- \u53ea\u6709\u672c\u8f6e\u5b9e\u9645\u53d1\u751f\u4e86\u53d8\u5316\u7684\u89d2\u8272\u624d\u8f93\u51fa NE-CHAR \u5757\u3002\u65e0\u53d8\u5316\u7684\u89d2\u8272\u8df3\u8fc7\u3002\n' +
-                    '- affection_delta: \u597d\u611f\u5ea6\u6570\u503c\u53d8\u5316\u91cf\uff08+5 \u8868\u793a\u4e0a\u5347 5\uff0c-10 \u8868\u793a\u4e0b\u964d 10\uff09\u3002\u53ef\u4e3a\u7a7a\uff08\u4ec5\u5f53\u524d\u5fc3\u60c5\u53d8\u5316\u65f6\uff09\u3002\n' +
-                    '- relationship: \u5173\u7cfb\u63cf\u8ff0\u3002\u6709\u53d8\u5316\u65f6\u8f93\u51fa\u6700\u65b0\u63cf\u8ff0\u3002\n' +
-                    '- current_mood: \u89d2\u8272\u5f53\u524d\u5fc3\u60c5/\u60c5\u7eea\u3002\n' +
-                    '- inner_thoughts: \u89d2\u8272\u5185\u5fc3\u60f3\u6cd5\u3002\n' +
-                    '- PC \u4e0d\u8f93\u51fa affection_delta \u548c relationship\u3002\n' +
-                    '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
-                    '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
+                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
+    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
+    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
+    '\n\u683c\u5f0f\uff1a\n' +
+    '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
+    '\n\u89c4\u5219\uff1a\n' +
+    '- \u53ea\u6709\u672c\u8f6e\u5b9e\u9645\u53d1\u751f\u4e86\u53d8\u5316\u7684\u89d2\u8272\u624d\u8f93\u51fa NE-CHAR \u5757\u3002\u65e0\u53d8\u5316\u7684\u89d2\u8272\u8df3\u8fc7\u3002\n' +
+    '- current_mood: \u89d2\u8272\u5f53\u524d\u5fc3\u60c5/\u60c5\u7eea\u3002\n' +
+    '- inner_thoughts: \u89d2\u8272\u5185\u5fc3\u60f3\u6cd5\u3002\n' +
+    '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
+    '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
                 console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
             }

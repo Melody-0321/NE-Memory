@@ -196,8 +196,6 @@ export function injectBottomDrawerCSS() {
         '.ne-state-badge.friendly{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
         '.ne-state-badge.hostile{background:var(--ne-danger-bg);color:var(--ne-danger);border:1px solid var(--ne-danger-border);}' +
         '.ne-state-badge.neutral{background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);}' +
-        '.ne-affection-bar{display:inline-block;width:80px;height:8px;background:var(--black50a);border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:4px;}' +
-        '.ne-affection-bar>div{height:100%;border-radius:4px;background:linear-gradient(90deg,#ef5350,#ffeb3b,#66bb6a);transition:width 0.3s ease;}' +
         '.ne-char-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
         '.ne-char-card.status-active{border-left-color:var(--ne-success);}' +
         '.ne-char-card.status-inactive{border-left-color:var(--ne-warning);}' +
@@ -310,8 +308,6 @@ export function injectBottomDrawerCSS() {
         '.ne-char-type{display:inline-block;padding:1px 7px;border-radius:3px;font-size:0.75em;font-weight:bold;margin-left:6px;}' +
         '.ne-char-type-pc{background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);}' +
         '.ne-char-type-npc{background:var(--ne-muted-bg);color:var(--ne-muted);border:1px solid rgba(136,136,136,0.25);}' +
-        // ── L2: Affection bar ──
-        '.ne-affection-bar{display:inline-block;width:80px;height:8px;background:var(--black50a);border-radius:4px;overflow:hidden;vertical-align:middle;margin-right:4px;cursor:help;}' +
         // ── L2: Faction hidden card ──
         '.ne-faction-card.ne-faction-hidden{opacity:0.55;border-left-color:var(--ne-muted);border-left-style:dashed;}' +
         '.ne-faction-card.ne-faction-hidden:hover{opacity:0.8;}' +

@@ -62,14 +62,6 @@ function renderCharacterCard(name, card, schema, cardType) {
     var allRows = requiredFields.concat(optionalFields);
     if (allRows.length === 0) return '';
 
-    // Special: affection progress bar (NPC only)
-    var affectionHtml = '';
-    if (cardType === 'npc' && card.affection !== undefined && card.affection !== null && card.affection !== '') {
-        var affVal = Number(card.affection) || 0;
-        var affPercent = Math.min(100, Math.max(0, affVal));
-        affectionHtml = '<div class="ne-affection-bar"><div class="ne-affection-fill" style="width:' + affPercent + '%"></div><span class="ne-affection-label">' + escapeHtml(t_field('affection')) + ': ' + affVal + '</span></div>';
-    }
-
     // Render inventory if present
     var inventoryHtml = '';
     if (card.inventory && typeof card.inventory === 'object') {
@@ -90,7 +82,6 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
-    html += affectionHtml;
     html += inventoryHtml;
 
     // Power slots (independent rendering)
