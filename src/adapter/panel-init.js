@@ -77,12 +77,7 @@ export async function renderVaultPanel(getChatId) {
             '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;"></span>' +
             '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
             '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
-            '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
-            '<input type="checkbox" id="narrative_vault_pin">' +
-            '<label for="narrative_vault_pin">' +
-            '<div class="right_menu_button" id="ne_pin_unlock" alt="">\u{1F513}</div>' +
-            '<div class="right_menu_button" id="ne_pin_lock" alt="">\u{1F512}</div>' +
-            '</label></div></div></div>' +
+            '</div></div>' +
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
             '<div class="ne-vault-tab" data-tab="tools">\u{1F527} ' + t('Tools') + '</div>' +
@@ -109,7 +104,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('Msg IDs') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('Msg IDs') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-ltm">' +
@@ -117,7 +112,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">No.</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
             '</div></div>' +
             '</div></div>' +
@@ -536,16 +531,6 @@ export async function renderVaultPanel(getChatId) {
                 }
             };
         }
-
-        // Pin
-        var pinEl = panelById('narrative_vault_pin');
-        if (pinEl) pinEl.onchange = function () {
-            var pin = panelById('narrative_vault_pin');
-            if (!pin) return;
-            var checked = pin.checked;
-            var overlay = byId('ne_vault_bottom_overlay');
-            if (overlay) overlay.classList.toggle('pinned', checked);
-        };
 
         // Tools tab accordion lazy render handled by setupAccordionHandlers delegation
 

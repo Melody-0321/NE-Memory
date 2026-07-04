@@ -41,14 +41,13 @@ export async function renderHistory(getChatId) {
     var container = panelById('narrative_vault_history_list');
     if (!container) return;
     try {
-        var snapshots = await listSnapshots(getChatId);
-        console.log('[NE] renderHistory chatId=' + getChatId + ' snapshots=' + (snapshots ? snapshots.length : 'null'));
+        var snapshots = await listSnapshots(getChatId());
         if (!snapshots || snapshots.length === 0) {
             container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
         }
         var html = '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.85em;">' +
-            '<thead><tr><th>v</th><th>' + t('Version:').replace(':', '') + '</th><th>' + t('Scene') + '</th><th>' + t('Event') + '</th><th>' + t('Restore') + '</th><th>' + t('Delete') + '</th></tr></thead><tbody>';
+            '<thead><tr><th style="text-align:left;">v</th><th style="text-align:left;">' + t('Version:').replace(':', '') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="text-align:left;">' + t('Restore') + '</th><th style="text-align:left;">' + t('Delete') + '</th></tr></thead><tbody>';
         snapshots.forEach(function (snap) {
             var sc = snap.data && snap.data.content;
             var ltmCount = sc && sc.ltm_entries ? sc.ltm_entries.length : 0;
