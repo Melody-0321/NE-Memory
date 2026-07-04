@@ -85,18 +85,31 @@ copyFileSync(join(TMP_DIR, 'index.js'), join(PROJECT_ROOT, 'index.js'));
 copyFileSync(join(TMP_DIR, 'manifest.json'), join(PROJECT_ROOT, 'manifest.json'));
 run('git add -f index.js manifest.json');
 
-let hasChanges = false;
-try { execSync('git diff --cached --quiet -- index.js manifest.json', { cwd: PROJECT_ROOT, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { hasChanges = true; }
+// ── 版本比对：release 上版本相同时跳过 ──
+var releaseVersion = '0.0.0';
 
-if (!hasChanges) {
-    warn('产物无变化，跳过提交');
+try {
+    var releaseManifestRaw = execSync('git show origin/' + RELEASE_BRANCH + ':manifest.json', { cwd: PROJECT_ROOT, encoding: 'utf8', stdio: 'pipe' });
+    var releaseManifest = JSON.parse(releaseManifestRaw);
+    releaseVersion = releaseManifest.version || '0.0.0';
+} catch (e) {}
+
+if (version === releaseVersion) {
+    warn('版本号未变 (当前 v' + version + ' === release v' + releaseVersion + ')，跳过推送 release。');
 } else {
-    var d = new Date().toISOString().replace('T', ' ').substring(0, 19);
-    run('git commit -m "release: v' + version + '" -m "构建时间: ' + d + '" -m "来源分支: ' + currentBranch + '" -m "来源提交: ' + originalHead + '"');
-    ok('已提交: release v' + version);
+    let hasChanges = false;
+    try { execSync('git diff --cached --quiet -- index.js manifest.json', { cwd: PROJECT_ROOT, encoding: 'utf8', stdio: 'pipe' }); } catch (e) { hasChanges = true; }
+
+    if (!hasChanges) {
+        warn('产物无变化，跳过提交');
+    } else {
+        var d = new Date().toISOString().replace('T', ' ').substring(0, 19);
+        run('git commit -m "release: v' + version + '" -m "构建时间: ' + d + '" -m "来源分支: ' + currentBranch + '" -m "来源提交: ' + originalHead + '"');
+        ok('已提交: release v' + version);
+    }
+    run('git push origin ' + RELEASE_BRANCH);
+    ok('已推送 origin/' + RELEASE_BRANCH);
 }
-run('git push origin ' + RELEASE_BRANCH);
-ok('已推送 origin/' + RELEASE_BRANCH);
 
 // ── 切回 ──
 try {
