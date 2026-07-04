@@ -292,27 +292,33 @@ export function renderSettingsTab() {
 
 function saveSettingsTab() {
     var settings = {
-        enableStateSchema: panelById('nes_enable_state_schema').checked,
+        enableStateSchema: panelById('nes_enable_state_schema') ? panelById('nes_enable_state_schema').checked : false,
         useDynamicState: false,
-        retrievalEnabled: panelById('nes_enable_retrieval').checked,
+        retrievalEnabled: panelById('nes_enable_retrieval') ? panelById('nes_enable_retrieval').checked : false,
         enableVectorSearch: panelById('nes_enable_vector_search') ? panelById('nes_enable_vector_search').checked : false,
-        memoryBudget: Number(panelById('nes_memory_budget').value),
-        stmBatch: (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked) ? 'auto' : Number(panelById('nes_stm_batch').value),
-        stmMaxUnconsolidated: Number(panelById('nes_stm_max_unconsolidated').value),
-        dialogWindowRounds: Number(panelById('nes_dialog_window_rounds').value),
-        dialogOverrideEnabled: panelById('nes_dialog_override_enabled').checked,
+        memoryBudget: panelById('nes_memory_budget') ? Number(panelById('nes_memory_budget').value) : 800,
+        stmBatch: (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked) ? 'auto' : (panelById('nes_stm_batch') ? Number(panelById('nes_stm_batch').value) : 10),
+        stmMaxUnconsolidated: panelById('nes_stm_max_unconsolidated') ? Number(panelById('nes_stm_max_unconsolidated').value) : 5,
+        dialogWindowRounds: panelById('nes_dialog_window_rounds') ? Number(panelById('nes_dialog_window_rounds').value) : 10,
+        dialogOverrideEnabled: panelById('nes_dialog_override_enabled') ? panelById('nes_dialog_override_enabled').checked : false,
         memoryConfig: {
-            extraction_temperature: Number(panelById('nes_extraction_temperature').value),
-            temperature: Number(panelById('nes_extraction_temperature').value)
+            extraction_temperature: panelById('nes_extraction_temperature') ? Number(panelById('nes_extraction_temperature').value) : 0.2,
+            temperature: panelById('nes_extraction_temperature') ? Number(panelById('nes_extraction_temperature').value) : 0.2
         }
     };
-    var schemaText = panelById('nes_state_schema').value.trim();
-    if (schemaText) {
-        try { var parsed = JSON.parse(schemaText); if (typeof parsed === 'object' && parsed !== null) settings.stateSchema = parsed; } catch (e) {}
+    var schemaEl = panelById('nes_state_schema');
+    if (schemaEl) {
+        var schemaText = schemaEl.value.trim();
+        if (schemaText) {
+            try { var parsed = JSON.parse(schemaText); if (typeof parsed === 'object' && parsed !== null) settings.stateSchema = parsed; } catch (e) {}
+        }
     }
-    var charSchemaText = panelById('nes_character_schema').value.trim();
-    if (charSchemaText) {
-        try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
+    var charSchemaEl = panelById('nes_character_schema');
+    if (charSchemaEl) {
+        var charSchemaText = charSchemaEl.value.trim();
+        if (charSchemaText) {
+            try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
+        }
     }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     setStateSchemaEnabled(settings.enableStateSchema || false);
