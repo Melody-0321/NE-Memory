@@ -7,7 +7,7 @@ import { runtime } from '../core/runtime.js';
 import { read, write } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
@@ -292,6 +292,7 @@ function setupEventListeners(retryCount) {
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await loadVault(chatId2);
                     await migrateVaultIfNeeded(chatId2, vault);
+                    notifyVaultChanged();
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
             }); } catch (e) {}
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
@@ -321,6 +322,7 @@ function setupEventListeners(retryCount) {
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await loadVault(chatId2b);
                     await migrateVaultIfNeeded(chatId2b, vault);
+                    notifyVaultChanged();
                 });
             }
             if (tavern_events.MESSAGE_DELETED) TavernHelper._eventOn(tavern_events.MESSAGE_DELETED, onMessageDeleted);

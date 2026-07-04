@@ -153,7 +153,7 @@ function adjustDialogWindow() {
         }
     }
 }
-function notifyVaultChanged() {
+export function notifyVaultChanged() {
     try {
         var doc = window.parent && window.parent !== window ? window.parent.document : document;
         doc.dispatchEvent(new CustomEvent('ne:vault-changed'));

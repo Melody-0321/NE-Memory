@@ -27,6 +27,7 @@ import { updateVaultViewerPopout } from './panel-content.js';
 import { initTestRunner } from './panel-tools.js';
 import { renderUsageTab } from './panel-usage.js';
 import { renderSettingsTab } from './panel-settings.js';
+import { renderHistory } from './panel-popout.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -59,6 +60,12 @@ export async function renderVaultPanel(getChatId) {
             var usageTab = panelQS('.ne-vault-tab.active[data-tab="usage"]');
             if (usageTab) {
                 try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
+            }
+        });
+        busOn('vault:updated', function() {
+            var historyAcc = panelById('ne-tool-history');
+            if (historyAcc && historyAcc.classList.contains('open')) {
+                try { renderHistory(_currentGetChatId); } catch (e) { console.warn('[NE] History auto-refresh failed:', e); }
             }
         });
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);

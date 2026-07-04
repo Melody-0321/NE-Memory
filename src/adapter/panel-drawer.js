@@ -66,7 +66,9 @@ export function setupAccordionHandlers(chatId) {
         if (acc.closest('#tab-memory')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
-            if (acc.id === 'ne-tool-history') renderHistory(_currentGetChatId);
+        }
+        if (acc.classList.contains('open') && acc.id === 'ne-tool-history') {
+            renderHistory(_currentGetChatId);
         }
     });
     // ── L3: Accordion keyboard support (Enter/Space) ──
