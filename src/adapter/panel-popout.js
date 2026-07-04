@@ -41,7 +41,7 @@ export async function renderHistory(getChatId) {
     var container = panelById('narrative_vault_history_list');
     if (!container) return;
     try {
-        var snapshots = await listSnapshots(getChatId());
+        var snapshots = await listSnapshots(getChatId);
         if (!snapshots || snapshots.length === 0) {
             container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
