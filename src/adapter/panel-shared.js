@@ -11,6 +11,7 @@ export function qsa(sel) { return PD.querySelectorAll(sel); }
 export function byId(id) { return PD.getElementById(id); }
 export function pdCreate(tag) { return PD.createElement(tag); }
 export function pdHead() { return PD.head; }
+export function pdBody() { return PD.body; }
 export function pdAddEventListener(type, fn, opts) { PD.addEventListener(type, fn, opts); }
 
 // ── Shadow DOM aware panel queries ──
@@ -475,7 +476,7 @@ export function showToast(message, type, duration) {
         _toastEl = pdCreate('div');
         _toastEl.className = 'ne-toast';
         _toastEl.setAttribute('aria-live', 'polite');
-        PD.body.appendChild(_toastEl);
+        pdBody().appendChild(_toastEl);
     }
     if (_toastTimer) clearTimeout(_toastTimer);
     _toastEl.className = 'ne-toast ' + type;
@@ -504,7 +505,7 @@ export function showConfirm(title, message, confirmLabel, cancelLabel, isDanger)
             '<button class="ne-confirm-btn" id="ne-confirm-cancel">' + escapeHtml(cancelLabel) + '</button>' +
             '<button class="ne-confirm-btn' + dangerClass + '" id="ne-confirm-ok">' + escapeHtml(confirmLabel) + '</button>' +
             '</div></div>';
-        PD.body.appendChild(overlay);
+        pdBody().appendChild(overlay);
 
         function close(val) {
             overlay.classList.remove('show');
