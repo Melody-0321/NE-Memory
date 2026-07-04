@@ -221,7 +221,9 @@ export async function renderVaultPanel(getChatId) {
         var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
 
-        setupAccordionHandlers(typeof getChatId === 'function' ? getChatId() : getChatId);
+        var resolvedChatId = typeof getChatId === 'function' ? getChatId() : getChatId;
+        console.log('[NE-DEBUG] renderVaultPanel: resolvedChatId =', JSON.stringify(resolvedChatId), 'getChatId type:', typeof getChatId);
+        setupAccordionHandlers(resolvedChatId);
         setupMobileGestureClose();
         // ── L3: Search / Filter ──
         var searchInput = panelById('ne-memory-search-input');
