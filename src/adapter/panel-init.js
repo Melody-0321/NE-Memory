@@ -27,6 +27,7 @@ import { updateVaultViewerPopout } from './panel-content.js';
 import { initTestRunner } from './panel-tools.js';
 import { renderUsageTab } from './panel-usage.js';
 import { renderSettingsTab } from './panel-settings.js';
+import { renderHistory } from './panel-popout.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
