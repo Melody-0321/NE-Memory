@@ -1,0 +1,15 @@
+{
+    "display_name": "NE Memory Engine",
+    "loading_order": 200,
+    "requires": [],
+    "optional": [],
+    "js": "index.js",
+    "css": "",
+    "author": "NE Team",
+    "version": "6.3.0",
+    "homePage": "",
+    "auto_update": false,
+    "hooks": {
+        "activate": "init"
+    }
+}
