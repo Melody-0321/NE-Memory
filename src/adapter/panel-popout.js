@@ -42,6 +42,7 @@ export async function renderHistory(getChatId) {
     if (!container) return;
     try {
         var snapshots = await listSnapshots(getChatId);
+        console.log('[NE] renderHistory chatId=' + getChatId + ' snapshots=' + (snapshots ? snapshots.length : 'null'));
         if (!snapshots || snapshots.length === 0) {
             container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
