@@ -13,7 +13,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   vaultLLMLog, lastVaultStateJson, closeVaultOverlay, _currentGetChatId,
   _vaultChangeBound, _updatingPopout, setCurrentGetChatId, setVaultChangeBound,
   busOn, busEmit,
-  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm } from './panel-shared.js';
+  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { _currentChatIdForCollapse, _currentCollapseState,
   _lazyRendered, _pendingInlineStorage,
   saveCollapseState, loadCollapseState, navigateToAccordion,
@@ -296,96 +296,100 @@ export async function renderVaultPanel(getChatId) {
         if (processHistoryBtn) {
             processHistoryBtn.onclick = async function () {
                 if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
-                var chatMessages = [];
-                try {
-                    if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-                        chatMessages = SillyTavern.getContext().chat || [];
-                    }
-                } catch (e) {}
-
-                if (chatMessages.length === 0) {
-                    alert(t('No messages found in chat.'));
-                    return;
-                }
-
-                // Filter to messages with actual content
-                var toProcess = [];
-                chatMessages.forEach(function (msg, idx) {
-                    var content = msg.mes || '';
-                    if (content.trim().length > 0) {
-                        toProcess.push({
-                            id: idx,
-                            is_user: !!msg.is_user,
-                            mes: content,
-                            name: msg.name || ''
-                        });
-                    }
-                });
-
-                if (toProcess.length === 0) {
-                    alert(t('No messages with content to process.'));
-                    return;
-                }
-
-                var vault = await read(getChatId());
-                var stmMsgIdSet = collectAllMsgIds(vault);
-                console.log('[NE-DIAG] processHistory pre-filter — chatId=' + getChatId() + ', stmMsgIdSet.size=' + stmMsgIdSet.size + ', toProcessBefore=' + toProcess.length);
-                var filteredOut = [];
-                toProcess = toProcess.filter(function (msg) {
-                    var key = String(msg.id);
-                    var skip = stmMsgIdSet.has(key);
-                    if (skip) filteredOut.push(msg.id);
-                    return !skip;
-                });
-                if (filteredOut.length > 0) console.log('[NE-DIAG] processHistory pre-filter — removed msg ids:', filteredOut.join(','));
-                console.log('[NE-DIAG] processHistory pre-filter — toProcessAfter=' + toProcess.length + ', remaining ids:', toProcess.map(function(m){return m.id;}).join(','));
-
-                if (toProcess.length === 0) {
-                    alert(t('All messages have already been processed.'));
-                    return;
-                }
 
                 var prevText = processHistoryBtn.textContent;
-                processHistoryBtn.disabled = true;
                 var BATCH = 30;
-                var total = toProcess.length;
-                processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
-
-                var cpKey = 'ne_ph_' + getChatId();
-                var processedCount = 0;
+                var total = 0;
                 try {
-                    var cp = localStorage.getItem(cpKey);
-                    if (cp) {
-                        var cpData = JSON.parse(cp);
-                        if (cpData.t && cpData.i >= total) {
-                            console.log('[NE] Process History checkpoint stale, resetting');
-                            try { localStorage.removeItem(cpKey); } catch (e2) {}
-                        } else if (cpData.t && cpData.i > 0) {
-                            processedCount = cpData.i;
-                            console.log('[NE] Resuming Process History from message', processedCount + 1, '/', total);
+                    var chatMessages = [];
+                    try {
+                        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                            chatMessages = SillyTavern.getContext().chat || [];
+                        }
+                    } catch (e) {}
+
+                    if (chatMessages.length === 0) {
+                        alert(t('No messages found in chat.'));
+                        return;
+                    }
+
+                    // Filter to messages with actual content
+                    var toProcess = [];
+                    chatMessages.forEach(function (msg, idx) {
+                        var content = msg.mes || '';
+                        if (content.trim().length > 0) {
+                            toProcess.push({
+                                id: idx,
+                                is_user: !!msg.is_user,
+                                mes: content,
+                                name: msg.name || ''
+                            });
+                        }
+                    });
+
+                    if (toProcess.length === 0) {
+                        alert(t('No messages with content to process.'));
+                        return;
+                    }
+
+                    var vault = await read(getChatId());
+                    var stmMsgIdSet = collectAllMsgIds(vault);
+                    console.log('[NE-DIAG] processHistory pre-filter — chatId=' + getChatId() + ', stmMsgIdSet.size=' + stmMsgIdSet.size + ', toProcessBefore=' + toProcess.length);
+                    var filteredOut = [];
+                    toProcess = toProcess.filter(function (msg) {
+                        var key = String(msg.id);
+                        var skip = stmMsgIdSet.has(key);
+                        if (skip) filteredOut.push(msg.id);
+                        return !skip;
+                    });
+                    if (filteredOut.length > 0) console.log('[NE-DIAG] processHistory pre-filter — removed msg ids:', filteredOut.join(','));
+                    console.log('[NE-DIAG] processHistory pre-filter — toProcessAfter=' + toProcess.length + ', remaining ids:', toProcess.map(function(m){return m.id;}).join(','));
+
+                    if (toProcess.length === 0) {
+                        alert(t('All messages have already been processed.'));
+                        return;
+                    }
+
+                    processHistoryBtn.disabled = true;
+                    total = toProcess.length;
+                    processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
+
+                    var cpKey = 'ne_ph_' + getChatId();
+                    var processedCount = 0;
+                    try {
+                        var cp = localStorage.getItem(cpKey);
+                        if (cp) {
+                            var cpData = JSON.parse(cp);
+                            if (cpData.t && cpData.i >= total) {
+                                console.log('[NE] Process History checkpoint stale, resetting');
+                                try { localStorage.removeItem(cpKey); } catch (e2) {}
+                            } else if (cpData.t && cpData.i > 0) {
+                                processedCount = cpData.i;
+                                console.log('[NE] Resuming Process History from message', processedCount + 1, '/', total);
+                            }
+                        }
+                    } catch (e) {}
+
+                    var PIPELINE_TIMEOUT_MS = 60000;
+                    if (!tryAcquire('stm')) {
+                        console.log('[NE] processHistory: waiting for pipeline — state=' + getState());
+                        await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
+                        if (!tryAcquire('stm')) {
+                            console.warn('[NE] processHistory: pipeline still blocked, forcing reset');
+                            reset();
+                            tryAcquire('stm');
                         }
                     }
-                } catch (e) {}
 
-                var PIPELINE_TIMEOUT_MS = 60000;
-                if (!tryAcquire('stm')) {
-                    console.log('[NE] processHistory: waiting for pipeline — state=' + getState());
-                    await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-                    if (!tryAcquire('stm')) {
-                        console.warn('[NE] processHistory: pipeline still blocked, forcing reset');
-                        reset();
-                        tryAcquire('stm');
-                    }
-                }
-                try {
                     var accumTurns = processedCount;
-                    processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
                     for (var i = processedCount; i < total; i += BATCH) {
                         var batch = toProcess.slice(i, i + BATCH);
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
                         var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
                             accumTurns = progress.processedTurns;
                             processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
                         }, true);
+                        accumTurns = Math.min(i + BATCH, total);
                         if (result.added === 0 && batch.length > 0) {
                             console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
                         }
@@ -398,14 +402,16 @@ export async function renderVaultPanel(getChatId) {
                     processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
-                    alert(t('Process History') + ' failed: ' + e.message);
                     processHistoryBtn.textContent = t('Failed');
+                    processHistoryBtn.style.cssText += ';background:#e53935 !important;color:#fff !important;';
+                    showToast(t('Process History') + ': ' + e.message, 'error', 6000);
                 } finally {
                     releasePipeline();
                     setTimeout(function () {
                         processHistoryBtn.textContent = prevText;
                         processHistoryBtn.disabled = false;
-                    }, 1500);
+                        processHistoryBtn.style.cssText = processHistoryBtn.style.cssText.replace(';background:#e53935 !important;color:#fff !important;', '');
+                    }, 2000);
                     busEmit('vault:updated', { getChatId: getChatId });
                 }
             };

@@ -534,6 +534,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
 
     console.log('[NE] STM pipeline starting — messages=' + filteredMessages.length);
+    if (onProgress) onProgress({ processedTurns: 0, totalTurns: filteredMessages.length });
     var cursorResult = { vault: vault, totalAdded: 0 };
     var newEntries = [];
     try {
@@ -637,5 +638,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         console.warn('[NE] STM pipeline failed:', e);
     }
 
+    if (onProgress) onProgress({ processedTurns: newEntries.length, totalTurns: newMessages.length });
     return { vault: vault, added: newEntries.length };
 }
