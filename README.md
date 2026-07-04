@@ -1,5 +1,7 @@
 # NE Memory Engine — 让 AI 永远记得住
 
+[![GitHub](https://img.shields.io/badge/GitHub-Melody--0321%2FNE--Memory-0969da?logo=github)](https://github.com/Melody-0321/NE-Memory)
+
 聊到 300 楼，AI 还在提 10 楼的那个约定。
 
 NE Memory Engine 是 [SillyTavern](https://github.com/SillyTavern/SillyTavern) 的长对话记忆管理引擎。它自动从对话中提取事件、追踪角色状态、维护叙事脉络，再在需要的时刻把相关记忆精准注入给 LLM。**既省 token，又让长篇对话前后连贯、不崩人设。**
