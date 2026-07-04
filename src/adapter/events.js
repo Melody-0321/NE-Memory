@@ -7,7 +7,7 @@ import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
-import { showToast } from './panel-shared.js';
+import { showToast, PD } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
@@ -155,8 +155,7 @@ function adjustDialogWindow() {
 }
 export function notifyVaultChanged() {
     try {
-        var doc = window.parent && window.parent !== window ? window.parent.document : document;
-        doc.dispatchEvent(new CustomEvent('ne:vault-changed'));
+        PD.dispatchEvent(new CustomEvent('ne:vault-changed'));
     } catch (e) { console.warn('[NE] notifyVaultChanged failed:', e.message); }
 }
 

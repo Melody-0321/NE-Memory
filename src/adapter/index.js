@@ -139,15 +139,25 @@ Object.assign(runtime, {
         try {
             if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
                 var qctx = SillyTavern.getContext();
-                if (qctx.generateQuietPrompt) return qctx.generateQuietPrompt(prompt, systemPrompt);
+                if (qctx.generateQuietPrompt) {
+                    return qctx.generateQuietPrompt({
+                        quietPrompt: prompt || '',
+                        quietName: systemPrompt || ''
+                    });
+                }
             }
         } catch (e) {}
         return Promise.resolve('');
     },
     generateRaw: function(opts) {
         try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.generateRaw) {
-                return TavernHelper.generateRaw(opts);
+            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                var ctx = SillyTavern.getContext();
+                if (ctx.generateRaw) {
+                    return ctx.generateRaw({
+                        prompt: opts && opts.ordered_prompts || (opts && opts.prompt) || ''
+                    });
+                }
             }
         } catch (e) {}
         return Promise.resolve('');
@@ -156,19 +166,9 @@ Object.assign(runtime, {
         try {
             if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
                 var es = SillyTavern.getContext().eventSource;
-                if (es && typeof es.on === 'function') { es.on(name, fn); return; }
+                if (es && typeof es.on === 'function') { es.on(name, fn); }
             }
         } catch (e) {}
-        try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper._eventOn) {
-                var th = TavernHelper;
-                var eventMap = { message_sent: 'MESSAGE_SENT', message_received: 'MESSAGE_RECEIVED', GENERATION_AFTER_COMMANDS: 'GENERATION_AFTER_COMMANDS', chat_id_changed: 'CHAT_CHANGED', message_deleted: 'MESSAGE_DELETED', message_swiped: 'MESSAGE_SWIPED', message_updated: 'MESSAGE_UPDATED' };
-                var mapped = eventMap[name];
-                if (mapped && th.tavern_events && th.tavern_events[mapped]) {
-                    th._eventOn(th.tavern_events[mapped], fn);
-                }
-            }
-        } catch (e2) {}
     },
     emit: function(name, data) {
         try {
@@ -180,19 +180,24 @@ Object.assign(runtime, {
     },
     injectPrompt: function(key, value, position, depth, role) {
         try {
-            if (typeof TavernHelper !== 'undefined' && TavernHelper.injectPrompts) {
-                TavernHelper.injectPrompts([{
-                    id: key,
-                    position: position || 'in_chat',
-                    depth: depth !== undefined ? depth : 2,
-                    role: role || 'system',
-                    content: value,
-                    should_scan: false
-                }], { once: false });
+            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                var ctx = SillyTavern.getContext();
+                if (ctx && typeof ctx.setExtensionPrompt === 'function') {
+                    var posMap = { 'in_chat': 1, 'in_prompt': 0, 'before_prompt': 2 };
+                    var roleMap = { 'system': 0, 'user': 1, 'assistant': 2 };
+                    ctx.setExtensionPrompt(
+                        key, value,
+                        posMap[position] || 1,
+                        depth !== undefined ? depth : 2,
+                        false,
+                        roleMap[role] || 0
+                    );
+                }
             }
         } catch (e) {}
     },
     getParentDoc: function() {
+        if (window.__NE_EXTENSION_MODE) return document;
         try {
             if (window.parent && window.parent !== window && window.parent.document) return window.parent.document;
         } catch (e) {}
@@ -210,6 +215,10 @@ Object.assign(runtime, {
 });
 
 /* ──────── init — 使用 Core bootstrap ──────── */
+
+export function initNE() {
+    return init();
+}
 
 function loadSettings() {
     try {
@@ -346,27 +355,18 @@ function setupEventListeners(retryCount) {
     _retryTimer = setTimeout(function () { _retryTimer = null; setupEventListeners(retryCount + 1); }, delay);
 }
 
-function getHostWindow() {
-    try {
-        if (window.parent && window.parent !== window && window.parent.document) return window.parent;
-    } catch (e) {}
-    return window;
-}
 
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    var host = getHostWindow();
     console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
 
     try {
-        host.__ne_debug = _buildDebugApi(host);
-        window.__ne_debug = host.__ne_debug;
-        console.log('[NE] __ne_debug installed. Methods:', Object.keys(host.__ne_debug).filter(function(k) { return k[0] !== '_' }).join(', '));
+        window.__ne_debug = _buildDebugApi();
+        console.log('[NE] __ne_debug installed. Methods:', Object.keys(window.__ne_debug).filter(function(k) { return k[0] !== '_' }).join(', '));
     } catch (e) {
         console.error('[NE] __ne_debug install failed:', e);
-        host.__ne_debug = {};
-        window.__ne_debug = host.__ne_debug;
+        window.__ne_debug = {};
     }
 
     globalThis.__ne_debug_all_pipeline_responses = globalThis.__ne_debug_all_pipeline_responses || '';
@@ -375,15 +375,15 @@ function bootNE(retries) {
         onPipelineLLMCall: onPipelineLLMCall,
         offPipelineLLMCall: offPipelineLLMCall
     };
-    host.__ne_llm_hook = globalThis.__ne_llm_hook;
+    window.__ne_llm_hook = globalThis.__ne_llm_hook;
 
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
     });
 }
 
-function _buildDebugApi(host) {
-    var hostDoc = host ? host.document : document;
+function _buildDebugApi() {
+    var hostDoc = document;
     return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
@@ -560,5 +560,7 @@ function _dumpVaultKeys() {
     });
 }
 
-document.addEventListener('DOMContentLoaded', function () { bootNE(); });
-if (document.readyState === 'complete' || document.readyState === 'interactive') { bootNE(); }
+if (typeof window !== 'undefined' && !window.__NE_EXTENSION_MODE) {
+    document.addEventListener('DOMContentLoaded', function () { bootNE(); });
+    if (document.readyState === 'complete' || document.readyState === 'interactive') { bootNE(); }
+}

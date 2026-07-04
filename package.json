@@ -1,10 +1,14 @@
 {
   "name": "ne-memory",
   "version": "6.3.0",
-  "description": "SillyTavern 长对话结构化记忆管理引擎。基于酒馆助手 (Tavern Helper) 运行。",
+  "description": "SillyTavern 长对话结构化记忆管理引擎。支持酒馆助手脚本模式 (Tavern Helper) 和酒馆原生插件模式 (Extension)。",
   "type": "module",
   "scripts": {
     "build": "node scripts/generate-test-data.cjs && rollup -c",
+    "build:script": "node scripts/generate-test-data.cjs && cross-env BUILD_MODE=script rollup -c",
+    "build:extension": "cross-env BUILD_MODE=extension rollup -c",
+    "build:all": "node scripts/generate-test-data.cjs && cross-env BUILD_MODE=all rollup -c",
+    "publish:extension": "node scripts/publish-extension.cjs",
     "watch": "rollup -c -w",
     "prepare": "git config core.hooksPath .githooks || true",
     "test:unit": "node test/run.mjs",
@@ -21,6 +25,7 @@
     "@rollup/plugin-commonjs": "^29.0.3",
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.0",
+    "cross-env": "^7.0.3",
     "rollup": "^4.60.4"
   },
   "dependencies": {

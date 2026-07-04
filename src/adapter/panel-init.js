@@ -637,6 +637,9 @@ export async function renderVaultPanel(getChatId) {
 
         freezeIframeHeight();
 
+        setVaultActivity(true);
+        busEmit('vault:updated', { getChatId: getChatId });
+
         // Initialize Test Runner UI
         if (window.__NE_DEV_MODE) initTestRunner();
 

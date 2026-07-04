@@ -5,7 +5,9 @@ import { isStateSchemaEnabled } from '../core/vault/schema.js';
 export function t(key) { return t_narrative(key); }
 
 export var PD;
-try { PD = window.parent.document; } catch(e) { PD = document; }
+try {
+    PD = window.__NE_EXTENSION_MODE ? document : (window.parent.document || document);
+} catch(e) { PD = document; }
 export function qs(sel) { return PD.querySelector(sel); }
 export function qsa(sel) { return PD.querySelectorAll(sel); }
 export function byId(id) { return PD.getElementById(id); }
