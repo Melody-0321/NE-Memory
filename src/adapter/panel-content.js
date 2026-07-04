@@ -21,9 +21,7 @@ export async function updateVaultViewerPopout(getChatId) {
     }
     console.log('[NE-VAULT] updateVaultViewerPopout start ts=' + Date.now());
     setUpdatingPopout(true);
-    var loading = panelById('narrative_vault_loading');
     var errDiv = panelById('narrative_vault_panel_error');
-    if (loading) loading.style.display = '';
     if (errDiv) errDiv.style.display = 'none';
     var warnDiv = panelById('narrative_vault_panel_storage_warn');
     if (warnDiv) {
@@ -50,7 +48,6 @@ export async function updateVaultViewerPopout(getChatId) {
     } catch (e) {
         _logSection('read-vault', e);
         if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
-        if (loading) loading.style.display = 'none';
         setUpdatingPopout(false);
         return;
     }
@@ -99,7 +96,7 @@ export async function updateVaultViewerPopout(getChatId) {
     } catch (e) { _logSection('header', e); }
 
     var panelBody = verEl ? verEl.parentElement : null;
-    if (!panelBody) { if (loading) loading.style.display = 'none'; setUpdatingPopout(false); return; }
+    if (!panelBody) { setUpdatingPopout(false); return; }
 
     // 修复区域中嵌套 Accordion 面板的显示状态，将所有子 accordion-content 统一标记
     panelQSA('.narrative_state_block').forEach(function (el) { el.remove(); });
@@ -271,6 +268,5 @@ export async function updateVaultViewerPopout(getChatId) {
         });
     } catch (e) { _logSection('event-handlers', e); }
 
-    if (loading) loading.style.display = 'none';
     setUpdatingPopout(false);
 }

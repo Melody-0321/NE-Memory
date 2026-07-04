@@ -346,15 +346,6 @@ export function injectBottomDrawerCSS() {
         '.ne-mobile .ne-quick-index{padding:2px 6px;}' +
         '.ne-mobile .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
         '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
-        // ── L3: Skeleton loading ──
-        '.ne-skeleton{background:var(--ne-skeleton-base);border-radius:var(--ne-radius-sm);' +
-        'animation:ne-shimmer 1.5s ease-in-out infinite;background-image:linear-gradient(90deg,var(--ne-skeleton-base) 40%,var(--ne-skeleton-shimmer) 50%,var(--ne-skeleton-base) 60%);background-size:200% 100%;}' +
-        '@keyframes ne-shimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}' +
-        '.ne-skeleton-text{height:1em;margin-bottom:0.5em;}' +
-        '.ne-skeleton-text:last-child{width:60%;}' +
-        '.ne-skeleton-card{height:80px;margin-bottom:8px;border-radius:var(--ne-radius-md);}' +
-        '.ne-skeleton-row{height:2em;margin-bottom:4px;border-radius:var(--ne-radius-sm);}' +
-        '.ne-skeleton-chart{height:200px;border-radius:var(--ne-radius-md);}' +
         // ── L3: Empty & error states ──
         '.ne-empty-state{text-align:center;padding:24px 16px;color:var(--ne-muted);}' +
         '.ne-empty-state-icon{font-size:2em;margin-bottom:8px;opacity:.5;}' +
@@ -386,7 +377,6 @@ export function injectBottomDrawerCSS() {
         '--ne-danger:#e53935;--ne-danger-bg:rgba(229,57,53,.12);--ne-danger-border:rgba(229,57,53,.3);' +
         '--ne-info:#2196f3;--ne-info-bg:rgba(33,150,243,.12);--ne-info-border:rgba(33,150,243,.3);' +
         '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,.08);' +
-        '--ne-skeleton-base:var(--black30a);--ne-skeleton-shimmer:var(--black50a);' +
         '--ne-radius-sm:4px;--ne-radius-md:8px;--ne-radius-lg:12px;' +
         '}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
@@ -409,22 +399,6 @@ export function closeVaultOverlay() {
     }
     var chat = byId('chat');
     if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
-}
-
-// ── L3: Skeleton loading helper ──
-export function showSkeleton(container, type) {
-    if (!container) return;
-    var html = '';
-    if (type === 'cards') {
-        html = '<div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>';
-    } else if (type === 'rows') {
-        html = '<div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row"></div><div class="ne-skeleton ne-skeleton-row" style="width:60%;"></div>';
-    } else if (type === 'text') {
-        html = '<div class="ne-skeleton ne-skeleton-text"></div><div class="ne-skeleton ne-skeleton-text"></div><div class="ne-skeleton ne-skeleton-text"></div>';
-    } else if (type === 'chart') {
-        html = '<div class="ne-skeleton ne-skeleton-chart"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>';
-    }
-    container.innerHTML = html;
 }
 
 // ── L3: Toast notification ──

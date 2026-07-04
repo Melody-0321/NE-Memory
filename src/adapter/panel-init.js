@@ -4,7 +4,7 @@ import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/ve
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
-import { runLtmConsolidation } from './events.js';
+import { runLtmConsolidation, getStmBatchSize } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -92,9 +92,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab" data-tab="usage">\u{1F4CA} ' + t('Usage') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
-            '<div id="narrative_vault_loading">' +
-            '<div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>' +
-            '</div>' +
+            '<div id="narrative_vault_loading"></div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:var(--ne-danger);"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:var(--ne-warning);font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
             '<div id="tab-memory" class="ne-vault-tab-content active">' +
@@ -298,7 +296,7 @@ export async function renderVaultPanel(getChatId) {
                 if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
 
                 var prevText = processHistoryBtn.textContent;
-                var BATCH = 30;
+                var BATCH = await getStmBatchSize();
                 var total = 0;
                 try {
                     var chatMessages = [];

@@ -11,7 +11,7 @@ export async function renderUsageTab() {
 
     var debug = globalThis.__ne_debug;
     if (!debug || !debug.getUsageOverview) {
-        container.innerHTML = '<div class="ne-skeleton ne-skeleton-chart"></div><div class="ne-skeleton ne-skeleton-card"></div><div class="ne-skeleton ne-skeleton-card"></div>';
+        container.innerHTML = '<div class="ne-usage-loading">\u23F3 ' + t('Loading usage data...') + '</div>';
         return;
     }
 
