@@ -52,7 +52,7 @@ export async function renderHistory(getChatId) {
             var sc = snap.data && snap.data.content;
             var ltmCount = sc && sc.ltm_entries ? sc.ltm_entries.length : 0;
             var stmCount = sc && sc.unconsolidated_stm ? sc.unconsolidated_stm.length : 0;
-            html += '<tr><td>' + snap.version + '</td><td>' + formatLocalTime(snap.updated_at) + '</td><td>' + ltmCount + ' LTM</td><td>' + stmCount + ' STM</td>' +
+            html += '<tr><td>' + snap.version + '</td><td>' + formatLocalTime(snap.updated_at) + '</td><td>' + ltmCount + ' ' + t('LTM') + '</td><td>' + stmCount + ' ' + t('STM') + '</td>' +
                 '<td><button class="narrative_restore_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;">' + t('Restore') + '</button></td>' +
                 '<td><button class="narrative_del_btn menu_button" data-ver="' + snap.version + '" style="font-size:0.8em;padding:1px 5px;color:var(--ne-danger);">' + t('Delete') + '</button></td></tr>';
         });

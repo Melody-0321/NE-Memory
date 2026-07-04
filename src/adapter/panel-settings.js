@@ -37,14 +37,14 @@ export function renderSettingsTab() {
             '</label>' +
             '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' tok</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">' +
             '<span>' + t('STM Extraction Batch') + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
                 '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
-                    '<input type="checkbox" id="nes_stm_batch_auto" ' + (stmBatchAuto ? 'checked' : '') + '> Auto' +
+                    '<input type="checkbox" id="nes_stm_batch_auto" ' + (stmBatchAuto ? 'checked' : '') + '> ' + t('Auto') + '</label>' +
                 '</label>' +
                 '<span class="range-val" id="nes_stm_batch_val">' + displayBatch + '</span>' +
             '</div>' +
@@ -209,7 +209,7 @@ export function renderSettingsTab() {
         var testBtn = panelById('nes_api_test');
         if (testBtn) testBtn.onclick = function () {
             var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: panelById('nes_secondary_model').value.trim() };
-            if (!cfg.url) { alert('Please enter an API URL first.'); return; }
+            if (!cfg.url) { alert(t('Please enter an API URL first.')); return; }
             if (testBtn) testBtn.disabled = true;
             sendSecondaryTestMessage(cfg).then(function () {
                 showToast(t('API connection successful!'), 'success');
@@ -280,7 +280,7 @@ export function renderSettingsTab() {
                     embQualityStat.textContent = '✓ ' + t('Passed') + ' — ' + r.detail;
                 } else if (r.success === false) {
                     embQualityStat.style.color = 'var(--red50)';
-                    embQualityStat.textContent = '✗ ' + t('Failed') + ' — ' + (r.error || r.detail || 'Unknown error');
+                    embQualityStat.textContent = '\u2717 ' + t('Failed') + ' \u2014 ' + (r.error || r.detail || t('Unknown error'));
                 } else {
                     embQualityStat.style.color = 'var(--yellow50)';
                     embQualityStat.textContent = '⚠ ' + r.detail + ' | ' + r.scoreSummary;

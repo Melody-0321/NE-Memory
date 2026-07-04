@@ -16,7 +16,7 @@ export async function renderUsageTab() {
     }
 
     if (!window.Chart) {
-        container.innerHTML = '<div class="ne-usage-loading">\u23F3 Loading Chart.js...</div>';
+        container.innerHTML = '<div class="ne-usage-loading">\u23F3 ' + t('Loading Chart.js...') + '</div>';
         try {
             await new Promise(function(resolve, reject) {
                 var script = document.createElement('script');
@@ -26,7 +26,7 @@ export async function renderUsageTab() {
                 document.head.appendChild(script);
             });
         } catch (e) {
-            container.innerHTML = '<div class="ne-usage-loading">⚠ Chart.js load failed. ' + t('No test cases available') + '</div>';
+            container.innerHTML = '<div class="ne-usage-loading">\u26A0 ' + t('Chart.js load failed. ') + t('No test cases available') + '</div>';
             return;
         }
     }
@@ -74,7 +74,7 @@ export async function renderUsageTab() {
     html += '<div class="ne-usage-section">' +
         '<div class="ne-usage-section-title">\u{1F4CB} ' + t('Per Chat') + '</div>';
     if (chats.length > 0) {
-        html += '<table class="ne-usage-chat-table"><tr><th>Chat</th><th>' + t('Per Chat') + '</th><th>' + t('Total Tokens') + '</th><th>' + t('Avg / Turn') + '</th></tr>';
+        html += '<table class="ne-usage-chat-table"><tr><th>' + t('Chat') + '</th><th>' + t('Per Chat') + '</th><th>' + t('Total Tokens') + '</th><th>' + t('Avg / Turn') + '</th></tr>';
         for (var i = 0; i < chats.length; i++) {
             var c = chats[i];
             html += '<tr><td>' + escapeHtml(c.chatId.substring(0, 30) + (c.chatId.length > 30 ? '...' : '')) + '</td><td>' + c.turns + '</td><td>' + fmt(c.totalTokens) + '</td><td>' + fmt(c.avgPerTurn) + '</td></tr>';

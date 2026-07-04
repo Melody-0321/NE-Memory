@@ -95,8 +95,8 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
         if (!show) return;
         html += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
     };
-    addItem('ne-acc-stm', 'STM', stmCount, true);
-    addItem('ne-acc-ltm', 'LTM', ltmCount, true);
+    addItem('ne-acc-stm', t('STM'), stmCount, true);
+    addItem('ne-acc-ltm', t('LTM'), ltmCount, true);
     addItem('ne-acc-characters', t('Characters'), charCount, true);
     addItem('ne-acc-quests', t('Quests & Events'), questCount, true);
     addItem('ne-acc-factions', t('Factions'), factionCount, true);

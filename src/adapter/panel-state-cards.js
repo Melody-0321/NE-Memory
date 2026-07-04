@@ -553,7 +553,7 @@ function renderStmRow(stm, opts) {
     var subAbsMsgEnd = stm.absMsgEnd;
     var subMsgDisplay;
     if (subAbsMsgStart !== undefined && subAbsMsgEnd !== undefined && msgCount > 0) {
-        subMsgDisplay = 'Msg ' + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + msgCount + '\u6761';
+        subMsgDisplay = t('Msg ') + subAbsMsgStart + '\u2013' + subAbsMsgEnd + ' / ' + msgCount + '\u6761';
     } else if (msgCount > 0) {
         subMsgDisplay = msgCount + '\u6761';
     } else {
@@ -595,7 +595,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = panelQS(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">(empty)</td></tr>'; return; }
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
     entries.forEach(function (entry, i) {
         var entryId = entry.id || (type + '_' + i);
 
@@ -611,8 +611,8 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             var firstStm = groupStms[0];
             var lastStm = groupStms[groupStms.length - 1];
             var msgLabel = (firstStm && lastStm)
-                ? 'Msg ' + (firstStm.absMsgStart || '?') + '\u2013' + (lastStm.absMsgEnd || lastStm.absMsgStart || '?')
-                : 'N/A';
+                ? t('Msg ') + (firstStm.absMsgStart || '?') + '\u2013' + (lastStm.absMsgEnd || lastStm.absMsgStart || '?')
+                : t('N/A');
             var countLabel = groupStms.length + '\u6761';
             var groupTitle = '[' + t('Unfiled') + '] ' + msgLabel + ' / ' + countLabel;
             var groupPeriod = (firstStm && firstStm.period) ? firstStm.period : '';
