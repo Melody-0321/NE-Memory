@@ -58,16 +58,16 @@ export async function loadVault(chatId) {
     var effectiveVersion = (dbVault && dbVault.version) || 0;
     var chatVersion = (chatVault && chatVault.version) || 0;
 
-    if (chatVersion > 0 && chatVersion >= effectiveVersion) {
+    if (chatVersion > effectiveVersion) {
         try { await write(chatId, chatVault); } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
         return chatVault;
     }
 
-    if (effectiveVersion > 0 && effectiveVersion > chatVersion) {
+    // effectiveVersion >= chatVersion → IndexedDB is the source of truth
+    // (inline edits/deletes write only to IndexedDB, not chat_metadata)
+    if (effectiveVersion > 0) {
         persistVaultToChatFile(dbVault);
-        return dbVault;
     }
-
     return dbVault;
 }
 
