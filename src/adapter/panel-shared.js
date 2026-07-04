@@ -67,10 +67,10 @@ export function injectPinCSS() {
     style.textContent = '#narrative_vault_pin_div{font-size:24px;display:inline;padding:1px;opacity:0.5;transition:0.2s}' +
         '#narrative_vault_pin_div:hover,#narrative_vault_pin_div:has(:focus-visible){opacity:1}' +
         '#narrative_vault_pin{display:none}' +
-        '#narrative_vault_pin:checked+label .checked{display:inline}' +
-        '#narrative_vault_pin:checked+label .unchecked{display:none}' +
-        '#narrative_vault_pin:not(:checked)+label .checked{display:none}' +
-        '#narrative_vault_pin:not(:checked)+label .unchecked{display:inline}' +
+        '#narrative_vault_pin:checked+label #ne_pin_lock{display:inline}' +
+        '#narrative_vault_pin:checked+label #ne_pin_unlock{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label #ne_pin_lock{display:none}' +
+        '#narrative_vault_pin:not(:checked)+label #ne_pin_unlock{display:inline}' +
         '@keyframes ne_spin{0%{transform:rotate(0deg)}100%{transform:rotate(360deg)}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
@@ -290,12 +290,17 @@ export function injectBottomDrawerCSS() {
         '.ne-state-banner-missing{font-style:italic;color:var(--grey-50);font-size:12px;}' +
         '.ne-card-edit-btn{font-size:0.85em;padding:0 4px;cursor:pointer;opacity:0.6;border:none;background:none;color:var(--SmartThemeBodyColor,#c1b9ad);margin-left:auto;}' +
         '.ne-card-edit-btn:hover{opacity:1;}' +
+        '.ne-card-delete-btn{font-size:0.85em;padding:0 4px;cursor:pointer;opacity:0.4;border:none;background:none;color:#e53935;}' +
+        '.ne-card-delete-btn:hover{opacity:1;}' +
         '.ne-card-save-btn{font-size:0.82em;padding:1px 8px;cursor:pointer;margin-left:auto;background:var(--ne-success);color:#fff;border:none;border-radius:3px;}' +
         '.ne-card-cancel-btn{font-size:0.82em;padding:1px 8px;cursor:pointer;margin-left:4px;background:var(--ne-danger);color:#fff;border:none;border-radius:3px;}' +
         '.ne-char-edit{width:100%;padding:2px 4px;border:1px solid var(--SmartThemeBorderColor,rgba(155,109,94,.15));border-radius:3px;background:var(--black20a,rgba(0,0,0,.2));color:var(--SmartThemeBodyColor,#c1b9ad);font-size:0.82em;}' +
         '.ne-char-edit:focus{outline:1px solid var(--SmartThemeEmColor,#7d4940);border-color:var(--SmartThemeEmColor,#7d4940);}' +
         '.ne-card-editing .ne-field-label{vertical-align:middle;}' +
         '.ne-vault-btn,.ne-api-btn,.menu_button{transition:background var(--ne-transition-fast),opacity var(--ne-transition-fast);}' +
+        '.menu_button{padding:6px 12px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--SmartThemeBodyColor);cursor:pointer;font-family:inherit;}' +
+        '.menu_button:hover{background:var(--black50a);}' +
+        '.menu_button:disabled{opacity:0.5;cursor:not-allowed;}' +
         '.narrative_memory_table tbody tr:nth-child(even),.narrative_ltm_sub_table tbody tr:nth-child(even),.ne-usage-chat-table tr:nth-child(even){background:var(--black10a);}' +
         '.narrative_memory_table tbody tr:hover,.narrative_ltm_sub_table tbody tr:hover,.ne-usage-chat-table tr:hover{background:var(--black20a)!important;transition:background var(--ne-transition-fast);}' +
         '.ne-accordion-chevron{transition:transform var(--ne-transition-normal);}' +
@@ -530,7 +535,7 @@ export var _vaultChangeBound = false;
 // ── L3: Empty state helper ──
 export function emptyStateHtml(icon, text, hint) {
     return '<div class="ne-empty-state">' +
-        (icon ? '<div class="ne-empty-state-icon"><i class="fa-solid ' + icon + '"></i></div>' : '') +
+        (icon ? '<div class="ne-empty-state-icon">' + icon + '</div>' : '') +
         '<div class="ne-empty-state-text">' + text + '</div>' +
         (hint ? '<div class="ne-empty-state-hint">' + hint + '</div>' : '') +
         '</div>';

@@ -43,7 +43,7 @@ export async function renderHistory(getChatId) {
     try {
         var snapshots = await listSnapshots(getChatId());
         if (!snapshots || snapshots.length === 0) {
-            container.innerHTML = emptyStateHtml('fa-clock-rotate-left', t('No history yet'), t('Snapshots are created when memory is saved'));
+            container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Snapshots are created when memory is saved'));
             return;
         }
         var html = '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.85em;">' +

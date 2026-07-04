@@ -87,7 +87,8 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<span class="ne-char-toggle">&#9654;</span>';
     html += '<b>' + escapeHtml(name) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
-    html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()"><i class="fa-solid fa-pen-to-square"></i></button>';
+    html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
+    html += '<button class="ne-card-delete-btn" data-char="' + escapeHtml(name) + '" aria-label="' + t('Delete') + '" onclick="event.stopPropagation()">\u2715</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
     html += affectionHtml;
@@ -473,6 +474,23 @@ function exitCardEditMode(cardDiv) {
     cardDiv.classList.remove('ne-card-editing');
 }
 
+export function deleteCharacterFromState(name) {
+    var stored = _pendingInlineStorage;
+    if (!stored || !stored.vault) return;
+    var vault = stored.vault;
+    var c = vault.content || {};
+    var state = c.state || {};
+    var chars = state.characters || {};
+    if (!chars[name]) return;
+    delete chars[name];
+    state.characters = chars;
+    c.state = state;
+    var getChatId = stored.getChatId;
+    write(getChatId(), vault).then(function() {
+        busEmit('vault:updated', { getChatId: getChatId });
+    });
+}
+
 function toggleInlineEdit(row, entryId, entryType) {
     if (!row) return;
     var cells = row.querySelectorAll('td');
@@ -513,9 +531,9 @@ function toggleInlineEdit(row, entryId, entryType) {
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
         idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
-        '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '"><i class="fa-solid fa-check"></i></button>' +
-        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" aria-label="' + t('Cancel') + '"><i class="fa-solid fa-xmark"></i></button>' +
-        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" aria-label="' + t('Delete') + '"><i class="fa-solid fa-trash"></i></button></td>';
+        '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
+        '<button class="ne-inline-cancel" style="background:var(--ne-danger);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2715</button>' +
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:4px;" aria-label="' + t('Delete') + '">\u2715</button></td>';
     row.querySelector('.ne-inline-save').onclick = function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
@@ -560,7 +578,7 @@ function renderStmRow(stm, opts) {
         subMsgDisplay = stm.id || '';
     }
     var editCell = opts.showEdit
-        ? '<td><button class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td>'
+        ? '<td><button class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" aria-label="' + t('Edit') + '">\u270E</button></td>'
         : '<td></td>';
     var eventHtml = escapeHtml(stm.event || stm.summary || '');
     var entities = stm.entities || [];
@@ -647,7 +665,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
         var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
-        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '</td><td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '"><i class="fa-solid fa-pen-to-square"></i></button></td></tr>';
+        tbody.innerHTML += '<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>';
 
         var detailRows = '';
         refs.forEach(function (stmId, si) {

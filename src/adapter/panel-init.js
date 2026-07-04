@@ -69,7 +69,7 @@ export async function renderVaultPanel(getChatId) {
         var drawerHtml = '<div id="ne_vault_bottom_overlay" class="ne-vault-bottom-overlay">' +
             '<div class="ne-vault-collapse-bar" tabindex="0" role="button" aria-label="' + t('Collapse memory panel') + '" title="' + t('Collapse memory panel') + '">' +
             '<span class="ne-vault-collapse-indicator"></span>' +
-            '<span class="ne-vault-collapse-chevron"><i class="fa-solid fa-chevron-down"></i></span>' +
+            '<span class="ne-vault-collapse-chevron">\u25BC</span>' +
             '</div>' +
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
@@ -80,14 +80,14 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_pin_div" title="' + t('Locked = Memory Vault panel will stay open') + '">' +
             '<input type="checkbox" id="narrative_vault_pin">' +
             '<label for="narrative_vault_pin">' +
-            '<div class="fa-solid unchecked fa-unlock right_menu_button" alt=""></div>' +
-            '<div class="fa-solid checked fa-lock right_menu_button" alt=""></div>' +
+            '<div class="right_menu_button" id="ne_pin_unlock" alt="">\u{1F513}</div>' +
+            '<div class="right_menu_button" id="ne_pin_lock" alt="">\u{1F512}</div>' +
             '</label></div></div></div>' +
             '<div class="ne-vault-tab-bar">' +
-            '<div class="ne-vault-tab active" data-tab="memory"><i class="fa-solid fa-brain"></i> ' + t('Memory') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="tools"><i class="fa-solid fa-wrench"></i> ' + t('Tools') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="settings"><i class="fa-solid fa-gear"></i> ' + t('Settings') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="usage"><i class="fa-solid fa-chart-simple"></i> ' + t('Usage') + '</div>' +
+            '<div class="ne-vault-tab active" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="tools">\u{1F527} ' + t('Tools') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="settings">\u2699 ' + t('Settings') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="usage">\u{1F4CA} ' + t('Usage') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading">' +
@@ -170,10 +170,10 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div id="tab-settings" class="ne-vault-tab-content">' +
             '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
-            '<div class="ne-settings-section-title"><i class="fa-solid fa-star"></i> ' + t('Common Settings') + '</div>' +
+            '<div class="ne-settings-section-title">\u2605 ' + t('Common Settings') + '</div>' +
             '<div id="ne_common_settings"></div></div>' +
             '<div class="ne-settings-section-card">' +
-            '<div class="ne-settings-section-title"><i class="fa-solid fa-flask"></i> ' + t('Advanced Settings') + '</div>' +
+            '<div class="ne-settings-section-title">\u2697 ' + t('Advanced Settings') + '</div>' +
             '<div id="ne_advanced_settings"></div></div>' +
             '</div>' +
             '<div id="tab-usage" class="ne-vault-tab-content">' +
