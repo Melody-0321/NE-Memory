@@ -109,7 +109,12 @@ export function renderSettingsTab() {
                 if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
                 if (text) text.textContent = r.success ? (t('Connected') + ': ' + secApi.model) : (t('Not connected') + ' — ' + (r.error || ''));
                 var hdr = panelById('narrative_secondary_api_status');
-                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#888'; hdr.title = r.success ? 'Secondary API: ' + secApi.model : 'No secondary API configured'; }
+                if (hdr) {
+                    hdr.style.color = r.success ? '#4caf50' : '#888';
+                    var hdrTitle = r.success ? (t('Secondary API') + ': ' + secApi.model) : t('No secondary API configured');
+                    if (enableVectorSearch && embApi.url && embApi.model) hdrTitle += '\n' + t('Vector API') + ': ' + embApi.model;
+                    hdr.title = hdrTitle;
+                }
             });
         }, 100);
     }
@@ -193,7 +198,12 @@ export function renderSettingsTab() {
                 var aHdrDot = panelById('nes_api_header_dot');
                 if (aHdrDot) aHdrDot.style.display = r.success ? 'inline' : 'none';
                 var hdr = panelById('narrative_secondary_api_status');
-                if (hdr) { hdr.style.color = r.success ? '#4caf50' : '#888'; hdr.title = r.success ? 'Secondary API: ' + cfg.model : 'No secondary API configured'; }
+                if (hdr) {
+                    hdr.style.color = r.success ? '#4caf50' : '#888';
+                    var hdrTitle = r.success ? (t('Secondary API') + ': ' + cfg.model) : t('No secondary API configured');
+                    if (enableVectorSearch && embApi.url && embApi.model) hdrTitle += '\n' + t('Vector API') + ': ' + embApi.model;
+                    hdr.title = hdrTitle;
+                }
             });
         };
         var testBtn = panelById('nes_api_test');

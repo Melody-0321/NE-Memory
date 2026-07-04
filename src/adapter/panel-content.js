@@ -78,13 +78,22 @@ export async function updateVaultViewerPopout(getChatId) {
             try {
                 var raw = localStorage.getItem('ne_secondary_api');
                 var secondaryConfig = raw ? JSON.parse(raw) : null;
+                var titleLines = [];
                 if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
                     apiStatus.style.color = '#4caf50';
-                    apiStatus.title = t('Secondary API:') + ' ' + secondaryConfig.model;
+                    titleLines.push(t('Secondary API') + ': ' + secondaryConfig.model);
                 } else {
                     apiStatus.style.color = '#888';
-                    apiStatus.title = t('No secondary API configured');
+                    titleLines.push(t('No secondary API configured'));
                 }
+                try {
+                    var rawS = localStorage.getItem('ne_settings'), rawE = localStorage.getItem('ne_embedding_api');
+                    var stg = rawS ? JSON.parse(rawS) : {}, embCfg = rawE ? JSON.parse(rawE) : null;
+                    if (stg.enableVectorSearch && embCfg && embCfg.url && embCfg.model) {
+                        titleLines.push(t('Vector API') + ': ' + embCfg.model);
+                    }
+                } catch (e) {}
+                apiStatus.title = titleLines.join('\n');
             } catch (e) { apiStatus.style.color = '#888'; }
         }
     } catch (e) { _logSection('header', e); }
