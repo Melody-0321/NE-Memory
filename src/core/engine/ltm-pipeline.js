@@ -2,20 +2,6 @@ import { findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolid
 import { safeJsonParse } from './json-fallback.js';
 import { validateLtmDecision } from './validate.js';
 
-var EVENT_CLOSING_PUNCT = /[.。！？!?\"\”\)\}\]\>\」』）]$/;
-
-function _validateLtmEventText(label, text) {
-    if (!text) return;
-    var len = String(text).length;
-    var trimmed = String(text).trim();
-    if (len > 0 && !EVENT_CLOSING_PUNCT.test(trimmed)) {
-        console.warn('[NE-HARNESS] ' + label + ' updated_event may be truncated — ends with: "' + trimmed.slice(-20) + '" (len=' + len + ')');
-    }
-    if (len < 50) {
-        console.warn('[NE-HARNESS] ' + label + ' updated_event too short — len=' + len + ' text="' + trimmed + '"');
-    }
-}
-
 function buildLtmDecisionPrompt(vault, newStmEntries, forceClose) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -147,9 +133,6 @@ export async function runLtmDecision(vault, newStmIds, callMemoryPipeline, force
                     return null;
                 }
             }
-        }
-        if (result && result.updated_event) {
-            _validateLtmEventText('ltm_decision', result.updated_event);
         }
         return result;
     }

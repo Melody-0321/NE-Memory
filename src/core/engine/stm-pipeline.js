@@ -403,7 +403,6 @@ function computeTurnBoundarySignals(turns) {
 var L1_CUT = 'L1_CUT';
 var L2_CUT = 'L2_CUT';
 var L2_KEEP = 'L2_KEEP';
-var L3_ASK = 'L3_ASK';
 
 function classifyBoundary(signal) {
     if (signal.absGap > 20) return L1_CUT;
@@ -411,45 +410,7 @@ function classifyBoundary(signal) {
     if (signal.isFiller) return L2_KEEP;
     if (signal.overlay >= 0.5) return L2_KEEP;
     if (signal.overlay <= 0.1) return L2_CUT;
-    return L3_ASK;
-}
-
-async function askBoundaryJudge(turnA, turnB, signal, vault) {
-    var content = vault.content || {};
-    var lang = content.language === 'en' ? 'en' : 'zh';
-
-    var textA = formatTurnsText([turnA], [0]);
-    var textB = formatTurnsText([turnB], [0]);
-
-    var ctx = '';
-    ctx += '## 系统预判\n';
-    ctx += '词汇重叠率：' + (signal.overlay * 100).toFixed(0) + '%\n';
-    ctx += '消息间隔：' + signal.msgGap + ' 条\n';
-
-    ctx += '\n## Turn A\n' + textA;
-    ctx += '\n## Turn B\n' + textB;
-
-    ctx += '\n只回答 yes 或 no：Turn A 和 Turn B 之间存在事件边界吗？';
-
-    var system = lang === 'en'
-        ? 'You are a story event boundary judge. Given two adjacent turns and pre-computed signals, determine if there is an event boundary between them.\n\nAnswer ONLY "yes" or "no".'
-        : '你是故事事件边界裁判。根据相邻两轮对话和预计算信号，判断它们之间是否存在事件边界。\n\n只回答 yes 或 no。';
-
-    try {
-        var response = await callMemoryPipeline([
-            { role: 'system', content: system },
-            { role: 'user', content: ctx }
-        ], { operation: 'stm_boundary', responseFormat: undefined }, vault.id);
-
-        var trimmed = (response || '').trim().toLowerCase();
-        if (trimmed === 'yes' || trimmed === '是') return true;
-        if (trimmed === 'no' || trimmed === '否') return false;
-        if (trimmed.indexOf('yes') !== -1 || trimmed.indexOf('是') !== -1) return true;
-        return false;
-    } catch (e) {
-        console.warn('[NE] Boundary judge LLM failed:', e);
-        return false;
-    }
+    return L2_KEEP;
 }
 
 async function segmentTurns(turns, vault, callLLM) {
@@ -459,15 +420,7 @@ async function segmentTurns(turns, vault, callLLM) {
 
     var cuts = [];
     for (var i = 0; i < turns.length - 1; i++) {
-        var cls = classifyBoundary(signals[i]);
-        if (cls === L1_CUT || cls === L2_CUT) {
-            cuts[i] = true;
-        } else if (cls === L2_KEEP) {
-            cuts[i] = false;
-        } else {
-            var result = await askBoundaryJudge(turns[i], turns[i + 1], signals[i], vault);
-            cuts[i] = result === true;
-        }
+        cuts[i] = classifyBoundary(signals[i]) === L1_CUT || classifyBoundary(signals[i]) === L2_CUT;
     }
 
     var segments = [];
@@ -479,6 +432,47 @@ async function segmentTurns(turns, vault, callLLM) {
         }
     }
     return segments;
+}
+
+function chunkSegmentsForLLM(segments, turns, maxChars) {
+    var chunks = [];
+    var currentChunk = [];
+    var currentChars = 0;
+
+    for (var i = 0; i < segments.length; i++) {
+        var seg = segments[i];
+        var segTurns = [];
+        for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
+        var segText = formatTurnsText(turns, segTurns);
+        var segChars = segText.length;
+
+        if (segChars > maxChars && currentChunk.length === 0) {
+            chunks.push([seg]);
+            continue;
+        }
+
+        if (currentChars + segChars > maxChars && currentChunk.length > 0) {
+            chunks.push(currentChunk);
+            currentChunk = [seg];
+            currentChars = segChars;
+        } else {
+            currentChunk.push(seg);
+            currentChars += segChars;
+        }
+    }
+
+    if (currentChunk.length > 0) chunks.push(currentChunk);
+    return chunks;
+}
+
+function mapEventData(event, seg, turns, allSegments) {
+    var turnIndices = [];
+    for (var ti = seg[0]; ti <= seg[1]; ti++) turnIndices.push(ti);
+    event.msg_ids = collectMsgIdsFromTurns(turns, turnIndices);
+    event.absMsgStart = turns[seg[0]].msgStart;
+    event.absMsgEnd = turns[seg[1]].msgEnd;
+    event.msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
+    event.status = 'closed';
 }
 
 function buildStmSummaryPrompt(segments, turns, vault) {
@@ -544,68 +538,104 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         var events = [];
 
         if (segments.length > 0) {
-            var summaryPrompt = buildStmSummaryPrompt(segments, turns, vault);
-            var responseText = '';
+            var maxChars = 8000;
             try {
-                responseText = await callMemoryPipeline([
-                    { role: 'system', content: summaryPrompt.system },
-                    { role: 'user', content: summaryPrompt.user }
-                ], { operation: 'stm_extract' }, chatId);
-            } catch (e) {
-                console.warn('[NE] Summary LLM failed:', e);
-            }
+                var rawSettings = localStorage.getItem('ne_settings');
+                if (rawSettings) {
+                    var parsed = JSON.parse(rawSettings);
+                    if (parsed.stmChunkMaxChars) maxChars = Number(parsed.stmChunkMaxChars);
+                }
+            } catch (e) {}
 
-            if (responseText) {
-                var summaryParsed = safeJsonParse(responseText);
-                if (summaryParsed) events = summaryParsed.events || [];
-            }
+            var chunks = chunkSegmentsForLLM(segments, turns, maxChars);
+            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ')');
 
-            for (var ei = 0; ei < Math.min(events.length, segments.length); ei++) {
-                var seg = segments[ei];
-                var turnIndices = [];
-                for (var ti = seg[0]; ti <= seg[1]; ti++) turnIndices.push(ti);
-                var msgIds = collectMsgIdsFromTurns(turns, turnIndices);
-                events[ei].msg_ids = msgIds;
-                events[ei].absMsgStart = turns[seg[0]].msgStart;
-                events[ei].absMsgEnd = turns[seg[1]].msgEnd;
-                events[ei].msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
-                events[ei].status = 'closed';
-            }
+            for (var ci = 0; ci < chunks.length; ci++) {
+                var chunk = chunks[ci];
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, vault);
+                var responseText = '';
+                try {
+                    responseText = await callMemoryPipeline([
+                        { role: 'system', content: summaryPrompt.system },
+                        { role: 'user', content: summaryPrompt.user }
+                    ], { operation: 'stm_extract' }, chatId);
+                } catch (e) {
+                    console.warn('[NE] Chunk ' + (ci+1) + '/' + chunks.length + ' LLM failed:', e);
+                }
 
-            var beforeFilter = events.length;
-            events = events.filter(function(e) { return e.msg_ids && e.msg_ids.length > 0; });
-            if (beforeFilter !== events.length) {
-                console.log('[NE-HARNESS] STM events filtered — before=' + beforeFilter + ' after=' + events.length + ' (dropped ' + (beforeFilter - events.length) + ' without msg_ids)');
-            }
+                if (!responseText && chunk.length > 1) {
+                    console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
+                    for (var si = 0; si < chunk.length; si++) {
+                        var singleSeg = [chunk[si]];
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, vault);
+                        try {
+                            responseText = await callMemoryPipeline([
+                                { role: 'system', content: singlePrompt.system },
+                                { role: 'user', content: singlePrompt.user }
+                            ], { operation: 'stm_extract' }, chatId);
+                        } catch (e2) {
+                            console.warn('[NE] Chunk ' + (ci+1) + ' segment ' + (si+1) + ' fallback failed:', e2);
+                            continue;
+                        }
+                        if (responseText) {
+                            var chunkParsed = safeJsonParse(responseText);
+                            if (chunkParsed && chunkParsed.events) {
+                                for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
+                                    mapEventData(chunkParsed.events[ei], chunk[si], turns, segments);
+                                    events.push(chunkParsed.events[ei]);
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
 
-            var beforeTextFilter = events.length;
-            events = events.filter(function(e) { return e.event && String(e.event).length >= 3; });
-            if (beforeTextFilter !== events.length) {
-                console.log('[NE-HARNESS] STM events text-filtered — before=' + beforeTextFilter + ' after=' + events.length + ' (dropped ' + (beforeTextFilter - events.length) + ' with short/empty event)');
-            }
-
-            if (events.length >= 2) {
-                events.sort(function(a, b) {
-                    return (a.msgRange ? a.msgRange[0] : 999999) - (b.msgRange ? b.msgRange[0] : 999999);
-                });
-                for (var di = 0; di < events.length - 1; di++) {
-                    var curEnd = events[di].msgRange ? events[di].msgRange[1] : -1;
-                    var nxtStart = events[di + 1].msgRange ? events[di + 1].msgRange[0] : -1;
-                    if (nxtStart <= curEnd && curEnd >= 0) {
-                        console.log('[NE-HARNESS] STM msgRange overlap/gap — events[' + di + '] end=' + curEnd + ' events[' + (di + 1) + '] start=' + nxtStart);
+                if (responseText) {
+                    var chunkParsed = safeJsonParse(responseText);
+                    if (chunkParsed) {
+                        var chunkEvents = chunkParsed.events || [];
+                        for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
+                            mapEventData(chunkEvents[ei], chunk[ei], turns, segments);
+                            events.push(chunkEvents[ei]);
+                        }
                     }
                 }
             }
+        }
 
-            if (events.length > 0) {
-                var stmValidationErrors = validateSTMOutput({ stmEntries: events }, vault, filteredMessages.length);
-                if (stmValidationErrors.length > 0) {
-                    console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
-                    recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
+        var beforeFilter = events.length;
+        events = events.filter(function(e) { return e.msg_ids && e.msg_ids.length > 0; });
+        if (beforeFilter !== events.length) {
+            console.log('[NE-HARNESS] STM events filtered — before=' + beforeFilter + ' after=' + events.length + ' (dropped ' + (beforeFilter - events.length) + ' without msg_ids)');
+        }
+
+        var beforeTextFilter = events.length;
+        events = events.filter(function(e) { return e.event && String(e.event).length >= 3; });
+        if (beforeTextFilter !== events.length) {
+            console.log('[NE-HARNESS] STM events text-filtered — before=' + beforeTextFilter + ' after=' + events.length + ' (dropped ' + (beforeTextFilter - events.length) + ' with short/empty event)');
+        }
+
+        if (events.length >= 2) {
+            events.sort(function(a, b) {
+                return (a.msgRange ? a.msgRange[0] : 999999) - (b.msgRange ? b.msgRange[0] : 999999);
+            });
+            for (var di = 0; di < events.length - 1; di++) {
+                var curEnd = events[di].msgRange ? events[di].msgRange[1] : -1;
+                var nxtStart = events[di + 1].msgRange ? events[di + 1].msgRange[0] : -1;
+                if (nxtStart <= curEnd && curEnd >= 0) {
+                    console.log('[NE-HARNESS] STM msgRange overlap/gap — events[' + di + '] end=' + curEnd + ' events[' + (di + 1) + '] start=' + nxtStart);
                 }
-                postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
-                appendSTMEntries(vault, events);
             }
+        }
+
+        if (events.length > 0) {
+            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, vault, filteredMessages.length);
+            if (stmValidationErrors.length > 0) {
+                console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
+                recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
+            }
+            postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
+            appendSTMEntries(vault, events);
         }
 
         cursorResult.totalAdded = events.length;

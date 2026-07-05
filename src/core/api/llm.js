@@ -41,7 +41,7 @@ export async function callMemoryLLM(messages, options = {}) {
     var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig;
     if (options._forcePipelineApi) {
-        secondaryConfig = loadSecondaryApiConfig();
+        secondaryConfig = resolvePipelineApi(options.operation);
     } else {
         secondaryConfig = loadSecondaryApiConfig();
     }
@@ -155,14 +155,55 @@ function firePipelineCallbacks(data) {
 
 export async function callMemoryPipeline(messages, options = {}, chatId = null) {
     var mc = await loadMemoryConfig();
-    var maxTokens = mc.stm_max_tokens;
-    return callMemoryLLM(messages, Object.assign({}, options, { _forcePipelineApi: true, temperature: mc.extraction_temperature || mc.temperature || 0.2, max_tokens: maxTokens, chatId: chatId }));
+    return callMemoryLLM(messages, Object.assign({}, options, {
+        _forcePipelineApi: true,
+        temperature: mc.extraction_temperature || mc.temperature || 0.2,
+        max_tokens: mc.stm_max_tokens,
+        chatId: chatId
+    }));
 }
 
 
 export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
     var mc = await loadMemoryConfig();
     return callMemoryLLM(messages, Object.assign({ temperature: mc.temperature || 0.3, max_tokens: mc.stm_max_tokens, chatId: chatId }, options));
+}
+
+function resolvePipelineApi(operation) {
+    var channelsEnabled = false;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var s = JSON.parse(raw);
+            channelsEnabled = s.apiChannelsEnabled === true;
+        }
+    } catch (e) {}
+
+    if (!channelsEnabled) {
+        return loadSecondaryApiConfig();
+    }
+
+    var channelKey = null;
+    if (operation === 'stm_extract' || operation === 'stm_boundary') {
+        channelKey = 'ne_stm_api';
+    } else if (operation && (operation.startsWith('ltm_') || operation === 'ltm_rebatch')) {
+        channelKey = 'ne_ltm_api';
+    } else if (operation === 'state_extract' || operation === 'scheme_discovery' || operation === 'faction_discovery') {
+        channelKey = 'ne_state_api';
+    }
+
+    if (channelKey) {
+        var channelConfig = null;
+        try {
+            var channelRaw = localStorage.getItem(channelKey);
+            if (channelRaw) channelConfig = JSON.parse(channelRaw);
+        } catch (e) {}
+        if (channelConfig && channelConfig.url && channelConfig.model) {
+            return channelConfig;
+        }
+    }
+
+    return loadSecondaryApiConfig();
 }
 
 export function loadSecondaryApiConfig() {
