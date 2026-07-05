@@ -195,6 +195,7 @@ export async function renderVaultPanel(getChatId) {
             console.error('[NE] Failed to parse overlay from drawerHtml');
             return;
         }
+        overlayEl.style.display = 'none';
 
         var shadowRoot;
         try {
