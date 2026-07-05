@@ -125,6 +125,12 @@ export const NARRATIVE_I18N = {
         'Pipeline:': 'Pipeline:',
         'Active:': 'Active:',
         'Idle': 'Idle', 'State Extraction': 'State Extraction', 'STM Extraction': 'STM Extraction', 'LTM Consolidation': 'LTM Consolidation',
+        'STM Chunk Max Characters': 'STM Chunk Size (chars)',
+        'Max prompt characters per STM extraction call. Segments are chunked from oldest to newest within each batch. A single segment that exceeds this limit is processed alone.': 'Max prompt characters per STM extraction call. Within each batch, conversation turns are grouped from oldest to newest into chunks that fit this limit. A single oversized segment is processed alone.',
+        'Track character, faction, quest/power_slot state with structured validation. When disabled, State pipeline will not run.': 'Track character, faction, and quest state with the State Schema system. When disabled, state extraction and validation will not run — only pure memory (STM/LTM) will be active.',
+        'Split API by operation (STM / LTM / State)': 'Multi-channel API (STM / LTM / State)',
+        'Default API above is used as fallback when a channel is left blank.': 'The default Secondary API above is used as fallback when a channel URL is left blank.',
+        'blank = use default': 'blank = use fallback',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -241,6 +247,12 @@ export const NARRATIVE_I18N = {
         'Pipeline:': '管线：',
         'Active:': '活跃中：',
         'Idle': '空闲', 'State Extraction': '状态提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合并',
+        'STM Chunk Max Characters': 'STM 分块大小（字符）',
+        'Max prompt characters per STM extraction call. Segments are chunked from oldest to newest within each batch. A single segment that exceeds this limit is processed alone.': '每次 STM 提取调用的最大 prompt 字符数。同一批次内按从旧到新将对话轮次拼成不超过此限制的块，每个块单独发送 LLM。单个段落超出此限制时单独处理。',
+        'Track character, faction, quest/power_slot state with structured validation. When disabled, State pipeline will not run.': '启用 State Schema 追踪角色、势力与任务状态并进行结构化校验。禁用后，状态提取和校验将停止运行——仅纯记忆（STM/LTM）保持活跃。',
+        'Split API by operation (STM / LTM / State)': 'API 分通道（STM / LTM / State）',
+        'Default API above is used as fallback when a channel is left blank.': '通道留空时，回退使用上方的默认 Secondary API。',
+        'blank = use default': '留空 = 回退默认',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -345,6 +357,12 @@ export const NARRATIVE_I18N = {
         'Pipeline:': '管線：',
         'Active:': '活躍中：',
         'Idle': '空閒', 'State Extraction': '狀態提取', 'STM Extraction': 'STM提取', 'LTM Consolidation': 'LTM合併',
+        'STM Chunk Max Characters': 'STM 分塊大小（字元）',
+        'Max prompt characters per STM extraction call. Segments are chunked from oldest to newest within each batch. A single segment that exceeds this limit is processed alone.': '每次 STM 提取呼叫的最大 prompt 字元數。同一批次內按從舊到新將對話輪次拼成不超過此限制的塊，每個塊單獨發送 LLM。單個段落超出此限制時單獨處理。',
+        'Track character, faction, quest/power_slot state with structured validation. When disabled, State pipeline will not run.': '啟用 State Schema 追蹤角色、勢力與任務狀態並進行結構化校驗。停用後，狀態提取和校驗將停止執行——僅純記憶（STM/LTM）保持活躍。',
+        'Split API by operation (STM / LTM / State)': 'API 分通道（STM / LTM / State）',
+        'Default API above is used as fallback when a channel is left blank.': '通道留空時，回退使用上方的預設 Secondary API。',
+        'blank = use default': '留空 = 回退預設',
     }
 };
 
