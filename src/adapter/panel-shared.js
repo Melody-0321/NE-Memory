@@ -79,16 +79,16 @@ export function injectBottomDrawerCSS() {
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = hostSel + '{' +
-        'position:absolute;inset:0;z-index:35;background:transparent;' +
+        'display:flex;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
+        'position:fixed;inset:0;z-index:35;background:transparent;' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;' +
-        'transform:translateY(100%);pointer-events:none;' +
+        'transform:translateY(100vh);pointer-events:none;' +
         'transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);}' +
         hostSel + '::before{' +
         'content:"";position:absolute;inset:0;z-index:-1;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-radius:inherit;}' +
         (isShadow ? ':host(.open){' : '.ne-vault-bottom-overlay.open{') +
-        'display:flex;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
         'transform:translateY(0);pointer-events:auto;}' +
         '.ne-vault-collapse-bar{flex-shrink:0;display:flex;justify-content:center;align-items:center;' +
         'padding:10px 0 6px;cursor:pointer;min-height:28px;}' +
