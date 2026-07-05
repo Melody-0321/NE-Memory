@@ -61,7 +61,10 @@ export function renderSettingsTab() {
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Chunk Max Characters') + '</span><span class="range-val" id="nes_stm_chunk_val">' + (settings.stmChunkMaxChars || 4000) + '</span></div>' +
-        '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 4000) / 100)))) + '" style="width:100%;">' +
+        '<div style="display:flex;gap:6px;align-items:center;">' +
+            '<input type="number" id="nes_stm_chunk_input" min="100" max="10000" step="10" value="' + (settings.stmChunkMaxChars || 4000) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
+            '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 4000) / 100)))) + '" style="flex:1;">' +
+        '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Ratio') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '%</span></div>' +
         '<input type="range" id="nes_stm_summary_ratio" min="1" max="20" step="1" value="' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '" style="width:100%;">' +
@@ -208,7 +211,10 @@ export function renderSettingsTab() {
     if (suEl) { suEl.oninput = function () { var v = panelById('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
     var scSlider = panelById('nes_stm_chunk_max_chars');
     var scVal = panelById('nes_stm_chunk_val');
-    if (scSlider) { scSlider.oninput = function () { var actual = Math.round(100 * Math.pow(10, Number(scSlider.value) * 2 / 100)); if (scVal) scVal.textContent = actual; saveSettingsTab(); }; }
+    var scInput = panelById('nes_stm_chunk_input');
+    var _scSync = false;
+    if (scSlider) { scSlider.oninput = function () { if (_scSync) return; _scSync = true; var actual = Math.round(100 * Math.pow(10, Number(scSlider.value) * 2 / 100)); if (scVal) scVal.textContent = actual; if (scInput) scInput.value = actual; _scSync = false; saveSettingsTab(); }; }
+    if (scInput) { scInput.onchange = function () { if (_scSync) return; _scSync = true; var v = Math.max(100, Math.min(10000, Number(scInput.value) || 4000)); scInput.value = v; if (scVal) scVal.textContent = v; if (scSlider) scSlider.value = Math.round(50 * Math.log10(v / 100)); _scSync = false; saveSettingsTab(); }; }
     var srEl = panelById('nes_stm_summary_ratio');
     if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; saveSettingsTab(); }; }
     var cwEl = panelById('nes_dialog_window_rounds');
@@ -402,10 +408,9 @@ function saveSettingsTab() {
         settings.dialogOverrideEnabled = panelById('nes_dialog_override_enabled').checked;
     if (panelById('nes_api_channels_enabled'))
         settings.apiChannelsEnabled = channelsEnabled;
-    var scSlider2 = panelById('nes_stm_chunk_max_chars');
-    if (scSlider2) {
-        var pos = Number(scSlider2.value);
-        settings.stmChunkMaxChars = Math.round(100 * Math.pow(10, pos * 2 / 100));
+    var scInput2 = panelById('nes_stm_chunk_input');
+    if (scInput2) {
+        settings.stmChunkMaxChars = Math.max(100, Math.min(10000, Number(scInput2.value) || 4000));
     }
     if (panelById('nes_stm_summary_ratio'))
         settings.stmSummaryRatio = Number(panelById('nes_stm_summary_ratio').value) / 100;
