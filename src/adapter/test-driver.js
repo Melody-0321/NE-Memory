@@ -54,11 +54,6 @@ export async function runTestLoop(testCase, hostDoc) {
             var cond = testCase.preconditions[pi];
             var failed = null;
             if (cond.indexOf('State Schema') !== -1) {
-                try {
-                    var raw = localStorage.getItem('ne_settings');
-                    var enabled = raw ? !!JSON.parse(raw).enableStateSchema : false;
-                    if (!enabled) failed = 'State Schema is disabled (ne_settings.enableStateSchema is falsy)';
-                } catch(e) { failed = 'Cannot verify State Schema: ' + e.message; }
             }
             if (cond.indexOf('SmartPush') !== -1) {
             }

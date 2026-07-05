@@ -17,22 +17,11 @@ import { t_field } from '../i18n.js';
 
 /** @returns {boolean} */
 export function isStateSchemaEnabled() {
-    try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) return !!JSON.parse(raw).enableStateSchema;
-    } catch (e) {}
-    return false;
+    return true;
 }
 
 /** @param {boolean} val */
 export function setStateSchemaEnabled(val) {
-    var settings = {};
-    try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) settings = JSON.parse(raw);
-    } catch (e) {}
-    settings.enableStateSchema = !!val;
-    try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
 }
 
 /** @param {boolean} val */

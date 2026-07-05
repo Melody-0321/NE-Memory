@@ -11,7 +11,7 @@ import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, o
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
+import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setDynamicStateMode } from '../core/vault/schema.js';
 import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
@@ -296,7 +296,6 @@ function setupEventListeners(retryCount) {
                     console.log('[NE] chat_id_changed → chatId=' + chatId2);
                     neSyncChatId(chatId2);
                     var settings = loadSettings();
-                    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await loadVault(chatId2);
@@ -326,7 +325,6 @@ function setupEventListeners(retryCount) {
                     console.log('[NE] CHAT_CHANGED (legacy) → chatId=' + chatId2b);
                     neSyncChatId(chatId2b);
                     var settings = loadSettings();
-                    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
                     var vault = await loadVault(chatId2b);

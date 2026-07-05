@@ -55,13 +55,8 @@ export async function bootstrapVault(chatId, locale, settings) {
     t(locale);
     setFieldLocale(locale);
 
-    setStateSchemaEnabled(settings && settings.enableStateSchema || false);
     setDynamicStateMode(settings && settings.useDynamicState || false);
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-
-    if (!(settings && settings.enableStateSchema)) {
-        console.warn('[NE] State Schema is DISABLED — state extraction will not run. Enable it in NE Memory settings or via localStorage key ne_settings.enableStateSchema.');
-    }
 
     console.log('[NE] Engine initializing — chatId=' + chatId);
     var vault = await loadVault(chatId);

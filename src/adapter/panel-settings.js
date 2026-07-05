@@ -1,6 +1,5 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
-import { isStateSchemaEnabled, setStateSchemaEnabled } from '../core/vault/schema.js';
 import { testSecondaryApiConnection, sendSecondaryTestMessage,
   saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
@@ -43,12 +42,6 @@ export function renderSettingsTab() {
                 '<input type="checkbox" id="nes_dialog_override_enabled" ' + (settings.dialogOverrideEnabled ? 'checked' : '') + '> ' + t('override_st_context_window_limit') +
             '</label>' +
             '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
-        '</div>' +
-        '<div style="margin:0 0 8px;">' +
-            '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
-                '<input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> ' + t('Enable State Schema') +
-            '</label>' +
-            '<div style="color:var(--grey50);font-size:0.75em;">' + t('Track character, faction, quest/power_slot state with structured validation. When disabled, State pipeline will not run.') + '</div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
@@ -221,8 +214,6 @@ export function renderSettingsTab() {
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
-    var esToggle = panelById('nes_enable_state_schema');
-    if (esToggle) { esToggle.onchange = function () { saveSettingsTab(); }; }
     // Checkboxes — save on change
     // Auto toggles — save to params auto map and re-render
     var autoSb = panelById('nes_stm_batch_auto');
@@ -391,8 +382,6 @@ function saveSettingsTab() {
     var settings = {};
     try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
 
-    if (panelById('nes_enable_state_schema'))
-        settings.enableStateSchema = panelById('nes_enable_state_schema').checked;
     settings.useDynamicState = settings.useDynamicState || false;
     if (panelById('nes_enable_retrieval'))
         settings.retrievalEnabled = panelById('nes_enable_retrieval').checked;
