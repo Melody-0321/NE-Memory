@@ -606,8 +606,14 @@ async function flushPendingMessages() {
 }
 
 function triggerPerRoundExtraction(assistantMsg) {
-    if (!isStateSchemaEnabled()) return;
-    if (!tryAcquire('state')) return;
+    if (!isStateSchemaEnabled()) {
+        console.log('[NE] State: skipped (State Schema disabled — enable in NE Memory settings)');
+        return;
+    }
+    if (!tryAcquire('state')) {
+        console.log('[NE] State: skipped (pipeline guard busy, state=' + getState() + ')');
+        return;
+    }
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
     extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {

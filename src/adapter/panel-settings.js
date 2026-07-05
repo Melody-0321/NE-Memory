@@ -44,6 +44,12 @@ export function renderSettingsTab() {
             '</label>' +
             '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
         '</div>' +
+        '<div style="margin:0 0 8px;">' +
+            '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
+                '<input type="checkbox" id="nes_enable_state_schema" ' + (settings.enableStateSchema ? 'checked' : '') + '> ' + t('Enable State Schema') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.75em;">' + t('Track character, faction, quest/power_slot state with structured validation. When disabled, State pipeline will not run.') + '</div>' +
+        '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
         '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
@@ -210,6 +216,8 @@ export function renderSettingsTab() {
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
+    var esToggle = panelById('nes_enable_state_schema');
+    if (esToggle) { esToggle.onchange = function () { saveSettingsTab(); }; }
     // Checkboxes — save on change
     // Auto toggles — save to params auto map and re-render
     var autoSb = panelById('nes_stm_batch_auto');
@@ -375,25 +383,39 @@ export function renderSettingsTab() {
 
 function saveSettingsTab() {
     var channelsEnabled = panelById('nes_api_channels_enabled') ? panelById('nes_api_channels_enabled').checked : false;
-    var existingVs = false;
-    try { var raw = localStorage.getItem('ne_settings'); if (raw) existingVs = JSON.parse(raw).enableVectorSearch || false; } catch (e) {}
-    var settings = {
-        enableStateSchema: panelById('nes_enable_state_schema') ? panelById('nes_enable_state_schema').checked : false,
-        useDynamicState: false,
-        retrievalEnabled: panelById('nes_enable_retrieval') ? panelById('nes_enable_retrieval').checked : false,
-        enableVectorSearch: panelById('nes_enable_vector_search') ? panelById('nes_enable_vector_search').checked : existingVs,
-        memoryBudget: panelById('nes_memory_budget') ? Number(panelById('nes_memory_budget').value) : 800,
-        stmBatch: (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked) ? 'auto' : (panelById('nes_stm_batch') ? Number(panelById('nes_stm_batch').value) : 10),
-        stmMaxUnconsolidated: panelById('nes_stm_max_unconsolidated') ? Number(panelById('nes_stm_max_unconsolidated').value) : 5,
-        dialogWindowRounds: panelById('nes_dialog_window_rounds') ? Number(panelById('nes_dialog_window_rounds').value) : 10,
-        dialogOverrideEnabled: panelById('nes_dialog_override_enabled') ? panelById('nes_dialog_override_enabled').checked : false,
-        apiChannelsEnabled: channelsEnabled,
-        stmChunkMaxChars: panelById('nes_stm_chunk_max_chars') ? Number(panelById('nes_stm_chunk_max_chars').value) : 8000,
-        memoryConfig: {
-            extraction_temperature: panelById('nes_extraction_temperature') ? Number(panelById('nes_extraction_temperature').value) : 0.2,
-            temperature: panelById('nes_extraction_temperature') ? Number(panelById('nes_extraction_temperature').value) : 0.2
-        }
-    };
+    var settings = {};
+    try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
+
+    if (panelById('nes_enable_state_schema'))
+        settings.enableStateSchema = panelById('nes_enable_state_schema').checked;
+    settings.useDynamicState = settings.useDynamicState || false;
+    if (panelById('nes_enable_retrieval'))
+        settings.retrievalEnabled = panelById('nes_enable_retrieval').checked;
+    if (panelById('nes_enable_vector_search'))
+        settings.enableVectorSearch = panelById('nes_enable_vector_search').checked;
+    if (panelById('nes_memory_budget'))
+        settings.memoryBudget = Number(panelById('nes_memory_budget').value);
+    if (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked)
+        settings.stmBatch = 'auto';
+    else if (panelById('nes_stm_batch'))
+        settings.stmBatch = Number(panelById('nes_stm_batch').value);
+    if (panelById('nes_stm_max_unconsolidated'))
+        settings.stmMaxUnconsolidated = Number(panelById('nes_stm_max_unconsolidated').value);
+    if (panelById('nes_dialog_window_rounds'))
+        settings.dialogWindowRounds = Number(panelById('nes_dialog_window_rounds').value);
+    if (panelById('nes_dialog_override_enabled'))
+        settings.dialogOverrideEnabled = panelById('nes_dialog_override_enabled').checked;
+    if (panelById('nes_api_channels_enabled'))
+        settings.apiChannelsEnabled = channelsEnabled;
+    if (panelById('nes_stm_chunk_max_chars'))
+        settings.stmChunkMaxChars = Number(panelById('nes_stm_chunk_max_chars').value);
+
+    settings.memoryConfig = settings.memoryConfig || {};
+    if (panelById('nes_extraction_temperature')) {
+        settings.memoryConfig.extraction_temperature = Number(panelById('nes_extraction_temperature').value);
+        settings.memoryConfig.temperature = settings.memoryConfig.extraction_temperature;
+    }
+
     var schemaEl = panelById('nes_state_schema');
     if (schemaEl) {
         var schemaText = schemaEl.value.trim();
@@ -409,7 +431,6 @@ function saveSettingsTab() {
         }
     }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
-    setStateSchemaEnabled(settings.enableStateSchema || false);
     setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
         url: panelById('nes_secondary_url').value.trim(),

@@ -19,8 +19,6 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    const schemaEnabled = isStateSchemaEnabled();
-
     var currentStateSnapshot = '';
     if (content.story_time || content.story_scene || content.story_date) {
         currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
@@ -28,7 +26,7 @@ export function buildSTMUpdatePrompt(newMessages, vault, partials) {
     if (!content.story_time && !content.story_date && !content.story_scene) {
         currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
     }
-    if (schemaEnabled && content.state && Object.keys(content.state).length > 0) {
+    if (isStateSchemaEnabled() && content.state && Object.keys(content.state).length > 0) {
         var activeChars = [];
         if (content.state.characters) {
             Object.keys(content.state.characters).forEach(function (n) {

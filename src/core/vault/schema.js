@@ -15,23 +15,35 @@ import { t_field } from '../i18n.js';
 //
 // 全局开关：可通过 isStateSchemaEnabled() / setStateSchemaEnabled() 控制整个 Schema 系统开关
 
-let _stateSchemaEnabled = false;
-let _dynamicStateMode = false;
-
 /** @returns {boolean} */
 export function isStateSchemaEnabled() {
-    return _stateSchemaEnabled;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) return !!JSON.parse(raw).enableStateSchema;
+    } catch (e) {}
+    return false;
 }
 
 /** @param {boolean} val */
 export function setStateSchemaEnabled(val) {
-    _stateSchemaEnabled = !!val;
+    var settings = {};
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) settings = JSON.parse(raw);
+    } catch (e) {}
+    settings.enableStateSchema = !!val;
+    try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
 }
-
 
 /** @param {boolean} val */
 export function setDynamicStateMode(val) {
-    _dynamicStateMode = !!val;
+    var settings = {};
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) settings = JSON.parse(raw);
+    } catch (e) {}
+    settings.useDynamicState = !!val;
+    try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
 }
 
 export const POWER_SLOTS_TEMPLATES = {

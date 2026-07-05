@@ -47,6 +47,29 @@ export async function runTestLoop(testCase, hostDoc) {
     if (!testCase.structural || testCase.structural.length === 0) {
         structuralDefinitive = true;
     }
+
+    if (testCase.preconditions && testCase.preconditions.length > 0) {
+        console.log('[NE-TEST] Verifying preconditions...');
+        for (var pi = 0; pi < testCase.preconditions.length; pi++) {
+            var cond = testCase.preconditions[pi];
+            var failed = null;
+            if (cond.indexOf('State Schema') !== -1) {
+                try {
+                    var raw = localStorage.getItem('ne_settings');
+                    var enabled = raw ? !!JSON.parse(raw).enableStateSchema : false;
+                    if (!enabled) failed = 'State Schema is disabled (ne_settings.enableStateSchema is falsy)';
+                } catch(e) { failed = 'Cannot verify State Schema: ' + e.message; }
+            }
+            if (cond.indexOf('SmartPush') !== -1) {
+            }
+            if (failed) {
+                console.error('[NE-TEST] Precondition FAILED: "' + cond + '" — ' + failed);
+                return { error: 'Precondition FAILED: "' + cond + '" — ' + failed + '. Please fix and re-run.' };
+            }
+        }
+        console.log('[NE-TEST] All preconditions verified OK.');
+    }
+
     startCollectingPipelineCalls();
     for (var round = 1; round <= testCase.maxRounds; round++) {
         console.log('[NE-TEST] === Round ' + round + '/' + testCase.maxRounds + ' ===');
