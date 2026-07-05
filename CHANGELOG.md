@@ -1,3 +1,32 @@
+# NE-Memory v6.4 更新日志
+
+## Bug 修复
+
+- **面板 CSS 三重坑**：双滚轮 + 下滑翻开无响应面板 + 面板占满全屏。overlay 初始 `display: flex` + `position: absolute` 占据 #sheld 布局空间导致额外滚动条；修复为关态 `display: none`，开态 `display: flex`。
+- **设置面板全部控件不持久化**：`saveSettingsTab` 引用了渲染 HTML 中不存在的 DOM 元素，第一行 `.checked` 即抛 TypeError 导致整函数静默崩溃。所有滑块、复选框、文本域的修改均未保存。修复：所有 `panelById` 访问改为空值安全 + 合理默认值。
+- **记忆编辑/删除不持久化**：双重根因——(1) IndexedDB 写入 fire-and-forget，失败静默丢弃；(2) `loadVault` 版本平局时用聊天文件旧数据覆盖 IndexedDB。修复：`async/await write` + toast 错误提示；`loadVault` 改严格大于比较。
+- **处理历史按钮静默失败**：`collectAllMsgIds` import 缺失 + 主逻辑无 try/catch + `onProgress` 从未被调用。三者全部补齐。
+- **手机端滑动关闭卡死**：手势关闭后 inline `transform` 残留未清，压住 CSS transition 导致面板钉死。
+- **上下文窗口轮数控制死代码**：`computeWindowStartMsgId` 字段名错误导致 Dialog Rounds 设置从未生效。
+
+## 新功能
+
+- **多通道 API 路由**：记忆提取和 Embedding 可分别配置独立 API 端点，不同操作使用不同 API。
+- **STM 对数滑块**：100–10000 范围非线性刻度，带每轮提示；数字输入框双向同步。
+- **动态摘要比例**：STM 摘要长度按段落比例自适应，不再硬编码 10–160 字符上下限。
+- **Extension 模式**：浏览器扩展形态入口、manifest、构建脚本。
+
+## 行为变更
+
+- State Schema 始终开启（移除 `enableStateSchema` 开关），Schema 字段级约束默认生效。
+- NPC 好感度变化/关系字段从 NE-CHAR 和 State LLM 输出中移除。
+
+### 从 v6.3 出发的外部变更统计
+
+共 13 个用户可见变更：6 项 Bug 修复（面板 CSS ×3 / 设置面板 / 记忆编辑 / 处理历史 / 滑动关闭 / 上下文窗口）+ 4 项新功能 + 2 项行为变更 + 1 项 i18n 补充。
+
+---
+
 # NE-Memory v6.3 更新日志
 
 ## Bug 修复
