@@ -3,7 +3,6 @@ import { loadVault } from '../core/auto-restore.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
-import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
@@ -108,7 +107,7 @@ export async function updateVaultViewerPopout(getChatId) {
     // ── Section C: Character block ──
     try {
         var charContainer = panelById('ne_character_block_container');
-        if (charContainer && isStateSchemaEnabled()) {
+        if (charContainer) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             charContainer.innerHTML = charHtml || emptyStateHtml('\u{1F464}', t('No character data'), t('Send a message to start tracking'));
@@ -129,7 +128,7 @@ export async function updateVaultViewerPopout(getChatId) {
     // ── Section D: Faction block ──
     try {
         var factionContainer = panelById('ne_faction_block_container');
-        if (factionContainer && isStateSchemaEnabled()) {
+        if (factionContainer) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
             factionContainer.innerHTML = factionHtml || emptyStateHtml('\u2691', t('No faction data'), t('Faction state will appear when detected'));
         }
@@ -138,7 +137,7 @@ export async function updateVaultViewerPopout(getChatId) {
     // ── Section E: Quest block ──
     try {
         var questContainer = panelById('ne_quest_block_container');
-        if (questContainer && isStateSchemaEnabled()) {
+        if (questContainer) {
             var questHtml = renderQuestPanelHTML(c.state || {});
             questContainer.innerHTML = questHtml || emptyStateHtml('\u{1F4DC}', t('No quest data'), t('Quest progress will be tracked automatically'));
         }
