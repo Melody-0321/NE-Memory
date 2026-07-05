@@ -383,7 +383,7 @@ function bootNE(retries) {
 }
 
 function _buildDebugApi() {
-    var hostDoc = document;
+    var hostDoc = window.__NE_EXTENSION_MODE ? document : (window.parent && window.parent !== window ? window.parent.document : document);
     return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {

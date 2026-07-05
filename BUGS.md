@@ -657,6 +657,39 @@ system prompt 说"覆盖全部消息不得跳过"，user prompt 说"如果没有
 
 ---
 
+## #25 ✅ test-runner "No textarea" —— `hostDoc` 指向 iframe 文档而非主页面
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-05 |
+| **解决** | 2026-07-05 |
+| **严重程度** | **High** |
+| **影响** | script 模式（IIFE 构建）下 test-runner 无法发送消息，报 `Error: No textarea`。Extension 模式不受影响。 |
+
+### 根因
+
+`_buildDebugApi()` 中 `hostDoc = document`。script 模式下代码通过 `<script>` 标签注入 iframe，`document` 指向 iframe 的文档，而 `send_textarea` 在 `window.parent.document`（ST 主页面文档）中。
+
+项目中 `panel-shared.js` 等其他模块已正确通过 `window.__NE_EXTENSION_MODE ? document : window.parent.document` 解析，但 `_buildDebugApi` 遗漏了此逻辑。
+
+### 修复
+
+```diff
+- var hostDoc = document;
++ var hostDoc = window.__NE_EXTENSION_MODE ? document : (window.parent && window.parent !== window ? window.parent.document : document);
+```
+
+### 影响范围
+
+| 流程 | 之前 | 修复后 |
+|---|---|---|
+| **test-runner（script 模式）** | ❌ `No textarea` 崩溃 | ✅ 正常 |
+| **test-runner（extension 模式）** | ✅ 正常（未受影响） | ✅ 正常 |
+| **seedAndWait / runQuery（script 模式）** | ❌ 同样有 bug | ✅ 正常 |
+
+---
+
 ## 汇总
 
 | # | 描述 | 严重度 | 状态 |
@@ -685,3 +718,4 @@ system prompt 说"覆盖全部消息不得跳过"，user prompt 说"如果没有
 | 22 | 消息去重击穿（fallback ID 不一致 + `_absIdx` 重叠 + force prompt 矛盾） | **High** | ✅ 已解决 |
 | 23 | STM 条目排序错误 + msgRange 位置误导 | Medium | ✅ 已解决 |
 | 24 | test-runner 6 类缺陷（exists 断言反转 / null 崩溃 / 提前终止 / Blob 泄漏） | Medium | ✅ 已解决 |
+| 25 | test-runner "No textarea" — `hostDoc` 指向 iframe 文档而非主页面 | **High** | ✅ 已解决 |
