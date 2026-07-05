@@ -60,10 +60,10 @@ export function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Chunk Max Characters') + '</span><span class="range-val" id="nes_stm_chunk_val">' + (settings.stmChunkMaxChars || 4000) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Chunk Max Characters') + '</span><span class="range-val" id="nes_stm_chunk_val">' + (settings.stmChunkMaxChars || 500) + '</span></div>' +
         '<div style="display:flex;gap:6px;align-items:center;">' +
-            '<input type="number" id="nes_stm_chunk_input" min="100" max="10000" step="10" value="' + (settings.stmChunkMaxChars || 4000) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
-            '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 4000) / 100)))) + '" style="flex:1;">' +
+            '<input type="number" id="nes_stm_chunk_input" min="100" max="10000" step="10" value="' + (settings.stmChunkMaxChars || 500) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
+            '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 500) / 100)))) + '" style="flex:1;">' +
         '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Ratio') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '%</span></div>' +
@@ -410,7 +410,7 @@ function saveSettingsTab() {
         settings.apiChannelsEnabled = channelsEnabled;
     var scInput2 = panelById('nes_stm_chunk_input');
     if (scInput2) {
-        settings.stmChunkMaxChars = Math.max(100, Math.min(10000, Number(scInput2.value) || 4000));
+        settings.stmChunkMaxChars = Math.max(100, Math.min(10000, Number(scInput2.value) || 500));
     }
     if (panelById('nes_stm_summary_ratio'))
         settings.stmSummaryRatio = Number(panelById('nes_stm_summary_ratio').value) / 100;

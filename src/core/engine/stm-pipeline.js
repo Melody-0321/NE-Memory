@@ -601,7 +601,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         var events = [];
 
         if (segments.length > 0) {
-            var maxChars = 8000;
+            var maxChars = 500;
             try {
                 var rawSettings = localStorage.getItem('ne_settings');
                 if (rawSettings) {
