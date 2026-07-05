@@ -70,6 +70,9 @@ export function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Chunk Max Characters') + '</span><span class="range-val" id="nes_stm_chunk_val">' + (settings.stmChunkMaxChars || 8000) + '</span></div>' +
         '<input type="range" id="nes_stm_chunk_max_chars" min="2000" max="64000" step="500" value="' + (settings.stmChunkMaxChars || 8000) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Segments are chunked from oldest to newest within each batch. A single segment that exceeds this limit is processed alone.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Ratio') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '%</span></div>' +
+        '<input type="range" id="nes_stm_summary_ratio" min="1" max="20" step="1" value="' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;color:var(--ne-success);display:none;">\u25CF</span></div>' +
@@ -212,6 +215,8 @@ export function renderSettingsTab() {
     if (suEl) { suEl.oninput = function () { var v = panelById('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
     var scEl = panelById('nes_stm_chunk_max_chars');
     if (scEl) { scEl.oninput = function () { var v = panelById('nes_stm_chunk_val'); if (v) v.textContent = scEl.value; saveSettingsTab(); }; }
+    var srEl = panelById('nes_stm_summary_ratio');
+    if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; saveSettingsTab(); }; }
     var cwEl = panelById('nes_dialog_window_rounds');
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
@@ -409,6 +414,8 @@ function saveSettingsTab() {
         settings.apiChannelsEnabled = channelsEnabled;
     if (panelById('nes_stm_chunk_max_chars'))
         settings.stmChunkMaxChars = Number(panelById('nes_stm_chunk_max_chars').value);
+    if (panelById('nes_stm_summary_ratio'))
+        settings.stmSummaryRatio = Number(panelById('nes_stm_summary_ratio').value) / 100;
 
     settings.memoryConfig = settings.memoryConfig || {};
     if (panelById('nes_extraction_temperature')) {

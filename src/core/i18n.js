@@ -131,6 +131,8 @@ export const NARRATIVE_I18N = {
         'Split API by operation (STM / LTM / State)': 'Multi-channel API (STM / LTM / State)',
         'Default API above is used as fallback when a channel is left blank.': 'The default Secondary API above is used as fallback when a channel URL is left blank.',
         'blank = use default': 'blank = use fallback',
+        'STM Summary Ratio': 'STM Summary Ratio',
+        'Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.': 'Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 output chars for 1000 input chars. Lower = shorter summaries, higher = more detail retained.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -253,6 +255,8 @@ export const NARRATIVE_I18N = {
         'Split API by operation (STM / LTM / State)': 'API 分通道（STM / LTM / State）',
         'Default API above is used as fallback when a channel is left blank.': '通道留空时，回退使用上方的默认 Secondary API。',
         'blank = use default': '留空 = 回退默认',
+        'STM Summary Ratio': 'STM 摘要压缩比',
+        'Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.': 'STM 事件摘要的目标压缩比，按每个区间的原文长度分别计算。5% 表示约 50 字输出对应 1000 字原文。越低摘要越短，越高保留细节越多。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -363,6 +367,8 @@ export const NARRATIVE_I18N = {
         'Split API by operation (STM / LTM / State)': 'API 分通道（STM / LTM / State）',
         'Default API above is used as fallback when a channel is left blank.': '通道留空時，回退使用上方的預設 Secondary API。',
         'blank = use default': '留空 = 回退預設',
+        'STM Summary Ratio': 'STM 摘要壓縮比',
+        'Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.': 'STM 事件摘要的目標壓縮比，按每個區間的原文長度分別計算。5% 表示約 50 字輸出對應 1000 字原文。越低摘要越短，越高保留細節越多。',
     }
 };
 

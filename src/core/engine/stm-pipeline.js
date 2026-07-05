@@ -328,34 +328,51 @@ export function buildBatchPrompt(turns, vault) {
     return { system: system, user: userText };
 }
 
-export function buildStmOnlyPrompt(turns, vault) {
+export function buildStmOnlyPrompt(turns, vault, ratio) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var retrospectiveCtx = buildRetrospectiveContext(content);
-
+    var _ratio = ratio || 0.05;
+    var CHAR_FACTOR = lang === 'en' ? 0.25 : 1.0;
+    var MIN_CHARS = lang === 'en' ? 40 : 10;
+    var MAX_CHARS = 400;
 
     var turnsText = [];
+    var totalChars = 0;
     for (var ti = 0; ti < turns.length; ti++) {
         var t = turns[ti];
         if (!t) continue;
-        turnsText.push('[Turn ' + ti + ']');
+        var line = '[Turn ' + ti + ']';
+        turnsText.push(line);
+        totalChars += line.length;
         if (t.user) {
             var uname = t.user.name ? t.user.name + ': ' : '';
-            turnsText.push('  user: ' + uname + (t.user.content || t.user.mes || ''));
+            var uline = '  user: ' + uname + (t.user.content || t.user.mes || '');
+            turnsText.push(uline);
+            totalChars += uline.length;
         }
         if (t.assistant) {
             var aname = t.assistant.name ? t.assistant.name + ': ' : '';
-            turnsText.push('  assistant: ' + aname + (t.assistant.content || t.assistant.mes || ''));
+            var aline = '  assistant: ' + aname + (t.assistant.content || t.assistant.mes || '');
+            turnsText.push(aline);
+            totalChars += aline.length;
         }
         turnsText.push('');
     }
 
-    var userText = turnsText.join('\n');
+    var recommended = Math.round(totalChars * _ratio * CHAR_FACTOR);
+    recommended = Math.max(MIN_CHARS, Math.min(MAX_CHARS, recommended));
+    var unit = lang === 'en' ? 'chars' : '\u5B57';
+    var guidanceLine = lang === 'en'
+        ? 'TOTAL input ~' + totalChars + ' chars. Recommended summary per event: ~' + Math.round(recommended / Math.max(1, turns.length / 3)) + ' chars (based on ' + Math.round(_ratio * 100) + '% compression ratio).\n\n'
+        : '\u601D\u539F\u6587\u7EA6 ' + totalChars + ' ' + unit + '\uFF0C\u6BCF\u6761\u4E8B\u4EF6\u63A8\u8350\u6458\u8981\u7EA6 ' + Math.round(recommended / Math.max(1, turns.length / 3)) + ' ' + unit + '\uFF08\u57FA\u4E8E ' + Math.round(_ratio * 100) + '% \u538B\u7F29\u6BD4\uFF09\u3002\n\n';
+
+    var userText = guidanceLine + turnsText.join('\n');
     var maxTurnLabel = turns.length - 1;
 
     var system = lang === 'en' ?
-        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "inferred time. If multiple time formats appear, pick the MOST PRECISE one — datetime > date > ordinal day > vague period. Use same format as prior events as a template. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '",\n    }\n  ]\n}\n\nWhen to start a NEW event (any ONE condition met):\n1. Time clearly shifts (implied or stated in dialog)\n2. Scene/location changes\n3. A character enters or leaves\n4. Plot goal or action arc changes direction\nIf NONE of these change, adjacent turns MUST be merged into one event.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- Trivial turns (greetings, acknowledgments, filler) merge into the nearest meaningful event. Do NOT fabricate events for them.\n- If the entire batch has no plot content, set events to empty array [].') :
-        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "推断的时间。如果消息中同时出现多种时间格式，请选择最精确的表达——具体日期+时刻 > 具体日期 > 第N天 > 泛化时段。往期事件的 period 仅为格式模板——请复用其命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '",\n    }\n  ]\n}\n\n新事件的判断标准（满足任意一项即构成新事件）：\n1. 时间有明显推移（对话中暗示或明示）\n2. 场景位置改变\n3. 有新角色入场或旧角色离场\n4. 剧情目标或行动发生转折\n如果以上条件全部未变，相邻 turn 必须合并为一个事件。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 琐碎内容（问候、应答、语气词）直接并入最近的有意义事件，不要为其硬编事件。\n- 如果整个 batch 都没有可提取的有效事件，将 events 设为空数组 []。');
+        (retrospectiveCtx + '\nYou are a story memory extractor. Create one event entry for every continuous plot segment in the dialog below. All turns must be covered — no omissions.\n\nOutput JSON with this schema:\n{\n  "analysis": "Your step-by-step reasoning about the events (free text, will be ignored for extraction)",\n  "events": [\n    {\n      "event": "one-sentence description (use proper names, no pronouns)",\n      "period": "inferred time. If multiple time formats appear, pick the MOST PRECISE one — datetime > date > ordinal day > vague period. Use same format as prior events as a template. Unsure: \\"-\\"",\n      "scene": "inferred scene. Unsure: \\"-\\"",\n      "turns": "turn range like 0-3, 4-5. Max turn is ' + maxTurnLabel + '",\n    }\n  ]\n}\n\nWhen to start a NEW event (any ONE condition met):\n1. Time clearly shifts (implied or stated in dialog)\n2. Scene/location changes\n3. A character enters or leaves\n4. Plot goal or action arc changes direction\nIf NONE of these change, adjacent turns MUST be merged into one event.\n\nRules:\n- Cover ALL turns from 0 to ' + maxTurnLabel + '. No gaps.\n- Events partition the turns with NO overlap. If event A covers 0-2, event B must start at 3.\n- Do NOT create events for turns beyond ' + maxTurnLabel + '.\n- Within this batch, later events must not duplicate earlier ones.\n- Use character proper names only. No pronouns.\n- Trivial turns (greetings, acknowledgments, filler) merge into the nearest meaningful event. Do NOT fabricate events for them.\n- If the entire batch has no plot content, set events to empty array [].') :
+        (retrospectiveCtx + '\n你是故事记忆提取器。为下列对话中每一段连续剧情生成一个事件条目。必须覆盖全部 turn，不得遗漏。\n\n输出 JSON，schema 如下：\n{\n  "analysis": "你的逐步推理（自由文本，不会用于提取）",\n  "events": [\n    {\n      "event": "一句话事件描述（使用角色全名，禁止代词）",\n      "period": "推断的时间。如果消息中同时出现多种时间格式，请选择最精确的表达——具体日期+时刻 > 具体日期 > 第N天 > 泛化时段。往期事件的 period 仅为格式模板——请复用其命名规范。若无法判断：\\"-\\"",\n      "scene": "推断的场景。若无法判断：\\"-\\"",\n      "turns": "turn 范围如 0-3, 4-5。最大 turn 为 ' + maxTurnLabel + '",\n    }\n  ]\n}\n\n新事件的判断标准（满足任意一项即构成新事件）：\n1. 时间有明显推移（对话中暗示或明示）\n2. 场景位置改变\n3. 有新角色入场或旧角色离场\n4. 剧情目标或行动发生转折\n如果以上条件全部未变，相邻 turn 必须合并为一个事件。\n\n规则：\n- 必须覆盖 0~' + maxTurnLabel + ' 的所有 turns，不能留空。\n- 事件之间互不重叠。若事件 A 覆盖 0-2，事件 B 必须从 3 开始。\n- 禁止为超出 ' + maxTurnLabel + ' 的 turn 创建事件。\n- 同一批次内，后文事件不能与前文事件重复。往期事件只作为时间格式参考。\n- 使用角色全名，禁止代词。\n- 琐碎内容（问候、应答、语气词）直接并入最近的有意义事件，不要为其硬编事件。\n- 如果整个 batch 都没有可提取的有效事件，将 events 设为空数组 []。');
 
     return { system: system, user: userText };
 }
@@ -473,17 +490,43 @@ function mapEventData(event, seg, turns, allSegments) {
     event.status = 'closed';
 }
 
-function buildStmSummaryPrompt(segments, turns, vault) {
+function computePerSegmentGuidance(segments, turns, ratio, lang) {
+    var CHAR_FACTOR = lang === 'en' ? 0.25 : 1.0;
+    var MIN_CHARS = lang === 'en' ? 40 : 10;
+    var MAX_CHARS = 400;
+
+    return segments.map(function(seg) {
+        var segTurns = [];
+        for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
+        var segText = formatTurnsText(turns, segTurns);
+        var inputChars = segText.length;
+        var recommended = Math.round(inputChars * ratio * CHAR_FACTOR);
+        recommended = Math.max(MIN_CHARS, Math.min(MAX_CHARS, recommended));
+        return { inputChars: inputChars, recommended: recommended };
+    });
+}
+
+function buildStmSummaryPrompt(segments, turns, vault, ratio) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
+    var _ratio = ratio || 0.05;
 
+    var guidance = computePerSegmentGuidance(segments, turns, _ratio, lang);
 
-    var segmentsText = '共有 ' + segments.length + ' 个区间——你必须输出恰好 ' + segments.length + ' 条事件。\n';
+    var unit = lang === 'en' ? 'chars' : '\u5B57';
+    var segmentsText = lang === 'en'
+        ? 'There are ' + segments.length + ' segments — you must output exactly ' + segments.length + ' events.\n'
+        : '\u5171\u6709 ' + segments.length + ' \u4E2A\u533A\u95F4\u2014\u2014\u4F60\u5FC5\u987B\u8F93\u51FA\u6070\u597D ' + segments.length + ' \u6761\u4E8B\u4EF6\u3002\n';
     for (var si = 0; si < segments.length; si++) {
         var seg = segments[si];
         var segTurns = [];
         for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
-        segmentsText += '\n--- 区间 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ') ---\n';
+        var g = guidance[si];
+        if (lang === 'en') {
+            segmentsText += '\n--- Segment ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', ~' + g.inputChars + ' input chars, recommended summary ~' + g.recommended + ' chars) ---\n';
+        } else {
+            segmentsText += '\n--- \u533A\u95F4 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', \u539F\u6587\u7EA6 ' + g.inputChars + ' ' + unit + ', \u63A8\u8350\u6458\u8981\u7EA6 ' + g.recommended + ' ' + unit + ') ---\n';
+        }
         segmentsText += formatTurnsText(turns, segTurns);
         segmentsText += '\n';
     }
@@ -497,8 +540,8 @@ function buildStmSummaryPrompt(segments, turns, vault) {
     }
 
     var system = lang === 'en'
-        ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "one-sentence description (10-160 chars, use proper names, no pronouns)",\n      "period": "time. Use the time from ## 当前故事状态 (Current Story State) as the baseline. Only advance if the dialogue explicitly moves time forward — retain existing naming conventions. If no time is provided: \\"-\\"",\n      "scene": "scene from ## 当前故事状态. Only change if the dialogue explicitly moves to a different location. If no scene is provided: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
-        : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "一句话事件描述（10-160字，使用角色全名，禁止代词）",\n      "period": "时间。以 ## 当前故事状态 中提供的时间为基准。仅当对话明确表明时间前进时才更新——保留现有命名规范。若 ## 当前故事状态 未提供时间：\\"-\\"",\n      "scene": "场景。以 ## 当前故事状态 中提供的场景为基准。仅当对话明确表明场景切换时才更新。若 ## 当前故事状态 未提供场景：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
+        ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Use the time from ## 当前故事状态 (Current Story State) as the baseline. Only advance if the dialogue explicitly moves time forward — retain existing naming conventions. If no time is provided: \\"-\\"",\n      "scene": "scene from ## 当前故事状态. Only change if the dialogue explicitly moves to a different location. If no scene is provided: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
+        : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。以 ## 当前故事状态 中提供的时间为基准。仅当对话明确表明时间前进时才更新——保留现有命名规范。若 ## 当前故事状态 未提供时间：\\"-\\"",\n      "scene": "场景。以 ## 当前故事状态 中提供的场景为基准。仅当对话明确表明场景切换时才更新。若 ## 当前故事状态 未提供场景：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
 
     return { system: system, user: segmentsText };
 }
@@ -542,15 +585,17 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 if (rawSettings) {
                     var parsed = JSON.parse(rawSettings);
                     if (parsed.stmChunkMaxChars) maxChars = Number(parsed.stmChunkMaxChars);
+                    if (parsed.stmSummaryRatio !== undefined) var stmRatio = Number(parsed.stmSummaryRatio);
                 }
             } catch (e) {}
+            var stmRatio = stmRatio || 0.05;
 
             var chunks = chunkSegmentsForLLM(segments, turns, maxChars);
-            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ')');
+            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
 
             for (var ci = 0; ci < chunks.length; ci++) {
                 var chunk = chunks[ci];
-                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, vault);
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, vault, stmRatio);
                 var responseText = '';
                 try {
                     responseText = await callMemoryPipeline([
@@ -565,7 +610,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
                     for (var si = 0; si < chunk.length; si++) {
                         var singleSeg = [chunk[si]];
-                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, vault);
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, vault, stmRatio);
                         try {
                             responseText = await callMemoryPipeline([
                                 { role: 'system', content: singlePrompt.system },
