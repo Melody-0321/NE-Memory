@@ -305,9 +305,10 @@ export async function onMessageReceived(messageIndex) {
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(
-                /<!--NE-BANNER-->([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)<!--\/NE-BANNER-->/
-            );
-            if (stateBlockMatch) {
+            /<!--NE-BANNER-->([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)\|([^|]*)<!--\/NE-BANNER-->/
+        );
+        globalThis.__ne_banner_matched = !!stateBlockMatch;
+        if (stateBlockMatch) {
                 globalThis.__ne_pending_state_block = {
                     scene: (stateBlockMatch[1] || '').trim(),
                     time: (stateBlockMatch[2] || '').trim(),

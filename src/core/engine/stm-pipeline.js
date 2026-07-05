@@ -509,6 +509,7 @@ function computePerSegmentGuidance(segments, turns, ratio, lang) {
 function buildStmSummaryPrompt(segments, turns, vault, ratio) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
+    var bannerMatched = globalThis.__ne_banner_matched;
     var _ratio = ratio || 0.05;
 
     var guidance = computePerSegmentGuidance(segments, turns, _ratio, lang);
@@ -537,11 +538,32 @@ function buildStmSummaryPrompt(segments, turns, vault, ratio) {
         if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
         if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
         segmentsText += '\n';
+    } else {
+        segmentsText += '\n## 当前故事状态\n（请从上文和近期记忆条目中推断当前的时间和场景）\n\n';
     }
 
-    var system = lang === 'en'
-        ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Use the time from ## 当前故事状态 (Current Story State) as the baseline. Only advance if the dialogue explicitly moves time forward — retain existing naming conventions. If no time is provided: \\"-\\"",\n      "scene": "scene from ## 当前故事状态. Only change if the dialogue explicitly moves to a different location. If no scene is provided: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
-        : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。以 ## 当前故事状态 中提供的时间为基准。仅当对话明确表明时间前进时才更新——保留现有命名规范。若 ## 当前故事状态 未提供时间：\\"-\\"",\n      "scene": "场景。以 ## 当前故事状态 中提供的场景为基准。仅当对话明确表明场景切换时才更新。若 ## 当前故事状态 未提供场景：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
+    var stmEntries = vault.content.stm_entries || [];
+    var recentStm = stmEntries.slice(-3);
+    if (recentStm.length > 0) {
+        segmentsText += '\n## 近期记忆条目\n';
+        for (var rsi = 0; rsi < recentStm.length; rsi++) {
+            var s = recentStm[rsi];
+            segmentsText += '- ' + (s.period || '-') + ' | ' + (s.scene || s.scene || '未知') + ' | ' + (s.event || s.summary || '') + '\n';
+        }
+        segmentsText += '\n';
+    }
+
+    var system;
+
+    if (bannerMatched) {
+        system = lang === 'en'
+            ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Use the time from ## 当前故事状态 (Current Story State) as the baseline. Only advance if the dialogue explicitly moves time forward — retain existing naming conventions. If no time is provided: \\"-\\"",\n      "scene": "scene from ## 当前故事状态. Only change if the dialogue explicitly moves to a different location. If no scene is provided: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
+            : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。以 ## 当前故事状态 中提供的时间为基准。仅当对话明确表明时间前进时才更新——保留现有命名规范。若 ## 当前故事状态 未提供时间：\\"-\\"",\n      "scene": "场景。以 ## 当前故事状态 中提供的场景为基准。仅当对话明确表明场景切换时才更新。若 ## 当前故事状态 未提供场景：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
+    } else {
+        system = lang === 'en'
+            ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Infer from the dialogue above and the recent memory entries. Only advance if the dialogue explicitly moves time forward, otherwise keep the previous value. If you cannot determine the time from context: \\"-\\"",\n      "scene": "scene. Infer from the dialogue above and the recent memory entries. Only change if the dialogue explicitly moves to a different location, otherwise keep the previous value. If you cannot determine the scene from context: \\"-\\"",\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- Content-heavy segments: still summarize into one event.'
+            : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。从上文对话和近期记忆条目中推断当前时间（如\\"深夜\\"、\\"清晨\\"、\\"午后\\"、\\"黄昏\\"等）。仅当对话明确表明时间前进时才更新。若无法从上下文推断：\\"-\\"",\n      "scene": "场景。从上文对话和近期记忆条目中推断当前场景（如\\"客厅\\"、\\"街道\\"、\\"森林\\"、\\"宫殿\\"等）。仅当对话明确表明场景切换时才更新。若无法从上下文推断：\\"-\\"",\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- 内容较多的区间：仍只输出一条事件来概括。';
+    }
 
     return { system: system, user: segmentsText };
 }
