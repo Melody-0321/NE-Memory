@@ -64,7 +64,15 @@ export async function runTestLoop(testCase, hostDoc) {
             }
             if (failed) {
                 console.error('[NE-TEST] Precondition FAILED: "' + cond + '" — ' + failed);
-                return { error: 'Precondition FAILED: "' + cond + '" — ' + failed + '. Please fix and re-run.' };
+                return {
+                    error: 'Precondition FAILED: "' + cond + '" — ' + failed + '. Please fix and re-run.',
+                    structuralResults: [],
+                    semanticResults: [],
+                    roundCount: 0,
+                    totalDurationMs: 0,
+                    trace: '',
+                    report: ''
+                };
             }
         }
         console.log('[NE-TEST] All preconditions verified OK.');

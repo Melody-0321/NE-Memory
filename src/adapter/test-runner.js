@@ -82,6 +82,11 @@ async function executeSingleTest(testCase, hostDoc, maxRoundsOverride) {
     try {
         var result = await runTestLoop(testCase, hostDoc);
 
+        if (result.error && !result.roundCount && result.roundCount !== 0) {
+            console.error('[NE-TEST-RUNNER] ' + result.error);
+            return result;
+        }
+
         console.log('[NE-TEST-RUNNER] === Results ===');
         console.log('[NE-TEST-RUNNER] Rounds: ' + result.roundCount + ', Duration: ' + (result.totalDurationMs / 1000).toFixed(1) + 's');
         console.log('[NE-TEST-RUNNER] Structural:');
