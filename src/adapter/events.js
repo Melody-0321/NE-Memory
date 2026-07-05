@@ -115,14 +115,16 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
     if (chatMessages && pendingMessages && pendingMessages.length > 0) {
         var cwRounds = 10;
         try { var rawC = localStorage.getItem('ne_settings'); if (rawC) { var sC = JSON.parse(rawC); cwRounds = Number(sC.dialogWindowRounds) || 10; } } catch (eC) {}
-        var windowStartId = computeWindowStartMsgId(chatMessages, cwRounds);
-        var outOfWindowCount = 0;
-        for (var i = 0; i < pendingMessages.length; i++) {
-            var msgId = pendingMessages[i].mes_id || pendingMessages[i].id || 0;
-            if (msgId > 0 && msgId < windowStartId) outOfWindowCount++;
-        }
-        if (cwRounds > 0 && outOfWindowCount > 0) {
-            turnPressure = Math.min(1, outOfWindowCount / Math.max(1, cwRounds));
+        var windowStartIdx = computeWindowStartMsgId(chatMessages, cwRounds);
+        if (windowStartIdx > 0) {
+            var outOfWindowCount = 0;
+            for (var i = 0; i < pendingMessages.length; i++) {
+                var msgId = pendingMessages[i].id;
+                if (typeof msgId === 'number' && msgId >= 0 && msgId < windowStartIdx) outOfWindowCount++;
+            }
+            if (outOfWindowCount > 0) {
+                turnPressure = Math.min(1, outOfWindowCount / Math.max(1, cwRounds));
+            }
         }
     }
 
@@ -143,16 +145,10 @@ function adjustDialogWindow() {
         runtime.maxContext = Number.MAX_SAFE_INTEGER;
     }
 
-    var windowStartId = computeWindowStartMsgId(chat, cwRounds);
-    if (windowStartId <= 0) return;
+    var windowStartIdx = computeWindowStartMsgId(chat, cwRounds);
+    if (windowStartIdx <= 0) return;
 
-    for (var i = 0; i < chat.length; i++) {
-        var m = chat[i];
-        if ((m.mes_id || 0) > windowStartId) {
-            if (i > 0) chat.splice(0, i);
-            return;
-        }
-    }
+    chat.splice(0, windowStartIdx + 1);
 }
 export function notifyVaultChanged() {
     try {

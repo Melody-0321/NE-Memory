@@ -1,9 +1,8 @@
 export function computeWindowStartMsgId(chatMessages, contextWindowRounds) {
-    if (!chatMessages || chatMessages.length === 0) return 0;
+    if (!chatMessages || chatMessages.length === 0) return -1;
 
     var rounds = 0;
     var prevRole = null;
-    var firstMsgId = 0;
 
     for (var i = chatMessages.length - 1; i >= 0; i--) {
         var m = chatMessages[i];
@@ -13,12 +12,11 @@ export function computeWindowStartMsgId(chatMessages, contextWindowRounds) {
         if (prevRole === 'user' && role === 'assistant') {
             rounds++;
             if (rounds >= contextWindowRounds) {
-                firstMsgId = m.mes_id || 0;
-                break;
+                return i;
             }
         }
         prevRole = role;
     }
 
-    return firstMsgId;
+    return -1;
 }
