@@ -107,13 +107,13 @@ export function renderSettingsTab() {
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_state_api_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.key || '') + '"></div>' +
         '<div><label>' + t('Model') + '</label><input type="text" id="nes_state_api_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.model || '') + '"></div>' +
         '</div></div>' +
-        '<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
+        (channelsEnabled ? ('<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
         '<div style="font-weight:bold;margin:0 0 6px;">' + t('Embedding / Vector') + '</div>' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_embedding_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_embedding_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.key || '') + '"></div>' +
         '<div><label>' + t('Model') + '</label><input type="text" id="nes_embedding_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.model || '') + '"></div>' +
-        '</div></div>' +
+        '</div></div>') : '') +
         '</div>' +
         '</div></div>' +
         '</div></div>';
@@ -438,9 +438,9 @@ function saveSettingsTab() {
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
-        url: panelById('nes_secondary_url') ? panelById('nes_secondary_url').value.trim() : '',
-        key: panelById('nes_secondary_key') ? panelById('nes_secondary_key').value.trim() : '',
-        model: panelById('nes_secondary_model') ? panelById('nes_secondary_model').value.trim() : ''
+        url: panelById('nes_secondary_url').value.trim(),
+        key: panelById('nes_secondary_key').value.trim(),
+        model: panelById('nes_secondary_model').value.trim()
     };
     saveSecondaryApiConfig(secApi);
     if (channelsEnabled) {
