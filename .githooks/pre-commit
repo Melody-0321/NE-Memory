@@ -1,0 +1,13 @@
+#!/bin/sh
+# Pre-commit: auto-build dist before every commit
+echo "[NE] pre-commit: npm run build..."
+if ! npm run build; then
+    echo "[NE] Build failed, commit aborted."
+    exit 1
+fi
+
+# Stage built artifacts if they changed
+git add dist/index.js src/core/test-runner/test-data.generated.js
+
+echo "[NE] pre-commit: OK"
+exit 0

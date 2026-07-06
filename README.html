@@ -1,0 +1,345 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NE Memory Engine v6.6 — 让 AI 永远记得住</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans SC", "Microsoft YaHei", sans-serif;
+    line-height: 1.75;
+    color: #222;
+    max-width: 860px;
+    margin: 0 auto;
+    padding: 30px 24px 80px;
+    background: #fff;
+  }
+  h1 { font-size: 1.8em; border-bottom: 2px solid #e0e0e0; padding-bottom: 0.35em; margin-top: 0; }
+  h2 { font-size: 1.35em; margin-top: 2em; border-bottom: 1px solid #eee; padding-bottom: 0.25em; }
+  h3 { font-size: 1.1em; margin-top: 1.5em; }
+  p { margin: 1em 0; }
+  a { color: #0969da; text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  hr { border: none; border-top: 1px solid #e0e0e0; margin: 2em 0; }
+  ul, ol { padding-left: 1.5em; }
+  li { margin: 0.3em 0; }
+  code { background: #f6f8fa; padding: 0.15em 0.4em; border-radius: 4px; font-size: 0.92em; }
+  pre { background: #f6f8fa; border-radius: 6px; padding: 14px 18px; overflow-x: auto; font-size: 0.88em; line-height: 1.5; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 1em 0; }
+  th, td { border: 1px solid #d8dee4; padding: 8px 14px; text-align: left; }
+  th { background: #f6f8fa; font-weight: 600; }
+  strong { color: #111; }
+  .tagline { font-size: 1.15em; color: #555; margin-bottom: 2em; font-style: italic; }
+  .tagline + p { margin-top: 0; }
+
+  details { border: 1px solid #d8dee4; border-radius: 6px; margin: 0.8em 0; }
+  summary { background: #f6f8fa; padding: 8px 14px; cursor: pointer; font-weight: 500; border-radius: 6px; }
+  details[open] summary { border-radius: 6px 6px 0 0; }
+  details .details-body { padding: 10px 18px 14px; }
+
+  .json-block { background: #f6f8fa; border-radius: 6px; padding: 14px 18px; overflow-x: auto; }
+  .json-block pre { margin: 0; background: none; padding: 0; }
+
+  @media (prefers-color-scheme: dark) {
+    body { background: #0d1117; color: #c9d1d9; }
+    h1 { border-color: #30363d; }
+    h2 { border-color: #21262d; }
+    hr { border-color: #21262d; }
+    a { color: #58a6ff; }
+    code { background: #161b22; }
+    pre { background: #161b22; }
+    th, td { border-color: #30363d; }
+    th { background: #161b22; }
+    .json-block { background: #161b22; }
+    details { border-color: #30363d; }
+    summary { background: #161b22; }
+    strong { color: #e6edf3; }
+    .tagline { color: #8b949e; }
+    .json-block pre, .json-block pre code { background: none; }
+    .gh-badge { background: #21262d; border-color: #30363d; color: #c9d1d9; }
+  }
+</style>
+</head>
+<body>
+
+<h1>NE Memory Engine — 让 AI 永远记得住</h1>
+
+<p style="margin:0 0 1em 0;">
+  <a href="https://github.com/Melody-0321/NE-Memory" class="gh-badge" style="display:inline-block;background:#f6f8fa;border:1px solid #d0d7de;border-radius:6px;padding:2px 12px;font-size:0.85em;color:#24292f;text-decoration:none;">
+    <span style="display:inline-block;width:14px;height:14px;vertical-align:middle;margin-right:6px;background:currentColor;mask-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><path d=%22M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z%22/></svg>');-webkit-mask-image:url('data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 16 16%22><path d=%22M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z%22/></svg>');mask-size:contain;-webkit-mask-size:contain;"></span>
+    GitHub · Melody-0321/NE-Memory
+  </a>
+</p>
+
+<p class="tagline">聊到 300 楼，AI 还在提 10 楼的那个约定。</p>
+
+<p>
+NE Memory Engine 是 <a href="https://github.com/SillyTavern/SillyTavern">SillyTavern</a> 的长对话记忆管理引擎。
+它自动从对话中提取事件、追踪角色状态、维护叙事脉络，再在需要的时刻把相关记忆精准注入给 LLM。
+<strong>既省 token，又让长篇对话前后连贯、不崩人设。</strong>
+</p>
+
+<p>基于 <a href="https://github.com/N0VI028/JS-Slash-Runner">酒馆助手 (JS-Slash-Runner)</a> 运行。</p>
+
+<hr>
+
+<h2>它能做什么</h2>
+
+<h3>📖 自动记忆提取：短期的，长期的，它都帮你记</h3>
+
+<ul>
+  <li><strong>STM 事件提取</strong>：每轮对话自动提取关键事件（谁做了什么、发生了什么事），不重复处理同一条消息，Token 消耗不随对话增长。</li>
+  <li><strong>LTM 叙事弧线</strong>：多条关联 STM 自动整合为 LTM 叙事弧（如"龙牙剑任务线"），支持开放弧持续追加、闭合弧归档。<strong>原始数据永不丢失，每条 LTM 可追溯到源头 STM 和原始对话。</strong></li>
+</ul>
+
+<h3>🔍 SmartPush 智能注入：生成前自动把相关记忆递进去</h3>
+
+<p>每次 LLM 生成回复前，NE 会自动检索当前上下文最相关的记忆，注入到 LLM 可见的 prompt 中。<strong>始终在线，无需手动开启。</strong></p>
+
+<ul>
+  <li><strong>纯本地管线，零额外 API 成本</strong>：BM25 检索 → 可选向量 RRF 融合 → 实体链分组 → 代码组装注入文本。全程无 LLM 参与。</li>
+  <li><strong>按实体分组</strong>：不是简单地塞一堆零散事件，而是按角色/势力/任务归类为"实体记忆链"，LLM 一看就知道谁是谁。</li>
+  <li><strong>可选向量增强</strong>：开启 Vector Search 后，BM25 检索与向量语义相似度按倒数排名融合（RRF），检索精度进一步提升。</li>
+</ul>
+
+<h3>🗺️ 状态追踪：角色、势力、任务，张张卡片一目了然</h3>
+
+<ul>
+  <li><strong>角色卡</strong>：自动追踪每个角色的当前状态（位置/外貌/装备/情感/内心想法），Schema 驱动字段级约束，LLM 只改变化的部分。</li>
+  <li><strong>势力面板</strong>：势力关系网、对玩家态度、各势力间交往状态。</li>
+  <li><strong>任务/目标/事件</strong>：追踪进行中、已完成的各类任务，自动记录起止时间。</li>
+  <li><strong>战力槽</strong>：修仙（修为/真气/境界）、科幻（energy/shield）、现代（stamina/morale）等多套模板。</li>
+</ul>
+
+<h3>📐 版本管理：写坏了随时回滚</h3>
+
+<p>最多保存 <strong>30 个历史快照</strong>，精确回滚到任意版本。删除/滑动消息时自动级联回滚相关记忆。导出/导入 JSON 备份、Vault 数据嵌入聊天文件随导出迁移。</p>
+
+<h3>🎛️ 灵活配置</h3>
+
+<ul>
+  <li><strong>副 API 独立渠道</strong>：记忆 Pipeline 和 Embedding 可分别配置独立的 LLM API，不占用主对话 API 额度。</li>
+  <li><strong>本地 LLM 零配置接入</strong>：Ollama、vLLM、LM Studio 等本地模型填 URL + 模型名即可（Key 留空），自动跳过认证。</li>
+  <li><strong>自动调参</strong>：根据历史 Telemetry 数据自动调优 stmBatch、topK、chainDepth 等参数。</li>
+  <li><strong>上下文窗口控制</strong>：支持按对话轮数截断注入内容，可覆盖 ST 原生上下文限制。</li>
+  <li><strong>三语界面</strong>：简体中文 / 繁體中文 / English。</li>
+</ul>
+
+<hr>
+
+<h2>快速开始</h2>
+
+<h3>前置条件</h3>
+<ul>
+  <li>已安装 <a href="https://github.com/SillyTavern/SillyTavern">SillyTavern</a></li>
+  <li>已安装 <a href="https://github.com/N0VI028/JS-Slash-Runner">酒馆助手 (JS-Slash-Runner)</a></li>
+</ul>
+
+<h3>安装</h3>
+<ol>
+  <li>在酒馆助手的脚本管理器中点击<strong>导入</strong></li>
+  <li>粘贴以下 JSON：</li>
+</ol>
+
+<details>
+<summary>点击展开导入 JSON</summary>
+<div class="details-body"><div class="json-block"><pre>{
+  "type": "script",
+  "enabled": true,
+  "name": "NE Memory Engine v6.6",
+  "id": "ne_memory_engine",
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.6/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.6/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.6 — 面板 overlay 彻底分层 · 设置面板保存修复 · Embedding 输入修复 · STM 分块默认值调整"
+}</pre></div></div>
+</details>
+
+<ol start="3">
+  <li>启用脚本，Memory Vault 面板会自动出现在酒馆助手弹窗中。</li>
+</ol>
+
+<h3>首次配置</h3>
+
+<p><strong>配副 API</strong></p>
+
+<p>NE 的记忆提取需要 LLM。打开面板 → Settings → Secondary API：</p>
+
+<ul>
+  <li><strong>云端 API</strong>（推荐入门）：
+    <ul>
+      <li>URL: <code>https://api.deepseek.com/v1/chat/completions</code></li>
+      <li>Key: 填写你的 API Key</li>
+      <li>Model: <code>deepseek-v4-flash</code>（或其他模型）</li>
+    </ul>
+  </li>
+  <li><strong>本地 LLM</strong>（免费）：
+    <ul>
+      <li>URL: <code>http://localhost:1234/v1</code>（LM Studio / vLLM / Ollama）</li>
+      <li>Key: 留空</li>
+      <li>Model: 填写本地模型名</li>
+    </ul>
+  </li>
+</ul>
+
+<p>支持 DeepSeek、硅基流动、OpenRouter 等云端平台，以及任何 OpenAI 兼容端点。</p>
+
+<p>配好副 API 后即可开始聊天。NE 会在后台自动工作——SmartPush 始终在线，每次生成前自动检索相关记忆注入 LLM。Vault 面板里可以查看实时更新的记忆列表、状态面板和用量统计。如需微调各项参数，见下方配置指南。</p>
+
+<hr>
+
+<h2>配置指南</h2>
+
+<p>所有设置通过面板的 Settings 标签页管理。各模块说明：</p>
+
+<table>
+  <tr><th>模块</th><th>说明</th><th>必配</th></tr>
+  <tr><td><strong>Secondary API</strong></td><td>记忆 Pipeline 用的 LLM API（URL / Key / Model）</td><td>✅ 是</td></tr>
+  <tr><td><strong>Vector Search</strong></td><td>向量检索开关 + Embedding API 端点（可选；一键预设硅基流动免费 bge-m3）</td><td>否</td></tr>
+  <tr><td><strong>Dialog Window Rounds</strong></td><td>注入上下文的对话轮数（2-20，默认 10）</td><td>否</td></tr>
+  <tr><td><strong>Dialog Override</strong></td><td>覆盖 ST 原生 token-budget 截断，仅按对话轮数控制上下文</td><td>否</td></tr>
+  <tr><td><strong>Memory Budget</strong></td><td>SmartPush 注入的最大 Token 数（500-2000，默认 800）</td><td>否</td></tr>
+  <tr><td><strong>STM Extraction Batch</strong></td><td>触发记忆提取的累计消息数（1-30，默认 10；支持自动调优）</td><td>否</td></tr>
+  <tr><td><strong>Max Unconsolidated STM</strong></td><td>未整合 STM 条数上限（2-30，默认 5），超此阈值触发 LTM 整合</td><td>否</td></tr>
+  <tr><td><strong>Extraction Temperature</strong></td><td>记忆提取 LLM 的温度参数（0-1，默认 0.2）</td><td>否</td></tr>
+  <tr><td><strong>Schema Editors</strong></td><td>自定义 State / Character Schema 的 JSON 编辑器</td><td>否</td></tr>
+</table>
+
+<h3>关于 API 费用</h3>
+
+<p>NE 的核心设计目标之一是降低 API 成本：</p>
+
+<ul>
+  <li><strong>副 API 独立配置</strong>：记忆提取用小模型（如 DeepSeek v4-flash），主对话用大模型，互不干扰。</li>
+  <li><strong>SmartPush 纯本地管线</strong>：生成前检索完全在浏览器内完成，不消耗任何 API Token。</li>
+  <li><strong>增量处理</strong>：只处理新消息，不重复提取，Token 消耗随对话增长趋于平稳。</li>
+</ul>
+
+<p>可以通过 Settings → Usage 面板查看 Session / Monthly / Per-chat Token 用量明细。</p>
+
+<hr>
+
+<h2>更新</h2>
+
+<p>NE 通过 jsDelivr CDN 分发，刷新 SillyTavern 页面即自动加载最新版本。若未生效，在酒馆助手中禁用再重新启用 NE 脚本即可。</p>
+
+<p>NE 的 Vault 数据结构具有向后兼容性，升级后首次加载会自动迁移数据格式。建议升级前通过面板的 Export JSON 功能备份数据。</p>
+
+<p>兼容性：</p>
+
+<table>
+  <tr><th>NE 版本</th><th>SillyTavern 最低版本</th><th>酒馆助手</th></tr>
+  <tr><td>v6.6</td><td>1.12.x</td><td>最新版</td></tr>
+  <tr><td>v6.5</td><td>1.12.x</td><td>最新版</td></tr>
+  <tr><td>v6.0</td><td>1.12.x</td><td>最新版</td></tr>
+  <tr><td>v5.x</td><td>1.11.x</td><td>最新版</td></tr>
+</table>
+
+<hr>
+
+<h2>常见问题</h2>
+
+<details>
+<summary><strong>副 API 连不上怎么办？</strong></summary>
+<div class="details-body">
+<ol>
+  <li>确认 URL 格式正确，例如 DeepSeek 应填写 <code>https://api.deepseek.com/v1/chat/completions</code>（含完整路径）。</li>
+  <li>本地 LLM（如 Ollama）的 URL 应为 <code>http://localhost:11434/v1</code>，Key 留空。</li>
+  <li>点击 Settings 面板中的 <strong>Test Connection</strong> 按钮检测连通性。</li>
+  <li>如果云端 API 被 CORS 阻挡，NE 会自动通过 ST 的 CORS Proxy 回退。</li>
+</ol>
+</div>
+</details>
+
+<details>
+<summary><strong>Token 消耗太大怎么办？</strong></summary>
+<div class="details-body">
+<ol>
+  <li>副 API 换用更小、更便宜的模型（如 DeepSeek v4-flash 或 Qwen 2.5-7B）。</li>
+  <li>降低 Memory Budget 或 Dialog Window Rounds 的值。</li>
+  <li>查看 Settings → Usage 面板中的 Token 统计，定位主要消耗环节。</li>
+</ol>
+</div>
+</details>
+
+<details>
+<summary><strong>面板打不开 / 显示异常？</strong></summary>
+<div class="details-body">
+<ol>
+  <li>确认酒馆助手已启用且运行正常。</li>
+  <li>确认 NE 脚本在 TH 脚本管理器中处于"已启用"状态。</li>
+  <li>打开浏览器控制台（F12）查看是否有红色报错。</li>
+  <li>尝试清除 localStorage 中的 <code>ne_settings</code> 键，然后刷新页面。</li>
+</ol>
+</div>
+</details>
+
+<details>
+<summary><strong>数据存在哪里？隐私安全吗？</strong></summary>
+<div class="details-body">
+<p>所有记忆数据存储在浏览器本地的 IndexedDB 中，不会上传到任何服务器。LLM API 调用只发送 prompt 文本，不包含原始记忆数据结构。Vault 数据还可以嵌入聊天文件（chat_metadata），随 ST 的聊天导出/备份一起迁移。各存储位置概览：</p>
+
+<table>
+  <tr><th>位置</th><th>内容</th></tr>
+  <tr><td>IndexedDB <code>ne_memory_vaults</code></td><td>Vault 数据 + 历史快照</td></tr>
+  <tr><td>localStorage <code>ne_settings</code></td><td>用户设置</td></tr>
+  <tr><td>localStorage <code>ne_secondary_api</code></td><td>副 API 配置</td></tr>
+  <tr><td>localStorage <code>ne_embedding_api</code></td><td>向量 API 配置</td></tr>
+  <tr><td>chat_metadata <code>ne_vault</code></td><td>Vault 随聊天文件导出</td></tr>
+</table>
+</div>
+</details>
+
+<hr>
+
+<h2>开发</h2>
+
+<p>详见 CODE_WIKI.md（完整架构说明、模块详解、数据流图）。</p>
+
+<pre><code># 安装依赖
+npm install
+
+# 构建 dist/index.js
+npm run build
+
+# 监听模式（文件变更自动重建）
+npm run watch
+
+# 单元测试
+npm run test:unit
+
+# 架构棘轮测试
+npm run test:ratchet
+
+# 全部测试
+npm test</code></pre>
+
+<h3>浏览器控制台调试</h3>
+
+<p>加载 NE 后，可通过 <code>window.__ne_debug</code> 使用调试 API：</p>
+
+<pre><code>// 手动触发 Pipeline
+__ne_debug.triggerPipeline()
+
+// 导出 Vault 数据
+__ne_debug.exportVault()
+
+// 列出所有测试用例
+__ne_debug.listTests()
+
+// 运行指定测试
+__ne_debug.runTestByName('smartpush-01-not-empty')</code></pre>
+
+<hr>
+
+<h2>贡献与许可</h2>
+
+<ul>
+  <li>作者：Melody</li>
+  <li>仓库：<a href="https://github.com/Melody-0321/NE-Memory">https://github.com/Melody-0321/NE-Memory</a></li>
+  <li>许可：AGPL-3.0</li>
+  <li>行为准则：基于 <a href="https://www.contributor-covenant.org/">Contributor Covenant</a></li>
+</ul>
+
+</body>
+</html>
