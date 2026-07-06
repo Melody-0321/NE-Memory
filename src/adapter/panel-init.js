@@ -212,12 +212,12 @@ export async function renderVaultPanel(getChatId) {
             setPanelRoot(shadowRoot);
             injectPinCSS();
             injectBottomDrawerCSS();
-            sheld.appendChild(overlayEl);
+            PD.body.appendChild(overlayEl);
         } else {
             setPanelRoot(null);
             injectPinCSS();
             injectBottomDrawerCSS();
-            sheld.appendChild(overlayEl);
+            PD.body.appendChild(overlayEl);
         }
 
         renderMemoryButton(getChatId);

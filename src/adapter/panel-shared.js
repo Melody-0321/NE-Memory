@@ -80,7 +80,7 @@ export function injectBottomDrawerCSS() {
     style.id = 'ne_vault_bottom_style';
     style.textContent = hostSel + '{' +
         'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
-        'position:absolute;inset:0;z-index:35;background:transparent;' +
+        'position:fixed;inset:0;z-index:35;background:transparent;' +
         'border-top:1px solid var(--SmartThemeBorderColor);border-radius:12px 12px 0 0;' +
         'transform:translateY(100%);pointer-events:none;' +
         'transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);}' +
