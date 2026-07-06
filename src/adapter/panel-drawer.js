@@ -1,7 +1,7 @@
 import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher } from './panel-shared.js';
 import { renderHistory, createVaultPopout } from './panel-popout.js';
 import { renderUsageTab } from './panel-usage.js';
 
@@ -257,6 +257,7 @@ export function setupMobileGestureClose() {
         overlay.style.transition = '';
         overlay.style.transform = '';
         if (movedY > 60) {
+            stopOverlayResizeWatcher();
             overlay.classList.remove('open');
             var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
             overlay.addEventListener('transitionend', function h() {

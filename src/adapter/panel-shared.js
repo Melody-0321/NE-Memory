@@ -385,6 +385,7 @@ export function setLastVaultStateJson(v) { lastVaultStateJson = v; }
 
 
 export function closeVaultOverlay() {
+    stopOverlayResizeWatcher();
     var overlay = byId('ne_vault_bottom_overlay');
     if (overlay) {
         overlay.classList.remove('open');
@@ -397,6 +398,34 @@ export function closeVaultOverlay() {
     }
     var chat = byId('chat');
     if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+}
+
+// ── Overlay bounds syncing ──
+var _overlayResizeHandler = null;
+
+export function syncOverlayBounds() {
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (!overlay) return;
+    var sheld = byId('sheld');
+    if (!sheld) return;
+    var rect = sheld.getBoundingClientRect();
+    overlay.style.top = rect.top + 'px';
+    overlay.style.left = rect.left + 'px';
+    overlay.style.width = rect.width + 'px';
+    overlay.style.height = rect.height + 'px';
+}
+
+export function startOverlayResizeWatcher() {
+    if (_overlayResizeHandler) return;
+    _overlayResizeHandler = function() { syncOverlayBounds(); };
+    window.addEventListener('resize', _overlayResizeHandler);
+}
+
+export function stopOverlayResizeWatcher() {
+    if (_overlayResizeHandler) {
+        window.removeEventListener('resize', _overlayResizeHandler);
+        _overlayResizeHandler = null;
+    }
 }
 
 // ── L3: Toast notification ──

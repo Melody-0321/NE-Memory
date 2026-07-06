@@ -6,7 +6,8 @@ import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { read } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
-  closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA, showConfirm, emptyStateHtml } from './panel-shared.js';
+  closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA, showConfirm, emptyStateHtml,
+  syncOverlayBounds, startOverlayResizeWatcher, stopOverlayResizeWatcher } from './panel-shared.js';
 import { renderVaultPanel } from './panel-init.js';
 import { renderSettingsTab } from './panel-settings.js';
 
@@ -16,6 +17,8 @@ export function createVaultPopout(getChatId) {
     var opening = !overlay.classList.contains('open');
     var chat = byId('chat');
     if (opening) {
+        syncOverlayBounds();
+        startOverlayResizeWatcher();
         if (chat) { chat.style.opacity = '0'; chat.style.pointerEvents = 'none'; chat.style.transition = 'opacity var(--ne-transition-normal)'; }
         overlay.style.display = 'flex';
         overlay.scrollTop = 0;
@@ -25,6 +28,7 @@ export function createVaultPopout(getChatId) {
         busEmit('vault:updated', { getChatId: getChatId });
         renderSettingsTab();
     } else {
+        stopOverlayResizeWatcher();
         overlay.classList.remove('open');
         var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
         overlay.addEventListener('transitionend', function handler() {
