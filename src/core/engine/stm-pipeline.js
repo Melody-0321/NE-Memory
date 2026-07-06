@@ -8,8 +8,6 @@ import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 
-import { vocabularyOverlap } from './text-utils.js';
-
 export function buildSTMUpdatePrompt(newMessages, vault, partials) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -377,76 +375,31 @@ export function buildStmOnlyPrompt(turns, vault, ratio) {
     return { system: system, user: userText };
 }
 
-function computeTurnBoundarySignals(turns) {
-    if (!turns || turns.length < 2) return [];
-
-    var signals = [];
-    for (var i = 0; i < turns.length - 1; i++) {
-        var tA = turns[i];
-        var tB = turns[i + 1];
-        var textA = (tA.user ? (tA.user.content || tA.user.mes || '') : '') + ' '
-            + (tA.assistant ? (tA.assistant.content || tA.assistant.mes || '') : '');
-        var textB = (tB.user ? (tB.user.content || tB.user.mes || '') : '') + ' '
-            + (tB.assistant ? (tB.assistant.content || tB.assistant.mes || '') : '');
-
-        var overlap = vocabularyOverlap(textA, textB);
-
-        var msgGap = tB.msgStart - tA.msgEnd;
-        var absGap = (tB.msgStart !== undefined && tA.msgEnd !== undefined)
-            ? tB.msgStart - tA.msgEnd : 0;
-
-        var charA_user = (tA.user && tA.user.name) || '';
-        var charA_asst = (tA.assistant && tA.assistant.name) || '';
-        var charB_user = (tB.user && tB.user.name) || '';
-        var charB_asst = (tB.assistant && tB.assistant.name) || '';
-        var sameChar = (charA_user === charB_user && charA_asst === charB_asst);
-
-        var totalLen = textA.length + textB.length;
-        var isFiller = totalLen < 30;
-
-        signals.push({
-            overlay: overlap,
-            msgGap: msgGap,
-            absGap: absGap,
-            sameChar: sameChar,
-            isFiller: isFiller
-        });
-    }
-    return signals;
-}
-
-var L1_CUT = 'L1_CUT';
-var L2_CUT = 'L2_CUT';
-var L2_KEEP = 'L2_KEEP';
-
-function classifyBoundary(signal) {
-    if (signal.absGap > 20) return L1_CUT;
-    if (!signal.sameChar) return L1_CUT;
-    if (signal.isFiller) return L2_KEEP;
-    if (signal.overlay >= 0.5) return L2_KEEP;
-    if (signal.overlay <= 0.1) return L2_CUT;
-    return L2_KEEP;
-}
-
 async function segmentTurns(turns, vault, callLLM) {
     if (!turns || turns.length === 0) return [];
+    return [[0, turns.length - 1]];
+}
 
-    var signals = computeTurnBoundarySignals(turns);
+function splitIntraSegment(seg, turns, maxChars) {
+    var subSegments = [];
+    var subStart = seg[0];
+    var subChars = 0;
 
-    var cuts = [];
-    for (var i = 0; i < turns.length - 1; i++) {
-        cuts[i] = classifyBoundary(signals[i]) === L1_CUT || classifyBoundary(signals[i]) === L2_CUT;
-    }
+    for (var ti = seg[0]; ti <= seg[1]; ti++) {
+        var turnText = formatTurnsText(turns, [ti]);
+        var turnChars = turnText.length;
 
-    var segments = [];
-    var segStart = 0;
-    for (var i = 0; i < turns.length; i++) {
-        if (i === turns.length - 1 || cuts[i]) {
-            segments.push([segStart, i]);
-            segStart = i + 1;
+        if (subChars + turnChars > maxChars && ti > subStart) {
+            subSegments.push([subStart, ti - 1]);
+            subStart = ti;
+            subChars = turnChars;
+        } else {
+            subChars += turnChars;
         }
     }
-    return segments;
+
+    subSegments.push([subStart, seg[1]]);
+    return subSegments;
 }
 
 function chunkSegmentsForLLM(segments, turns, maxChars) {
@@ -462,7 +415,10 @@ function chunkSegmentsForLLM(segments, turns, maxChars) {
         var segChars = segText.length;
 
         if (segChars > maxChars && currentChunk.length === 0) {
-            chunks.push([seg]);
+            var subSegments = splitIntraSegment(seg, turns, maxChars);
+            for (var si = 0; si < subSegments.length; si++) {
+                chunks.push([subSegments[si]]);
+            }
             continue;
         }
 
