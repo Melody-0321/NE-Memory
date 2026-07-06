@@ -438,9 +438,9 @@ function saveSettingsTab() {
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
-        url: panelById('nes_secondary_url').value.trim(),
-        key: panelById('nes_secondary_key').value.trim(),
-        model: panelById('nes_secondary_model').value.trim()
+        url: panelById('nes_secondary_url') ? panelById('nes_secondary_url').value.trim() : '',
+        key: panelById('nes_secondary_key') ? panelById('nes_secondary_key').value.trim() : '',
+        model: panelById('nes_secondary_model') ? panelById('nes_secondary_model').value.trim() : ''
     };
     saveSecondaryApiConfig(secApi);
     if (channelsEnabled) {
