@@ -1,3 +1,17 @@
+# NE-Memory v6.6 更新日志
+
+## Bug 修复
+
+- **面板 overlay 彻底分层**：从 CSS 时序补丁改为架构修复——overlay 挂载到 `<body>` + `position: fixed` + 动态对齐 `#sheld` 尺寸和 `resize` 同步。面板和聊天窗口不再是同一画布，双滚轮从根本上不存在。
+- **设置面板副 API 保存崩溃**：`saveSettingsTab` 中 `secApi` 对象构建无空值保护，`panelById` 返回 null 时 `value.trim()` 抛 TypeError，整函数静默崩溃导致所有设置修改均不保存。
+- **Embedding 输入框修改不保存**：non-channels 模式下 `nes_embedding_url/key/model` ID 在两处同时出现（channels 隐藏区 + Vector Search 可见区），`panelById` 始终命中隐藏副本 → `onchange` 绑定在不可见元素上，save 读取 stale 值。修复：Embedding channel-group 改为条件渲染，两种模式各只有一份。
+
+## 参数调整
+
+- **`stmChunkMaxChars` 默认值**：4000 → 500，与新的对数滑块设计对齐。
+
+---
+
 # NE-Memory v6.5 更新日志
 
 ## 新功能

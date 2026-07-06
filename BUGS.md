@@ -2,25 +2,85 @@
 
 ---
 
-## #33 STM 时间/场景字段无 Banner 时永远为 "-"
+## #37 Embedding API 输入框修改不保存
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07 |
+| **严重程度** | **High** |
+| **影响** | 用户在 Vector Search accordion 中修改 Embedding 的 URL / Key / Model，输入框显示新值，但关闭重开面板后恢复旧值。修改从未保存。副 API 不受影响。 |
+
+### 根因
+
+`panel-settings.js` 中 Embedding 的 channel-group 无条件渲染在 `commonHtml` 中。当 channelsEnabled = false（默认）时，`nes_embedding_url/key/model` ID 在两处同时出现：channels 隐藏区（第 113-115 行）+ Vector Search 可见区（第 132-134 行）。`panelById()` 永远返回 DOM 中第一个匹配元素（隐藏区），`onchange` 绑定和 save 都命中隐藏副本 → 用户在可见区打字不触发事件，save 读取的是 stale 值。
+
+### 修复
+
+Embedding channel-group 改为 `channelsEnabled ? ... : ''` 条件渲染。两个模式下 embedding 输入字段各只有一份，无 ID 冲突。commit: `93a8266`
+
+### 引入者
+
+`c181ccc`（多通道 API 路由）
+
+---
+
+## #36 设置面板副 API 保存崩溃
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07 |
+| **严重程度** | **High** |
+| **影响** | `saveSettingsTab` 中 `secApi` 对象的 `panelById('nes_secondary_url').value.trim()` 无空值保护 → `panelById` 返回 null 时首行 TypeError，整函数静默崩溃。所有设置修改均不保存。副 API 字段本身的 `onchange` 走 `saveSecApiOnly()` 分支，不受影响。 |
+
+### 修复
+
+`secApi` 三字段全部加 `panelById(...) ? panelById(...).value.trim() : ''` 空值安全。commit: `8c4954d`
+
+---
+
+## #35 面板 overlay 与聊天窗口分层：双滚轮 + 下滑翻开面板回归
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07 |
+| **严重程度** | **High** |
+| **影响** | v6.4 修复后面板尺寸对齐后，双滚轮和下滑翻开面板再次出现。关态 overlflow inline `display: flex` 残留（优先级高于 CSS `display: none`），布局盒撑开 `#sheld` 滚动区域。 |
+
+### 根因链
+
+v6.4 的修复依赖 `transitionend` 事件将 `display` 切回 `none`，但 `transitionend` 可能不触发（CSS 变量未定义、快速切换等）。`open` 类移除后，inline `display: flex`（`createVaultPopout` 第 20 行设置）仍覆盖 CSS 的 `display: none`。
+
+### 修复（三段迭代）
+
+1. `5346b9d`：三个关闭路径加 600ms timeout 兜底 + transitionend 正常清。
+2. `eff3dd1`：架构层修复——overlay 挂到 `PD.body` 而非 `#sheld` 内 + `position: fixed`。不再参与任何 `#sheld` 滚动计算。
+3. `ad9777d`：动态对齐 `#sheld` 尺寸（`getBoundingClientRect`）+ `resize` 同步，面板精确覆盖聊天窗口区域而非占满全屏。
+
+### 最终效果
+
+面板和聊天窗口在同一位置、同一尺寸，但在不同画布（`body` vs `#sheld`）。双滚轮从根本上不存在，下滑永远翻不开面板。
+
+---
+
+## #34 STM 分块默认值过大
 
 | 属性 | 值 |
 |---|---|
 | **状态** | ✅ 已解决 |
 | **发现** | 2026-07-06 |
-| **解决** | 2026-07-06 |
-| **严重程度** | Medium |
-| **影响** | 未安装 NE-BANNER 时，STM 条目的 `period` 和 `scene` 字段永远为 `"-"`，记忆列表缺乏时间和场景维度。 |
-
-### 根因
-
-`buildStmSummaryPrompt` 在 Banner 未匹配时跳到 `else` 分支，无 `story_time`/`story_scene` 参考，LLM 无法获取时间/场景信息。
+| **解决** | 2026-07-07 |
+| **严重程度** | Low |
+| **影响** | `stmChunkMaxChars` 默认 4000（另有代码兜底 8000）与新的对数滑块 UI（100-10000）不匹配——默认值偏高，且两处默认不一致。 |
 
 ### 修复
 
-- Banner 未匹配时，prompt 中加入"近期记忆条目"（最近 3 条 STM）
-- 修改 system prompt：指示 LLM 从对话和近期记忆中推断时间/场景
-- Banner 匹配时保持原有行为不变
+5 处全部改为 500：`panel-settings.js` ×4（显示值/数字输入/滑块/保存回退）+ `stm-pipeline.js` ×1（管道兜底）。commit: `0f02516`
 
 ---
 
@@ -28,6 +88,10 @@
 
 | # | 描述 | 严重度 | 状态 |
 |---|---|---|---|
+| 37 | Embedding API 输入框修改不保存（ID 双份冲突） | **High** | ✅ 已解决 |
+| 36 | 设置面板副 API 保存崩溃（secApi 空值保护缺失） | **High** | ✅ 已解决 |
+| 35 | 面板 overlay 分层（body 挂载 + bounds 同步） | **High** | ✅ 已解决 |
+| 34 | STM 分块默认值 4000→500 | Low | ✅ 已解决 |
 | 33 | STM 时间/场景无 Banner 时永远为 "-" | Medium | ✅ 已解决 |
 | 26 | 设置面板全部控件不持久化 | **High** | ✅ 已解决 |
 | 27 | 记忆编辑/删除不持久化（双重根因） | **High** | ✅ 已解决 |
