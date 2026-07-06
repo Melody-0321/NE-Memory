@@ -26,8 +26,10 @@ export function createVaultPopout(getChatId) {
         renderSettingsTab();
     } else {
         overlay.classList.remove('open');
+        var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
         overlay.addEventListener('transitionend', function handler() {
             overlay.removeEventListener('transitionend', handler);
+            clearTimeout(tid);
             overlay.style.display = 'none';
         });
         if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }

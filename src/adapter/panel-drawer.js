@@ -258,8 +258,10 @@ export function setupMobileGestureClose() {
         overlay.style.transform = '';
         if (movedY > 60) {
             overlay.classList.remove('open');
+            var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
             overlay.addEventListener('transitionend', function h() {
                 overlay.removeEventListener('transitionend', h);
+                clearTimeout(tid);
                 overlay.style.display = 'none';
             });
             var chat = byId('chat');

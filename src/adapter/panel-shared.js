@@ -388,8 +388,10 @@ export function closeVaultOverlay() {
     var overlay = byId('ne_vault_bottom_overlay');
     if (overlay) {
         overlay.classList.remove('open');
+        var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
         overlay.addEventListener('transitionend', function handler() {
             overlay.removeEventListener('transitionend', handler);
+            clearTimeout(tid);
             overlay.style.display = 'none';
         });
     }
