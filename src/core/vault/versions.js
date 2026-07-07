@@ -5,6 +5,7 @@
  * IndexedDB 独立 store 存储快照，上限 30。
  */
 import { openDB, write } from './store.js';
+import { persistVaultToChatFile } from '../auto-restore.js';
 
 const SNAPSHOT_STORE = 'snapshots';
 
@@ -70,7 +71,7 @@ export async function restoreSnapshot(chatId, version) {
         req.onsuccess = () => {
             if (!req.result) { resolve(null); return; }
             var vault = req.result.data;
-            write(chatId, vault).then(function() { resolve(vault); }).catch(function(e) { reject(e); });
+            write(chatId, vault).then(function() { persistVaultToChatFile(vault); resolve(vault); }).catch(function(e) { reject(e); });
         };
         req.onerror = () => reject(req.error);
     });
