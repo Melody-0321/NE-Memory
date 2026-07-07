@@ -1,6 +1,19 @@
 
 var EMBEDDING_DIM = 1536;
 
+function fetchWithTimeout(url, options, timeoutMs) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
+    var fetchOptions = Object.assign({}, options, { signal: controller.signal });
+    return fetch(url, fetchOptions).then(function (r) {
+        clearTimeout(timer);
+        return r;
+    }, function (e) {
+        clearTimeout(timer);
+        throw e;
+    });
+}
+
 export function loadEmbeddingApiConfig() {
     try {
         var raw = localStorage.getItem('ne_embedding_api');
@@ -36,14 +49,14 @@ export async function computeEmbedding(text) {
     if (!cfg || !cfg.url) return null;
 
     try {
-        var resp = await fetch(cfg.url, {
+        var resp = await fetchWithTimeout(cfg.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + (cfg.key || '')
             },
             body: JSON.stringify({ model: cfg.model, input: text })
-        });
+        }, 30000);
         if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
         var data = await resp.json();
         var vec = data.data && data.data[0] && data.data[0].embedding;
@@ -67,14 +80,14 @@ export async function computeEmbeddings(texts) {
     for (var start = 0; start < texts.length; start += BATCH_SIZE) {
         var batch = texts.slice(start, start + BATCH_SIZE);
         try {
-            var resp = await fetch(cfg.url, {
+            var resp = await fetchWithTimeout(cfg.url, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': 'Bearer ' + (cfg.key || '')
                 },
                 body: JSON.stringify({ model: cfg.model, input: batch })
-            });
+            }, 30000);
             if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
             var data = await resp.json();
             var embeddings = data.data;
@@ -109,14 +122,14 @@ export async function testEmbeddingApiConnection(cfg) {
     var testCfg = cfg || loadEmbeddingApiConfig();
     if (!testCfg || !testCfg.url) return { success: false, error: 'No API URL configured' };
     try {
-        var resp = await fetch(testCfg.url, {
+        var resp = await fetchWithTimeout(testCfg.url, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': 'Bearer ' + (testCfg.key || '')
             },
             body: JSON.stringify({ model: testCfg.model, input: 'test' })
-        });
+        }, 10000);
         if (!resp.ok) {
             var errText = '';
             try { errText = await resp.text(); } catch (e) {}

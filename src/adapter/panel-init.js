@@ -4,7 +4,7 @@ import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/ve
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
-import { runLtmConsolidation, getStmBatchSize } from './events.js';
+import { runLtmConsolidation } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -297,7 +297,11 @@ export async function renderVaultPanel(getChatId) {
                 if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
 
                 var prevText = processHistoryBtn.textContent;
-                var BATCH = await getStmBatchSize();
+                var PH_BATCH_CHARS = 4000;
+                try {
+                    var rs = localStorage.getItem('ne_settings');
+                    if (rs) { var ps = JSON.parse(rs); if (ps.phBatchChars) PH_BATCH_CHARS = Number(ps.phBatchChars); }
+                } catch (e) {}
                 var total = 0;
                 try {
                     var chatMessages = [];
@@ -381,23 +385,45 @@ export async function renderVaultPanel(getChatId) {
                     }
 
                     var accumTurns = processedCount;
-                    for (var i = processedCount; i < total; i += BATCH) {
-                        var batch = toProcess.slice(i, i + BATCH);
+                    var batchStart = processedCount;
+                    var batchChars = 0;
+
+                    for (var i = processedCount; i < total; i++) {
+                        var msgLen = toProcess[i].mes.length;
+
+                        if (batchChars + msgLen > PH_BATCH_CHARS && i > batchStart) {
+                            var batch = toProcess.slice(batchStart, i);
+                            processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
+                            var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
+                                accumTurns = progress.processedTurns;
+                                processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
+                            });
+                            accumTurns = i;
+                            if (result.added === 0 && batch.length > 0) {
+                                console.warn('[NE] Process History batch produced 0 STM entries');
+                                showToast(t('Process History') + ': ' + t('Batch failed, no STM extracted'), 'warning', 5000);
+                            }
+                            try { localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: i })); } catch (e2) {}
+                            batchStart = i;
+                            batchChars = 0;
+                        }
+                        batchChars += msgLen;
+                    }
+                    // 尾批
+                    if (batchStart < total) {
+                        var batch = toProcess.slice(batchStart, total);
                         processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
                         var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
                             accumTurns = progress.processedTurns;
                             processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
-                        }, true);
-                        accumTurns = Math.min(i + BATCH, total);
+                        });
+                        accumTurns = total;
                         if (result.added === 0 && batch.length > 0) {
-                            console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
+                            console.warn('[NE] Process History batch produced 0 STM entries');
+                            showToast(t('Process History') + ': ' + t('Batch failed, no STM extracted'), 'warning', 5000);
                         }
-                        var done = Math.min(i + BATCH, total);
-                        try {
-                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: done }));
-                        } catch (e2) {}
+                        try { localStorage.removeItem(cpKey); } catch (e3) {}
                     }
-                    try { localStorage.removeItem(cpKey); } catch (e3) {}
                     processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);

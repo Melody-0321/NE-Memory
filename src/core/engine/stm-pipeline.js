@@ -569,58 +569,40 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var stmRatio = stmRatio || 0.05;
 
             var chunks = chunkSegmentsForLLM(segments, turns, maxChars);
-            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
-
+            var subSegments = [];
             for (var ci = 0; ci < chunks.length; ci++) {
-                var chunk = chunks[ci];
-                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, vault, stmRatio);
-                var responseText = '';
+                subSegments = subSegments.concat(chunks[ci]);
+            }
+            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + subSegments.length + ' subSegments (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
+
+            var summaryPrompt = buildStmSummaryPrompt(subSegments, turns, vault, stmRatio);
+            var responseText = '';
+            var MAX_RETRIES = 1;
+            for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 try {
                     responseText = await callMemoryPipeline([
                         { role: 'system', content: summaryPrompt.system },
                         { role: 'user', content: summaryPrompt.user }
                     ], { operation: 'stm_extract' }, chatId);
+                    if (responseText) break;
                 } catch (e) {
-                    console.warn('[NE] Chunk ' + (ci+1) + '/' + chunks.length + ' LLM failed:', e);
+                    console.warn('[NE] STM LLM attempt ' + (attempt + 1) + ' failed:', e);
                 }
+            }
 
-                if (!responseText && chunk.length > 1) {
-                    console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
-                    for (var si = 0; si < chunk.length; si++) {
-                        var singleSeg = [chunk[si]];
-                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, vault, stmRatio);
-                        try {
-                            responseText = await callMemoryPipeline([
-                                { role: 'system', content: singlePrompt.system },
-                                { role: 'user', content: singlePrompt.user }
-                            ], { operation: 'stm_extract' }, chatId);
-                        } catch (e2) {
-                            console.warn('[NE] Chunk ' + (ci+1) + ' segment ' + (si+1) + ' fallback failed:', e2);
-                            continue;
-                        }
-                        if (responseText) {
-                            var chunkParsed = safeJsonParse(responseText);
-                            if (chunkParsed && chunkParsed.events) {
-                                for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
-                                    mapEventData(chunkParsed.events[ei], chunk[si], turns, segments);
-                                    events.push(chunkParsed.events[ei]);
-                                }
-                            }
-                        }
-                    }
-                    continue;
-                }
-
-                if (responseText) {
-                    var chunkParsed = safeJsonParse(responseText);
-                    if (chunkParsed) {
-                        var chunkEvents = chunkParsed.events || [];
-                        for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
-                            mapEventData(chunkEvents[ei], chunk[ei], turns, segments);
-                            events.push(chunkEvents[ei]);
-                        }
+            if (responseText) {
+                var parsed = safeJsonParse(responseText);
+                if (parsed && parsed.events) {
+                    for (var ei = 0; ei < Math.min(parsed.events.length, subSegments.length); ei++) {
+                        mapEventData(parsed.events[ei], subSegments[ei], turns, segments);
+                        events.push(parsed.events[ei]);
                     }
                 }
+            }
+
+            if (events.length === 0 && filteredMessages.length > 0) {
+                console.warn('[NE] STM pipeline: all LLM attempts failed, no events extracted');
+                recordTelemetry({ pipeline_task: 'stm_extract', error: 'all_attempts_failed', subSegments: subSegments.length }, chatId);
             }
         }
 

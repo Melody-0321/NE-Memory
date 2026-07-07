@@ -1,6 +1,6 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
-import { testSecondaryApiConnection, sendSecondaryTestMessage,
+import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableModels,
   saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
@@ -66,6 +66,12 @@ export function renderSettingsTab() {
             '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 500) / 100)))) + '" style="flex:1;">' +
         '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('PH Batch Max Chars') + '</span><span class="range-val" id="nes_ph_batch_val">' + (settings.phBatchChars || 4000) + '</span></div>' +
+        '<div style="display:flex;gap:6px;align-items:center;">' +
+            '<input type="number" id="nes_ph_batch_input" min="1000" max="8000" step="500" value="' + (settings.phBatchChars || 4000) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
+            '<input type="range" id="nes_ph_batch_slider" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(100 * Math.log10(((settings.phBatchChars || 4000) / 1000)) / Math.log10(8)))) + '" style="flex:1;">' +
+        '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Ratio') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '%</span></div>' +
         '<input type="range" id="nes_stm_summary_ratio" min="1" max="20" step="1" value="' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '" style="width:100%;">' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.') + '</div>' +
@@ -76,7 +82,12 @@ export function renderSettingsTab() {
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-...(local LLM leave blank)" value="' + escapeHtml(secApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_secondary_model" placeholder="deepseek-v4-flash or local model name" value="' + escapeHtml(secApi.model || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_secondary_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_secondary_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_secondary_model_text" placeholder="deepseek-v4-flash or local model name" value="' + escapeHtml(secApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_secondary_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
         '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Supports any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio, LocalAI. Leave API Key empty for local LLMs.') + '</div>' +
         '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
@@ -91,28 +102,48 @@ export function renderSettingsTab() {
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_stm_api_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stmApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_stm_api_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stmApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_stm_api_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stmApi.model || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_stm_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_stm_api_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_stm_api_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stmApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_stm_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
         '</div></div>' +
         '<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
         '<div style="font-weight:bold;margin:0 0 6px;">' + t('LTM Consolidation') + '</div>' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_ltm_api_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(ltmApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_ltm_api_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(ltmApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_ltm_api_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(ltmApi.model || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_ltm_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_ltm_api_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_ltm_api_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(ltmApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_ltm_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
         '</div></div>' +
         '<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
         '<div style="font-weight:bold;margin:0 0 6px;">' + t('State Extraction') + '</div>' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_state_api_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_state_api_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_state_api_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.model || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_state_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_state_api_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_state_api_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_state_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
         '</div></div>' +
         (channelsEnabled ? ('<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
         '<div style="font-weight:bold;margin:0 0 6px;">' + t('Embedding / Vector') + '</div>' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_embedding_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_embedding_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.key || '') + '"></div>' +
-        '<div><label>' + t('Model') + '</label><input type="text" id="nes_embedding_model" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.model || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_embedding_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_embedding_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_embedding_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(embApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_embedding_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
         '</div></div>') : '') +
         '</div>' +
         '</div></div>' +
@@ -215,6 +246,12 @@ export function renderSettingsTab() {
     var _scSync = false;
     if (scSlider) { scSlider.oninput = function () { if (_scSync) return; _scSync = true; var actual = Math.round(100 * Math.pow(10, Number(scSlider.value) * 2 / 100)); if (scVal) scVal.textContent = actual; if (scInput) scInput.value = actual; _scSync = false; saveSettingsTab(); }; }
     if (scInput) { scInput.onchange = function () { if (_scSync) return; _scSync = true; var v = Math.max(100, Math.min(10000, Number(scInput.value) || 4000)); scInput.value = v; if (scVal) scVal.textContent = v; if (scSlider) scSlider.value = Math.round(50 * Math.log10(v / 100)); _scSync = false; saveSettingsTab(); }; }
+    var phSlider = panelById('nes_ph_batch_slider');
+    var phVal = panelById('nes_ph_batch_val');
+    var phInput = panelById('nes_ph_batch_input');
+    var _phSync = false;
+    if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; saveSettingsTab(); }; }
+    if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(1000, Math.min(8000, Math.round((Number(phInput.value) || 4000) / 500) * 500)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = Math.round(100 * Math.log10(v / 1000) / Math.log10(8)); _phSync = false; saveSettingsTab(); }; }
     var srEl = panelById('nes_stm_summary_ratio');
     if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; saveSettingsTab(); }; }
     var cwEl = panelById('nes_dialog_window_rounds');
@@ -240,19 +277,72 @@ export function renderSettingsTab() {
     if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
     var keyEl = panelById('nes_secondary_key');
     if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
-    var modelEl = panelById('nes_secondary_model');
+    var modelEl = panelById('nes_secondary_model_text');
     if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
+    var modelSel = panelById('nes_secondary_model_select');
+    if (modelSel) modelSel.onchange = function () {
+        if (modelSel.value === '') {
+            modelSel.style.display = 'none';
+            var txt = panelById('nes_secondary_model_text');
+            if (txt) { txt.style.display = ''; txt.value = ''; }
+        }
+        saveSecApiOnly();
+    };
+    var fetchBtn = panelById('nes_secondary_fetch_models');
+    if (fetchBtn) fetchBtn.onclick = function () {
+        var url = panelById('nes_secondary_url').value.trim();
+        var key = panelById('nes_secondary_key').value.trim();
+        if (!url) { showToast(t('Please enter an API URL first.'), 'warning'); return; }
+        if (fetchBtn) fetchBtn.disabled = true;
+        fetchAvailableModels({ url: url, key: key }, 5).then(function (models) {
+            populateModelSelect('nes_secondary', models);
+            if (fetchBtn) fetchBtn.disabled = false;
+        }).catch(function (e) {
+            showToast(t('Could not fetch model list') + ': ' + (e.message || ''), 'error');
+            if (fetchBtn) fetchBtn.disabled = false;
+        });
+    };
     var connBtn = panelById('nes_api_connect');
     if (connBtn) connBtn.onclick = function () {
-            var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: panelById('nes_secondary_model').value.trim() };
+            var urlEl = panelById('nes_secondary_url'), keyEl = panelById('nes_secondary_key');
+            var cfg = { url: urlEl.value.trim(), key: keyEl.value.trim(), model: getModelValue('nes_secondary') };
             saveSecondaryApiConfig(cfg);
             var dot = panelById('nes_api_dot'), text = panelById('nes_api_status_text');
             if (dot) dot.className = 'ne-api-dot';
             if (text) text.textContent = t('Connecting...');
             if (connBtn) connBtn.disabled = true;
             testSecondaryApiConnection(cfg).then(function (r) {
-                if (dot) dot.className = 'ne-api-dot' + (r.success ? ' ok' : '');
-                if (text) text.textContent = r.success ? (t('Connected') + ': ' + cfg.model) : (t('Not connected') + ' — ' + (r.error || ''));
+                if (r.success && r.models && r.models.length > 0) {
+                    populateModelSelect('nes_secondary', r.models, cfg.model);
+                }
+                if (dot) {
+                    if (r.success && r.modelInList === true) {
+                        dot.className = 'ne-api-dot ok';
+                    } else if (r.success && r.modelInList === false) {
+                        dot.className = 'ne-api-dot warn';
+                    } else if (r.success) {
+                        dot.className = 'ne-api-dot ok';
+                    } else {
+                        dot.className = 'ne-api-dot';
+                    }
+                }
+                if (text) {
+                    if (r.success && r.modelInList === true) {
+                        text.textContent = t('Connected') + ': ' + cfg.model;
+                    } else if (r.success && r.modelInList === false) {
+                        text.textContent = t('API reachable but model not found') + ': ' + cfg.model;
+                    } else if (r.success) {
+                        text.textContent = t('Connected') + ' (' + t('API not exposing model list') + '): ' + cfg.model;
+                    } else if (r.errorType === 'timeout') {
+                        text.textContent = t('Connection timed out') + ' — ' + t('API may still be usable but has high latency');
+                    } else if (r.errorType === 'network') {
+                        text.textContent = t('Cannot reach API') + ' — ' + (r.error || '');
+                    } else if (r.errorType === 'auth') {
+                        text.textContent = t('Authentication failed') + ' — ' + (r.error || '');
+                    } else {
+                        text.textContent = t('Not connected') + ' — ' + (r.error || '');
+                    }
+                }
                 if (connBtn) connBtn.disabled = false;
                 // ── Also update API header dot ──
                 var aHdrDot = panelById('nes_api_header_dot');
@@ -264,11 +354,15 @@ export function renderSettingsTab() {
                     if (enableVectorSearch && embApi.url && embApi.model) hdrTitle += '\n' + t('Vector API') + ': ' + embApi.model;
                     hdr.title = hdrTitle;
                 }
+            }).catch(function (e) {
+                if (connBtn) connBtn.disabled = false;
+                if (dot) dot.className = 'ne-api-dot';
+                if (text) text.textContent = t('Not connected') + ' — ' + (e.message || '');
             });
         };
         var testBtn = panelById('nes_api_test');
         if (testBtn) testBtn.onclick = function () {
-            var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: panelById('nes_secondary_model').value.trim() };
+            var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: getModelValue('nes_secondary') };
             if (!cfg.url) { alert(t('Please enter an API URL first.')); return; }
             if (testBtn) testBtn.disabled = true;
             sendSecondaryTestMessage(cfg).then(function () {
@@ -292,26 +386,30 @@ export function renderSettingsTab() {
         if (stmUrl) stmUrl.onchange = function () { saveSettingsTab(); };
         var stmKey = panelById('nes_stm_api_key');
         if (stmKey) stmKey.onchange = function () { saveSettingsTab(); };
-        var stmModel = panelById('nes_stm_api_model');
+        var stmModel = panelById('nes_stm_api_model_text');
         if (stmModel) stmModel.onchange = function () { saveSettingsTab(); };
+        bindChannelFetch('nes_stm');
         var ltmUrl = panelById('nes_ltm_api_url');
         if (ltmUrl) ltmUrl.onchange = function () { saveSettingsTab(); };
         var ltmKey = panelById('nes_ltm_api_key');
         if (ltmKey) ltmKey.onchange = function () { saveSettingsTab(); };
-        var ltmModel = panelById('nes_ltm_api_model');
+        var ltmModel = panelById('nes_ltm_api_model_text');
         if (ltmModel) ltmModel.onchange = function () { saveSettingsTab(); };
+        bindChannelFetch('nes_ltm');
         var stateUrl = panelById('nes_state_api_url');
         if (stateUrl) stateUrl.onchange = function () { saveSettingsTab(); };
         var stateKey = panelById('nes_state_api_key');
         if (stateKey) stateKey.onchange = function () { saveSettingsTab(); };
-        var stateModel = panelById('nes_state_api_model');
+        var stateModel = panelById('nes_state_api_model_text');
         if (stateModel) stateModel.onchange = function () { saveSettingsTab(); };
+        bindChannelFetch('nes_state');
         var embChUrl = panelById('nes_embedding_url');
         if (embChUrl) embChUrl.onchange = function () { saveSettingsTab(); };
         var embChKey = panelById('nes_embedding_key');
         if (embChKey) embChKey.onchange = function () { saveSettingsTab(); };
-        var embChModel = panelById('nes_embedding_model');
+        var embChModel = panelById('nes_embedding_model_text');
         if (embChModel) embChModel.onchange = function () { saveSettingsTab(); };
+        bindChannelFetch('nes_embedding');
     }
 
     var embEnable = panelById('nes_enable_vector_search');
@@ -384,6 +482,108 @@ export function renderSettingsTab() {
     }
 }
 
+function getModelValue(prefix) {
+    var sel = panelById(prefix + '_model_select');
+    if (sel && sel.style.display !== 'none' && sel.value) {
+        return sel.value;
+    }
+    var txt = panelById(prefix + '_model_text') || panelById(prefix + '_model');
+    if (txt) return txt.value.trim();
+    return '';
+}
+
+function populateModelSelect(prefix, models, currentModel) {
+    var sel = panelById(prefix + '_model_select');
+    var txt = panelById(prefix + '_model_text') || panelById(prefix + '_model');
+    if (!sel) return;
+    sel.innerHTML = '';
+    var found = false;
+    if (currentModel !== undefined && currentModel !== null) {
+        found = models.indexOf(currentModel) !== -1;
+    }
+    if (!found && currentModel) {
+        var savedOpt = document.createElement('option');
+        savedOpt.value = currentModel;
+        savedOpt.textContent = '\u270E ' + currentModel + ' (' + t('(saved: {model})').replace('{model}', currentModel) + ')';
+        savedOpt.style.fontStyle = 'italic';
+        savedOpt.style.color = 'var(--grey50)';
+        sel.appendChild(savedOpt);
+        found = true;
+    }
+    for (var i = 0; i < models.length; i++) {
+        var opt = document.createElement('option');
+        opt.value = models[i];
+        opt.textContent = models[i];
+        sel.appendChild(opt);
+    }
+    var manualOpt = document.createElement('option');
+    manualOpt.value = '';
+    manualOpt.textContent = '\u270E ' + t('Manual input...');
+    manualOpt.style.fontStyle = 'italic';
+    manualOpt.style.color = 'var(--grey50)';
+    sel.appendChild(manualOpt);
+    if (found) sel.value = currentModel;
+    sel.style.display = '';
+    if (txt) txt.style.display = 'none';
+    saveModelListCache(prefix, models);
+}
+
+function saveModelListCache(prefix, models) {
+    try {
+        var api = {};
+        if (prefix === 'nes_secondary') {
+            api = loadSecondaryApiConfig ? loadSecondaryApiConfig() : {};
+        } else {
+            var key = 'ne_' + prefix.substring(4) + '_api';
+            var raw = localStorage.getItem(key);
+            if (raw) api = JSON.parse(raw);
+        }
+        var cache = { models: models, url: api.url || '', fetchedAt: Date.now() };
+        localStorage.setItem(prefix + '_models', JSON.stringify(cache));
+    } catch (e) {}
+}
+
+function bindChannelFetch(prefix) {
+    var fetchBtn = panelById(prefix + '_fetch_models');
+    if (!fetchBtn) return;
+
+    var urlId = prefix + '_api_url';
+    var keyId = prefix + '_api_key';
+
+    fetchBtn.onclick = function () {
+        var urlEl = panelById(urlId);
+        var keyEl = panelById(keyId);
+        if (!urlEl || !urlEl.value.trim()) {
+            var chUrlId = prefix === 'nes_embedding' ? 'nes_embedding_url' : urlId;
+            urlEl = panelById(chUrlId);
+            if (!urlEl || !urlEl.value.trim()) {
+                showToast(t('Please enter an API URL first.'), 'warning');
+                return;
+            }
+        }
+        if (fetchBtn) fetchBtn.disabled = true;
+        var key = keyEl ? keyEl.value.trim() : '';
+        fetchAvailableModels({ url: urlEl.value.trim(), key: key }, 5).then(function (models) {
+            var curModel = getModelValue(prefix);
+            populateModelSelect(prefix, models, curModel);
+            if (fetchBtn) fetchBtn.disabled = false;
+        }).catch(function (e) {
+            showToast(t('Could not fetch model list') + ': ' + (e.message || ''), 'error');
+            if (fetchBtn) fetchBtn.disabled = false;
+        });
+    };
+
+    var sel = panelById(prefix + '_model_select');
+    if (sel) sel.onchange = function () {
+        if (sel.value === '') {
+            sel.style.display = 'none';
+            var txt = panelById(prefix + '_model_text') || panelById(prefix + '_model');
+            if (txt) { txt.style.display = ''; txt.value = ''; }
+        }
+        saveSettingsTab();
+    };
+}
+
 function saveSettingsTab() {
     var channelsEnabled = panelById('nes_api_channels_enabled') ? panelById('nes_api_channels_enabled').checked : false;
     var settings = {};
@@ -411,6 +611,10 @@ function saveSettingsTab() {
     var scInput2 = panelById('nes_stm_chunk_input');
     if (scInput2) {
         settings.stmChunkMaxChars = Math.max(100, Math.min(10000, Number(scInput2.value) || 500));
+    }
+    var phInput2 = panelById('nes_ph_batch_input');
+    if (phInput2) {
+        settings.phBatchChars = Math.max(1000, Math.min(8000, Number(phInput2.value) || 4000));
     }
     if (panelById('nes_stm_summary_ratio'))
         settings.stmSummaryRatio = Number(panelById('nes_stm_summary_ratio').value) / 100;
@@ -440,32 +644,32 @@ function saveSettingsTab() {
     var secApi = {
         url: panelById('nes_secondary_url').value.trim(),
         key: panelById('nes_secondary_key').value.trim(),
-        model: panelById('nes_secondary_model').value.trim()
+        model: getModelValue('nes_secondary')
     };
     saveSecondaryApiConfig(secApi);
     if (channelsEnabled) {
         var stmApi = {
             url: panelById('nes_stm_api_url') ? panelById('nes_stm_api_url').value.trim() : '',
             key: panelById('nes_stm_api_key') ? panelById('nes_stm_api_key').value.trim() : '',
-            model: panelById('nes_stm_api_model') ? panelById('nes_stm_api_model').value.trim() : ''
+            model: getModelValue('nes_stm_api')
         };
         localStorage.setItem('ne_stm_api', JSON.stringify(stmApi));
         var ltmApi = {
             url: panelById('nes_ltm_api_url') ? panelById('nes_ltm_api_url').value.trim() : '',
             key: panelById('nes_ltm_api_key') ? panelById('nes_ltm_api_key').value.trim() : '',
-            model: panelById('nes_ltm_api_model') ? panelById('nes_ltm_api_model').value.trim() : ''
+            model: getModelValue('nes_ltm_api')
         };
         localStorage.setItem('ne_ltm_api', JSON.stringify(ltmApi));
         var stateApi = {
             url: panelById('nes_state_api_url') ? panelById('nes_state_api_url').value.trim() : '',
             key: panelById('nes_state_api_key') ? panelById('nes_state_api_key').value.trim() : '',
-            model: panelById('nes_state_api_model') ? panelById('nes_state_api_model').value.trim() : ''
+            model: getModelValue('nes_state_api')
         };
         localStorage.setItem('ne_state_api', JSON.stringify(stateApi));
         var chEmbApi = {
             url: panelById('nes_embedding_url') ? panelById('nes_embedding_url').value.trim() : '',
             key: panelById('nes_embedding_key') ? panelById('nes_embedding_key').value.trim() : '',
-            model: panelById('nes_embedding_model') ? panelById('nes_embedding_model').value.trim() : ''
+            model: getModelValue('nes_embedding')
         };
         saveEmbeddingApiConfig(chEmbApi);
     }
@@ -476,7 +680,7 @@ function saveSecApiOnly() {
     var secApi = {
         url: panelById('nes_secondary_url') ? panelById('nes_secondary_url').value.trim() : '',
         key: panelById('nes_secondary_key') ? panelById('nes_secondary_key').value.trim() : '',
-        model: panelById('nes_secondary_model') ? panelById('nes_secondary_model').value.trim() : ''
+        model: getModelValue('nes_secondary')
     };
     saveSecondaryApiConfig(secApi);
 }
@@ -485,7 +689,7 @@ function saveEmbeddingApiOnly() {
     var embApi = {
         url: panelById('nes_embedding_url') ? panelById('nes_embedding_url').value.trim() : '',
         key: panelById('nes_embedding_key') ? panelById('nes_embedding_key').value.trim() : '',
-        model: panelById('nes_embedding_model') ? panelById('nes_embedding_model').value.trim() : ''
+        model: getModelValue('nes_embedding')
     };
     saveEmbeddingApiConfig(embApi);
 }

@@ -248,22 +248,135 @@ function notifySecondaryApiFailure(reason) {
     } catch (e) {}
 }
 
+function deriveModelsUrl(chatUrl) {
+    if (!chatUrl || typeof chatUrl !== 'string') return null;
+    var trimmed = chatUrl.trim().replace(/\/+$/, '');
+    if (/\/v1\/chat\/completions$/.test(trimmed)) {
+        return trimmed.replace(/\/chat\/completions$/, '/models');
+    }
+    if (/\/v1\/?$/.test(trimmed)) {
+        return trimmed.replace(/\/+$/, '') + '/models';
+    }
+    if (/^(https?:\/\/[^\/]+)\/?$/.test(trimmed)) {
+        return trimmed.replace(/\/+$/, '') + '/v1/models';
+    }
+    if (/\/llm\/chat$/.test(trimmed)) {
+        return trimmed.replace(/\/chat$/, '/models');
+    }
+    return null;
+}
+
+export async function fetchAvailableModels(config, timeoutSec) {
+    timeoutSec = timeoutSec || 5;
+    if (!config || !config.url) throw new Error('No URL configured');
+    var modelsUrl = deriveModelsUrl(config.url);
+    if (!modelsUrl) throw new Error('Cannot derive /v1/models URL from: ' + config.url);
+
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeoutSec * 1000);
+
+    function doFetch(targetUrl) {
+        return fetch(targetUrl, {
+            method: 'GET',
+            headers: config.key ? { 'Authorization': 'Bearer ' + config.key } : {},
+            signal: controller.signal
+        }).then(function (resp) {
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('API error: ' + resp.status);
+            return resp.json().then(function (data) {
+                if (!data || !Array.isArray(data.data)) throw new Error('Unexpected response format from /v1/models');
+                return data.data.map(function (m) { return m.id; });
+            });
+        }, function (e) {
+            clearTimeout(timer);
+            throw e;
+        });
+    }
+
+    function isNetErr(e) {
+        var msg = e.message || 'Unknown error';
+        return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
+    }
+
+    try {
+        return await doFetch(modelsUrl);
+    } catch (e) {
+        if (!isNetErr(e)) {
+            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
+            throw e;
+        }
+        console.warn('[NE] /v1/models direct fetch failed (' + e.message + '), trying ST proxy...');
+    }
+
+    try {
+        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(modelsUrl);
+        return await doFetch(proxyUrl);
+    } catch (e2) {
+        if (isNetErr(e2)) {
+            throw new Error('Cannot reach /v1/models — direct fetch blocked (CORS/mixed-content)');
+        }
+        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
+        throw e2;
+    }
+}
+
 export async function testSecondaryApiConnection(config) {
-    if (!config || !config.url) return { success: false, error: 'No URL configured' };
-    if (!config.model) return { success: false, error: 'No model configured' };
+    if (!config || !config.url) return { success: false, error: 'No URL configured', errorType: null };
+    if (!config.model) return { success: false, error: 'No model configured', errorType: null };
+
+    try {
+        var models = await fetchAvailableModels(config, 5);
+        if (models && models.length > 0) {
+            var modelInList = models.indexOf(config.model) !== -1;
+            return {
+                success: true,
+                connectionType: 'models',
+                models: models,
+                model: config.model,
+                modelInList: modelInList,
+                error: modelInList ? null : 'Model "' + config.model + '" not found in /v1/models list (API is reachable)',
+                errorType: null
+            };
+        }
+        return {
+            success: false,
+            connectionType: 'models',
+            models: models,
+            model: config.model,
+            modelInList: false,
+            error: '/v1/models returned empty list',
+            errorType: 'empty_list'
+        };
+    } catch (e) {
+        console.warn('[NE] /v1/models failed, falling back to chat ping:', e.message);
+    }
+
     try {
         var result = await callCustomAPI(config, [
             { role: 'system', content: 'Respond with OK only. No other text.' },
             { role: 'user', content: 'ping' }
-        ], { timeout: 10, temperature: 0, max_tokens: 64 });
+        ], { timeout: 30, temperature: 0, max_tokens: 64 });
         if (!result.content || result.content.trim().length === 0) {
             console.warn('[NE] testSecondaryApiConnection — raw response:', JSON.stringify(result._raw).substring(0, 500));
-            return { success: false, error: 'API returned empty response. Check browser console (F12) for raw response data.' };
+            return { success: false, connectionType: 'ping', models: [], model: config.model, modelInList: null, error: 'API returned empty response. Check browser console (F12) for raw response data.', errorType: 'empty_response' };
         }
-        return { success: true, model: config.model || 'connected' };
+        return { success: true, connectionType: 'ping', models: [], model: config.model, modelInList: null, error: null, errorType: null };
     } catch (e) {
-        console.warn('[NE] testSecondaryApiConnection — error:', e.message);
-        return { success: false, error: e.message || 'Connection failed' };
+        console.warn('[NE] testSecondaryApiConnection — error:', e.message || e);
+        var errorType = 'unknown';
+        var msg = e.message || 'Connection failed';
+        if (e.name === 'AbortError') {
+            errorType = 'timeout';
+        } else if (/Load[_ ]?[Ff]ailed|NetworkError|Failed to fetch|TypeError: Failed to fetch/i.test(msg)) {
+            errorType = 'network';
+        } else if (/API error: 401|403/.test(msg)) {
+            errorType = 'auth';
+        } else if (/API error: 4\d\d/.test(msg)) {
+            errorType = 'http_4xx';
+        } else if (/API error: 5\d\d/.test(msg)) {
+            errorType = 'http_5xx';
+        }
+        return { success: false, connectionType: 'none', models: [], model: config.model, modelInList: null, error: msg, errorType: errorType };
     }
 }
 

@@ -104,15 +104,18 @@ NE 的记忆提取需要 LLM。打开面板 → Settings → Secondary API：
 
 | 模块 | 说明 | 必配 |
 |------|------|------|
-| **Secondary API** | 记忆 Pipeline 用的 LLM API（URL / Key / Model） | ✅ 是 |
-| **Vector Search** | 向量检索开关 + Embedding API 端点（可选；一键预设硅基流动免费 bge-m3） | 否 |
-| **Dialog Window Rounds** | 注入上下文的对话轮数（2-20，默认 10） | 否 |
-| **Dialog Override** | 覆盖 ST 原生 token-budget 截断，仅按对话轮数控制上下文 | 否 |
-| **Memory Budget** | SmartPush 注入的最大 Token 数（500-2000，默认 800） | 否 |
-| **STM Extraction Batch** | 触发记忆提取的累计消息数（1-30，默认 10；支持自动调优） | 否 |
-| **Max Unconsolidated STM** | 未整合 STM 条数上限（2-30，默认 5），超此阈值触发 LTM 整合 | 否 |
-| **Extraction Temperature** | 记忆提取 LLM 的温度参数（0-1，默认 0.2） | 否 |
-| **Schema Editors** | 自定义 State / Character Schema 的 JSON 编辑器 | 否 |
+| **副API** | 记忆 Pipeline 用的 LLM API（URL / Key / Model） | ✅ 是 |
+| **API 分通道（STM / LTM / State）** | 按操作类型拆分 API 端点，留空则回退副 API | 否 |
+| **向量搜索 (Embedding API)** | 向量检索开关 + Embedding API 端点（一键预设硅基流动免费 bge-m3） | 否 |
+| **对话轮数注入控制** | 注入上下文的对话轮数（2–20，默认 10） | 否 |
+| **替代 ST 上下文窗口限制** | 覆盖 ST 原生 token-budget 截断，仅按对话轮数控制上下文 | 否 |
+| **记忆预算** | SmartPush 注入的最大 Token 数（500–2000，默认 800） | 否 |
+| **流水线触发阈值** | 触发记忆提取的累计消息数（1–30，默认 10；支持自动调优） | 否 |
+| **STM 分块大小（字符）** | 每次 LLM 调用最大字符数（100–10000，默认 500，对数滑块） | 否 |
+| **STM 摘要压缩比** | STM 摘要长度占原文比例（滑块，默认 5%） | 否 |
+| **LTM整合阈值** | 未整合 STM 条数上限（2–30，默认 5），超此阈值触发 LTM 整合 | 否 |
+| **记忆提取温度** | 记忆提取 LLM 的温度参数（0–1，默认 0.2） | 否 |
+| **Schema编辑器** | 自定义 State / Character Schema 的 JSON 编辑器 | 否 |
 
 ### 关于 API 费用
 
