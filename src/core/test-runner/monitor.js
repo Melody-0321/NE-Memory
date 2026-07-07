@@ -77,7 +77,7 @@ export function collectRoundData(roundTag, round) {
     var fallbackCount = 0;
     for (var i = 0; i < pipelineCalls.length; i++) {
         var c = pipelineCalls[i];
-        if (c.usage && c.usage.completion_tokens >= 2048) truncationCount++;
+        if (c.usage && c.usage.completion_tokens >= 4096) truncationCount++;
         if (c.source === 'tavern') fallbackCount++;
     }
 

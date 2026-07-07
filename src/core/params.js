@@ -71,7 +71,7 @@ export function computeStmBatch(turnsPerEvent) {
 }
 
 export function computeStmMaxTokens(stmBatch) {
-    return Math.max(400, Math.min(2500, Math.round(40 * stmBatch)));
+    return Math.max(400, Math.min(4096, Math.round(40 * stmBatch)));
 }
 
 export function computeTopK(totalSTM) {
