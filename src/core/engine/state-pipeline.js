@@ -1,4 +1,4 @@
-import { read } from '../vault/store.js';
+﻿import { read } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
@@ -451,7 +451,7 @@ function buildWorldBookSystemBlock(worldBookEntries) {
     return { role: 'system', content: text };
 }
 
-function buildSchemeCharPrompt(messages) {
+function buildSchemeCharPrompt(messages, isEn) {
     var msgText = '';
     if (messages && messages.length > 0) {
         msgText = '\n## Current Dialogue\n';
@@ -460,20 +460,21 @@ function buildSchemeCharPrompt(messages) {
         });
     }
 
+    var fieldKeys = Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).filter(function(k) { return k !== 'name'; });
+    var fieldDescs = fieldKeys.map(function(k) { return '  ' + k + ' (' + ((DEFAULT_CHARACTER_SCHEMA.npc.fields[k].type) || 'string') + ')'; }).join('\n');
+
     return '' +
         msgText +
         '\n## Task\n' +
         'Based on the world setting (see system message) and dialogue above, determine:\n' +
         '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
         '2. Identify all characters mentioned (protagonist + NPCs)\n' +
-        '\nAvailable field names for schemes:\n' +
-        '  status, gender_age, physique, occupation, personality, clothing_build,\n' +
-        '  injuries, status_effects, past_experience, inner_thoughts,\n' +
-        '  affection, relationship, current_mood\n' +
+        '\nAvailable fields (name reserved, not output):\n' +
+        fieldDescs + '\n' +
         '\nRules:\n' +
         '- Every scheme MUST include "status"\n' +
         '- "default" scheme is mandatory (catch-all)\n' +
-        '- Field names MUST be from the available list\n' +
+        '- Field names MUST be from the available list above\n' +
         '- required: fields always tracked; optional: tracked when relevant\n' +
         '\nOutput ONLY valid JSON:\n' +
         '{\n' +
@@ -482,6 +483,7 @@ function buildSchemeCharPrompt(messages) {
         '    "scheme_name": { ... }\n' +
         '  },\n' +
         '  "initial_characters": [\n' +
+        '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" },\n' +
         '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" }\n' +
         '  ]\n' +
         '}';
@@ -513,21 +515,46 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
     var state = vault.content.state || {};
 
-    if (state.npc_schemes) return;
+    // 闸门 A：已存在角色卡级配置 → 跳过
+    var charName = vault._charName || state.protagonist_name || '';
+    var cardConfig = null;
+    if (charName) {
+        var rawCfg = null;
+        try { rawCfg = localStorage.getItem('ne_card_templates_' + charName); } catch(e) {}
+        if (rawCfg) {
+            try { cardConfig = JSON.parse(rawCfg); } catch(e) {}
+        }
+        if (cardConfig && cardConfig._dialogueTemplates && Object.keys(cardConfig._dialogueTemplates).length > 0) {
+            console.log('[NE] Card-level templates already exist for ' + charName + ', skipping resolveNpcSchemes');
+            // 确保 state.characters 从现有配置恢复
+            restoreStateFromCardConfig(state, cardConfig);
+            vault.content.state = state;
+            return;
+        }
+    }
+
+    // 闸门 B：检查 state.characters 中是否已有角色通过模板初始化
+    var hasFilledChars = false;
+    if (state.characters) {
+        var charKeys = Object.keys(state.characters);
+        for (var ci = 0; ci < charKeys.length; ci++) {
+            var ch = state.characters[charKeys[ci]];
+            if (ch && typeof ch === 'object' && ch._templateKey) { hasFilledChars = true; break; }
+        }
+    }
+    if (hasFilledChars) {
+        console.log('[NE] characters already initialized with _templateKey, skipping resolveNpcSchemes');
+        return;
+    }
+
+    if (state.npc_schemes) return; // 旧格式仍存在，跳过
 
     var worldBookContent = await collectWorldBookContent();
+    state.characters = state.characters || {};
 
     if (!worldBookContent || worldBookContent.length === 0) {
-        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
-        state._character_schemes = state._character_schemes || {};
-
-        if (state.protagonist_name) {
-            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
-            ensureCharacterTemplate(state, state.protagonist_name);
-            if (state.characters && state.characters[state.protagonist_name]) {
-                state.characters[state.protagonist_name]._role = 'protagonist';
-            }
-        }
+        // 无世界书 → 使用默认模板初始化所有已知角色
+        initCharactersFromDefaults(state);
         vault.content.state = state;
         return;
     }
@@ -551,6 +578,7 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
         var parsed1 = safeJsonParse(String(resp1 || '').trim());
 
+        // 保留旧 npc_schemes 格式用于向后兼容
         if (parsed1 && parsed1.schemes) {
             state.npc_schemes = parsed1.schemes;
         } else {
@@ -651,32 +679,72 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
                     };
                 });
                 vault.content.faction_keywords = buildFactionKeywords(state.factions);
-                console.log('[NE] Factions extracted from faction_discovery:', factionNames.length);
             }
         }
-        vault.content._factions_extracted = true;
-        vault.content.state = state;
     } catch (e) {
-        console.warn('[NE] Scheme discovery failed, using default:', e);
-        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+        console.warn('[NE] Scheme discovery failed:', e);
+        initCharactersFromDefaults(state);
     }
 
-    // 主角不依赖 World Book：LLM 可能未返回，兜底创建
-    if (state.protagonist_name) {
-        if (!state._character_schemes) state._character_schemes = {};
-        if (!state._character_schemes[state.protagonist_name]) {
-            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
-        }
-        if (!state.characters || !state.characters[state.protagonist_name]) {
-            ensureCharacterTemplate(state, state.protagonist_name);
-        }
-        if (state.characters && state.characters[state.protagonist_name]) {
-            state.characters[state.protagonist_name]._role = 'protagonist';
-        }
-    }
+    // 保存卡片级模板配置到 localStorage + IndexedDB
+    _persistCardConfig(charName, state);
+
     vault.content.state = state;
 }
 
+/**
+ * Initialize character state from default templates (no World Book available).
+ * @param {Object} state
+ */
+function initCharactersFromDefaults(state) {
+    state.npc_schemes = state.npc_schemes || JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+    state._character_schemes = state._character_schemes || {};
+    state.characters = state.characters || {};
+
+    if (state.protagonist_name) {
+        state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
+        ensureCharacterTemplate(state, state.protagonist_name);
+        if (state.characters[state.protagonist_name]) {
+            state.characters[state.protagonist_name]._role = 'protagonist';
+        }
+    }
+}
+
+/**
+ * Restore state.characters from card-level config after skip (Gate A).
+ * @param {Object} state
+ * @param {Object} cardConfig
+ */
+function restoreStateFromCardConfig(state, cardConfig) {
+    state.characters = state.characters || {};
+    var dialogueTemplates = cardConfig._dialogueTemplates || {};
+    // 仅确保现有 character 不被错误清空；实际填充由 per-round pipeline 处理
+}
+
+/**
+ * Persist card-level template configuration after first-time scheme discovery.
+ * @param {string} charName
+ * @param {Object} state
+ */
+function _persistCardConfig(charName, state) {
+    if (!charName) return;
+    try {
+        var existing = localStorage.getItem('ne_card_templates_' + charName);
+        if (existing) return; // 已有配置，不覆盖
+        var now = new Date().toISOString();
+        var config = {
+            _dialogueTemplates: {},
+            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _npcTemplateMode: 'exact' },
+            _version: 1,
+            _createdAt: now,
+            _updatedAt: now
+        };
+        localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
+        console.log('[NE] Card config initialized for ' + charName);
+    } catch (e) {
+        console.warn('[NE] Failed to persist card config for ' + charName, e.message);
+    }
+}
 export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
     var vault = await read(chatId);
     if (!vault || !vault.content) return { vault, changed: false };
@@ -731,6 +799,20 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     var parsed = parseSTMResponse(stateResponse);
     var stateChanges = parsed.stateChanges || {};
+    // 提取 world_context（含在下层 JSON block 的 state_changes 外）
+    var rawParsed = safeJsonParse(String(stateResponse || '').trim());
+    if (rawParsed && rawParsed.world_context && typeof rawParsed.world_context === 'object' && rawParsed.world_context.genre) {
+        var stateRef = vault.content.state || {};
+        stateRef._world_context_cache = {
+            genre: rawParsed.world_context.genre || '',
+            tropes: rawParsed.world_context.tropes || [],
+            summary: rawParsed.world_context.summary || '',
+            source: 'ai',
+            _extractedAt: new Date().toISOString()
+        };
+        vault.content.state = stateRef;
+        console.log('[NE] world_context extracted:', JSON.stringify(rawParsed.world_context));
+    }
 
     // 优先：Main LLM 状态块 — 解析后直接写入 vault 全局数据 + 更新 status
     var pendingBlock = globalThis.__ne_pending_state_block;
