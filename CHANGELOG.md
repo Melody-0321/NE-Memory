@@ -1,3 +1,26 @@
+# NE-Memory v6.7 更新日志
+
+## 新功能
+
+- **API 连接增强**：`GET /v1/models` 快速连通性检测（~3s），失败回退到 chat ping；5 个手动模型名输入框替换为可拉取下拉菜单（select + text + fetch 按钮）；三色连接状态指示（绿/黄/红，含错误类型详情）
+- **API 韧性机制**：指数退避自动重试（最多 2 次，1s→2s→4s），仅对超时/网络/5xx 重试；客户端 API Key 格式校验（非ASCII、sk- 前缀、空格），实时黄色警告
+- **Test Message 延迟显示**：连接测试成功 toast 中显示端到端耗时
+- **Embedding API 超时保护**：AbortController 超时保护，防止卡死
+
+## 性能优化
+
+- **STM 合并 LLM 调用**：`executeIncrementalUpdate` 中所有子段打包到单次 LLM 调用，API 调用量减少约 **5 倍**
+- **PH 字符级批处理**：Process History 中消息数批处理改为基于字符累积拆分；新增 `phBatchChars` 设置（1000–8000，步长 500，默认 4000），设置面板提供对数滑块
+- 批处理失败时 toast 警告；LLM 失败时自动重试一次
+
+## Bug 修复
+
+- **快照恢复错误吞噬**：`restoreSnapshot` 异步回调中的错误不再被静默吞掉
+- **STM 编辑按钮缺失**：孤儿/LTM 子 STM 行现在显示编辑按钮
+- **对话轮次剪裁修复**：对话框轮次剪裁从 `chat.splice()` 移至 `generate_interceptor`，在 `coreChat` 副本上安全操作
+
+---
+
 # NE-Memory v6.6 更新日志
 
 ## Bug 修复

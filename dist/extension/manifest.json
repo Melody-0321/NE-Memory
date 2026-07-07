@@ -6,7 +6,7 @@
     "js": "index.js",
     "css": "",
     "author": "NE Team",
-    "version": "6.6.0",
+    "version": "6.7.0",
     "homePage": "",
     "auto_update": false,
     "generate_interceptor": "ne_generation_interceptor",

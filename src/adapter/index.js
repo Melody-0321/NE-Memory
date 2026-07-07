@@ -357,7 +357,7 @@ function setupEventListeners(retryCount) {
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
+    console.log('[NE] Engine starting... build=' + 'NE v6.7.0');
 
     try {
         window.__ne_debug = _buildDebugApi();
