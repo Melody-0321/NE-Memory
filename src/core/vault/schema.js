@@ -1000,4 +1000,19 @@ export function saveFieldLibrary(lib) {
     } catch (e) {}
 }
 
+/**
+ * Register a field definition to an NPC scheme's fields map.
+ * Used by template LLM's resolveFieldProposal handler when a new field is accepted.
+ * @param {Object} scheme — npc_schemes entry { fields: {...} }
+ * @param {string} fieldName
+ * @param {import('../../types.js').SchemaFieldDef} fieldDef
+ * @param {'ai_generated'|'user_created'} source
+ */
+export function registerFieldToScheme(scheme, fieldName, fieldDef, source) {
+    if (!scheme || !scheme.fields) scheme.fields = {};
+    if (!fieldDef.layer) fieldDef.layer = 'dynamic';
+    fieldDef._source = source || 'ai_generated';
+    scheme.fields[fieldName] = fieldDef;
+}
+
 

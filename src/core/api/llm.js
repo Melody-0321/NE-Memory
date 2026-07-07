@@ -81,6 +81,7 @@ export async function callMemoryLLM(messages, options = {}) {
     let response = null;
     let apiSource = 'tavern';
     let usage = null;
+    var _toolCalls = null;
 
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
@@ -90,6 +91,7 @@ export async function callMemoryLLM(messages, options = {}) {
             var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
             usage = customResult.usage;
+            _toolCalls = customResult.tool_calls || null;
             apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
         } catch (e) {
             console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
@@ -107,6 +109,10 @@ export async function callMemoryLLM(messages, options = {}) {
     var durationMs = Date.now() - startTime;
 
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + durationMs + 'ms, len=' + (response ? response.length : 0));
+
+    if (options._returnRaw) {
+        return { content: response || '', usage: usage, tool_calls: _toolCalls, source: apiSource, durationMs: durationMs };
+    }
 
     var chatId = options.chatId || null;
 
@@ -193,6 +199,79 @@ export async function callMemoryPipeline(messages, options = {}, chatId = null) 
         max_tokens: mc.stm_max_tokens,
         chatId: chatId
     }));
+}
+
+/**
+ * callMemoryPipeline with optional function-calling tool loop support.
+ * If options.tools is present, the LLM call includes tool definitions.
+ * On tool_calls in the response, tools are processed and the loop continues
+ * for up to MAX_TOOL_ITERATIONS rounds.
+ *
+ * @param {Array<Object>} messages
+ * @param {Object} [options]
+ * @param {Array<Object>} [options.tools]
+ * @param {function(Array, Object, string):Promise<Object>} [options.processToolCalls]
+ * @param {number} [options.maxToolIterations]
+ * @param {string|null} [chatId]
+ * @returns {Promise<string>} — final text response (without tool_calls)
+ */
+export async function callMemoryPipelineWithTools(messages, options, chatId) {
+    options = options || {};
+    var tools = options.tools;
+    var processFn = options.processToolCalls;
+    var maxIterations = options.maxToolIterations || 5;
+    var state = options._state || {};
+    var charName = options._charName || '';
+
+    if (!tools || !tools.length) {
+        return callMemoryPipeline(messages, options, chatId);
+    }
+
+    var currentMessages = messages.slice();
+    var iteration = 0;
+
+    while (iteration < maxIterations) {
+        iteration++;
+        var result = await callMemoryLLM(currentMessages, Object.assign({}, options, {
+            _forcePipelineApi: true,
+            chatId: chatId,
+            _returnRaw: true
+        }));
+
+        var toolCalls = result.tool_calls || [];
+
+        if (toolCalls.length > 0) {
+            currentMessages.push({
+                role: 'assistant',
+                content: result.content || null,
+                tool_calls: toolCalls
+            });
+
+            if (processFn) {
+                var toolResult = await processFn(toolCalls, state, charName);
+                var results = toolResult.results || [];
+
+                results.forEach(function(tr) {
+                    currentMessages.push({
+                        role: 'tool',
+                        tool_call_id: tr.tool_call_id,
+                        content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content)
+                    });
+                });
+
+                if (toolResult.degraded) {
+                    console.warn('[NE-FC] Tool call loop degraded at iteration ' + iteration);
+                }
+            }
+
+            continue;
+        }
+
+        return result.content || '';
+    }
+
+    console.warn('[NE-FC] Tool call loop exceeded max iterations (' + maxIterations + ')');
+    return '';
 }
 
 
@@ -438,7 +517,9 @@ async function callCustomAPI(config, messages, options) {
         temperature: options.temperature || 0.3,
         max_tokens: options.max_tokens || 4096,
         ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
-        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {})
+        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {}),
+        ...(options.tools ? { tools: options.tools } : {}),
+        ...(options.tool_choice ? { tool_choice: options.tool_choice } : {})
     });
     const timeoutSec = options.timeout || getConfiguredTimeoutSec(120);
 
@@ -458,10 +539,11 @@ async function callCustomAPI(config, messages, options) {
                 var msg = data.choices?.[0]?.message || {};
                 var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
                 var usage = data.choices?.[0]?.usage || data.usage || null;
-                if (!content) {
+                var toolCalls = msg.tool_calls || null;
+                if (!content && !toolCalls) {
                     console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
                 }
-                return { content: content, usage: usage, _raw: data };
+                return { content: content, usage: usage, tool_calls: toolCalls, _raw: data };
             });
         }, function (e) {
             clearTimeout(timer);

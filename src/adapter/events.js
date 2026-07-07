@@ -21,6 +21,7 @@ import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
+import { checkFunctionCallingSupport, isFunctionCallingSupported } from '../core/engine/template-llm.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆，按实体分链组织。]',
@@ -71,6 +72,11 @@ export function restorePending() {
             localStorage.removeItem('ne_inflight');
         }
     } catch (e) { console.warn('[NE] restorePending error:', e); }
+    checkFunctionCallingSupport().then(function(supported) {
+        if (!supported) {
+            console.log('[NE] Function calling not available — template LLM runs in exact mode only');
+        }
+    });
 }
 
 export async function getStmBatchSize() {
