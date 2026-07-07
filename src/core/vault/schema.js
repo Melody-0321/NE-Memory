@@ -68,58 +68,121 @@ export const POWER_SLOTS_TEMPLATES = {
     }
 };
 
+/** @type {import('../../types.js').SchemaFieldDef} */
+export var SYSTEM_REQUIRED_FIELDS = {
+    name:   { type: 'string', max_length: 30, required: true, layer: 'static',  _system: true },
+    status: { type: 'enum',   values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true }
+};
+
+export var PRESET_FIELDS = {
+    identity: {
+        gender_age:      { type: 'string', max_length: 20,  required: false, layer: 'static',  category: 'identity' },
+        physique:        { type: 'string', max_length: 60,  required: false, layer: 'static',  category: 'identity' },
+        occupation:      { type: 'string', max_length: 30,  required: false, layer: 'static',  category: 'identity' },
+        clothing_build:  { type: 'string', max_length: 60,  required: false, layer: 'dynamic', category: 'identity' },
+        personality:     { type: 'string', max_length: 80,  required: false, layer: 'static',  category: 'identity' },
+        past_experience: { type: 'string', max_length: 200, required: false, layer: 'static',  category: 'identity' }
+    },
+    psychology: {
+        inner_thoughts:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'psychology' },
+        current_mood:    { type: 'string', max_length: 30,  required: false, layer: 'dynamic', category: 'psychology' }
+    },
+    social: {
+        affection:       { type: 'number', min: 0, max: 100, required: false, layer: 'dynamic', category: 'social' },
+        relationship:    { type: 'string', max_length: 50,  required: false, layer: 'dynamic', category: 'social' }
+    },
+    battle: {
+        injuries:        { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
+        status_effects:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
+    },
+    inventory: {
+        inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory' }
+    }
+};
+
+/** @type {Object<string, import('../../types.js').SchemaFieldDef>} */
+export var ALL_PREDEFINED_FIELDS = (function() {
+    var m = Object.assign({}, SYSTEM_REQUIRED_FIELDS);
+    Object.keys(PRESET_FIELDS).forEach(function(cat) {
+        Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+            m[fn] = PRESET_FIELDS[cat][fn];
+        });
+    });
+    return m;
+})();
+
+export var DEFAULT_PC_TEMPLATE = {
+    id: '_default_pc',
+    name: 'Default PC',
+    role: 'pc',
+    description: 'Default protagonist scheme (9 preset fields)',
+    source: 'system',
+    system: true,
+    presetFields: ['gender_age','physique','occupation','personality','clothing_build','injuries','status_effects','past_experience','inventory'],
+    customFieldRefs: [],
+    _locked: false
+};
+
+export var DEFAULT_NPC_TEMPLATE = {
+    id: '_default_npc',
+    name: 'Default NPC',
+    role: 'npc',
+    description: 'Default NPC scheme (14 preset fields)',
+    source: 'system',
+    system: true,
+    presetFields: ['gender_age','physique','occupation','personality','clothing_build','inner_thoughts','affection','relationship','current_mood','past_experience','injuries','status_effects','inventory'],
+    customFieldRefs: [],
+    _locked: false
+};
+
 export const DEFAULT_CHARACTER_SCHEMA = {
     protagonist: {
         fields: {
-            name: { type: 'string', max_length: 30, required: true },
-            gender_age: { type: 'string', max_length: 20, required: true },
-            physique: { type: 'string', max_length: 60, required: true },
-            occupation: { type: 'string', max_length: 30, required: true },
-            clothing_build: { type: 'string', max_length: 60, required: true },
-            personality: { type: 'string', max_length: 80, required: true },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], required: true },
-            inventory: { type: 'object', required: false },
-            injuries: { type: 'string', max_length: 120, required: false },
-            status_effects: { type: 'string', max_length: 120, required: false }
+            name:           { type: 'string',  max_length: 30,  required: true,  layer: 'static',  _system: true },
+            gender_age:     { type: 'string',  max_length: 20,  required: true,  layer: 'static',  category: 'identity' },
+            physique:       { type: 'string',  max_length: 60,  required: true,  layer: 'static',  category: 'identity' },
+            occupation:     { type: 'string',  max_length: 30,  required: true,  layer: 'static',  category: 'identity' },
+            clothing_build: { type: 'string',  max_length: 60,  required: true,  layer: 'dynamic', category: 'identity' },
+            personality:    { type: 'string',  max_length: 80,  required: true,  layer: 'static',  category: 'identity' },
+            status:         { type: 'enum',    values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true },
+            inventory:      { type: 'object',  required: false, layer: 'dynamic', category: 'inventory' },
+            injuries:       { type: 'string',  max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
+            status_effects: { type: 'string',  max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
         }
     },
     npc: {
         fields: {
-            name: { type: 'string', max_length: 30, required: true },
-            gender_age: { type: 'string', max_length: 20, required: true },
-            physique: { type: 'string', max_length: 60, required: true },
-            occupation: { type: 'string', max_length: 30, required: true },
-            clothing_build: { type: 'string', max_length: 60, required: true },
-            personality: { type: 'string', max_length: 80, required: true },
-            inner_thoughts: { type: 'string', max_length: 120, required: true },
-            affection: { type: 'number', min: 0, max: 100, required: true },
-            relationship: { type: 'string', max_length: 50, required: true },
-            current_mood: { type: 'string', max_length: 30, required: true },
-            past_experience: { type: 'string', max_length: 200, required: false },
-            status: { type: 'enum', values: ['活跃', '非活跃', '已死亡', '已归隐', '已离去'], required: true },
-            inventory: { type: 'object', required: false },
-            injuries: { type: 'string', max_length: 120, required: false },
-            status_effects: { type: 'string', max_length: 120, required: false }
+            name:            { type: 'string', max_length: 30,  required: true,  layer: 'static',  _system: true },
+            gender_age:      { type: 'string', max_length: 20,  required: true,  layer: 'static',  category: 'identity' },
+            physique:        { type: 'string', max_length: 60,  required: true,  layer: 'static',  category: 'identity' },
+            occupation:      { type: 'string', max_length: 30,  required: true,  layer: 'static',  category: 'identity' },
+            clothing_build:  { type: 'string', max_length: 60,  required: true,  layer: 'dynamic', category: 'identity' },
+            personality:     { type: 'string', max_length: 80,  required: true,  layer: 'static',  category: 'identity' },
+            inner_thoughts:  { type: 'string', max_length: 120, required: true,  layer: 'dynamic', category: 'psychology' },
+            affection:       { type: 'number', min: 0, max: 100, required: true,  layer: 'dynamic', category: 'social' },
+            relationship:    { type: 'string', max_length: 50,  required: true,  layer: 'dynamic', category: 'social' },
+            current_mood:    { type: 'string', max_length: 30,  required: true,  layer: 'dynamic', category: 'psychology' },
+            past_experience: { type: 'string', max_length: 200, required: false, layer: 'static',  category: 'identity' },
+            status:          { type: 'enum',   values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true },
+            inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory' },
+            injuries:        { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
+            status_effects:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
         }
     }
 };
 
+/**
+ * @returns {Object<string, {fields: Object<string, import('../../types.js').SchemaFieldDef>}>}
+ */
 export var DEFAULT_NPC_SCHEME = (function() {
     var npcFields = DEFAULT_CHARACTER_SCHEMA.npc.fields;
-    var required = [];
-    var optional = [];
+    var fields = {};
     Object.keys(npcFields).forEach(function(k) {
-        if (k === 'name' || k === 'inventory') return;
-        if (npcFields[k].required) required.push(k);
-        else optional.push(k);
+        if (k === 'name') return;
+        var f = npcFields[k];
+        fields[k] = Object.assign({}, f);
     });
-    return {
-        default: {
-            description: 'Default NPC scheme (all standard fields)',
-            required: required,
-            optional: optional
-        }
-    };
+    return { _default: { fields: fields } };
 })();
 
 export const DEFAULT_GLOBAL_SCHEMA = {
@@ -615,16 +678,13 @@ var STATIC_FIELD_CATEGORIES = { gender_age: true, physique: true, occupation: tr
  */
 export function getNpcInjectionFields(state, name) {
     var charData = (state && state.characters && state.characters[name]) || {};
-    var schemeKey = charData._scheme || 'default';
+    var schemeKey = charData._scheme || '_default';
     var npcSchemes = (state && state.npc_schemes) || DEFAULT_NPC_SCHEME;
     var scheme = npcSchemes[schemeKey];
-    if (!scheme) {
-        scheme = npcSchemes['default'] || DEFAULT_NPC_SCHEME.default;
-    }
-    var fields = [];
-    (scheme.required || []).forEach(function(f) { if (fields.indexOf(f) === -1) fields.push(f); });
-    (scheme.optional || []).forEach(function(f) { if (fields.indexOf(f) === -1) fields.push(f); });
-    return fields;
+    if (!scheme) scheme = DEFAULT_NPC_SCHEME._default;
+    var norm = normalizeScheme(scheme);
+    if (norm) return Object.keys(norm);
+    return Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).filter(function(k) { return k !== 'name'; });
 }
 
 /**
@@ -802,4 +862,101 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 
     return parts.join('\n');
 }
+
+// ====== Open Character Schema Utilities ======
+
+/**
+ * Normalize legacy scheme format (required/optional arrays) to fields map.
+ * Accepts 'default' (no prefix), '_default', or any other key.
+ * Returns null if scheme is undefined/null.
+ *
+ * @param {Object|null} scheme
+ * @returns {Object<string, import('../../types.js').SchemaFieldDef>|null}
+ */
+export function normalizeScheme(scheme) {
+    if (!scheme) return null;
+    if (scheme.fields && typeof scheme.fields === 'object' && !Array.isArray(scheme.fields)) {
+        return scheme.fields;
+    }
+    var npcFields = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    var fields = {};
+    (scheme.required || []).forEach(function(k) {
+        if (npcFields[k]) fields[k] = Object.assign({}, npcFields[k]);
+    });
+    (scheme.optional || []).forEach(function(k) {
+        if (npcFields[k]) fields[k] = Object.assign({}, npcFields[k]);
+    });
+    return Object.keys(fields).length > 0 ? fields : null;
+}
+
+/**
+ * Expand a template's presetFields + customFieldRefs into a full fields map.
+ * Called by get_character_scheme handler (Mode 1 direct copy).
+ *
+ * @param {Object} template - Template or DialogueTemplate object
+ * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
+ */
+export function expandTemplateFields(template) {
+    var fields = {};
+    if (template.presetFields) {
+        template.presetFields.forEach(function(fn) {
+            var def = ALL_PREDEFINED_FIELDS[fn];
+            if (def) fields[fn] = Object.assign({}, def);
+        });
+    }
+    if (template.customFieldRefs) {
+        template.customFieldRefs.forEach(function(fn) {
+            var fieldLib = loadFieldLibrary();
+            var def = fieldLib && fieldLib.fields && fieldLib.fields[fn];
+            if (def) {
+                fields[fn] = { type: def.type };
+                if (def.max_length) fields[fn].max_length = def.max_length;
+                if (def.min !== undefined) fields[fn].min = def.min;
+                if (def.max !== undefined) fields[fn].max = def.max;
+                if (def.values) fields[fn].values = def.values.slice();
+                if (def.layer) fields[fn].layer = def.layer;
+                if (def.category) fields[fn].category = def.category;
+            }
+        });
+    }
+    fields.name = Object.assign({}, SYSTEM_REQUIRED_FIELDS.name);
+    fields.status = Object.assign({}, SYSTEM_REQUIRED_FIELDS.status);
+    return fields;
+}
+
+/**
+ * Resolve a field's definition with precedence: field library > ALL_PREDEFINED_FIELDS > null.
+ * Returns { def, source: 'library'|'preset'|null }.
+ *
+ * @param {string} fieldName
+ * @returns {{ def: import('../../types.js').SchemaFieldDef|null, source: string|null }}
+ */
+export function resolveFieldDef(fieldName) {
+    var fieldLib = loadFieldLibrary();
+    if (fieldLib && fieldLib.fields && fieldLib.fields[fieldName]) {
+        return { def: fieldLib.fields[fieldName], source: 'library' };
+    }
+    if (ALL_PREDEFINED_FIELDS[fieldName]) {
+        return { def: ALL_PREDEFINED_FIELDS[fieldName], source: 'preset' };
+    }
+    return { def: null, source: null };
+}
+
+/** @returns {import('../../types.js').FieldLibrary} */
+export function loadFieldLibrary() {
+    try {
+        var raw = localStorage.getItem('ne_field_library');
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { fields: {}, updatedAt: new Date().toISOString() };
+}
+
+/** @param {import('../../types.js').FieldLibrary} lib */
+export function saveFieldLibrary(lib) {
+    try {
+        lib.updatedAt = new Date().toISOString();
+        localStorage.setItem('ne_field_library', JSON.stringify(lib));
+    } catch (e) {}
+}
+
 

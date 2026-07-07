@@ -316,4 +316,93 @@ export {};
  * @property {string[]} [values]
  * @property {Object<string, SchemaFieldDef>} [fields]
  * @property {SchemaFieldDef} [schema]
+ * @property {boolean} [required]
+ * @property {'static'|'dynamic'} [layer]
+ * @property {boolean} [_system]
+ * @property {string} [category]
+ * @property {'ai_generated'|'user_created'|'global'} [_source]
+ * @property {'active'|'deprecated'} [_status]
+ */
+
+// ============ Open Character Schema 类型 ============
+
+/**
+ * @typedef {Object} Template
+ * @property {string} id
+ * @property {string} name
+ * @property {'pc'|'npc'} role
+ * @property {string} [description]
+ * @property {string[]} [tags]
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ * @property {'ai_generated'|'user_created'|'from_chat'} source
+ * @property {string[]} presetFields
+ * @property {string[]} customFieldRefs
+ * @property {boolean} [system]
+ * @property {boolean} [_locked]
+ * @property {string} [_source]
+ * @property {'synced'|'forked'|'orphaned'} [_state]
+ */
+
+/**
+ * @typedef {Object} TemplateLibrary
+ * @property {Object<string, Template>} templates
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} FieldLibraryEntry
+ * @property {string} name
+ * @property {'string'|'number'|'boolean'|'enum'|'object'} type
+ * @property {string} [description]
+ * @property {string[]} [values]
+ * @property {number} [min]
+ * @property {number} [max]
+ * @property {number} [max_length]
+ * @property {'static'|'dynamic'} [layer]
+ * @property {string} [category]
+ * @property {string[]} usedByTemplates
+ * @property {string} createdAt
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} FieldLibrary
+ * @property {Object<string, FieldLibraryEntry>} fields
+ * @property {string} updatedAt
+ */
+
+/**
+ * @typedef {Object} DialogueTemplate
+ * @property {string} _templateId
+ * @property {string} createdAt
+ * @property {boolean} [_locked]
+ * @property {string[]} presetFields
+ * @property {string[]} customFieldRefs
+ * @property {'synced'|'forked'|'orphaned'} [_state]
+ * @property {string} [_source]
+ */
+
+/**
+ * @typedef {Object} TemplateConfig
+ * @property {string} pc
+ * @property {string[]} npc
+ * @property {'exact'|'adjust'} _npcTemplateMode
+ */
+
+/**
+ * @typedef {Object} CardConfig
+ * @property {Object<string, DialogueTemplate>} _dialogueTemplates
+ * @property {TemplateConfig} _templateConfig
+ * @property {{genre: string, tropes: string[], summary: string, source: 'wb'|'manual', _extractedAt: string}} [_worldContext]
+ * @property {number} _version
+ * @property {string} _createdAt
+ * @property {string} _updatedAt
+ */
+
+/**
+ * @typedef {Object} CharacterState
+ * @property {string} _templateKey
+ * @property {boolean} [_templateLocked]
+ * @property {Object<string, any>} fields
  */

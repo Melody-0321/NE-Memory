@@ -305,7 +305,7 @@ ok(DEFAULT_GLOBAL_SCHEMA.fields, 'DEFAULT_GLOBAL_SCHEMA has fields');
 ok(DEFAULT_CHARACTER_SCHEMA.protagonist, 'DEFAULT_CHARACTER_SCHEMA has protagonist');
 ok(DEFAULT_CHARACTER_SCHEMA.npc, 'DEFAULT_CHARACTER_SCHEMA has npc');
 eq(typeof DEFAULT_NPC_SCHEME, 'object', 'DEFAULT_NPC_SCHEME is object');
-ok(DEFAULT_NPC_SCHEME.default, 'DEFAULT_NPC_SCHEME has default scheme');
+ok(DEFAULT_NPC_SCHEME._default, 'DEFAULT_NPC_SCHEME has _default scheme');
 
 console.log('\n--- schema: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

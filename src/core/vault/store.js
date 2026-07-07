@@ -5,7 +5,7 @@
  * 每个 chat_id 对应 IndexedDB 中的一条记录。
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 3;
+const DB_VERSION = 4;
 const STORE_NAME = 'vaults';
 
 function openDB() {
@@ -26,6 +26,9 @@ function openDB() {
                 if (!snapshotsStore.indexNames.contains('chat_id')) {
                     snapshotsStore.createIndex('chat_id', 'chat_id', { unique: false });
                 }
+            }
+            if (!db.objectStoreNames.contains('card_configs')) {
+                db.createObjectStore('card_configs', { keyPath: 'id' });
             }
         };
         req.onsuccess = () => resolve(req.result);
@@ -359,5 +362,341 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     content.ltm_entries = keptLTM;
 
     return updated;
+}
+
+// ====== Template Library CRUD (localStorage) ======
+
+/** @returns {import('../../types.js').TemplateLibrary} */
+export function loadTemplateLibrary() {
+    try {
+        var raw = localStorage.getItem('ne_template_library');
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { templates: {}, updatedAt: new Date().toISOString() };
+}
+
+/** @param {import('../../types.js').TemplateLibrary} lib */
+export function saveTemplateLibrary(lib) {
+    try {
+        lib.updatedAt = new Date().toISOString();
+        localStorage.setItem('ne_template_library', JSON.stringify(lib));
+    } catch (e) {}
+}
+
+/**
+ * @param {import('../../types.js').Template} template
+ * @returns {boolean}
+ */
+export function saveTemplate(template) {
+    var lib = loadTemplateLibrary();
+    template.updatedAt = new Date().toISOString();
+    if (!template.createdAt) template.createdAt = template.updatedAt;
+    lib.templates[template.id] = template;
+    saveTemplateLibrary(lib);
+    return true;
+}
+
+/**
+ * @param {string} templateId
+ * @returns {boolean}
+ */
+export function deleteTemplate(templateId) {
+    var lib = loadTemplateLibrary();
+    if (!lib.templates[templateId]) return false;
+    delete lib.templates[templateId];
+    saveTemplateLibrary(lib);
+    return true;
+}
+
+/**
+ * @param {string} templateId
+ * @returns {import('../../types.js').Template|null}
+ */
+export function getTemplate(templateId) {
+    var lib = loadTemplateLibrary();
+    return lib.templates[templateId] || null;
+}
+
+// ====== Card-Level Template Configuration (localStorage + IndexedDB dual) ======
+
+/**
+ * @param {string} charName
+ * @returns {import('../../types.js').CardConfig|null}
+ */
+export function loadCardConfig(charName) {
+    try {
+        var raw = localStorage.getItem('ne_card_templates_' + charName);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    try {
+        var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
+        return new Promise(function(resolve) {
+            dbReq.onsuccess = function() {
+                var db = dbReq.result;
+                var tx = db.transaction('card_configs', 'readonly');
+                var store = tx.objectStore('card_configs');
+                var getReq = store.get(charName);
+                getReq.onsuccess = function() {
+                    if (getReq.result) {
+                        var config = getReq.result;
+                        delete config.id;
+                        try {
+                            localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
+                        } catch (e) {}
+                        resolve(config);
+                    } else {
+                        resolve(null);
+                    }
+                    db.close();
+                };
+                getReq.onerror = function() { resolve(null); db.close(); };
+            };
+            dbReq.onerror = function() { resolve(null); };
+        });
+    } catch (e) {
+        return null;
+    }
+}
+
+/**
+ * Load card config synchronously (from localStorage only, for hot paths).
+ * @param {string} charName
+ * @returns {import('../../types.js').CardConfig|null}
+ */
+export function loadCardConfigSync(charName) {
+    try {
+        var raw = localStorage.getItem('ne_card_templates_' + charName);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return null;
+}
+
+/**
+ * @param {string} charName
+ * @param {import('../../types.js').CardConfig} config
+ * @returns {boolean}
+ */
+export function saveCardConfig(charName, config) {
+    var current = loadCardConfigSync(charName);
+    var nextVersion = (current && current._version || 0) + 1;
+    config._version = nextVersion;
+    config._updatedAt = new Date().toISOString();
+    if (!config._createdAt) config._createdAt = config._updatedAt;
+
+    var existingRaw = localStorage.getItem('ne_card_templates_' + charName);
+    if (existingRaw) {
+        try {
+            var existing = JSON.parse(existingRaw);
+            if (existing._version >= nextVersion) {
+                console.warn('[NE] Card config version conflict for', charName,
+                    'expected <', nextVersion, 'got', existing._version, '— skipping write');
+                return false;
+            }
+        } catch (e) {}
+    }
+
+    try {
+        localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
+    } catch (e) {
+        console.warn('[NE] localStorage write failed for', charName, e.message);
+        return false;
+    }
+
+    try {
+        var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
+        dbReq.onsuccess = function() {
+            var db = dbReq.result;
+            var tx = db.transaction('card_configs', 'readwrite');
+            var store = tx.objectStore('card_configs');
+            var toStore = Object.assign({ id: charName }, config);
+            store.put(toStore);
+            tx.oncomplete = function() { db.close(); };
+        };
+        dbReq.onerror = function() {
+            console.warn('[NE] IndexedDB write failed for card_config:', charName);
+        };
+    } catch (e) {
+        console.warn('[NE] IndexedDB write failed for', charName, e.message);
+    }
+
+    return true;
+}
+
+/**
+ * @param {string} charName
+ */
+export function deleteCardConfig(charName) {
+    try { localStorage.removeItem('ne_card_templates_' + charName); } catch (e) {}
+    try {
+        var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
+        dbReq.onsuccess = function() {
+            var db = dbReq.result;
+            var tx = db.transaction('card_configs', 'readwrite');
+            var store = tx.objectStore('card_configs');
+            store.delete(charName);
+            tx.oncomplete = function() { db.close(); };
+        };
+    } catch (e) {}
+}
+
+// ====== Field Library Operations ======
+
+/** @returns {import('../../types.js').FieldLibrary} */
+export function loadFieldLibrary() {
+    try {
+        var raw = localStorage.getItem('ne_field_library');
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return { fields: {}, updatedAt: new Date().toISOString() };
+}
+
+/** @param {import('../../types.js').FieldLibrary} lib */
+export function saveFieldLibrary(lib) {
+    try {
+        lib.updatedAt = new Date().toISOString();
+        localStorage.setItem('ne_field_library', JSON.stringify(lib));
+    } catch (e) {}
+}
+
+/**
+ * @param {string} fieldName
+ * @param {import('../../types.js').FieldLibraryEntry} entry
+ */
+export function addFieldToLibrary(fieldName, entry) {
+    var lib = loadFieldLibrary();
+    var now = new Date().toISOString();
+    entry.updatedAt = now;
+    if (!entry.createdAt) entry.createdAt = now;
+    if (!entry.usedByTemplates) entry.usedByTemplates = [];
+    lib.fields[fieldName] = entry;
+    saveFieldLibrary(lib);
+}
+
+/**
+ * @param {string} fieldName
+ * @returns {boolean}
+ */
+export function removeFieldFromLibrary(fieldName) {
+    var lib = loadFieldLibrary();
+    if (!lib.fields[fieldName]) return false;
+    var usedBy = lib.fields[fieldName].usedByTemplates || [];
+    if (usedBy.length > 0) {
+        console.warn('[NE] Cannot delete field', fieldName, '— used by templates:', usedBy);
+        return false;
+    }
+    delete lib.fields[fieldName];
+    saveFieldLibrary(lib);
+    return true;
+}
+
+/**
+ * @param {string} fieldName
+ * @returns {import('../../types.js').FieldLibraryEntry|null}
+ */
+export function getFieldFromLibrary(fieldName) {
+    var lib = loadFieldLibrary();
+    return lib.fields[fieldName] || null;
+}
+
+// ====== Reference Tracking ======
+
+/**
+ * @param {string} fieldName
+ * @param {string} templateId
+ */
+export function addTemplateRefToField(fieldName, templateId) {
+    var lib = loadFieldLibrary();
+    var entry = lib.fields[fieldName];
+    if (!entry) return;
+    if (!entry.usedByTemplates) entry.usedByTemplates = [];
+    if (entry.usedByTemplates.indexOf(templateId) === -1) {
+        entry.usedByTemplates.push(templateId);
+        saveFieldLibrary(lib);
+    }
+}
+
+/**
+ * @param {string} fieldName
+ * @param {string} templateId
+ */
+export function removeTemplateRefFromField(fieldName, templateId) {
+    var lib = loadFieldLibrary();
+    var entry = lib.fields[fieldName];
+    if (!entry || !entry.usedByTemplates) return;
+    var idx = entry.usedByTemplates.indexOf(templateId);
+    if (idx !== -1) {
+        entry.usedByTemplates.splice(idx, 1);
+        saveFieldLibrary(lib);
+    }
+}
+
+// ====== Card-Level Template Operations ======
+
+/**
+ * Clone a global template into a character card's dialogue templates.
+ * @param {string} charName
+ * @param {import('../../types.js').Template} template
+ * @returns {string} The dialogue template key
+ */
+export function cloneTemplateToCard(charName, template) {
+    var config = loadCardConfigSync(charName) || { _dialogueTemplates: {}, _templateConfig: {}, _version: 0 };
+    if (!config._dialogueTemplates) config._dialogueTemplates = {};
+
+    var now = new Date().toISOString();
+    var suffix = Math.random().toString(36).slice(2, 8);
+    var key = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
+
+    config._dialogueTemplates[key] = {
+        _templateId: template.id,
+        createdAt: now,
+        _locked: template._locked || false,
+        presetFields: (template.presetFields || []).slice(),
+        customFieldRefs: (template.customFieldRefs || []).slice(),
+        _state: 'synced'
+    };
+
+    saveCardConfig(charName, config);
+    return key;
+}
+
+/**
+ * Get active version (latest by createdAt) of a template within a card's dialogue templates.
+ * @param {Object<string, import('../../types.js').DialogueTemplate>} dialogueTemplates
+ * @param {string} templateId
+ * @returns {import('../../types.js').DialogueTemplate|null}
+ */
+export function getActiveVersion(dialogueTemplates, templateId) {
+    var matches = [];
+    Object.keys(dialogueTemplates).forEach(function(k) {
+        var t = dialogueTemplates[k];
+        if (t._templateId === templateId) matches.push(t);
+    });
+    if (matches.length === 0) return null;
+    matches.sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+    return matches[0];
+}
+
+/**
+ * Upgrade all non-locked characters pointing to the old latest version to the new version.
+ * Called after AI or user creates a new template version.
+ * @param {import('../../types.js').State} state
+ * @param {string} oldKey - The previous active version key
+ * @param {string} newKey - The new version key (just created)
+ * @param {string} [lockedCharName] - Optional: char locked, skip notification for them
+ */
+export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
+    if (!state || !state.characters) return;
+    var lockedNames = [];
+    Object.keys(state.characters).forEach(function(name) {
+        var charData = state.characters[name];
+        if (charData._templateKey === oldKey) {
+            if (charData._templateLocked) {
+                lockedNames.push(name);
+            } else {
+                charData._templateKey = newKey;
+            }
+        }
+    });
+    return lockedNames;
 }
 
