@@ -11,7 +11,6 @@ import { runtime } from '../core/runtime.js';
 import { showToast, PD } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
-import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { countTokens } from '../core/engine/text-utils.js';
@@ -131,24 +130,11 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
     return Math.max(tokenPressure, turnPressure);
 }
 function adjustDialogWindow() {
-    var cwRounds = 10;
-    try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
-    var minRounds = 6;
-    if (cwRounds < minRounds) cwRounds = minRounds;
-
-    var chat = runtime.getChat ? runtime.getChat() : [];
-    if (!chat || chat.length === 0) return;
-
     var overrideEnabled = false;
     try { var raw2 = localStorage.getItem('ne_settings'); if (raw2) { var s2 = JSON.parse(raw2); overrideEnabled = !!s2.dialogOverrideEnabled; } } catch (e) {}
     if (overrideEnabled) {
         runtime.maxContext = Number.MAX_SAFE_INTEGER;
     }
-
-    var windowStartIdx = computeWindowStartMsgId(chat, cwRounds);
-    if (windowStartIdx <= 0) return;
-
-    chat.splice(0, windowStartIdx + 1);
 }
 export function notifyVaultChanged() {
     try {

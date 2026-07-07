@@ -375,6 +375,38 @@ function bootNE(retries) {
     };
     window.__ne_llm_hook = globalThis.__ne_llm_hook;
 
+    globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
+        if (type === 'quiet') return;
+
+        var cwRounds = 10;
+        try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
+        var minRounds = 6;
+        if (cwRounds < minRounds) cwRounds = minRounds;
+
+        var rounds = 0;
+        var prevRole = null;
+        var cutoffIndex = -1;
+
+        for (var i = coreChat.length - 1; i >= 0; i--) {
+            var m = coreChat[i];
+            if (!m || m.is_system) continue;
+            var role = (m.role === 'user' || m.is_user) ? 'user' : 'assistant';
+
+            if (prevRole === 'user' && role === 'assistant') {
+                rounds++;
+                if (rounds >= cwRounds) {
+                    cutoffIndex = i;
+                    break;
+                }
+            }
+            prevRole = role;
+        }
+
+        if (cutoffIndex > 0) {
+            coreChat.splice(0, cutoffIndex + 1);
+        }
+    };
+
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
     });
