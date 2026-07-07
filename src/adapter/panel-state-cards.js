@@ -395,15 +395,25 @@ export function enterCardEditMode(editBtn) {
         span.outerHTML = editor;
     });
 
+    var charName = editBtn.getAttribute('data-char');
+
     editBtn.outerHTML =
         '<button class="ne-card-save-btn">' + t('Save') + '</button>' +
-        '<button class="ne-card-cancel-btn">' + t('Cancel') + '</button>';
+        '<button class="ne-card-cancel-btn">' + t('Cancel') + '</button>' +
+        '<button class="ne-card-delete-btn" style="background:#d32f2f;color:#fff;margin-left:2px;">' + t('Delete') + '</button>';
 
     var saveBtn = cardDiv.querySelector('.ne-card-save-btn');
     if (saveBtn) saveBtn.onclick = function(e) { e.stopPropagation(); saveCardFields(cardDiv); };
 
     var cancelBtn = cardDiv.querySelector('.ne-card-cancel-btn');
     if (cancelBtn) cancelBtn.onclick = function(e) { e.stopPropagation(); exitCardEditMode(cardDiv); };
+
+    var deleteBtn = cardDiv.querySelector('.ne-card-delete-btn');
+    if (deleteBtn) deleteBtn.onclick = async function(e) {
+        e.stopPropagation();
+        if (!await showConfirm(t('Delete character card?').replace('{CHAR}', charName), escapeHtml(charName) + ': ' + t('This will remove the character and all its state data. The LLM may re-extract it from future dialogue.'), t('Delete'), t('Cancel'), true)) return;
+        deleteCharacterCard(cardDiv, charName);
+    };
 }
 
 function saveCardFields(cardDiv) {
@@ -458,10 +468,30 @@ function exitCardEditMode(cardDiv) {
 
     var saveBtn = cardDiv.querySelector('.ne-card-save-btn');
     var cancelBtn = cardDiv.querySelector('.ne-card-cancel-btn');
+    var deleteBtn = cardDiv.querySelector('.ne-card-delete-btn');
     if (saveBtn) saveBtn.outerHTML = cardDiv._neOrigEditBtnHTML || '';
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
+    if (deleteBtn && deleteBtn.parentNode) deleteBtn.remove();
 
     cardDiv.classList.remove('ne-card-editing');
+}
+
+function deleteCharacterCard(cardDiv, charName) {
+    var stored = _pendingInlineStorage;
+    if (!stored || !stored.vault) return;
+    var vault = stored.vault;
+    var c = vault.content || {};
+    var state = c.state || {};
+    var chars = state.characters || {};
+
+    delete chars[charName];
+    state.characters = chars;
+    c.state = state;
+
+    var getChatId = stored.getChatId;
+    write(getChatId(), vault).then(function() {
+        busEmit('vault:updated', { getChatId: getChatId });
+    });
 }
 
 function toggleInlineEdit(row, entryId, entryType) {

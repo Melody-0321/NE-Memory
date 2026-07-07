@@ -15,7 +15,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.',
         'Restore to version v{VER}?': 'Restore to version v{VER}?', 'Confirm delete v{VER}?': 'Confirm delete v{VER}?',
-        'Restore': 'Restore', 'Delete': 'Delete', 'Delete this entry? This cannot be undone.': 'Delete this entry? This cannot be undone.', 'Confirm': 'Confirm', 'Restore failed': 'Restore failed',
+        'Restore': 'Restore', 'Delete': 'Delete', 'Delete this entry? This cannot be undone.': 'Delete this entry? This cannot be undone.', 'Delete character card?': 'Delete character card?', 'This will remove the character and all its state data. The LLM may re-extract it from future dialogue.': 'This will remove the character and all its state data. The LLM may re-extract it from future dialogue.', 'Confirm': 'Confirm', 'Restore failed': 'Restore failed',
         'Delete failed': 'Delete failed', 'No history yet': 'No history yet', 'Failed to load vault:': 'Failed to load vault:',
         'Failed to load history': 'Failed to load history',
         'Loading...': 'Loading...', 'Loading history...': 'Loading history...', 'updating...': 'updating...',
@@ -149,7 +149,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             '确定清除所有状态？\n\n下次对话时 LLM 将从角色卡和世界书重新生成。',
         'Restore to version v{VER}?': '确定恢复到版本 v{VER}？', 'Confirm delete v{VER}?': '确定删除 v{VER}？',
-        'Restore': '恢复', 'Delete': '删除', 'Delete this entry? This cannot be undone.': '确定删除此条目？此操作无法撤销。', 'Confirm': '确认', 'Restore failed': '恢复失败', 'Delete failed': '删除失败',
+        'Restore': '恢复', 'Delete': '删除', 'Delete this entry? This cannot be undone.': '确定删除此条目？此操作无法撤销。', 'Delete character card?': '确定删除角色卡？', 'This will remove the character and all its state data. The LLM may re-extract it from future dialogue.': '该角色及其所有状态数据将被移除。LLM 可能在后续对话中重新提取该角色。', 'Confirm': '确认', 'Restore failed': '恢复失败', 'Delete failed': '删除失败',
         'No history yet': '暂无历史', 'Failed to load vault:': '加载 Vault 失败：', 'Failed to load history': '加载历史失败',
         'Opening Summary (always visible)': '开场设定（始终可见）', 'Current Scene': '当前场景',
         'Long-term Memory (LTM) \u2014 Direct': '长期记忆 (LTM) \u2014 直接可见',
@@ -275,7 +275,7 @@ export const NARRATIVE_I18N = {
         'Confirm clear all state?\n\nLLM will regenerate from character card and world book on next turn.':
             '確定清除所有狀態？\n\n下次對話時 LLM 將從角色卡和世界書重新生成。',
         'Restore to version v{VER}?': '確定恢復到版本 v{VER}？', 'Confirm delete v{VER}?': '確定刪除 v{VER}？',
-        'Restore': '恢復', 'Delete': '刪除', 'Delete this entry? This cannot be undone.': '確定刪除此條目？此操作無法撤銷。', 'Confirm': '確認', 'Restore failed': '恢復失敗', 'Delete failed': '刪除失敗',
+        'Restore': '恢復', 'Delete': '刪除', 'Delete this entry? This cannot be undone.': '確定刪除此條目？此操作無法撤銷。', 'Delete character card?': '確定刪除角色卡？', 'This will remove the character and all its state data. The LLM may re-extract it from future dialogue.': '該角色及其所有狀態資料將被移除。LLM 可能在後續對話中重新提取該角色。', 'Confirm': '確認', 'Restore failed': '恢復失敗', 'Delete failed': '刪除失敗',
         'No history yet': '暫無歷史', 'Failed to load vault:': '載入 Vault 失敗：', 'Failed to load history': '載入歷史失敗',
         'Opening Summary (always visible)': '開場設定（始終可見）', 'Current Scene': '當前場景',
         'Long-term Memory (LTM) \u2014 Direct': '長期記憶 (LTM) \u2014 直接可見',
