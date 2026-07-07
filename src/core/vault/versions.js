@@ -67,11 +67,10 @@ export async function restoreSnapshot(chatId, version) {
         const tx = db.transaction(SNAPSHOT_STORE, 'readonly');
         const store = tx.objectStore(SNAPSHOT_STORE);
         const req = store.get(snapshotId);
-        req.onsuccess = async () => {
-                if (!req.result) { resolve(null); return; }
-                const vault = req.result.data;
-                await write(chatId, vault);
-                resolve(vault);
+        req.onsuccess = () => {
+            if (!req.result) { resolve(null); return; }
+            var vault = req.result.data;
+            write(chatId, vault).then(function() { resolve(vault); }).catch(function(e) { reject(e); });
         };
         req.onerror = () => reject(req.error);
     });

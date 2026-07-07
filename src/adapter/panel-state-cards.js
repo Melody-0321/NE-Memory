@@ -629,7 +629,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
 
             var detailRows = '';
             groupStms.forEach(function(stm, si) {
-                detailRows += renderStmRow(stm, { fontSize: '0.8em', no: si + 1 });
+                detailRows += renderStmRow(stm, { showEdit: true, fontSize: '0.8em', no: si + 1 });
             });
             if (detailRows) {
                 tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + groupId + '">'
@@ -655,7 +655,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             var stm = stmIndexMap && stmIndexMap[stmId];
             if (stm) {
                 var subNo = parseInt(stmId.replace('stm_', ''), 10) || (si + 1);
-                detailRows += renderStmRow(stm, { fontSize: '0.8em', no: subNo });
+                detailRows += renderStmRow(stm, { showEdit: true, fontSize: '0.8em', no: subNo });
             }
         });
         if (detailRows) { tbody.innerHTML += '<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'; }
