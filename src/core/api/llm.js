@@ -8,6 +8,38 @@ import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { runtime } from '../runtime.js';
 import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
 import { recordDailyToken } from '../engine/token-stats.js';
+
+function getConfiguredTimeoutSec(fallbackSec) {
+    fallbackSec = fallbackSec || 120;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var settings = JSON.parse(raw);
+            if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
+                return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
+            }
+        }
+    } catch (e) {}
+    return fallbackSec;
+}
+
+export function validateApiKey(key) {
+    if (!key) return { valid: true, warning: null };
+    var issues = [];
+    if (/[^\x20-\x7E]/.test(key)) {
+        issues.push('API Key contains non-ASCII characters (e.g. Chinese punctuation, fullwidth spaces)');
+    }
+    if (key.startsWith('sk-') && key.length < 20) {
+        issues.push('API Key starts with sk- but seems too short (length < 20)');
+    }
+    if (key !== key.trim()) {
+        issues.push('API Key has leading/trailing spaces — auto-trimmed on save');
+    }
+    return {
+        valid: issues.length === 0,
+        warning: issues.length > 0 ? issues.join('; ') : null
+    };
+}
 import { countTokens } from '../engine/text-utils.js';
 
 export let telemetryBuffer = [];
@@ -355,7 +387,7 @@ export async function testSecondaryApiConnection(config) {
         var result = await callCustomAPI(config, [
             { role: 'system', content: 'Respond with OK only. No other text.' },
             { role: 'user', content: 'ping' }
-        ], { timeout: 30, temperature: 0, max_tokens: 64 });
+        ], { timeout: getConfiguredTimeoutSec(120), temperature: 0, max_tokens: 64 });
         if (!result.content || result.content.trim().length === 0) {
             console.warn('[NE] testSecondaryApiConnection — raw response:', JSON.stringify(result._raw).substring(0, 500));
             return { success: false, connectionType: 'ping', models: [], model: config.model, modelInList: null, error: 'API returned empty response. Check browser console (F12) for raw response data.', errorType: 'empty_response' };
@@ -382,12 +414,15 @@ export async function testSecondaryApiConnection(config) {
 
 export async function sendSecondaryTestMessage(config) {
     if (!config || !config.url) throw new Error('No URL configured');
-    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 128 });
+    var startMs = Date.now();
+    var timeoutSec = getConfiguredTimeoutSec(120);
+    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: timeoutSec, temperature: 0.0, max_tokens: 128 });
+    var latencyMs = Date.now() - startMs;
     if (!result.content || result.content.trim().length === 0) {
         console.warn('[NE] sendSecondaryTestMessage — raw response:', JSON.stringify(result._raw).substring(0, 500));
         throw new Error('API returned empty response. Check browser console (F12) for raw response data.');
     }
-    return result.content;
+    return { content: result.content, latencyMs: latencyMs };
 }
 
 var _proxyNotified = false;
@@ -405,7 +440,7 @@ async function callCustomAPI(config, messages, options) {
         ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
         ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {})
     });
-    const timeoutSec = options.timeout || 120;
+    const timeoutSec = options.timeout || getConfiguredTimeoutSec(120);
 
     // --- inner: attempt a single fetch ---
     function attemptFetch(targetUrl) {
@@ -439,42 +474,69 @@ async function callCustomAPI(config, messages, options) {
         return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
     }
 
-    var proxyAttempted = false;
-
-    // 1. Try direct
-    try {
-        return await attemptFetch(config.url);
-    } catch (e) {
-        if (!isNetworkError(e)) {
-            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
-            throw e;
-        }
-        console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
-        proxyAttempted = true;
+    function shouldRetry(e) {
+        if (e.name === 'AbortError') return true;
+        var msg = e.message || '';
+        if (/NetworkError|Failed to fetch|Load[_ ]?[Ff]ailed/i.test(msg)) return true;
+        if (/API error: 5\d\d/.test(msg)) return true;
+        if (/API error: 401|403/.test(msg)) return false;
+        if (/API error: 4\d\d/.test(msg)) return false;
+        return false;
     }
 
-    // 2. Retry through ST CORS proxy
-    try {
-        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
-        var result = await attemptFetch(proxyUrl);
-        result._viaProxy = true;
-        if (!_proxyNotified) {
-            _proxyNotified = true;
-            console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
+    var maxRetries = 2;
+    var retryDelayMs = 1000;
+    var proxyAttempted = false;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        var lastError = null;
+
+        // 1. Try direct
+        try {
+            return await attemptFetch(config.url);
+        } catch (e) {
+            lastError = e;
+            if (!isNetworkError(e)) {
+                if (e.name === 'AbortError') lastError = new Error('Request timed out after ' + timeoutSec + 's');
+                if (!shouldRetry(lastError)) throw lastError;
+            } else {
+                console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
+                proxyAttempted = true;
+            }
         }
-        return result;
-    } catch (e2) {
-        if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
-            throw new Error(
-                'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content). ' +
-                'ST CORS proxy is disabled or unreachable. Enable it:\n' +
-                '1. Open SillyTavern/config.yaml\n' +
-                '2. Set enableCorsProxy: true\n' +
-                '3. Restart SillyTavern'
-            );
+
+        // 2. Retry through ST CORS proxy
+        try {
+            var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
+            var result = await attemptFetch(proxyUrl);
+            result._viaProxy = true;
+            if (!_proxyNotified) {
+                _proxyNotified = true;
+                console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
+            }
+            return result;
+        } catch (e2) {
+            lastError = e2;
+            if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
+                lastError = new Error(
+                    'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content). ' +
+                    'ST CORS proxy is disabled or unreachable. Enable it:\n' +
+                    '1. Open SillyTavern/config.yaml\n' +
+                    '2. Set enableCorsProxy: true\n' +
+                    '3. Restart SillyTavern'
+                );
+            } else if (e2.name === 'AbortError') {
+                lastError = new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
+            }
+
+            if (shouldRetry(lastError) && attempt < maxRetries) {
+                var delay = retryDelayMs * Math.pow(2, attempt);
+                console.warn('[NE] API call attempt ' + (attempt + 1) + ' failed, retrying in ' + delay + 'ms:', lastError.message);
+                await new Promise(function (r) { setTimeout(r, delay); });
+                continue;
+            }
+            throw lastError;
         }
-        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
-        throw e2;
     }
 }
 
@@ -482,13 +544,13 @@ async function callTavernHelper(messages, options) {
     // Note: TH API does not support AbortController. Promise.race timeout
     // rejects the caller's promise but the underlying HTTP request continues.
     // callCustomAPI correctly uses AbortController for the secondary API path.
-    var timeoutMs = (options.timeout || 120) * 1000;
+    var timeoutMs = (options.timeout || getConfiguredTimeoutSec(120)) * 1000;
 
     var raceWithTimeout = function(promise) {
         return Promise.race([
             promise,
             new Promise(function(_, reject) {
-                setTimeout(function() { reject(new Error('Timeout after ' + (options.timeout || 120) + 's')); }, timeoutMs);
+                setTimeout(function() { reject(new Error('Timeout after ' + (options.timeout || getConfiguredTimeoutSec(120)) + 's')); }, timeoutMs);
             })
         ]);
     };

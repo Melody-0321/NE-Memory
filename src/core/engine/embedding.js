@@ -1,6 +1,20 @@
 
 var EMBEDDING_DIM = 1536;
 
+function getConfiguredTimeoutSec(fallbackSec) {
+    fallbackSec = fallbackSec || 120;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var settings = JSON.parse(raw);
+            if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
+                return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
+            }
+        }
+    } catch (e) {}
+    return fallbackSec;
+}
+
 function fetchWithTimeout(url, options, timeoutMs) {
     var controller = new AbortController();
     var timer = setTimeout(function () { controller.abort(); }, timeoutMs);
@@ -56,7 +70,7 @@ export async function computeEmbedding(text) {
                 'Authorization': 'Bearer ' + (cfg.key || '')
             },
             body: JSON.stringify({ model: cfg.model, input: text })
-        }, 30000);
+        }, getConfiguredTimeoutSec(120) * 1000);
         if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
         var data = await resp.json();
         var vec = data.data && data.data[0] && data.data[0].embedding;
@@ -87,7 +101,7 @@ export async function computeEmbeddings(texts) {
                     'Authorization': 'Bearer ' + (cfg.key || '')
                 },
                 body: JSON.stringify({ model: cfg.model, input: batch })
-            }, 30000);
+            }, getConfiguredTimeoutSec(120) * 1000);
             if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
             var data = await resp.json();
             var embeddings = data.data;
@@ -129,7 +143,7 @@ export async function testEmbeddingApiConnection(cfg) {
                 'Authorization': 'Bearer ' + (testCfg.key || '')
             },
             body: JSON.stringify({ model: testCfg.model, input: 'test' })
-        }, 10000);
+        }, Math.min(getConfiguredTimeoutSec(120) * 250, 30000));
         if (!resp.ok) {
             var errText = '';
             try { errText = await resp.text(); } catch (e) {}

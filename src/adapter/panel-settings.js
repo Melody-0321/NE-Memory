@@ -1,6 +1,6 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
-import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableModels,
+import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableModels, validateApiKey,
   saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
@@ -81,7 +81,8 @@ export function renderSettingsTab() {
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
-        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-...(local LLM leave blank)" value="' + escapeHtml(secApi.key || '') + '"></div>' +
+        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-...(local LLM leave blank)" value="' + escapeHtml(secApi.key || '') + '">' +
+        '<div id="nes_secondary_key_warn" class="ne-key-validation-warn" style="display:none;color:var(--yellow40,#e6a817);font-size:0.75em;margin-top:2px;"></div></div>' +
         '<div><label>' + t('Model') + '</label>' +
         '<div id="nes_secondary_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
           '<select id="nes_secondary_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
@@ -92,6 +93,11 @@ export function renderSettingsTab() {
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Supports any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio, LocalAI. Leave API Key empty for local LLMs.') + '</div>' +
         '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
         '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
+        '<div class="ne-settings-row" style="margin-top:6px;display:flex;align-items:center;gap:6px;">' +
+        '<label for="nes_api_timeout" style="margin:0;">' + t('Request timeout') + ' (s)</label>' +
+        '<input type="number" id="nes_api_timeout" min="10" max="600" step="10" placeholder="120" style="width:80px;text-align:right;">' +
+        '<span style="font-size:0.75em;color:var(--grey50);">' + t('Applies to Connect detection, Test Message, normal calls, and Embedding.') + '</span>' +
+        '</div>' +
         '<div style="margin:10px 0 4px;">' +
         '<label><input type="checkbox" id="nes_api_channels_enabled" ' + (channelsEnabled ? 'checked' : '') + '> <span>' + t('Split API by operation (STM / LTM / State)') + '</span></label>' +
         '</div>' +
@@ -276,7 +282,7 @@ export function renderSettingsTab() {
     var urlEl = panelById('nes_secondary_url');
     if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
     var keyEl = panelById('nes_secondary_key');
-    if (keyEl) keyEl.onchange = function () { saveSecApiOnly(); };
+    if (keyEl) { keyEl.onchange = function () { saveSecApiOnly(); validateAndShowKeyWarn('nes_secondary', keyEl.value); }; keyEl.onblur = function () { validateAndShowKeyWarn('nes_secondary', keyEl.value); }; }
     var modelEl = panelById('nes_secondary_model_text');
     if (modelEl) modelEl.onchange = function () { saveSecApiOnly(); };
     var modelSel = panelById('nes_secondary_model_select');
@@ -365,14 +371,32 @@ export function renderSettingsTab() {
             var cfg = { url: panelById('nes_secondary_url').value.trim(), key: panelById('nes_secondary_key').value.trim(), model: getModelValue('nes_secondary') };
             if (!cfg.url) { alert(t('Please enter an API URL first.')); return; }
             if (testBtn) testBtn.disabled = true;
-            sendSecondaryTestMessage(cfg).then(function () {
-                showToast(t('API connection successful!'), 'success');
+            sendSecondaryTestMessage(cfg).then(function (r) {
+                var latencySec = (r && typeof r.latencyMs === 'number') ? (r.latencyMs / 1000).toFixed(1) : '?';
+                showToast(t('API connection successful!') + ' (' + latencySec + 's)', 'success');
                 if (testBtn) testBtn.disabled = false;
             }).catch(function (e) {
                 showToast(t('API connection failed. Check browser console (F12) for details.'), 'error');
                 if (testBtn) testBtn.disabled = false;
             });
         };
+        var timeoutEl = panelById('nes_api_timeout');
+        if (timeoutEl) {
+            var rawSettings = localStorage.getItem('ne_settings');
+            var settings = {};
+            try { if (rawSettings) settings = JSON.parse(rawSettings); } catch (e) {}
+            timeoutEl.value = settings.apiTimeoutMs ? Math.floor(settings.apiTimeoutMs / 1000) : 120;
+            timeoutEl.onchange = function () {
+                var val = parseInt(timeoutEl.value, 10);
+                if (isNaN(val) || val < 10) val = 120;
+                try {
+                    var raw = localStorage.getItem('ne_settings');
+                    var s = raw ? JSON.parse(raw) : {};
+                    s.apiTimeoutMs = val * 1000;
+                    localStorage.setItem('ne_settings', JSON.stringify(s));
+                } catch (e) {}
+            };
+        }
     // API channels toggle
     var chToggle = panelById('nes_api_channels_enabled');
     if (chToggle) {
@@ -490,6 +514,24 @@ function getModelValue(prefix) {
     var txt = panelById(prefix + '_model_text') || panelById(prefix + '_model');
     if (txt) return txt.value.trim();
     return '';
+}
+
+function validateAndShowKeyWarn(prefix, keyValue) {
+    var warnEl = panelById(prefix + '_key_warn');
+    if (!warnEl) return;
+    if (!keyValue || keyValue.trim() === '') {
+        warnEl.style.display = 'none';
+        warnEl.textContent = '';
+        return;
+    }
+    var trimmed = keyValue.trim();
+    if (trimmed.startsWith('sk-') || trimmed.length >= 20) {
+        warnEl.style.display = 'none';
+        warnEl.textContent = '';
+    } else {
+        warnEl.style.display = '';
+        warnEl.textContent = t('API key format may be incorrect. Most cloud APIs use keys starting with "sk-".');
+    }
 }
 
 function populateModelSelect(prefix, models, currentModel) {
