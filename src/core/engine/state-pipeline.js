@@ -1,5 +1,5 @@
 import { read } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -30,10 +30,74 @@ function buildCharacterCardSection(vault) {
     return '## Character Cards\n' + lines.join('\n') + '\n';
 }
 
+/**
+ * Collect all managed field names from state, derived dynamically from field definitions.
+ * Replaces the old hardcoded list. Returns field names in consistent order.
+ * @param {import('../types.js').State|null} state
+ * @returns {string[]}
+ */
+function collectAllManagedFields(state) {
+    var fieldSet = {};
+    // Collect from character definitions
+    Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).forEach(function(fk) {
+        if (fk !== 'name') fieldSet[fk] = true;
+    });
+    // Also collect from PC schema (shared fields)
+    Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).forEach(function(fk) {
+        if (fk !== 'name') fieldSet[fk] = true;
+    });
+    return Object.keys(fieldSet).sort();
+}
+
+/**
+ * Get layer==='static' field names from scheme definitions.
+ * Used by findNewCharacterNames and newCharHint generation.
+ * @returns {string[]}
+ */
+function getStaticFieldNames() {
+    var names = [];
+    Object.keys(ALL_PREDEFINED_FIELDS).forEach(function(fk) {
+        var def = ALL_PREDEFINED_FIELDS[fk];
+        if (def.layer === 'static' && !def._system) names.push(fk);
+    });
+    return names;
+}
+
+/**
+ * Build a new-character example JSON string for the prompt,
+ * dynamically generated from layer==='static' field definitions.
+ * @param {string} name - character name for the example
+ * @param {boolean} isEn - language flag
+ * @returns {string}
+ */
+function buildNewCharacterExample(name, isEn) {
+    var staticNames = getStaticFieldNames();
+    var sampleName = name || (isEn ? 'Alice' : '安然');
+    var sampleFields = {};
+    staticNames.forEach(function(fk) {
+        if (isEn) {
+            if (fk === 'gender_age') sampleFields[fk] = 'Female,26';
+            else if (fk === 'physique') sampleFields[fk] = '170cm tall, athletic build, short black hair';
+            else if (fk === 'occupation') sampleFields[fk] = 'novelist';
+            else if (fk === 'personality') sampleFields[fk] = 'confident,sharp';
+            else if (fk === 'clothing_build') sampleFields[fk] = 'grey tank top, black shorts';
+            else sampleFields[fk] = '';
+        } else {
+            if (fk === 'gender_age') sampleFields[fk] = '女,26岁';
+            else if (fk === 'physique') sampleFields[fk] = '约170cm,假小子风格,黑色短发';
+            else if (fk === 'occupation') sampleFields[fk] = '网络小说作者';
+            else if (fk === 'personality') sampleFields[fk] = '自信、毒舌';
+            else if (fk === 'clothing_build') sampleFields[fk] = '运动背心、短款运动裤';
+            else sampleFields[fk] = '';
+        }
+    });
+    return JSON.stringify({ state_changes: { characters: {} } }).replace('"characters":{}', '"characters":{"' + sampleName + '":' + JSON.stringify(sampleFields) + '}');
+}
+
 function findNewCharacterNames(vault) {
     var state = (vault && vault.content && vault.content.state) || {};
     var chars = state.characters || {};
-    var staticFields = ['gender_age', 'physique', 'occupation', 'personality', 'clothing_build'];
+    var staticFields = getStaticFieldNames();
     var newNames = [];
     Object.keys(chars).forEach(function(name) {
         var card = chars[name];
@@ -163,13 +227,18 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         return '[' + i + '] [' + role + '] ' + name + (m.content || '');
     }).join('\n\n');
 
-    var stateTable = buildStateInjectionTable(content.state || {}, messages, undefined, content);
+    var state = (content.state) || {};
+    var stateTable = buildStateInjectionTable(state, messages, undefined, content);
     var charCard = buildCharacterCardSection(vault);
 
+    var managedFields = collectAllManagedFields(state);
+    var managedList = managedFields.join(', ');
+    var staticNames = getStaticFieldNames();
+
     var rulesStaticEn = '\n## Field Rules\n' +
-        '- You manage: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, past_experience, current_mood, inner_thoughts.\n' +
+        '- You manage: ' + managedList + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
-        '- Use the field key shown in parentheses in the table above (e.g. gender_age) as the JSON path.\n' +
+        '- Use the field key shown in parentheses in the table above (e.g. ' + (managedFields[0] || 'gender_age') + ') as the JSON path.\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
@@ -179,9 +248,9 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '\n';
 
     var rulesStaticZh = '\n## 字段规则\n' +
-        '- \u4f60\u7ba1\u7406: gender_age, physique, occupation, personality, clothing_build, status, injuries, status_effects, past_experience, current_mood, inner_thoughts\u3002\n' +
+        '- \u4f60\u7ba1\u7406: ' + managedList + '\u3002\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- JSON 路径使用上方表格括号内的字段名（如 gender_age）。\n' +
+        '- JSON 路径使用上方表格括号内的字段名（如 ' + (managedFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
@@ -206,29 +275,20 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     if (lang === 'en') {
         var newCharHintEn = '';
         if (newNames.length > 0) {
-            if (worldBook) {
-                newCharHintEn = '\n## New Characters (MUST fill)\n' +
-                    'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
-                    'You MUST output state_changes.characters.<name> containing:\n' +
-                    '- gender_age: extract sex + age only from World Book character descriptions above.\n' +
-                    '- physique: extract height, build, body features, hair from World Book character descriptions above.\n' +
-                    '- occupation: extract job/role from World Book above.\n' +
-                    '- personality: extract 2-4 personality traits from World Book above.\n' +
-                    '- clothing_build: infer ONE outfit matching the current scene from World Book wardrobe entries.\n\n' +
-                    'Correct example:\n' +
-                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁","physique":"170cm tall, athletic build, short black hair","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
-            } else {
-                newCharHintEn = '\n## New Characters (MUST fill)\n' +
-                    'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
-                    'You MUST output state_changes.characters.<name> containing:\n' +
-                    '- gender_age: extract sex + age only from Character Cards above.\n' +
-                    '- physique: extract height, build, body features, hair from Character Cards above.\n' +
-                    '- occupation: extract job/role from Character Cards above.\n' +
-                    '- personality: extract 2-4 personality traits from Character Cards above.\n' +
-                    '- clothing_build: infer ONE outfit matching the current scene.\n\n' +
-                    'Correct example:\n' +
-                    '{"state_changes":{"characters":{"Alice":{"gender_age":"女,26岁","physique":"170cm tall, athletic build, short black hair","occupation":"novelist","personality":"confident,sharp","clothing_build":"grey tank top, black shorts"}}}}\n';
-            }
+            var sourceLabel = worldBook ? 'World Book' : 'Character Cards';
+            var staticFieldsDesc = staticNames.map(function(fn) {
+                var def = ALL_PREDEFINED_FIELDS[fn];
+                var desc = '- ' + fn;
+                if (def && def.max_length) desc += ': max ' + def.max_length + ' chars';
+                return desc;
+            }).join('\n');
+            var example = buildNewCharacterExample(newNames[0], true);
+            newCharHintEn = '\n## New Characters (MUST fill)\n' +
+                'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
+                'You MUST output state_changes.characters.<name> containing:\n' +
+                staticFieldsDesc + '\n' +
+                (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above.\n' : 'Extract values from ' + sourceLabel + ' above.\n') +
+                '\nCorrect example:\n' + example + '\n';
         }
         return {
             system: [
@@ -240,29 +300,20 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     }
     var newCharHintZh = '';
     if (newNames.length > 0) {
-        if (worldBook) {
-            newCharHintZh = '\n## 新角色（必须填充）\n' +
-                '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
-                '你必须输出 state_changes.characters.<name> 包含：\n' +
-                '- gender_age：从上方 World Book 中提取性别/年龄（不含体型，体型放入 physique）。\n' +
-                '- physique：从上方 World Book 的角色外貌描述中提取身高/体型/外貌特征。\n' +
-                '- occupation：从上方 World Book 中提取职业/身份。\n' +
-                '- personality：从上方 World Book 中提取 2-4 个性格特质。\n' +
-                '- clothing_build：根据当前场景从 World Book 穿着设定中推断一套最匹配的穿着。\n\n' +
-                '正确示例：\n' +
-                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁","physique":"约170cm,假小子风格,黑色短发","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
-        } else {
-            newCharHintZh = '\n## 新角色（必须填充）\n' +
-                '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
-                '你必须输出 state_changes.characters.<name> 包含：\n' +
-                '- gender_age：从上方角色卡中提取性别/年龄（不含体型）。\n' +
-                '- physique：从上方角色卡中提取身高/体型/外貌特征。\n' +
-                '- occupation：从上方角色卡中提取职业/身份。\n' +
-                '- personality：从上方角色卡中提取 2-4 个性格特质。\n' +
-                '- clothing_build：根据当前场景推断一套最匹配的穿着。\n\n' +
-                '正确示例：\n' +
-                '{"state_changes":{"characters":{"安然":{"gender_age":"女,26岁","physique":"约170cm,假小子风格,黑色短发","occupation":"网络小说作者","personality":"自信、毒舌","clothing_build":"运动背心、短款运动裤"}}}}\n';
-        }
+        var sourceLabelZh = worldBook ? 'World Book' : '角色卡';
+        var staticFieldsDescZh = staticNames.map(function(fn) {
+            var def = ALL_PREDEFINED_FIELDS[fn];
+            var desc = '- ' + fn;
+            if (def && def.max_length) desc += '：最长 ' + def.max_length + ' 字符';
+            return desc;
+        }).join('\n');
+        var exampleZh = buildNewCharacterExample(newNames[0], false);
+        newCharHintZh = '\n## 新角色（必须填充）\n' +
+            '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
+            '你必须输出 state_changes.characters.<name> 包含：\n' +
+            staticFieldsDescZh + '\n' +
+            (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取。\n' : '从上方 ' + sourceLabelZh + ' 中提取。\n') +
+            '\n正确示例：\n' + exampleZh + '\n';
     }
     return {
         system: [
