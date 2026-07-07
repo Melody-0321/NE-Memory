@@ -530,15 +530,8 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
         template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
     } else if (schemeKey && state.npc_schemes && state.npc_schemes[schemeKey]) {
         var scheme = state.npc_schemes[schemeKey];
-        var fieldNames = [];
-        (scheme.required || []).forEach(function(f) { if (fieldNames.indexOf(f) === -1) fieldNames.push(f); });
-        (scheme.optional || []).forEach(function(f) { if (fieldNames.indexOf(f) === -1) fieldNames.push(f); });
-        template = {};
-        fieldNames.forEach(function(fn) {
-            if (DEFAULT_CHARACTER_SCHEMA.npc.fields[fn]) {
-                template[fn] = DEFAULT_CHARACTER_SCHEMA.npc.fields[fn];
-            }
-        });
+        var norm = normalizeScheme(scheme);
+        template = norm || DEFAULT_CHARACTER_SCHEMA.npc.fields;
     } else {
         template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
     }
@@ -643,6 +636,34 @@ export function mergeStateChanges(state, validatedChanges) {
             hasChanges = true;
             return;
         }
+        // 静态字段保护：已有非空值的 layer:'static' 字段不允许 LLM 覆盖
+        if (parts[0] === 'characters' && parts.length >= 4) {
+            var staticCharName = parts[1];
+            var staticFieldName = parts[3];
+            var existingVal = (newState.characters && newState.characters[staticCharName]) ? newState.characters[staticCharName][staticFieldName] : undefined;
+            var isExistingNonEmpty = existingVal !== undefined && existingVal !== null && existingVal !== '' &&
+                (typeof existingVal !== 'number' || existingVal !== 0);
+            if (isExistingNonEmpty) {
+                var resolvedObj = resolveFieldDef(staticFieldName);
+                if (resolvedObj.def && resolvedObj.def.layer === 'static') {
+                    console.warn('[NE] Static field protected: characters.' + staticCharName + '.' + staticFieldName + ' layer=static, ignoring LLM overwrite');
+                    return;
+                }
+            }
+        }
+        if (path.startsWith('factions.') || path.startsWith('quests.')) {
+            var topPathParts = path.split('.');
+            var topFieldName = topPathParts.length >= 2 ? topPathParts[topPathParts.length - 1] : '';
+            var topResolvedObj = resolveFieldDef(topFieldName);
+            if (topResolvedObj.def && topResolvedObj.def.layer === 'static') {
+                var topExistingVal = getNestedValue(newState, path);
+                var topIsExistingNonEmpty = topExistingVal !== undefined && topExistingVal !== null && topExistingVal !== '';
+                if (topIsExistingNonEmpty) {
+                    console.warn('[NE] Static field protected: ' + path + ' layer=static, ignoring LLM overwrite');
+                    return;
+                }
+            }
+        }
         current[lastKey] = flattened[path];
         hasChanges = true;
     });
@@ -663,13 +684,11 @@ export function getEffectiveSchema(vault) {
 }
 
 // Fields injected for PC — derived from DEFAULT_CHARACTER_SCHEMA.protagonist
+// @deprecated — use getCharacterInjectionFields(state, name) instead
 /** @type {string[]} */
 export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
 
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
-
-// Static field categories — used by buildStateInjectionTable to annotate unfilled required fields
-var STATIC_FIELD_CATEGORIES = { gender_age: true, physique: true, occupation: true, personality: true };
 
 /**
  * @param {import('../../types.js').State} state
@@ -685,6 +704,24 @@ export function getNpcInjectionFields(state, name) {
     var norm = normalizeScheme(scheme);
     if (norm) return Object.keys(norm);
     return Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).filter(function(k) { return k !== 'name'; });
+}
+
+/**
+ * Dynamically resolve PC injection fields from current PC template or default.
+ * Replaces the static PC_INJECTION_FIELDS constant.
+ * @param {import('../../types.js').State|null} state
+ * @param {string} name
+ * @returns {string[]}
+ */
+export function getCharacterInjectionFields(state, name) {
+    var charData = (state && state.characters && state.characters[name]) || {};
+    var isPC = (state && state.protagonist_name && name === state.protagonist_name) ||
+        (charData._role === 'protagonist');
+    if (!isPC) return getNpcInjectionFields(state, name);
+    if (charData._templateKey) {
+        return Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).filter(function(k) { return k !== 'name'; });
+    }
+    return Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).filter(function(k) { return k !== 'name'; });
 }
 
 /**
@@ -740,26 +777,11 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 
         // Active characters
         if (activeCards.length > 0) {
-            if (state && state.npc_schemes && Object.keys(state.npc_schemes).length > 1) {
-                parts.push('=== NPC Schemes Available ===');
-                Object.keys(state.npc_schemes).forEach(function(sk) {
-                    var s = state.npc_schemes[sk];
-                    parts.push(sk + ': ' + (s.description || '') + ' (required: ' + (s.required || []).join(', ') + ', optional: ' + (s.optional || []).join(', ') + ')');
-                });
-                parts.push('');
-            }
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
                 var isPC = (item.name === protagonistName) || (item.card._role === 'protagonist');
-                var cardType = isPC ? 'protagonist' : 'npc';
-                var fields = isPC ? PC_INJECTION_FIELDS : getNpcInjectionFields(state, item.name);
-                var requiredSet = {};
-                var schema = DEFAULT_CHARACTER_SCHEMA[cardType];
-                if (schema && schema.fields) {
-                    Object.keys(schema.fields).forEach(function(k) {
-                        if (schema.fields[k].required) requiredSet[k] = true;
-                    });
-                }
+                var fields = isPC ? getCharacterInjectionFields(state, item.name) : getNpcInjectionFields(state, item.name);
+                var fieldDefs = isPC ? DEFAULT_CHARACTER_SCHEMA.protagonist.fields : DEFAULT_CHARACTER_SCHEMA.npc.fields;
 
                 var label = isPC ? '[PC] ' : '[NPC] ';
                 parts.push(label + '[' + item.name + ']');
@@ -769,15 +791,18 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                     var valStr = (fv === undefined || fv === null || fv === '') ? '(empty)' : String(fv);
                     var isEmpty = (fv === undefined || fv === '' || (fk === 'affection' && Number(fv) === 0));
                     var suffix = '';
+                    var fieldDef = fieldDefs[fk] || {};
+                    if (fieldDef._deprecated) continue;
                     if (fk === 'status') suffix = ' (enum: 活跃/非活跃/已死亡/已归隐/已离去)';
                     else if (fk === 'affection') suffix = ' (0-100)';
-                    else if (fk === 'past_experience') suffix = ' (增量追加)';
+                    else if (fieldDef.type === 'enum' && fieldDef.values) suffix = ' (enum: ' + fieldDef.values.join('/') + ')';
+                    else if (fieldDef.type === 'number' && fieldDef.min !== undefined && fieldDef.max !== undefined) suffix = ' (' + fieldDef.min + '-' + fieldDef.max + ')';
                     var translatedLabel = t_field(fk);
-                    if (requiredSet[fk] && isEmpty) {
+                    if (fieldDef.required && isEmpty) {
                         suffix = ' (未填)' + suffix;
-                        if (STATIC_FIELD_CATEGORIES[fk]) suffix += ' (静态字段，从来源提取)';
+                        if (fieldDef.layer === 'static') suffix += ' (静态字段，从来源提取)';
                     }
-                    parts.push('  ' + translatedLabel + ' (' + fk + '): ' + valStr + suffix);
+                    if (fk !== 'name') parts.push('  ' + translatedLabel + ' (' + fk + '): ' + valStr + suffix);
                 }
             });
         }
@@ -864,6 +889,22 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
 }
 
 // ====== Open Character Schema Utilities ======
+
+/**
+ * Safely get a nested value from an object by dot-path.
+ * @param {Object} obj
+ * @param {string} path
+ * @returns {any}
+ */
+function getNestedValue(obj, path) {
+    var parts = path.split('.');
+    var current = obj;
+    for (var i = 0; i < parts.length; i++) {
+        if (current === undefined || current === null || typeof current !== 'object') return undefined;
+        current = current[parts[i]];
+    }
+    return current;
+}
 
 /**
  * Normalize legacy scheme format (required/optional arrays) to fields map.

@@ -1,7 +1,7 @@
 import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate, getEffectiveSchema,
-    getNpcInjectionFields, buildStateInjectionTable,
+    getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
     PC_INJECTION_FIELDS,
     DEFAULT_CHARACTER_SCHEMA, DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA
 } from '../src/core/vault/schema.js';
@@ -297,6 +297,21 @@ console.log('\n=== schema: PC_INJECTION_FIELDS ===');
 assert(Array.isArray(PC_INJECTION_FIELDS), 'PC_INJECTION_FIELDS is array');
 assert(PC_INJECTION_FIELDS.indexOf('status') !== -1, 'includes status');
 assert(PC_INJECTION_FIELDS.indexOf('personality') !== -1, 'includes personality');
+
+console.log('\n=== schema: getCharacterInjectionFields ===');
+
+var testState = {
+    protagonist_name: 'Hero',
+    characters: { 'Hero': { _role: 'protagonist', status: '活跃', personality: 'brave' } }
+};
+var pcFields = getCharacterInjectionFields(testState, 'Hero');
+assert(Array.isArray(pcFields), 'getCharacterInjectionFields for PC returns array');
+assert(pcFields.indexOf('status') !== -1, 'PC fields includes status');
+assert(pcFields.indexOf('personality') !== -1, 'PC fields includes personality');
+
+var npcFields = getCharacterInjectionFields(testState, 'Vendor');
+assert(Array.isArray(npcFields), 'getCharacterInjectionFields for NPC returns array');
+assert(npcFields.indexOf('affection') !== -1 || npcFields.indexOf('name') !== -1, 'NPC fields includes NPC-specific fields');
 
 console.log('\n=== schema: DEFAULT schemas ===');
 
