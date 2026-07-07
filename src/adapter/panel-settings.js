@@ -93,11 +93,6 @@ export function renderSettingsTab() {
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Supports any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio, LocalAI. Leave API Key empty for local LLMs.') + '</div>' +
         '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
         '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
-        '<div class="ne-settings-row" style="margin-top:6px;display:flex;align-items:center;gap:6px;">' +
-        '<label for="nes_api_timeout" style="margin:0;">' + t('Request timeout') + ' (s)</label>' +
-        '<input type="number" id="nes_api_timeout" min="10" max="600" step="10" placeholder="120" style="width:80px;text-align:right;">' +
-        '<span style="font-size:0.75em;color:var(--grey50);">' + t('Applies to Connect detection, Test Message, normal calls, and Embedding.') + '</span>' +
-        '</div>' +
         '<div style="margin:10px 0 4px;">' +
         '<label><input type="checkbox" id="nes_api_channels_enabled" ' + (channelsEnabled ? 'checked' : '') + '> <span>' + t('Split API by operation (STM / LTM / State)') + '</span></label>' +
         '</div>' +
@@ -380,23 +375,6 @@ export function renderSettingsTab() {
                 if (testBtn) testBtn.disabled = false;
             });
         };
-        var timeoutEl = panelById('nes_api_timeout');
-        if (timeoutEl) {
-            var rawSettings = localStorage.getItem('ne_settings');
-            var settings = {};
-            try { if (rawSettings) settings = JSON.parse(rawSettings); } catch (e) {}
-            timeoutEl.value = settings.apiTimeoutMs ? Math.floor(settings.apiTimeoutMs / 1000) : 120;
-            timeoutEl.onchange = function () {
-                var val = parseInt(timeoutEl.value, 10);
-                if (isNaN(val) || val < 10) val = 120;
-                try {
-                    var raw = localStorage.getItem('ne_settings');
-                    var s = raw ? JSON.parse(raw) : {};
-                    s.apiTimeoutMs = val * 1000;
-                    localStorage.setItem('ne_settings', JSON.stringify(s));
-                } catch (e) {}
-            };
-        }
     // API channels toggle
     var chToggle = panelById('nes_api_channels_enabled');
     if (chToggle) {
