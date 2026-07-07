@@ -65,10 +65,10 @@ NE Memory Engine 是 [SillyTavern](https://github.com/SillyTavern/SillyTavern) �
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine v6.7",
+  "name": "NE Memory Engine v6.8",
   "id": "ne_memory_engine",
-  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.7/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.7/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
-  "info": "🧠 v6.7 — API 连接增强 · STM 合并调用 · 快照修复 · 上下文窗口修复"
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.8/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test6.8/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v6.8 — 角色卡删除 · 消息崩溃修复 · 快照修复 · max_tokens 提升"
 }
 ```
 
@@ -138,6 +138,7 @@ NE 的 Vault 数据结构具有向后兼容性，升级后首次加载会自动�
 
 | NE 版本 | SillyTavern 最低版本 | 酒馆助手 |
 |---------|---------------------|---------|
+| v6.8 | 1.12.x | 最新版 |
 | v6.7 | 1.12.x | 最新版 |
 | v6.6 | 1.12.x | 最新版 |
 | v6.5 | 1.12.x | 最新版 |

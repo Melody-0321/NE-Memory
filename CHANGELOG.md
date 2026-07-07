@@ -1,3 +1,17 @@
+# NE-Memory v6.8.0 更新日志
+
+## 新功能
+
+- **角色卡删除**：编辑模式下角色卡片新增删除按钮，可一键移除角色及其全部 State 数据，操作前弹出确认对话框
+
+## Bug 修复
+
+- **消息接收崩溃（严重）**：v6.7 上下文窗口重构时误删 `computeWindowStartMsgId` 的 import，导致每条消息触发 `onMessageReceived` 时抛出 `ReferenceError`，引擎完全不可用
+- **快照恢复被覆盖**：`restoreSnapshot` 恢复 IndexedDB 后未同步 `chat_metadata`，导致 `loadVault` 在版本平局时用聊天文件中的旧缓存覆盖刚恢复的数据
+- **State LLM max_tokens 触顶**：`max_tokens` 硬上限 2048 对 `state_extract` 过紧（该操作频繁接近上限），提升至 4096
+
+---
+
 # NE-Memory v6.7 更新日志
 
 ## 新功能
