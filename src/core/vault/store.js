@@ -700,3 +700,217 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     return lockedNames;
 }
 
+// ====== #10: 模板→字段引用操作 ======
+
+/**
+ * Register a field reference into a template's customFieldRefs.
+ * @param {string} templateId
+ * @param {string} fieldName
+ */
+export function registerFieldToTemplate(templateId, fieldName) {
+    var lib = loadTemplateLibrary();
+    var tpl = lib.templates[templateId];
+    if (!tpl) return;
+    if (!tpl.customFieldRefs) tpl.customFieldRefs = [];
+    if (tpl.customFieldRefs.indexOf(fieldName) === -1) {
+        tpl.customFieldRefs.push(fieldName);
+        saveTemplateLibrary(lib);
+    }
+}
+
+/**
+ * Remove a field reference from a template's customFieldRefs.
+ * @param {string} templateId
+ * @param {string} fieldName
+ */
+export function unregisterFieldFromTemplate(templateId, fieldName) {
+    var lib = loadTemplateLibrary();
+    var tpl = lib.templates[templateId];
+    if (!tpl || !tpl.customFieldRefs) return;
+    var idx = tpl.customFieldRefs.indexOf(fieldName);
+    if (idx !== -1) {
+        tpl.customFieldRefs.splice(idx, 1);
+        saveTemplateLibrary(lib);
+    }
+}
+
+// ====== #10a: 角色卡级模板操作 ======
+
+/**
+ * Edit a dialog template's field composition within a card.
+ * Synchronizes: if _state === 'synced', marks as 'forked'.
+ * @param {string} charName
+ * @param {string} dialogueTemplateKey
+ * @param {string[]} presetFields
+ * @param {string[]} customFieldRefs
+ */
+export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, customFieldRefs) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return false;
+    var dt = config._dialogueTemplates[dialogueTemplateKey];
+    if (!dt) return false;
+    dt.presetFields = presetFields.slice();
+    dt.customFieldRefs = (customFieldRefs || []).slice();
+    if (dt._state === 'synced') dt._state = 'forked';
+    return saveCardConfig(charName, config);
+}
+
+/**
+ * Swap a template in the NPC template pool at a given index.
+ * Updates _templateConfig.npc[index].
+ * @param {string} charName
+ * @param {number} poolIndex
+ * @param {string} templateId — global template id
+ */
+export function swapTemplateInPool(charName, poolIndex, templateId) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._templateConfig) return false;
+    if (!config._templateConfig.npc) config._templateConfig.npc = [];
+    if (poolIndex >= 0 && poolIndex < config._templateConfig.npc.length) {
+        config._templateConfig.npc[poolIndex] = templateId;
+    } else {
+        config._templateConfig.npc.push(templateId);
+    }
+    return saveCardConfig(charName, config);
+}
+
+/**
+ * Fork a global template into a card's dialogue templates, marking as 'forked'.
+ * Same as cloneTemplateToCard but sets _state = 'forked'.
+ * @param {string} charName
+ * @param {import('../../types.js').Template} template
+ * @returns {string} The dialogue template key
+ */
+export function forkTemplateInCard(charName, template) {
+    var key = cloneTemplateToCard(charName, template);
+    if (key) {
+        var config = loadCardConfigSync(charName);
+        if (config && config._dialogueTemplates && config._dialogueTemplates[key]) {
+            config._dialogueTemplates[key]._state = 'forked';
+            saveCardConfig(charName, config);
+        }
+    }
+    return key;
+}
+
+/**
+ * Push a card-local dialog template back to the global template library.
+ * Creates a new global template from the dialog template's configuration.
+ * @param {string} charName
+ * @param {string} dialogueTemplateKey
+ * @returns {string|null} New global template ID, or null on failure
+ */
+export function pushTemplateToGlobal(charName, dialogueTemplateKey) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return null;
+    var dt = config._dialogueTemplates[dialogueTemplateKey];
+    if (!dt) return null;
+    var now = new Date().toISOString();
+    var newId = 'tmpl_push_' + now.replace(/[-:T]/g, '').slice(0, 15);
+    var global = {
+        id: newId,
+        name: 'Forked from ' + charName,
+        role: 'npc',
+        source: 'user_created',
+        presetFields: (dt.presetFields || []).slice(),
+        customFieldRefs: (dt.customFieldRefs || []).slice(),
+        createdAt: now,
+        updatedAt: now
+    };
+    saveTemplate(global);
+    dt._templateId = newId;
+    dt._state = 'synced';
+    saveCardConfig(charName, config);
+    return newId;
+}
+
+// ====== #8: 旧模板迁移 ======
+
+/**
+ * Migrate old template format (customFields array) to new (customFieldRefs).
+ * Called by saveTemplate automatically on first load of an old-format template.
+ * @param {import('../../types.js').Template} template
+ */
+export function migrateTemplateFormat(template) {
+    if (!template) return;
+    if (template.customFields && Array.isArray(template.customFields)) {
+        template.customFieldRefs = template.customFields.slice();
+        delete template.customFields;
+        console.log('[NE] Migrated template ' + template.id + ' from customFields → customFieldRefs');
+    }
+}
+
+// ====== #14: 跨vault扫描 ======
+
+/**
+ * Scan IndexedDB vaults for schemes used with a given character name.
+ * Returns deduplicated scheme keys found across vaults.
+ * @param {string} charName
+ * @returns {Promise<string[]>}
+ */
+export function scanRecentVaultsForSchemes(charName) {
+    return new Promise(function(resolve) {
+        try {
+            var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
+            dbReq.onsuccess = function() {
+                var db = dbReq.result;
+                if (!db.objectStoreNames.contains('card_configs')) { db.close(); resolve([]); return; }
+                var tx = db.transaction('card_configs', 'readonly');
+                var store = tx.objectStore('card_configs');
+                var getReq = store.get(charName);
+                getReq.onsuccess = function() {
+                    if (getReq.result && getReq.result._dialogueTemplates) {
+                        var keys = Object.keys(getReq.result._dialogueTemplates);
+                        db.close();
+                        resolve(keys);
+                    } else { db.close(); resolve([]); }
+                };
+                getReq.onerror = function() { db.close(); resolve([]); };
+            };
+            dbReq.onerror = function() { resolve([]); };
+        } catch (e) { resolve([]); }
+    });
+}
+
+// ====== #36: per-character local custom fields ======
+
+/**
+ * Get per-character local custom fields (pending AI proposals).
+ * @param {string} charName
+ * @returns {Object<string, {type: string, description: string, source: string}>}
+ */
+export function getLocalCustomFields(charName) {
+    try {
+        var raw = localStorage.getItem('ne_local_fields_' + charName);
+        if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    return {};
+}
+
+/**
+ * Add a local custom field proposal for a character (pending user confirmation).
+ * @param {string} charName
+ * @param {string} fieldName
+ * @param {{type: string, description: string, source: string}} meta
+ */
+export function addLocalCustomField(charName, fieldName, meta) {
+    var fields = getLocalCustomFields(charName);
+    fields[fieldName] = meta;
+    try {
+        localStorage.setItem('ne_local_fields_' + charName, JSON.stringify(fields));
+    } catch (e) {}
+}
+
+/**
+ * Remove a local custom field after user confirms or rejects.
+ * @param {string} charName
+ * @param {string} fieldName
+ */
+export function removeLocalCustomField(charName, fieldName) {
+    var fields = getLocalCustomFields(charName);
+    delete fields[fieldName];
+    try {
+        localStorage.setItem('ne_local_fields_' + charName, JSON.stringify(fields));
+    } catch (e) {}
+}
+

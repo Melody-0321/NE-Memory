@@ -2,7 +2,6 @@ import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate, getEffectiveSchema,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
-    PC_INJECTION_FIELDS,
     DEFAULT_CHARACTER_SCHEMA, DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA
 } from '../src/core/vault/schema.js';
 
@@ -291,12 +290,6 @@ var stateWithEmptyQuests = {
 };
 var emptyQuestTable = buildStateInjectionTable(stateWithEmptyQuests, [], {}, {});
 ok(emptyQuestTable.indexOf('(empty') !== -1, 'empty quests shows (empty) hint');
-
-console.log('\n=== schema: PC_INJECTION_FIELDS ===');
-
-assert(Array.isArray(PC_INJECTION_FIELDS), 'PC_INJECTION_FIELDS is array');
-assert(PC_INJECTION_FIELDS.indexOf('status') !== -1, 'includes status');
-assert(PC_INJECTION_FIELDS.indexOf('personality') !== -1, 'includes personality');
 
 console.log('\n=== schema: getCharacterInjectionFields ===');
 

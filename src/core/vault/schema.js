@@ -683,11 +683,6 @@ export function getEffectiveSchema(vault) {
     return vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
 }
 
-// Fields injected for PC — derived from DEFAULT_CHARACTER_SCHEMA.protagonist
-// @deprecated — use getCharacterInjectionFields(state, name) instead
-/** @type {string[]} */
-export var PC_INJECTION_FIELDS = ['status', 'gender_age', 'physique', 'occupation', 'personality', 'clothing_build', 'injuries', 'status_effects', 'past_experience'];
-
 // Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
 
 /**

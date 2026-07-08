@@ -1,4 +1,4 @@
-﻿import { read } from '../vault/store.js';
+import { read } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
@@ -511,7 +511,7 @@ function buildFactionExtractionPrompt() {
 }
 
 export async function resolveNpcSchemes(vault, chatId, messages) {
-    if (!vault || !vault.content) return;
+    if (!vault || !vault.content) return { templateInit: false };
 
     var state = vault.content.state || {};
 
@@ -526,10 +526,9 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         }
         if (cardConfig && cardConfig._dialogueTemplates && Object.keys(cardConfig._dialogueTemplates).length > 0) {
             console.log('[NE] Card-level templates already exist for ' + charName + ', skipping resolveNpcSchemes');
-            // 确保 state.characters 从现有配置恢复
             restoreStateFromCardConfig(state, cardConfig);
             vault.content.state = state;
-            return;
+            return { templateInit: false };
         }
     }
 
@@ -544,19 +543,40 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
     }
     if (hasFilledChars) {
         console.log('[NE] characters already initialized with _templateKey, skipping resolveNpcSchemes');
-        return;
+        return { templateInit: false };
     }
 
-    if (state.npc_schemes) return; // 旧格式仍存在，跳过
+    if (state.npc_schemes) return { templateInit: false };
+
+    // G1: 检查模板库是否为空（仅含系统模板）
+    var rawLib = null;
+    try { rawLib = localStorage.getItem('ne_template_library'); } catch(e) {}
+    var templateLibEmpty = true;
+    if (rawLib) {
+        try {
+            var parsedLib = JSON.parse(rawLib);
+            var nonSystemCount = 0;
+            Object.keys(parsedLib.templates || {}).forEach(function(k) {
+                if (!parsedLib.templates[k].system) nonSystemCount++;
+            });
+            templateLibEmpty = nonSystemCount === 0;
+        } catch(e) {}
+    }
 
     var worldBookContent = await collectWorldBookContent();
     state.characters = state.characters || {};
 
     if (!worldBookContent || worldBookContent.length === 0) {
-        // 无世界书 → 使用默认模板初始化所有已知角色
         initCharactersFromDefaults(state);
         vault.content.state = state;
-        return;
+
+        var notifyPayload = {
+            templateInit: templateLibEmpty ? false : true,
+            schemes: templateLibEmpty ? [] : ['_default_pc', '_default_npc'],
+            charName: charName,
+            skipSystemMessage: templateLibEmpty
+        };
+        return notifyPayload;
     }
 
     var worldBookMsg = buildWorldBookSystemBlock(worldBookContent);
@@ -686,10 +706,17 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
         initCharactersFromDefaults(state);
     }
 
-    // 保存卡片级模板配置到 localStorage + IndexedDB
     _persistCardConfig(charName, state);
 
     vault.content.state = state;
+
+    var discoveredSchemes = state.npc_schemes ? Object.keys(state.npc_schemes) : [];
+    return {
+        templateInit: true,
+        schemes: discoveredSchemes,
+        charName: charName,
+        skipSystemMessage: false
+    };
 }
 
 /**
@@ -765,7 +792,10 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     // 首次初始化：运行 NPC 方案发现（仅一次）
     if (!(vault.content.state || {}).npc_schemes) {
-        await resolveNpcSchemes(vault, chatId, messages);
+        var schemeResult = await resolveNpcSchemes(vault, chatId, messages);
+        if (schemeResult && schemeResult.templateInit && !schemeResult.skipSystemMessage) {
+            vault.content._templateInitSignal = schemeResult;
+        }
     }
 
     if (vault.content.faction_keywords) {

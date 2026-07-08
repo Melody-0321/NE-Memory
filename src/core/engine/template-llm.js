@@ -20,6 +20,31 @@ import {
 var _functionCallingSupported = null;
 
 /**
+ * Global notification hook. Set by adapter layer (events.js) at init time.
+ * template-llm.js calls this to notify users of tool handler results
+ * without importing adapter-layer code.
+ * @type {function(string, string, Object):void}
+ */
+var _onToolResult = null;
+
+/**
+ * Set the global notification callback (called from adapter layer).
+ * @param {function(string, string, Object):void} fn — fn(level, text, options)
+ */
+export function setToolResultNotifier(fn) {
+    _onToolResult = fn;
+}
+
+function _notify(level, text, options) {
+    if (_onToolResult) {
+        try { _onToolResult(level, text, options || {}); } catch(e) {}
+    } else {
+        var prefix = level === 'error' ? '[NE ERROR] ' : (level === 'warn' ? '[NE] ' : '');
+        console.log(prefix + text);
+    }
+}
+
+/**
  * Check if the configured API supports function calling.
  * Called once at startup. Cached after first call.
  * @returns {Promise<boolean>}
@@ -334,6 +359,8 @@ export function resolveNpcScheme(args, state, charName) {
         };
         saveTemplate(newTemplate);
 
+        _notify('info', characterName + ' scheme auto-generated (' + (presetFields.length + customRefs.length) + ' fields)', { _dedupKey: 'scheme_' + characterName });
+
         if (cardConfig) {
             var clonedKey = cloneTemplateToCard(charName, newTemplate);
             return {
@@ -434,6 +461,8 @@ export function resolveFieldProposal(args, state, charName) {
             layer: 'dynamic',
             usedByTemplates: []
         });
+
+        _notify('info', 'New field "' + fieldName + '" (' + fieldType + ') added to library', { _dedupKey: 'field_' + fieldName });
 
         return {
             accepted: true,

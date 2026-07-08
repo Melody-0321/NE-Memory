@@ -21,7 +21,8 @@ import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
-import { checkFunctionCallingSupport, isFunctionCallingSupported } from '../core/engine/template-llm.js';
+import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
+import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆，按实体分链组织。]',
@@ -75,6 +76,16 @@ export function restorePending() {
     checkFunctionCallingSupport().then(function(supported) {
         if (!supported) {
             console.log('[NE] Function calling not available — template LLM runs in exact mode only');
+        }
+    });
+
+    setToolResultNotifier(function(level, text, options) {
+        if (level === 'error') {
+            sendNeNotification(null, text, { level: 'error', durationMs: 8000 });
+        } else if (level === 'warn') {
+            sendNeNotification(null, text, { level: 'warn', durationMs: 6000 });
+        } else {
+            sendNeNotification(null, text, { level: 'info', durationMs: 4000 });
         }
     });
 }
@@ -608,6 +619,27 @@ function triggerPerRoundExtraction(assistantMsg) {
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
     extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
         if (stateResult && stateResult.vault) notifyVaultChanged();
+        // #13: 首次模板初始化 system message
+        if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
+            var sig = stateResult.vault.content._templateInitSignal;
+            var schemeCount = (sig.schemes && sig.schemes.length) || 0;
+            if (schemeCount > 0) {
+                var schemesStr = sig.schemes.join(', ');
+                sendNeInteraction(null,
+                    '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr,
+                    {
+                        buttons: [{ text: '\u67E5\u770B\u6A21\u677F\u5E93', key: 'open_templates' }],
+                        timeoutMs: 15000,
+                        onConfirm: function(key) {
+                            if (key === 'open_templates') {
+                                try { PD.navigate('templates'); } catch(e) {}
+                            }
+                        }
+                    }
+                );
+            }
+            delete stateResult.vault.content._templateInitSignal;
+        }
     }).catch(function(e) {
         console.warn('[NE] Per-round state pipeline failed:', e);
     }).finally(function() {

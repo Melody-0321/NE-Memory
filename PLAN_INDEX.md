@@ -1,0 +1,30 @@
+# 计划文档索引
+
+> 自动生成 | 2026-07-08 | 14 个文档 | 64% 完成
+
+| 文件 | 状态 | 创建 | 最后更新 | 标题 |
+|------|------|------|---------|------|
+| `api-connection-model-dropdown-plan.md` | ✅ 已完成 | 2026-06-24 | 2026-07-02 | Plan 1：API 连接检测重构 + 模型下拉改造 |
+| `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
+| `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
+| `doc-management-optimization-plan.md` | ✅ 已完成 | 2026-07-09 | 2026-07-09 | NE-Memory 文档管理优化计划 |
+| `fix-dialog-round-control.md` | ✅ 已完成 | 2026-06-18 | 2026-06-22 | 修复计划：对话轮数注入控制不生效 |
+| `fix-panel-chat-switch-sync.md` | ✅ 已完成 | 2026-06-20 | 2026-06-28 | 修复面板聊天切换不同步问题 |
+| `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
+| `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
+| `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
+| `open-character-schema-ui-plan.md` | 🔄 进行中 | 2026-07-05 | 2026-07-07 | Open Character Schema UI 实施计划 |
+| `open-character-schema-ux-engineering.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
+| `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
+| `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
+| `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
+
+---
+
+所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
+
+### 统计
+- ✅ 已完成：9
+- 🔄 进行中：4
+- ⏳ 未开始：1
+
