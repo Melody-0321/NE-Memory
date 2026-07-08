@@ -51,7 +51,7 @@ export async function updateVaultViewerPopout(getChatId) {
         return;
     }
 
-    // ── Section A: Header (pipeline status + API status) ──
+    // ── Section A: Header (version + scene state) ──
     try {
         var verEl = panelById('ne-memory-version');
         if (verEl) {
@@ -60,37 +60,15 @@ export async function updateVaultViewerPopout(getChatId) {
             if (ts) verText += ' \u00b7 ' + ts;
             verEl.textContent = verText;
         }
-        var sceneEl = panelById('narrative_vault_panel_scene');
+        // Scene info now in State tab (moved from pin row)
+        var sceneEl = panelById('ne-state-scene');
         if (sceneEl) {
             var sceneParts = [];
             if (c.story_time) sceneParts.push(c.story_time);
             if (c.story_scene) sceneParts.push(c.story_scene);
             if (c.story_date) sceneParts.push(c.story_date);
             if (c.state && c.state.main_event) sceneParts.push(c.state.main_event);
-            sceneEl.textContent = sceneParts.join(' ─ ');
-        }
-        var apiStatus = panelById('narrative_secondary_api_status');
-        if (apiStatus) {
-            try {
-                var raw = localStorage.getItem('ne_secondary_api');
-                var secondaryConfig = raw ? JSON.parse(raw) : null;
-                var titleLines = [];
-                if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
-                    apiStatus.style.color = '#4caf50';
-                    titleLines.push(t('Secondary API') + ': ' + secondaryConfig.model);
-                } else {
-                    apiStatus.style.color = '#888';
-                    titleLines.push(t('No secondary API configured'));
-                }
-                try {
-                    var rawS = localStorage.getItem('ne_settings'), rawE = localStorage.getItem('ne_embedding_api');
-                    var stg = rawS ? JSON.parse(rawS) : {}, embCfg = rawE ? JSON.parse(rawE) : null;
-                    if (stg.enableVectorSearch && embCfg && embCfg.url && embCfg.model) {
-                        titleLines.push(t('Vector API') + ': ' + embCfg.model);
-                    }
-                } catch (e) {}
-                apiStatus.title = titleLines.join('\n');
-            } catch (e) { apiStatus.style.color = '#888'; }
+            sceneEl.textContent = sceneParts.join(' \u2500 ');
         }
     } catch (e) { _logSection('header', e); }
 

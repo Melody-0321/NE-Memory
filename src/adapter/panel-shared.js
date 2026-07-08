@@ -175,8 +175,10 @@ export function injectBottomDrawerCSS() {
         '.ne-inline-save{background:var(--ne-success);color:#fff;border:none;}' +
         '.ne-settings-section{margin-bottom:8px;}' +
         '#tab-settings .ne-accordion-body{padding:8px 12px;}' +
-        '#tab-settings label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
-        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number]{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
+        '#tab-settings label, .ne-slide-panel label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}' +
+        '#tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number],' +
+        '.ne-slide-panel input[type=text],.ne-slide-panel input[type=password],.ne-slide-panel input[type=number]{' +
+        'width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;text-shadow:none !important;}' +
         '#tab-settings input::placeholder{color:#999 !important;opacity:1 !important;-webkit-text-fill-color:#999 !important;}' +
         '#tab-settings textarea{width:100%;background:#fff !important;border:1px solid var(--SmartThemeBorderColor);color:#000 !important;-webkit-text-fill-color:#000 !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;text-shadow:none !important;}' +
         '#tab-settings input[type=range]{width:100%;margin:4px 0;-webkit-appearance:none;appearance:none;height:5px;background:var(--SmartThemeBodyColor);border-radius:15px;box-shadow:inset 0 0 2px black;cursor:ew-resize;filter:brightness(0.75);}' +
@@ -381,6 +383,22 @@ export function injectBottomDrawerCSS() {
         '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,.08);' +
         '--ne-radius-sm:4px;--ne-radius-md:8px;--ne-radius-lg:12px;' +
         '}' +
+        // ── Slide-in panel ──
+        '.ne-slide-panel{position:absolute;top:0;right:0;bottom:0;width:85%;' +
+        'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'border-left:1px solid var(--SmartThemeBorderColor);transform:translateX(100%);' +
+        'transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);' +
+        'z-index:40;overflow-y:auto;padding:12px;}' +
+        '.ne-slide-panel.open{transform:translateX(0);}' +
+        '.ne-slide-backdrop{position:absolute;inset:0;background:rgba(0,0,0,0.3);' +
+        'opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:39;}' +
+        '.ne-slide-backdrop.open{opacity:1;pointer-events:auto;}' +
+        '.ne-slide-panel .ne-slide-close{position:sticky;top:0;float:right;font-size:1.2em;cursor:pointer;' +
+        'color:var(--grey-50);padding:4px 8px;border-radius:4px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);' +
+        'z-index:1;line-height:1;}' +
+        '.ne-slide-panel .ne-slide-close:hover{background:var(--black50a);color:var(--text);}' +
+        '.ne-slide-panel .ne-slide-title{font-size:1em;font-weight:bold;margin-bottom:8px;padding-bottom:6px;' +
+        'border-bottom:1px solid var(--SmartThemeBorderColor);}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }
@@ -532,6 +550,57 @@ export function showConfirm(title, message, confirmLabel, cancelLabel, isDanger)
 export var _updatingPopout = false;
 export var _currentGetChatId = null;
 export var _vaultChangeBound = false;
+
+// ── Slide-in panel manager ──
+var _slideType = null;
+var _slideRenderers = {};
+
+export function registerSlideRenderer(type, fn) {
+    _slideRenderers[type] = fn;
+}
+
+export function openSlidePanel(type) {
+    if (_slideType === type) return; // already open
+    // Close current panel if different
+    if (_slideType) closeSlidePanel();
+    _slideType = type;
+
+    var backdrop = panelById('ne-slide-backdrop');
+    var panel = panelById('ne-slide-panel');
+    if (!backdrop || !panel) return;
+
+    // Prevent collapse bar interaction while slide panel is open
+    var collapseBar = panelQS('.ne-vault-collapse-bar');
+    if (collapseBar) collapseBar.style.pointerEvents = 'none';
+
+    backdrop.classList.add('open');
+    panel.classList.add('open');
+
+    // Update title
+    var titleEl = panelById('ne-slide-title');
+    if (titleEl) titleEl.textContent = type === 'usage' ? t('Usage Statistics') : t('Settings & Data Management');
+
+    // Call registered renderer
+    if (_slideRenderers[type]) {
+        var container = panelById('ne-slide-panel-content');
+        if (container) _slideRenderers[type](container);
+    }
+}
+
+function closeSlidePanel() {
+    _slideType = null;
+    var backdrop = panelById('ne-slide-backdrop');
+    var panel = panelById('ne-slide-panel');
+    if (!backdrop || !panel) return;
+
+    backdrop.classList.remove('open');
+    panel.classList.remove('open');
+
+    var collapseBar = panelQS('.ne-vault-collapse-bar');
+    if (collapseBar) collapseBar.style.pointerEvents = '';
+}
+
+export { closeSlidePanel };
 
 // ── L3: Empty state helper ──
 export function emptyStateHtml(icon, text, hint) {

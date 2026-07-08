@@ -1,7 +1,7 @@
 import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast, closeSlidePanel } from './panel-shared.js';
 import { renderHistory, createVaultPopout } from './panel-popout.js';
 import { renderUsageTab } from './panel-usage.js';
 
@@ -11,7 +11,7 @@ export function setCurrentChatIdForCollapse(v) { _currentChatIdForCollapse = v; 
 
 export function saveCollapseState(chatId) {
     var state = {};
-    panelQSA('#tab-memory .ne-accordion').forEach(function(acc) {
+    panelQSA('#tab-memory .ne-accordion, #tab-state .ne-accordion').forEach(function(acc) {
         if (acc.id) state[acc.id] = acc.classList.contains('open');
     });
     try { var k = 'ne_collapse_' + (chatId || _currentChatIdForCollapse || 'global');
@@ -63,7 +63,7 @@ export function setupAccordionHandlers(chatId) {
         var acc = header.closest('.ne-accordion');
         if (!acc) return;
         acc.classList.toggle('open');
-        if (acc.closest('#tab-memory')) saveCollapseState(chatId);
+        if (acc.closest('#tab-memory') || acc.closest('#tab-state')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
         }
@@ -89,25 +89,51 @@ export function setupAccordionHandlers(chatId) {
 }
 
 export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
-    var idx = panelById('ne_quick_index');
-    if (!idx) return;
-    var html = '';
-    var addItem = function(id, label, count, show) {
-        if (show === undefined) show = count > 0;
-        if (!show) return;
-        html += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
-    };
-    addItem('ne-acc-stm', t('STM'), stmCount, true);
-    addItem('ne-acc-ltm', t('LTM'), ltmCount, true);
-    addItem('ne-acc-characters', t('Characters'), charCount, true);
-    addItem('ne-acc-quests', t('Quests & Events'), questCount, true);
-    addItem('ne-acc-factions', t('Factions'), factionCount, true);
-    idx.innerHTML = html;
-    panelQSA('.ne-index-item').forEach(function(item) {
-        item.onclick = function() {
-            navigateToAccordion(this.getAttribute('data-target'), chatId);
+    // ── Memory tab quick index ──
+    var memIdx = panelById('ne_quick_index');
+    if (memIdx) {
+        var memHtml = '';
+        var addMemItem = function(id, label, count) {
+            memHtml += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
         };
-    });
+        addMemItem('ne-acc-stm', t('STM'), stmCount);
+        addMemItem('ne-acc-ltm', t('LTM'), ltmCount);
+        memIdx.innerHTML = memHtml;
+        panelQSA('#ne_quick_index .ne-index-item').forEach(function(item) {
+            item.onclick = function() {
+                var targetId = this.getAttribute('data-target');
+                var target = panelById(targetId);
+                if (!target) return;var visibleContent = panelQSA('#' + targetId + ' .ne-accordion-body tr:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-char-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-faction-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-quest-card:not(.ne-search-hidden)');
+                if (target.classList.contains('ne-accordion') && (target.querySelector('.ne-search-hidden') && !target.querySelector('tr:not(.ne-search-hidden), .ne-char-card:not(.ne-search-hidden), .ne-faction-card:not(.ne-search-hidden), .ne-quest-card:not(.ne-search-hidden)'))) {
+                    if (visibleContent.length === 0) { showToast(t('No matches under current search')); return; }
+                }
+                navigateToAccordion(targetId, chatId);
+            };
+        });
+    }
+    // ── State tab quick index ──
+    var stateIdx = panelById('ne_state_quick_index');
+    if (stateIdx) {
+        var stateHtml = '';
+        var addStateItem = function(id, label, count) {
+            stateHtml += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
+        };
+        addStateItem('ne-acc-characters', t('Characters'), charCount);
+        addStateItem('ne-acc-quests', t('Quests & Events'), questCount);
+        addStateItem('ne-acc-factions', t('Factions'), factionCount);
+        stateIdx.innerHTML = stateHtml;
+        panelQSA('#ne_state_quick_index .ne-index-item').forEach(function(item) {
+            item.onclick = function() {
+                var targetId = this.getAttribute('data-target');
+                var target = panelById(targetId);
+                if (!target) return;if (target.classList.contains('ne-accordion')) {
+                    var visibleCards = panelQSA('#ne_character_block_container .ne-char-card:not(.ne-search-hidden), #ne_faction_block_container .ne-faction-card:not(.ne-search-hidden), #ne_quest_block_container .ne-quest-card:not(.ne-search-hidden)');
+                    if (visibleCards.length === 0 && panelQSA('.ne-search-hidden').length > 0) { showToast(t('No matches under current search')); return; }
+                }
+                navigateToAccordion(targetId, chatId);
+            };
+        });
+    }
 }
 
 export function setupTabSwitching() {
@@ -119,11 +145,20 @@ export function setupTabSwitching() {
             panelQSA('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
             var content = panelById('tab-' + tabName);
             if (content) content.classList.add('active');
-            if (tabName === 'usage') {
-                try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab render failed:', e); }
+            // Refresh quick index for the active tab
+            if (tabName === 'state' || tabName === 'memory') {
+                var overlay = byId('ne_vault_bottom_overlay');
+                if (overlay && overlay._refreshQI) overlay._refreshQI();
             }
         };
     });
+}
+
+export function setupSlidePanel() {
+    var backdrop = panelById('ne-slide-backdrop');
+    var closeBtn = panelById('ne-slide-close');
+    if (backdrop) backdrop.onclick = closeSlidePanel;
+    if (closeBtn) closeBtn.onclick = closeSlidePanel;
 }
 
 export var _pendingInlineStorage = null;

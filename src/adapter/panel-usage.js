@@ -300,3 +300,14 @@ export async function renderUsageTab() {
         console.warn('[NE] Chart render failed:', e);
     }
 }
+
+// Renders usage content into a container element (used by slide panel)
+export function renderUsageIntoContainer(container) {
+    // Create a temporary #ne-usage-container inside the container
+    var inner = pdCreate('div');
+    inner.id = 'ne-usage-container';
+    container.innerHTML = '';
+    container.appendChild(inner);
+    // Call the existing render function
+    return renderUsageTab();
+}

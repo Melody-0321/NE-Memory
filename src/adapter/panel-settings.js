@@ -5,7 +5,13 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableMod
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
-import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
+import { read, write, collectAllMsgIds } from '../core/vault/store.js';
+import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
+import { executeIncrementalUpdate } from '../core/engine/update.js';
+import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState } from '../core/engine/pipeline-guard.js';
+import { renderHistory } from './panel-popout.js';
+import { initTestRunner } from './panel-tools.js';
 
 export function renderSettingsTab() {
     var container = panelById('ne_common_settings');
@@ -712,4 +718,247 @@ function saveEmbeddingApiOnly() {
         model: getModelValue('nes_embedding')
     };
     saveEmbeddingApiConfig(embApi);
+}
+
+// Renders settings + tools into a slide-in panel container
+export function renderSettingsIntoSlide(container) {
+    container.innerHTML = '';
+
+    // ── Engine & API Settings ──
+    var secTitle = pdCreate('div');
+    secTitle.className = 'ne-settings-section-card';
+    secTitle.style.marginBottom = '8px';
+    secTitle.innerHTML = '<div class="ne-settings-section-title">\u2605 ' + t('Common Settings') + '</div><div id="ne_common_settings"></div>';
+    container.appendChild(secTitle);
+
+    var advTitle = pdCreate('div');
+    advTitle.className = 'ne-settings-section-card';
+    advTitle.innerHTML = '<div class="ne-settings-section-title">\u2697 ' + t('Advanced Settings') + '</div><div id="ne_advanced_settings"></div>';
+    container.appendChild(advTitle);
+
+    // ── Data Management ──
+    var dmTitle = pdCreate('div');
+    dmTitle.className = 'ne-tool-card';
+    dmTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Data') + '</div>' +
+        '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
+        '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Export JSON') + '</button>' +
+        '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Import JSON') + '</button>' +
+        '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Embed into Chat') + '</button>' +
+        '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Clean Orphan Data') + '</button>' +
+        '</div>';
+    container.appendChild(dmTitle);
+
+    // ── Operations ──
+    var opsTitle = pdCreate('div');
+    opsTitle.className = 'ne-tool-card';
+    opsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Operations') + '</div>' +
+        '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Process History') + '</button>';
+    container.appendChild(opsTitle);
+
+    // ── Diagnostics ──
+    var diagTitle = pdCreate('div');
+    diagTitle.className = 'ne-tool-card';
+    diagTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
+        '<div class="ne-accordion" id="ne-tool-history">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
+        '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
+        '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '">' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
+        '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>';
+    container.appendChild(diagTitle);
+
+    // ── Troubleshoot ──
+    var tsTitle = pdCreate('div');
+    tsTitle.className = 'ne-tool-card';
+    tsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Troubleshoot') + '</div>' +
+        '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 0;">' +
+        '<input type="checkbox" id="nes_legacy_schema" ' + (localStorage.getItem('ne_use_legacy_schema') === 'true' ? 'checked' : '') + '> ' +
+        t('Use legacy schema (OSD compat)') + '</label>';
+    container.appendChild(tsTitle);
+
+    // Render settings content
+    renderSettingsTab();
+
+    // Event handlers for data management buttons
+
+    // Process History
+    var processHistoryBtn = document.getElementById('narrative_vault_process_history');
+    if (processHistoryBtn) {
+        processHistoryBtn.onclick = async function() {
+            if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
+            var prevText = processHistoryBtn.textContent;
+            var PH_BATCH_CHARS = 4000;
+            try {
+                var rs = localStorage.getItem('ne_settings');
+                if (rs) { var ps = JSON.parse(rs); if (ps.phBatchChars) PH_BATCH_CHARS = Number(ps.phBatchChars); }
+            } catch (e) {}
+            var total = 0;
+            try {
+                var chatMessages = [];
+                try {
+                    if (typeof window.parent.SillyTavern !== 'undefined' && window.parent.SillyTavern.getContext) {
+                        chatMessages = window.parent.SillyTavern.getContext().chat || [];
+                    } else if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                        chatMessages = SillyTavern.getContext().chat || [];
+                    }
+                } catch (e) {}
+                if (chatMessages.length === 0) { alert(t('No messages found in chat.')); return; }
+                var toProcess = [];
+                chatMessages.forEach(function(msg, idx) {
+                    var content = msg.mes || '';
+                    if (content.trim().length > 0) {
+                        toProcess.push({ id: idx, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
+                    }
+                });
+                if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
+                var vault = await read(_currentGetChatId);
+                var stmMsgIdSet = collectAllMsgIds(vault);
+                toProcess = toProcess.filter(function(msg) { return !stmMsgIdSet.has(String(msg.id)); });
+                if (toProcess.length === 0) { alert(t('All messages have already been processed.')); return; }
+                processHistoryBtn.disabled = true;
+                total = toProcess.length;
+                processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
+                var cpKey = 'ne_ph_' + _currentGetChatId();
+                var processedCount = 0;
+                try {
+                    var cp = localStorage.getItem(cpKey);
+                    if (cp) {
+                        var cpData = JSON.parse(cp);
+                        if (cpData.t && cpData.i >= total) { try { localStorage.removeItem(cpKey); } catch (e2) {} }
+                        else if (cpData.t && cpData.i > 0) { processedCount = cpData.i; }
+                    }
+                } catch (e) {}
+                var PIPELINE_TIMEOUT_MS = 60000;
+                if (!tryAcquire('stm')) { await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS); if (!tryAcquire('stm')) { reset(); tryAcquire('stm'); } }
+                var accumTurns = processedCount, batchStart = processedCount, batchChars = 0;
+                for (var i = processedCount; i < total; i++) {
+                    var msgLen = toProcess[i].mes.length;
+                    if (batchChars + msgLen > PH_BATCH_CHARS && i > batchStart) {
+                        var batch = toProcess.slice(batchStart, i);
+                        processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
+                        await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
+                        accumTurns = i;
+                        try { localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: i })); } catch (e2) {}
+                        batchStart = i; batchChars = 0;
+                    }
+                    batchChars += msgLen;
+                }
+                if (batchStart < total) {
+                    var batch = toProcess.slice(batchStart, total);
+                    await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
+                    accumTurns = total;
+                    try { localStorage.removeItem(cpKey); } catch (e3) {}
+                }
+                processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
+            } catch (e) {
+                console.error('[NE] Process history failed:', e);
+                processHistoryBtn.textContent = t('Failed');
+                showToast(t('Process History') + ': ' + e.message, 'error', 6000);
+            } finally {
+                releasePipeline();
+                setTimeout(function() { processHistoryBtn.textContent = prevText; processHistoryBtn.disabled = false; }, 2000);
+                busEmit('vault:updated', { getChatId: _currentGetChatId });
+            }
+        };
+    }
+
+    // Export button
+    var exportBtn = document.getElementById('narrative_vault_export_json');
+    if (exportBtn) {
+        exportBtn.onclick = async function() {
+            try {
+                var vault = await read(_currentGetChatId);
+                var json = JSON.stringify(vault, null, 2);
+                var blob = new Blob([json], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = 'ne_vault_' + _currentGetChatId() + '.json';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+            } catch (e) { alert(t('Export failed') + ': ' + e.message); }
+        };
+    }
+
+    // Import button
+    var importBtn = document.getElementById('narrative_vault_import_json');
+    if (importBtn) {
+        importBtn.onclick = function() {
+            var input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+            input.onchange = async function() {
+                var file = input.files[0]; if (!file) return;
+                try {
+                    var text = await new Promise(function(r) { var fr = new FileReader(); fr.onload = function(e) { r(e.target.result); }; fr.readAsText(file); });
+                    var imported = JSON.parse(text);
+                    await write(_currentGetChatId, imported);
+                    busEmit('vault:updated', { getChatId: _currentGetChatId });
+                } catch (e) { alert(t('Import failed') + ': ' + e.message); }
+            };
+            input.click();
+        };
+    }
+
+    // Embed button
+    var embedBtn = document.getElementById('narrative_vault_embed_chat');
+    if (embedBtn) {
+        embedBtn.onclick = async function() {
+            try {
+                if (!confirm(t('Embed vault into chat_metadata for backup?'))) return;
+                var ctx = window.parent.SillyTavern && window.parent.SillyTavern.getContext ? window.parent.SillyTavern.getContext() : null;
+                if (!ctx || !ctx.chatMetadata || typeof ctx.saveChat !== 'function') { alert(t('Cannot access chat metadata.')); return; }
+                var vault = await read(_currentGetChatId);
+                ctx.chatMetadata.ne_embedded_vault = vault;
+                if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
+                else if (typeof ctx.saveChat === 'function') ctx.saveChat();
+                alert(t('Vault embedded successfully.'));
+            } catch (e) { alert(t('Embed failed') + ': ' + e.message); }
+        };
+    }
+
+    // Clean orphans
+    var cleanBtn = document.getElementById('narrative_vault_clean_orphans');
+    if (cleanBtn) {
+        cleanBtn.onclick = async function() {
+            try {
+                cleanBtn.disabled = true; cleanBtn.textContent = t('Scanning...');
+                var results = await scanOrphans();
+                cleanBtn.disabled = false; cleanBtn.textContent = t('Clean Orphan Data');
+                var orphans = results.filter(function(r) { return r.status === 'orphan'; });
+                if (orphans.length === 0) { alert(t('No orphan data found.')); return; }
+                var msg = t('Orphan data scan results:') + '\n' + orphans.length + ' ' + t('orphans') + '\n';
+                orphans.forEach(function(o) { msg += '  - ' + o.chat_id + '\n'; });
+                if (!confirm(msg + '\n' + t('Delete these orphan vaults?'))) return;
+                var count = 0;
+                orphans.forEach(function(o) { purgeOrphanChatData(o.chat_id); count++; });
+                alert(t('Cleaned') + ' ' + count + ' ' + t('orphan entries') + '.');
+                if (_currentGetChatId) renderHistory(_currentGetChatId);
+            } catch (e) { alert(t('Clean Orphan Data') + ' failed: ' + e.message); cleanBtn.disabled = false; cleanBtn.textContent = t('Clean Orphan Data'); }
+        };
+    }
+
+    // Legacy schema checkbox
+    var legacyCb = document.getElementById('nes_legacy_schema');
+    if (legacyCb) {
+        legacyCb.onchange = function() {
+            if (this.checked) localStorage.setItem('ne_use_legacy_schema', 'true');
+            else localStorage.removeItem('ne_use_legacy_schema');
+        };
+    }
+
+    // Accordion setup for history/test runner
+    var accs = container.querySelectorAll('.ne-accordion-header');
+    accs.forEach(function(header) {
+        header.onclick = function() {
+            var acc = this.closest('.ne-accordion');
+            if (!acc) return;
+            acc.classList.toggle('open');
+            if (acc.id === 'ne-tool-history' && acc.classList.contains('open')) {
+                if (_currentGetChatId) renderHistory(_currentGetChatId);
+            }
+        };
+    });
+
+    // Init test runner
+    if (window.__NE_DEV_MODE) {
+        try { initTestRunner(); } catch (e) {}
+    }
 }
