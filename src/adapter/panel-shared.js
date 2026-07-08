@@ -108,6 +108,8 @@ export function injectBottomDrawerCSS() {
         '.ne-index-item{font-size:0.78em;padding:2px 8px;cursor:pointer;border-radius:4px;background:var(--black30a);color:var(--grey-70);white-space:nowrap;transition:background .15s,color .15s;}' +
         '.ne-index-item:hover{background:var(--black50a);color:var(--text,#ddd);}' +
         '.ne-index-item em{font-style:normal;font-weight:bold;color:var(--grey-50);margin-left:2px;}' +
+        '.ne-index-item.ne-index-empty{background:transparent;color:var(--grey-30);cursor:default;border:1px dashed var(--grey-30);}' +
+        '.ne-index-item.ne-index-empty:hover{background:transparent;color:var(--grey-30);}' +
         '.ne-accordion{margin-bottom:4px;}' +
         '.ne-accordion-header{display:flex;align-items:center;padding:8px 12px;cursor:pointer;user-select:none;background:var(--black30a);border-radius:6px;font-weight:bold;font-size:0.95em;transition:background .15s;}' +
         '.ne-accordion-header:hover{background:var(--black50a);}' +

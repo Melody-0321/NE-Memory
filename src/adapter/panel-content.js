@@ -6,7 +6,7 @@ import { t_narrative, t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
-  panelById, panelQS, panelQSA, showConfirm, emptyStateHtml } from './panel-shared.js';
+  panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml, getPanelRoot } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
@@ -36,6 +36,28 @@ export async function updateVaultViewerPopout(getChatId) {
         console.error('[NE-VAULT] Section [' + name + '] failed:', e);
         console.error('[NE-VAULT] Stack:', e.stack);
     }
+
+    // ── Refresh protection: skip rebuild if user is editing ──
+    try {
+        var root = getPanelRoot();
+        var ae = root ? root.activeElement : document.activeElement;
+        if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell'))) {
+            showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
+            setUpdatingPopout(false);
+            return;
+        }
+    } catch (e) {}
+
+    // ── Save scroll position + open accordions for restore ──
+    var _savedAccordions = [];
+    var _savedScrollTop = 0;
+    try {
+        var scrollArea = panelQS('.ne-vault-scroll-area');
+        if (scrollArea) _savedScrollTop = scrollArea.scrollTop;
+        panelQSA('.ne-accordion.open').forEach(function(acc) {
+            if (acc.id) _savedAccordions.push(acc.id);
+        });
+    } catch (e) {}
 
     var vault, c;
     try {
@@ -244,6 +266,20 @@ export async function updateVaultViewerPopout(getChatId) {
             };
         });
     } catch (e) { _logSection('event-handlers', e); }
+
+    // ── Restore scroll position + accordion states ──
+    try {
+        if (_savedAccordions.length > 0 || _savedScrollTop > 0) {
+            requestAnimationFrame(function() {
+                _savedAccordions.forEach(function(id) {
+                    var acc = panelById(id);
+                    if (acc) acc.classList.add('open');
+                });
+                var sa = panelQS('.ne-vault-scroll-area');
+                if (sa && _savedScrollTop > 0) sa.scrollTop = _savedScrollTop;
+            });
+        }
+    } catch (e) {}
 
     setUpdatingPopout(false);
 }

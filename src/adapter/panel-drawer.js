@@ -94,7 +94,9 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
     if (memIdx) {
         var memHtml = '';
         var addMemItem = function(id, label, count) {
-            memHtml += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
+            var cls = count === 0 ? 'ne-index-item ne-index-empty' : 'ne-index-item';
+            var tip = count === 0 ? ' title="' + t('No data yet — will appear as messages are sent') + '"' : '';
+            memHtml += '<span class="' + cls + '" data-target="' + id + '"' + tip + '>' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
         };
         addMemItem('ne-acc-stm', t('STM'), stmCount);
         addMemItem('ne-acc-ltm', t('LTM'), ltmCount);
@@ -116,7 +118,9 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
     if (stateIdx) {
         var stateHtml = '';
         var addStateItem = function(id, label, count) {
-            stateHtml += '<span class="ne-index-item" data-target="' + id + '">' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
+            var cls2 = count === 0 ? 'ne-index-item ne-index-empty' : 'ne-index-item';
+            var tip2 = count === 0 ? ' title="' + t('No data yet — will appear as the story progresses') + '"' : '';
+            stateHtml += '<span class="' + cls2 + '" data-target="' + id + '"' + tip2 + '>' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
         };
         addStateItem('ne-acc-characters', t('Characters'), charCount);
         addStateItem('ne-acc-quests', t('Quests & Events'), questCount);

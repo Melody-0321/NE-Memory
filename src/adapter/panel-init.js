@@ -423,11 +423,11 @@ export async function renderVaultPanel(getChatId) {
             var el = panelById('ne_pipeline_status');
             if (!el) return;
             if (phase === 'idle') {
-                el.textContent = t('Idle');
+                el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
                 el.style.color = 'var(--grey-50)';
             } else {
-                el.textContent = t('Active:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
-                el.style.color = 'var(--ne-warning)';
+                el.innerHTML = '<span style="color:var(--ne-success);">\u25CF</span> ' + t('Active:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
+                el.style.color = 'var(--grey-60)';
             }
         };
         onPipelineChange(_updatePipelineUI);
