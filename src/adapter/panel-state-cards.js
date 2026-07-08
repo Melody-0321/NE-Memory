@@ -473,6 +473,11 @@ function exitCardEditMode(cardDiv) {
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
     if (deleteBtn && deleteBtn.parentNode) deleteBtn.remove();
 
+    var restoredEditBtn = cardDiv.querySelector('.ne-card-edit-btn');
+    if (restoredEditBtn) {
+        restoredEditBtn.onclick = function(e) { e.stopPropagation(); enterCardEditMode(this); };
+    }
+
     cardDiv.classList.remove('ne-card-editing');
 }
 
