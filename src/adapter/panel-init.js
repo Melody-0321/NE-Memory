@@ -25,9 +25,10 @@ import { _currentChatIdForCollapse, _currentCollapseState,
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   enterCardEditMode } from './panel-state-cards.js';
 import { updateVaultViewerPopout } from './panel-content.js';
-import { renderUsageTab, renderUsageIntoContainer } from './panel-usage.js';
-import { renderSettingsTab, renderSettingsIntoSlide } from './panel-settings.js';
+import { renderUsageIntoContainer } from './panel-usage.js';
+import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderHistory } from './panel-popout.js';
+import { renderTemplatesIntoSlide } from './panel-templates.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -76,6 +77,7 @@ export async function renderVaultPanel(getChatId) {
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
             '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;margin-left:6px;"></span>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
+            '<span id="ne_pin_templates" class="ne-pin-icon" title="' + t('template_library') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u{1F4CB}</span>' +
             '<span id="ne_pin_usage" class="ne-pin-icon" title="' + t('Usage Statistics') + '" style="font-size:0.78em;color:var(--grey-60);cursor:pointer;white-space:nowrap;">\u{1F4CA} --</span>' +
             '<span id="ne_pin_settings" class="ne-pin-icon" title="' + t('Settings & Data Management') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u2699</span>' +
             '</div></div>' +
@@ -98,6 +100,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion open" id="ne-acc-characters">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
+            '<div id="ne-state-template-entry" style="padding:2px 0 8px;font-size:0.82em;color:var(--grey-50);cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
             '<div id="ne_character_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-quests">' +
@@ -196,6 +199,7 @@ export async function renderVaultPanel(getChatId) {
         // Register slide-in panel renderers
         registerSlideRenderer('usage', renderUsageIntoContainer);
         registerSlideRenderer('settings', renderSettingsIntoSlide);
+        registerSlideRenderer('templates', renderTemplatesIntoSlide);
 
         var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
@@ -433,7 +437,11 @@ export async function renderVaultPanel(getChatId) {
         onPipelineChange(_updatePipelineUI);
         _updatePipelineUI(getState());
 
-        // ── Pin row: usage & settings icons ──
+        // ── Pin row: templates, usage & settings icons ──
+        var tmplPin = panelById('ne_pin_templates');
+        if (tmplPin) tmplPin.onclick = function() { openSlidePanel('templates'); };
+        var stateTmplEntry = panelById('ne-state-template-entry');
+        if (stateTmplEntry) stateTmplEntry.onclick = function() { openSlidePanel('templates'); };
         var usagePin = panelById('ne_pin_usage');
         if (usagePin) usagePin.onclick = function() { openSlidePanel('usage'); };
         var settingsPin = panelById('ne_pin_settings');

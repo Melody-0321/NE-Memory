@@ -10,7 +10,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
-  renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
+  renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
@@ -121,6 +121,25 @@ export async function updateVaultViewerPopout(getChatId) {
                         enterCardEditMode(this);
                     };
                 });
+                var schemeBtns = block.querySelectorAll('.ne-card-scheme-btn');
+                for (var i = 0; i < schemeBtns.length; i++) {
+                    schemeBtns[i].addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var card = this.closest('.ne-char-card');
+                        var charName = this.getAttribute('data-char');
+                        var cardType = this.getAttribute('data-cardtype') || 'npc';
+                        enterSchemeEditMode(card, charName, cardType);
+                    });
+                }
+                var lockBtns = block.querySelectorAll('.ne-card-lock-btn');
+                for (var j = 0; j < lockBtns.length; j++) {
+                    lockBtns[j].addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var name = this.getAttribute('data-char');
+                        showToast((this.classList.contains('locked') ? t('unlock') : t('locked')) + ': ' + name, 'info', 2000);
+                        this.classList.toggle('locked');
+                    });
+                }
             }, 50);
         }
     } catch (e) { _logSection('char-block', e); }

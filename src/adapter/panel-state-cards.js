@@ -1,7 +1,7 @@
-import { write } from '../core/vault/store.js';
+import { write, loadTemplateLibrary, getTemplate, saveTemplate } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
+import { DEFAULT_CHARACTER_SCHEMA, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 
@@ -79,6 +79,8 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<span class="ne-char-toggle">&#9654;</span>';
     html += '<b>' + escapeHtml(name) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
+    html += '<button class="ne-card-scheme-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" title="' + escapeHtml(t('edit_scheme')) + '" aria-label="' + escapeHtml(t('edit_scheme')) + '" onclick="event.stopPropagation()">\u2699</button>';
+    html += '<button class="ne-card-lock-btn" data-char="' + escapeHtml(name) + '" title="' + escapeHtml(t('lock_character')) + '" aria-label="' + escapeHtml(t('lock_character')) + '" onclick="event.stopPropagation()">\u{1F513}</button>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
@@ -455,6 +457,258 @@ function saveCardFields(cardDiv) {
     write(getChatId(), vault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
     });
+}
+
+var _schemeEditStates = {};  // per-character scheme editor state
+
+export function enterSchemeEditMode(cardEl, charName, charCardType) {
+    if (!cardEl || !charName) return;
+    var body = cardEl.querySelector('.ne-char-card-body');
+    var header = cardEl.querySelector('.ne-char-card-header');
+    if (!body || !header) return;
+
+    // Check if already in edit mode
+    if (cardEl.classList.contains('ne-scheme-editing')) {
+        _exitSchemeEditMode(cardEl);
+        return;
+    }
+
+    // Load template data
+    var lib = loadTemplateLibrary();
+    var templates = (lib && lib.templates) ? lib.templates : {};
+    var state = _getCurrentState();
+    var schemeData = (state && state._character_schemes && state._character_schemes[charName]) || {};
+    var tplId = schemeData._templateId || null;
+    var tpl = tplId ? templates[tplId] : null;
+
+    // Get current field values
+    var charData = (state && state.characters && state.characters[charName]) || {};
+    var currentPresets = (tpl && tpl.presetFields) ? tpl.presetFields : [];
+    var currentCustoms = (tpl && tpl.customFieldRefs) ? tpl.customFieldRefs : [];
+
+    // Build scheme editor HTML
+    var html = '<div class="ne-scheme-editor">';
+
+    // Required fields section
+    html += '<div class="ne-scheme-section ne-scheme-required">';
+    html += '<div class="ne-scheme-section-title">' + escapeHtml(t('required_section')) + '</div>';
+    html += '<div class="ne-scheme-fields">';
+    var requiredFields = ['status', 'name'];
+    requiredFields.forEach(function(fn) {
+        html += '<div class="ne-scheme-field ne-scheme-field-locked">' +
+            '<span class="ne-scheme-field-icon">\u{1F512}</span> ' +
+            '<span>' + escapeHtml(fn) + '</span> ' +
+            '<span class="ne-scheme-field-type">string</span>' +
+            '</div>';
+    });
+    html += '</div></div>';
+
+    // Preset fields section
+    html += '<div class="ne-scheme-section">';
+    html += '<div class="ne-scheme-section-title">' + escapeHtml(t('preset_section')) + '</div>';
+    html += '<div class="ne-scheme-hint">' + escapeHtml('Unchecking preserves existing data but stops tracking new changes.') + '</div>';
+    html += '<div class="ne-scheme-fields">';
+    Object.keys(PRESET_FIELDS).forEach(function(cat) {
+        html += '<div class="ne-scheme-category">' + escapeHtml(cat) + '</div>';
+        Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+            var checked = currentPresets.indexOf(fn) !== -1;
+            var fd = PRESET_FIELDS[cat][fn];
+            html += '<label class="ne-scheme-field">' +
+                '<input type="checkbox" class="ne-scheme-checkbox" value="' + escapeHtml(fn) + '"' + (checked ? ' checked' : '') + '> ' +
+                escapeHtml(t_field(fn)) + ' <span class="ne-scheme-field-type">' + escapeHtml(fd.type || 'string') + '</span>' +
+                '</label>';
+        });
+    });
+    html += '</div></div>';
+
+    // Custom fields section
+    html += '<div class="ne-scheme-section">';
+    html += '<div class="ne-scheme-section-title">' + escapeHtml(t('custom_section')) + '</div>';
+    html += '<div class="ne-scheme-hint">' + escapeHtml('Custom fields belong to the global field library. Editing them affects all templates using the same field.') + '</div>';
+    html += '<div class="ne-scheme-fields" id="ne-scheme-custom-fields">';
+    currentCustoms.forEach(function(fn) {
+        html += '<div class="ne-scheme-field ne-scheme-custom-item">' +
+            '<span>' + escapeHtml(fn) + '</span>' +
+            '<button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fn) + '">\u2715</button>' +
+            '</div>';
+    });
+    html += '</div>';
+    html += '<div class="ne-scheme-add-custom">';
+    html += '<input type="text" id="ne-scheme-add-custom-input" class="ne-editor-input" placeholder="' + escapeHtml(t('add_custom_field')) + '">';
+    html += '</div>';
+    html += '</div>';
+
+    // Actions
+    html += '<div class="ne-scheme-actions">';
+    html += '<button class="menu_button" id="ne-scheme-save">' + escapeHtml(t('save_scheme')) + '</button>';
+    html += '<button class="menu_button" id="ne-scheme-save-as-template">' + escapeHtml(t('save_as_template')) + '</button>';
+    html += '<button class="menu_button" id="ne-scheme-cancel">' + escapeHtml(t('Cancel')) + '</button>';
+    html += '</div>';
+    html += '</div>';
+
+    // Save original content
+    _schemeEditStates[charName] = { originalHtml: body.innerHTML };
+    cardEl.classList.add('ne-scheme-editing');
+    body.style.display = 'none';
+
+    // Create editor container after body
+    var editorContainer = pdCreate('div');
+    editorContainer.className = 'ne-scheme-editor-container';
+    editorContainer.id = 'ne-scheme-editor-' + escapeHtml(charName).replace(/[^a-zA-Z0-9_-]/g, '_');
+    editorContainer.innerHTML = html;
+    body.parentNode.insertBefore(editorContainer, body.nextSibling);
+
+    // Hide the edit (✎) button while in scheme mode
+    var editBtn = header.querySelector('.ne-card-edit-btn');
+    if (editBtn) editBtn.style.display = 'none';
+
+    // Bind events
+    _bindSchemeEditorEvents(cardEl, charName, charCardType, tpl, templates);
+}
+
+function _exitSchemeEditMode(cardEl) {
+    if (!cardEl) return;
+    cardEl.classList.remove('ne-scheme-editing');
+    var body = cardEl.querySelector('.ne-char-card-body');
+    if (body) body.style.display = '';
+    var editorContainer = cardEl.querySelector('.ne-scheme-editor-container');
+    if (editorContainer) editorContainer.remove();
+    var header = cardEl.querySelector('.ne-char-card-header');
+    var editBtn = header ? header.querySelector('.ne-card-edit-btn') : null;
+    if (editBtn) editBtn.style.display = '';
+}
+
+function _bindSchemeEditorEvents(cardEl, charName, charCardType, tpl, templates) {
+    // Save
+    var saveBtn = cardEl.querySelector('#ne-scheme-save');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function() {
+            _saveSchemeChanges(cardEl, charName, tpl, templates);
+        });
+    }
+    // Cancel
+    var cancelBtn = cardEl.querySelector('#ne-scheme-cancel');
+    if (cancelBtn) {
+        cancelBtn.addEventListener('click', function() {
+            _exitSchemeEditMode(cardEl);
+        });
+    }
+    // Save as template
+    var saveAsBtn = cardEl.querySelector('#ne-scheme-save-as-template');
+    if (saveAsBtn) {
+        saveAsBtn.addEventListener('click', function() {
+            _saveSchemeAsTemplate(cardEl, charName, tpl, templates);
+        });
+    }
+    // Add custom field (Enter key)
+    var addInput = cardEl.querySelector('#ne-scheme-add-custom-input');
+    if (addInput) {
+        addInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                _addSchemeCustomField(cardEl);
+            }
+        });
+    }
+    // Remove custom field
+    var removeBtns = cardEl.querySelectorAll('.ne-scheme-remove-custom');
+    for (var i = 0; i < removeBtns.length; i++) {
+        removeBtns[i].addEventListener('click', function() {
+            this.closest('.ne-scheme-custom-item').remove();
+        });
+    }
+}
+
+function _saveSchemeChanges(cardEl, charName, tpl, templates) {
+    if (!tpl) return;
+    // Collect preset fields
+    var presetFields = [];
+    var checkboxes = cardEl.querySelectorAll('.ne-scheme-checkbox:checked');
+    for (var i = 0; i < checkboxes.length; i++) {
+        presetFields.push(checkboxes[i].value);
+    }
+    // Collect custom fields
+    var customFieldRefs = [];
+    var customItems = cardEl.querySelectorAll('.ne-scheme-custom-item span');
+    for (var j = 0; j < customItems.length; j++) {
+        customFieldRefs.push(customItems[j].textContent);
+    }
+
+    // Update template
+    tpl.presetFields = presetFields;
+    tpl.customFieldRefs = customFieldRefs;
+    tpl.updatedAt = new Date().toISOString();
+    saveTemplate(tpl);
+    showToast(t('template_saved'), 'success', 3000);
+    _exitSchemeEditMode(cardEl);
+    // Trigger vault refresh
+    busEmit('vault:updated', {});
+}
+
+function _saveSchemeAsTemplate(cardEl, charName, tpl, templates) {
+    // Collect preset fields
+    var presetFields = [];
+    var checkboxes = cardEl.querySelectorAll('.ne-scheme-checkbox:checked');
+    for (var i = 0; i < checkboxes.length; i++) {
+        presetFields.push(checkboxes[i].value);
+    }
+    var customFieldRefs = [];
+    var customItems = cardEl.querySelectorAll('.ne-scheme-custom-item span');
+    for (var j = 0; j < customItems.length; j++) {
+        customFieldRefs.push(customItems[j].textContent);
+    }
+
+    showConfirm(
+        t('save_as_template'),
+        'Save current scheme as a new global template?',
+        t('Save'), t('Cancel')
+    ).then(function(confirmed) {
+        if (!confirmed) return;
+        var newTemplate = {
+            id: 'tpl_' + Date.now(),
+            name: (tpl ? tpl.name : charName) + ' (copy)',
+            role: tpl ? tpl.role : 'npc',
+            presetFields: presetFields,
+            customFieldRefs: customFieldRefs,
+            tags: tpl ? (tpl.tags || []) : [],
+            _locked: false,
+            source: 'user_created',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        saveTemplate(newTemplate);
+        showToast(t('template_saved'), 'success', 3000);
+        _exitSchemeEditMode(cardEl);
+    });
+}
+
+function _addSchemeCustomField(cardEl) {
+    var input = cardEl.querySelector('#ne-scheme-add-custom-input');
+    if (!input || !input.value.trim()) return;
+    var fieldName = input.value.trim();
+    var listEl = cardEl.querySelector('#ne-scheme-custom-fields');
+    if (!listEl) return;
+    // Check duplicate
+    var existing = listEl.querySelectorAll('.ne-scheme-custom-item span');
+    for (var i = 0; i < existing.length; i++) {
+        if (existing[i].textContent === fieldName) return;
+    }
+    var item = pdCreate('div');
+    item.className = 'ne-scheme-field ne-scheme-custom-item';
+    item.innerHTML = '<span>' + escapeHtml(fieldName) + '</span>' +
+        '<button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fieldName) + '">\u2715</button>';
+    item.querySelector('.ne-scheme-remove-custom').addEventListener('click', function() {
+        item.remove();
+    });
+    listEl.appendChild(item);
+    input.value = '';
+}
+
+function _getCurrentState() {
+    try {
+        if (typeof window.__NE_CURRENT_VAULT_STATE !== 'undefined') return window.__NE_CURRENT_VAULT_STATE;
+    } catch (e) {}
+    return null;
 }
 
 function exitCardEditMode(cardDiv) {
