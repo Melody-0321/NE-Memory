@@ -116,16 +116,21 @@ export async function callMemoryLLM(messages, options = {}) {
 
     var chatId = options.chatId || null;
 
+    var TOKEN_OP_MAP = {
+        stm_extract: 'tok_stm',
+        ltm_decision: 'tok_ltm', ltm_decision_retry: 'tok_ltm', ltm_rebatch: 'tok_ltm',
+        smartpush_retrieval: 'tok_sp', retrieval: 'tok_sp',
+        access: 'tok_tool', recall_memory: 'tok_tool',
+        state_extract: 'tok_tool', scheme_discovery: 'tok_tool', faction_discovery: 'tok_tool',
+        template_scheme: 'tok_tool', template_proposal: 'tok_tool', init_power_slots: 'tok_tool'
+    };
+
     if (chatId) {
         recordChatStat(chatId, 'llm', 1);
         var totalTokens = usage ? (usage.total_tokens || 0) : 0;
         if (totalTokens > 0) {
             var op = options.operation || 'memory';
-            var tokenOp = (op === 'stm_extract') ? 'tok_stm'
-                : (op === 'ltm_decision') ? 'tok_ltm'
-                : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
-                : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
-                : 'tok';
+            var tokenOp = TOKEN_OP_MAP[op] || 'tok';
             recordChatToken(chatId, tokenOp, totalTokens);
             recordDailyToken(tokenOp, totalTokens);
         } else if (response) {
@@ -133,11 +138,7 @@ export async function callMemoryLLM(messages, options = {}) {
             var estimated = countTokens(responseText);
             if (estimated > 0) {
                 var op = options.operation || 'memory';
-                var tokenOp = (op === 'stm_extract') ? 'tok_stm'
-                    : (op === 'ltm_decision') ? 'tok_ltm'
-                    : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
-                    : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
-                    : 'tok';
+                var tokenOp = TOKEN_OP_MAP[op] || 'tok';
                 recordChatToken(chatId, tokenOp, estimated);
                 recordDailyToken(tokenOp, estimated);
             }
