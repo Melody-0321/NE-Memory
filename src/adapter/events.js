@@ -14,7 +14,7 @@ import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
-import { ensureNeMsgId } from '../core/engine/msg-id.js';
+import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
@@ -23,6 +23,7 @@ import { callMemoryPipeline } from '../core/api/llm.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
+import { recordMemoryVersion, getActiveChain, initializeChain } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -185,12 +186,12 @@ export function onMessageSent(messageIndex) {
                 retroCapturedChatId = currentChatId;
                 for (var i = 0; i < chat.length; i++) {
                     var earlyMsg = chat[i];
-                    ensureNeMsgId(earlyMsg);
+                    earlyMsg._ne_id = earlyMsg._ne_id || buildMsgId(earlyMsg, i);
                     if (i === messageIndex) break;
                     pendingMessages.push({
                         role: earlyMsg.is_user ? 'user' : 'assistant',
                         content: earlyMsg.mes || '',
-                        id: i,
+                        id: earlyMsg._ne_id,
                         timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
                     });
                 }
@@ -204,8 +205,8 @@ export function onMessageSent(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            ensureNeMsgId(message);
-            pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
+            pendingMessages.push({ role: 'user', content: message.mes || '', id: message._ne_id, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
@@ -295,18 +296,18 @@ export async function onMessageReceived(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            ensureNeMsgId(message);
+            message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
 
             var rawMes = message.mes || '';
             var hasNeChar = rawMes.indexOf('<!--NE-CHAR') !== -1;
             var hasNeBanner = rawMes.indexOf('<!--NE-BANNER') !== -1;
-            console.log('[NE-DEBUG] onMessageReceived msgId=' + (message.mes_id || messageIndex) +
+            console.log('[NE-DEBUG] onMessageReceived msgId=' + message._ne_id +
                 ' | len=' + rawMes.length +
                 ' | hasNE-CHAR=' + hasNeChar +
                 ' | hasNE-BANNER=' + hasNeBanner +
                 ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
 
-            var assistantMsg = { role: 'assistant', content: rawMes, id: messageIndex, timestamp: Date.now() };
+            var assistantMsg = { role: 'assistant', content: rawMes, id: message._ne_id, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(
@@ -461,10 +462,50 @@ export async function runLtmConsolidation(chatId) {
             }
 
             if (decisionGroups && decisionGroups.length > 0) {
+                var snapBefore = {
+                    ltm_entries: JSON.parse(JSON.stringify(postStmVault.content.ltm_entries || [])),
+                    stm_entries: JSON.parse(JSON.stringify(postStmVault.content.stm_entries || [])),
+                    unconsolidated_stm: JSON.parse(JSON.stringify(postStmVault.content.unconsolidated_stm || []))
+                };
                 applyBatchLtmDecision(postStmVault, decisionGroups);
                 try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
                     console.warn('[NE] LTM save failed, rolling back vault');
                     postStmVault = await read(chatId);
+                }
+
+                var content = postStmVault.content || {};
+                var beforeLtmIds = new Set(snapBefore.ltm_entries.map(function(e) { return e.id; }));
+                var ltmAdded = (content.ltm_entries || []).filter(function(e) { return !beforeLtmIds.has(e.id); });
+                var beforeStmEntryIds = new Set(snapBefore.stm_entries.map(function(e) { return e.id; }));
+                var stmMoved = (content.stm_entries || []).filter(function(e) { return !beforeStmEntryIds.has(e.id); });
+                var ltmModified = [];
+                (content.ltm_entries || []).forEach(function(curr) {
+                    var prev = snapBefore.ltm_entries.find(function(e) { return e.id === curr.id; });
+                    if (prev && JSON.stringify(prev) !== JSON.stringify(curr)) {
+                        var changes = {};
+                        for (var k in curr) {
+                            if (JSON.stringify(curr[k]) !== JSON.stringify(prev[k])) {
+                                changes[k] = { old: prev[k], new: curr[k] };
+                            }
+                        }
+                        ltmModified.push({ ltm_id: curr.id, changes: changes });
+                    }
+                });
+
+                if (ltmAdded.length > 0 || stmMoved.length > 0 || ltmModified.length > 0) {
+                    var chain = await getActiveChain(chatId);
+                    var stmVerSeq = chain ? chain.mem_head_seq : null;
+                    recordMemoryVersion(chatId, {
+                        type: 'ltm_consolidation',
+                        summary: 'LTM 巩固: ' + (ltmAdded.length ? ltmAdded.length + '个新arc' : '') + (stmMoved.length ? ' ' + stmMoved.length + '条STM已巩固' : ''),
+                        delta: {
+                            stm_moved: stmMoved.map(function(e) { return e.id; }),
+                            ltm_added: ltmAdded.map(function(e) { return JSON.parse(JSON.stringify(e)); }),
+                            ltm_modified: ltmModified
+                        },
+                        message_dates: [],
+                        derived_from_stm_version: stmVerSeq
+                    }).catch(function(err) { console.warn('[NE] recordMemoryVersion (ltm) failed:', err); });
                 }
                 globalThis.__ne_debug_last_ltm_decision = {
                     batch: true,
@@ -963,39 +1004,106 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     }
 }
 
+/* ──────── 消息删除 / Swipe / 更新 — 记忆协调 ──────── */
+
+/**
+ * reconcileOrphanedStm — 协调孤儿 STM
+ *
+ * 对比 vault 中的 msg_ids 与当前 chat，移除所有关联消息已消失的 STM 条目，
+ * 并级联清理 LTM stm_refs。
+ *
+ * @param {object} vault — 完整 vault 对象（会被原地修改）
+ * @param {object[]} chatMessages — 当前 SillyTavern 聊天消息数组
+ * @returns {{ removedSTM: number, removedLTM: number }}
+ */
+function reconcileOrphanedStm(vault, chatMessages) {
+    const content = vault.content || {};
+
+    const filterList = function(list) {
+        return (list || []).filter(function(stm) {
+            return (stm.msg_ids || []).every(function(mid) {
+                return findMessageInChat(chatMessages, mid) !== null;
+            });
+        });
+    };
+
+    const beforeStmCount = ((content.unconsolidated_stm || []).length + (content.stm_entries || []).length);
+    content.unconsolidated_stm = filterList(content.unconsolidated_stm);
+    content.stm_entries = filterList(content.stm_entries);
+    const afterStmCount = ((content.unconsolidated_stm || []).length + (content.stm_entries || []).length);
+    const removedSTM = beforeStmCount - afterStmCount;
+
+    var removedLTM = 0;
+    const keptLTM = [];
+    (content.ltm_entries || []).forEach(function(ltm) {
+        const refs = (ltm.stm_refs || []).filter(function(stmId) {
+            var idx = (vault.stm_index || {})[stmId];
+            if (!idx) return false;
+            return (idx.msg_ids || []).every(function(mid) {
+                return findMessageInChat(chatMessages, mid) !== null;
+            });
+        });
+        if (refs.length === 0) {
+            removedLTM++;
+        } else {
+            ltm.stm_refs = refs;
+            keptLTM.push(ltm);
+        }
+    });
+    content.ltm_entries = keptLTM;
+
+    if (removedSTM > 0) {
+        console.log('[NE] reconcileOrphanedStm: removed ' + removedSTM + ' orphan STM, ' + removedLTM + ' LTM');
+    }
+    return { removedSTM: removedSTM, removedLTM: removedLTM };
+}
+
 export async function onMessageDeleted(messageId) {
     if (!getChatIdFn) return;
     const chatId = getChatIdFn();
-    try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
-    } catch (e) {
-        console.warn('[NE] Rollback on message delete failed:', e);
-    }
+    enqueueStmWrite(async function() {
+        try {
+            const vault = await read(chatId);
+            const chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+            reconcileOrphanedStm(vault, chatMessages);
+            await write(chatId, vault);
+            notifyVaultChanged();
+        } catch (e) {
+            console.warn('[NE] Rollback on message delete failed:', e);
+        }
+    });
 }
 
 export async function onMessageSwiped(messageId) {
-    const chatId = runtime.getChatId();
-    try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
-    } catch (e) {
-        console.warn('[NE] Rollback on message swipe failed:', e);
-    }
+    if (!getChatIdFn) return;
+    const chatId = getChatIdFn();
+    enqueueStmWrite(async function() {
+        try {
+            const vault = await read(chatId);
+            const chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+            reconcileOrphanedStm(vault, chatMessages);
+            await write(chatId, vault);
+            notifyVaultChanged();
+        } catch (e) {
+            console.warn('[NE] Rollback on message swipe failed:', e);
+        }
+    });
 }
 
 export async function onMessageUpdated(messageId) {
     if (!getChatIdFn) return;
     const chatId = getChatIdFn();
-    try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
-    } catch (e) {
-        console.warn('[NE] Rollback on message update failed:', e);
-    }
+    enqueueStmWrite(async function() {
+        try {
+            const vault = await read(chatId);
+            const chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+            reconcileOrphanedStm(vault, chatMessages);
+            await write(chatId, vault);
+            notifyVaultChanged();
+        } catch (e) {
+            console.warn('[NE] Rollback on message update failed:', e);
+        }
+    });
 }
 
 /* ──────── 矛盾检测（容器C）──────── */

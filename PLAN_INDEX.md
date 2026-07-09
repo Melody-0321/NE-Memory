@@ -18,7 +18,7 @@
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
-| `unify-st-message-id.md` | ❓ 未知 | — | — | 统一 ST 消息身份标识：注入不可变 __ne_msg_id |
+| `unify-st-message-id-v2.md` | ❓ 未知 | — | — | 统一 ST 消息身份标识 v2：以 send_date + role 为规范 ID |
 
 ---
 

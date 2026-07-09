@@ -4,7 +4,7 @@ import { extractEntityNames, lookupEntityChains, mergePipelines, groupCandidates
 import { resolveAmbiguousReferences } from './ambiguity.js';
 import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
-import { findMessageInChat } from './msg-id.js';
+import { findMessageInChat, buildMsgId } from './msg-id.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -94,7 +94,7 @@ function computeVisibleWindow(chatMessages, maxContext) {
         var tokens = countTokens(text) + 10;
         if (accumulated + tokens > available) break;
         accumulated += tokens;
-        m._msg_id = String(i);
+        m._msg_id = buildMsgId(m, i);
         visible.unshift(m);
     }
 
