@@ -1,5 +1,4 @@
-import { writeWithSnapshot } from '../vault/store.js';
-import { pruneSnapshotsForChat } from '../vault/versions.js';
+import { write } from '../vault/store.js';
 import { persistVaultToChatFile } from '../auto-restore.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -25,23 +24,14 @@ export function _checkChatIntegrity(tag) {
 
 export function _resetCheckChatTag() { _checkChatTag = ''; }
 
-export async function saveVaultWithSnapshot(chatId, vault) {
+export async function saveVault(chatId, vault) {
     vault.version = (vault.version || 0) + 1;
     vault.updated_at = new Date().toISOString();
     try {
-        var snapshotEntry = {
-            id: chatId + '_v' + vault.version,
-            chat_id: chatId,
-            version: vault.version,
-            updated_at: vault.updated_at,
-            data: JSON.parse(JSON.stringify(vault))
-        };
-        await writeWithSnapshot(chatId, vault, snapshotEntry);
-        // Prune snapshots beyond limit 30 (oldest first)
-        try { await pruneSnapshotsForChat(chatId); } catch (e) { console.warn('[NE] pruneSnapshots error:', e); }
+        await write(chatId, vault);
         persistVaultToChatFile(vault);
     } catch (e) {
-        console.error('[NE] saveVaultWithSnapshot failed:', e);
+        console.error('[NE] saveVault failed:', e);
     }
 }
 

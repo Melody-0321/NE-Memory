@@ -246,16 +246,7 @@ export {};
  * @property {boolean} [is_system]
  */
 
-// ============ Snapshot / Cursor ============
-
-/**
- * @typedef {Object} Snapshot
- * @property {string} id
- * @property {string} chat_id
- * @property {number} version
- * @property {string} updated_at
- * @property {Vault} data
- */
+// ============ Cursor ============
 
 /**
  * @typedef {Object} CursorState

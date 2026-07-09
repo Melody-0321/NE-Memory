@@ -5,7 +5,7 @@ import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
 import { recordMemoryVersion, initializeChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
-import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
+import { saveVault, filterNewMessages } from './pipeline-shared.js';
 import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
@@ -561,7 +561,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         vault._meta.last_pipeline_task = 'stm_extract';
         vault._meta.last_pipeline_time = new Date().toISOString();
         _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
-        try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        try { await saveVault(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
         _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {

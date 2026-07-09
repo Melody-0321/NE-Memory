@@ -509,19 +509,12 @@ function _buildDebugApi() {
         findMyVault: async function() {
             try {
                 var data = await _dumpVaultKeys();
-                var keys = data.vaults || data; // fallback for old format
-                var snaps = data.snapshots || [];
+                var keys = data.vaults || data;
                 var currentId = getChatId();
                 console.log('[NE-DEBUG] Current chatId:', currentId);
                 console.log('[NE-DEBUG] Vaults:');
                 console.table(keys);
-                if (snaps.length > 0) {
-                    console.log('[NE-DEBUG] Snapshots (' + snaps.length + ' total):');
-                    console.table(snaps);
-                } else {
-                    console.log('[NE-DEBUG] No snapshots found in IndexedDB.');
-                }
-                return { currentChatId: currentId, allKeys: keys, snapshots: snaps };
+                return { currentChatId: currentId, allKeys: keys };
             } catch (e) { return 'Error: ' + e.message; }
         },
         resetVectorIndex: async function(chatId) { try { return await resetVectorIndex(chatId); } catch (e) { return 'Error: ' + e.message; } },
@@ -540,8 +533,6 @@ function _dumpVaultKeys() {
             var vaultStore = vaultTx.objectStore('vaults');
             var keys = [];
             var vaultDone = false;
-            var snapDone = false;
-            var snapKeys = [];
 
             vaultStore.openCursor().onsuccess = function(e) {
                 var cursor = e.target.result;
@@ -557,33 +548,14 @@ function _dumpVaultKeys() {
                     cursor.continue();
                 } else {
                     vaultDone = true;
-                    if (snapDone) finish();
+                    finish();
                 }
             };
             vaultTx.onerror = function() { db.close(); reject(vaultTx.error); };
 
-            var snapTx = db.transaction('snapshots', 'readonly');
-            var snapStore = snapTx.objectStore('snapshots');
-            snapStore.openCursor().onsuccess = function(e) {
-                var cursor = e.target.result;
-                if (cursor) {
-                    var s = cursor.value;
-                    snapKeys.push({
-                        chat_id: s.chat_id || '(unknown)',
-                        version: s.version,
-                        id: cursor.key
-                    });
-                    cursor.continue();
-                } else {
-                    snapDone = true;
-                    if (vaultDone) finish();
-                }
-            };
-            snapTx.onerror = function() { snapDone = true; if (vaultDone) finish(); };
-
             function finish() {
                 db.close();
-                resolve({ vaults: keys, snapshots: snapKeys });
+                resolve({ vaults: keys });
             }
         };
         req.onerror = function() { reject(req.error); };

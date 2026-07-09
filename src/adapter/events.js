@@ -1,7 +1,7 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate, extractStateChangesOnly, saveVaultWithSnapshot } from '../core/engine/update.js';
+import { executeIncrementalUpdate, extractStateChangesOnly, saveVault } from '../core/engine/update.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
 import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
@@ -293,7 +293,7 @@ async function consumeNeCharBlocks(messageIndex) {
         }
         charState.characters = charState.characters;
         vault.content.state = charState;
-        await saveVaultWithSnapshot(chatId, vault);
+        await saveVault(chatId, vault);
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
@@ -487,7 +487,7 @@ export async function runLtmConsolidation(chatId) {
                     unconsolidated_stm: JSON.parse(JSON.stringify(postStmVault.content.unconsolidated_stm || []))
                 };
                 applyBatchLtmDecision(postStmVault, decisionGroups);
-                try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                try { await saveVault(chatId, postStmVault); } catch (e) {
                     console.warn('[NE] LTM save failed, rolling back vault');
                     postStmVault = await read(chatId);
                 }
@@ -542,7 +542,7 @@ export async function runLtmConsolidation(chatId) {
                     if (fallbackDecision) {
                         var refreshed = await read(chatId);
                         applyBatchLtmDecision(refreshed, [fallbackDecision]);
-                        try { await saveVaultWithSnapshot(chatId, refreshed); } catch (e) {
+                        try { await saveVault(chatId, refreshed); } catch (e) {
                             console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
                         }
                     } else {
@@ -565,7 +565,7 @@ export async function runLtmConsolidation(chatId) {
             console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
             var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
             if (rebatchResult.consumed > 0) {
-                await saveVaultWithSnapshot(chatId, rebatchVault);
+                await saveVault(chatId, rebatchVault);
                 notifyVaultChanged();
                 console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
             }

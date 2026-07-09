@@ -2,10 +2,9 @@
  * vault/garbage-collector.js — IndexedDB 孤儿数据 GC
  *
  * 遍历 IndexedDB 中所有 chat_id，与 ST ctx.characters / ctx.groups
- * 做差集对比，找出并清理已删除聊天遗留的 vault + snapshot 数据。
+ * 做差集对比，找出并清理已删除聊天遗留的 vault 数据。
  */
 import { read, remove, openDB } from './store.js';
-import { listSnapshots } from './versions.js';
 
 var _gcImportsReady = true;
 
@@ -123,23 +122,6 @@ export async function purgeOrphanChatData(chatId) {
         await remove(chatId);
         purgeLog.push('vaults:' + chatId);
     } catch (e) { console.warn('[NE-GC] vault remove failed for', chatId, ':', e.message); }
-
-    try {
-        var snapshots = await listSnapshots(chatId);
-        if (snapshots.length > 0) {
-            var db = await openDB();
-            await new Promise(function(resolve, reject) {
-                var tx = db.transaction('snapshots', 'readwrite');
-                var store = tx.objectStore('snapshots');
-                for (var i = 0; i < snapshots.length; i++) {
-                    store.delete(snapshots[i].id);
-                }
-                tx.oncomplete = function() { db.close(); resolve(); };
-                tx.onerror = function() { db.close(); reject(tx.error); };
-            });
-            purgeLog.push('snapshots:' + snapshots.length);
-        }
-    } catch (e) { console.warn('[NE-GC] snapshots purge failed for', chatId, ':', e.message); }
 
     try {
         var statsKey = 'ne_chat_stats';

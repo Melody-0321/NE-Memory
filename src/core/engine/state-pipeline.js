@@ -1,6 +1,6 @@
 import { read } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
-import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
+import { saveVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
@@ -937,7 +937,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     vault._meta.last_state_time = new Date().toISOString();
 
     _checkChatIntegrity('extractStateChangesOnly:beforeSaveVault');
-    await saveVaultWithSnapshot(chatId, vault);
+    await saveVault(chatId, vault);
     _checkChatIntegrity('extractStateChangesOnly:afterSaveVault');
 
     recordTelemetry({
