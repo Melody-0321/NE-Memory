@@ -620,6 +620,11 @@ function __ne_waitUntilReply(maxMs, doc) {
 async function callMainApi(systemPrompt, userPrompt) {
     _testCheckChatIntegrity('callMainApi:beforeGenerateQuietPrompt');
     var ctx = SillyTavern.getContext();
+    if (ctx.chat && ctx.chat.length) {
+        while (ctx.chat.length > 0 && ctx.chat[ctx.chat.length - 1] === undefined) {
+            ctx.chat.length = ctx.chat.length - 1;
+        }
+    }
     if (ctx.generateQuietPrompt) {
         var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
         var resp = await ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true });
