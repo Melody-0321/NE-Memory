@@ -13,6 +13,9 @@ function openDB() {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
+            if (db.objectStoreNames.contains('snapshots')) {
+                db.deleteObjectStore('snapshots');
+            }
             if (!db.objectStoreNames.contains(STORE_NAME)) {
                 db.createObjectStore(STORE_NAME, { keyPath: 'chat_id' });
             }
