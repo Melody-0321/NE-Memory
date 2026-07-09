@@ -29,6 +29,7 @@ import { renderUsageIntoContainer } from './panel-usage.js';
 import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderHistory } from './panel-popout.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
+import { renderVersionHistoryPanel } from './panel-version-history.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -96,6 +97,9 @@ export async function renderVaultPanel(getChatId) {
             '<input type="text" id="ne-state-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '</div>' +
             '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
+            '<div style="padding:0 12px 4px;display:flex;gap:6px;">' +
+            '<button id="ne-state-history-btn" class="menu_button" style="font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '</div>' +
             // State accordion: Characters / Quests / Factions
             '<div class="ne-accordion open" id="ne-acc-characters">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
@@ -120,6 +124,7 @@ export async function renderVaultPanel(getChatId) {
             '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="flex:1;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Refresh') + '</button>' +
             '<button class="narrative_btn_consolidate ne-btn-warning menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Consolidate') + '</button>' +
+            '<button id="ne-memory-history-btn" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
             '</div>' +
             '<div id="ne-memory-version" style="padding:2px 12px 4px;font-size:0.75em;color:var(--grey-50);"></div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
@@ -200,6 +205,10 @@ export async function renderVaultPanel(getChatId) {
         registerSlideRenderer('usage', renderUsageIntoContainer);
         registerSlideRenderer('settings', renderSettingsIntoSlide);
         registerSlideRenderer('templates', renderTemplatesIntoSlide);
+        registerSlideRenderer('versions', function(container) {
+            var cid = typeof getChatId === 'function' ? getChatId() : getChatId;
+            renderVersionHistoryPanel(container, cid);
+        });
 
         var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
@@ -456,6 +465,10 @@ export async function renderVaultPanel(getChatId) {
         if (usagePin) usagePin.onclick = function() { openSlidePanel('usage'); };
         var settingsPin = panelById('ne_pin_settings');
         if (settingsPin) settingsPin.onclick = function() { openSlidePanel('settings'); };
+        var stateHistoryBtn = panelById('ne-state-history-btn');
+        if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+        var memHistoryBtn = panelById('ne-memory-history-btn');
+        if (memHistoryBtn) memHistoryBtn.onclick = function() { openSlidePanel('versions'); };
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }

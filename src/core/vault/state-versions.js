@@ -18,6 +18,13 @@ var BRANCH_TTL_MS = 24 * 60 * 60 * 1000;
 var COMPACT_THRESHOLD = 100;
 var MAX_ACTIVE_VERSIONS = 500;
 
+function _getVersionLimit(key) {
+    try {
+        var cfg = JSON.parse(localStorage.getItem('ne_version_config') || '{}');
+        return cfg[key] || COMPACT_THRESHOLD;
+    } catch (e) { return COMPACT_THRESHOLD; }
+}
+
 function _tx(db, stores, mode, fn) {
     return new Promise(function (resolve, reject) {
         var tx = db.transaction(stores, mode);
@@ -230,9 +237,13 @@ export async function recordStateDelta(chatId, deltaData) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
     });
 
+    var stateLimit = _getVersionLimit('ne_state_version_limit');
+    if (chain.state_active.length > stateLimit) {
+        compact(chatId).catch(function(e) { console.warn('[NE] auto-compact state failed:', e); });
+    }
+
     return newSeq;
 }
-
 /**
  * 记录 Memory Version
  *
@@ -284,13 +295,17 @@ export async function recordMemoryVersion(chatId, versionData) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
     });
 
+    var memLimit = _getVersionLimit('ne_mem_version_limit');
+    if (chain.mem_active.length > memLimit) {
+        compact(chatId).catch(function(e) { console.warn('[NE] auto-compact memory failed:', e); });
+    }
+
     return newSeq;
 }
 
 /**
  * fold State：从 base_seq 快照开始逐版本应用 delta
  *
- * @param {string} chatId
  * @param {number} [targetSeq] — 目标 seq，不传则 fold 到 head
  * @returns {Promise<object>} fold 后的 state 对象
  */

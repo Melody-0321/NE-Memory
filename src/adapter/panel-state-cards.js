@@ -4,6 +4,7 @@ import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
+import { recordStateDelta } from '../core/vault/state-versions.js';
 
 var ACTIVE_STATUSES = ['活跃'];
 var DEPARTED_STATUSES = ['已死亡', '已归隐', '已离去'];
@@ -428,6 +429,7 @@ function saveCardFields(cardDiv) {
 
     var vals = cardDiv.querySelectorAll('.ne-char-val');
     var hasChanges = false;
+    var capturedChanges = [];
     vals.forEach(function(td) {
         var charName = td.getAttribute('data-char');
         var fieldName = td.getAttribute('data-field');
@@ -445,7 +447,11 @@ function saveCardFields(cardDiv) {
 
         if (!chars[charName]) chars[charName] = {};
         var old = chars[charName][fieldName];
-        if (old !== newVal) { chars[charName][fieldName] = newVal; hasChanges = true; }
+        if (old !== newVal) {
+            chars[charName][fieldName] = newVal;
+            hasChanges = true;
+            capturedChanges.push({ path: 'characters.' + charName + '.' + fieldName, old: old, new: newVal });
+        }
     });
 
     if (!hasChanges) { exitCardEditMode(cardDiv); return; }
@@ -454,9 +460,19 @@ function saveCardFields(cardDiv) {
     c.state = state;
 
     var getChatId = stored.getChatId;
-    write(getChatId(), vault).then(function() {
+    var chatId = getChatId();
+    write(chatId, vault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
     });
+
+    if (capturedChanges.length > 0) {
+        recordStateDelta(chatId, {
+            source: 'manual_edit',
+            summary: '\u624B\u52A8\u7F16\u8F91 ' + capturedChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
+            changes: capturedChanges,
+            message_dates: []
+        }).catch(function(err) { console.warn('[NE] recordStateDelta (manual edit) failed:', err); });
+    }
 }
 
 var _schemeEditStates = {};  // per-character scheme editor state
