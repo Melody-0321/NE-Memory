@@ -1,22 +1,28 @@
 import { addAnomaly } from './telemetry.js';
 
-var _pipelinePhase = 'idle'; // idle | state | stm | ltm
-var _pipelineWaiters = [];
-var _onChangeCallbacks = [];
-var _stateSince = 0;
+var _stateQueue = Promise.resolve();
+var _stmQueue = Promise.resolve();
+var _ltmQueue = Promise.resolve();
 
-var PIPELINE_PHASES = ['state', 'stm', 'ltm'];
+var _status = { state: 'idle', stm: 'idle', ltm: 'idle' };
+var _onChangeCallbacks = [];
+
+function _setStatus(pipeline, value) {
+    if (_status[pipeline] === value) return;
+    _status[pipeline] = value;
+    _notifyChange();
+}
 
 function _notifyChange() {
-    var phase = _pipelinePhase;
+    var status = { state: _status.state, stm: _status.stm, ltm: _status.ltm };
     var callbacks = _onChangeCallbacks.slice();
     for (var i = 0; i < callbacks.length; i++) {
-        try { callbacks[i](phase); } catch (e) {}
+        try { callbacks[i](status); } catch (e) {}
     }
 }
 
 /**
- * @param {function(string):void} fn - receives current phase
+ * @param {function({state:string, stm:string, ltm:string}):void} fn
  * @returns {void}
  */
 export function onPipelineChange(fn) {
@@ -24,7 +30,7 @@ export function onPipelineChange(fn) {
 }
 
 /**
- * @param {function(string):void} fn
+ * @param {function({state:string, stm:string, ltm:string}):void} fn
  * @returns {void}
  */
 export function offPipelineChange(fn) {
@@ -33,109 +39,141 @@ export function offPipelineChange(fn) {
 }
 
 /**
- * @param {string} targetState
- * @returns {boolean}
+ * @param {function(): Promise<void>} taskFn
+ * @returns {Promise<void>}
  */
-export function tryAcquire(targetState) {
-    if (_pipelinePhase !== 'idle') return false;
-    if (PIPELINE_PHASES.indexOf(targetState) === -1) return false;
-    _pipelinePhase = targetState;
-    _stateSince = Date.now();
-    _notifyChange();
-    console.log('[NE-GUARD] acquire ' + targetState + ' (idle → ' + targetState + ')');
-    return true;
+export function enqueueStateWrite(taskFn) {
+    _stateQueue = _stateQueue.then(
+        async function() {
+            _setStatus('state', 'active');
+            try { await taskFn(); } finally { _setStatus('state', 'idle'); }
+        },
+        async function(e) {
+            _setStatus('state', 'idle');
+            throw e;
+        }
+    );
+    return _stateQueue;
 }
 
 /**
- * @param {string} newState
- * @returns {void}
+ * @param {function(): Promise<void>} taskFn
+ * @returns {Promise<void>}
  */
-export function transitionTo(newState) {
-    if (PIPELINE_PHASES.indexOf(newState) === -1) return;
-    var old = _pipelinePhase;
-    _pipelinePhase = newState;
-    _stateSince = Date.now();
-    _notifyChange();
-    console.log('[NE-GUARD] transition ' + old + ' → ' + newState);
+export function enqueueStmWrite(taskFn) {
+    _stmQueue = _stmQueue.then(
+        async function() {
+            _setStatus('stm', 'active');
+            try { await taskFn(); } finally { _setStatus('stm', 'idle'); }
+        },
+        async function(e) {
+            _setStatus('stm', 'idle');
+            throw e;
+        }
+    );
+    return _stmQueue;
 }
 
 /**
- * @returns {void}
+ * @param {function(): Promise<void>} taskFn
+ * @returns {Promise<void>}
  */
-export function releasePipeline() {
-    _pipelinePhase = 'idle';
-    _stateSince = 0;
-    _notifyChange();
-    console.log('[NE-GUARD] release pipeline → idle');
-    var waiters = _pipelineWaiters.splice(0);
-    for (var i = 0; i < waiters.length; i++) {
-        try { waiters[i].resolve(); } catch (e) {}
-    }
+export function enqueueLtmWrite(taskFn) {
+    _ltmQueue = _ltmQueue.then(
+        async function() {
+            _setStatus('ltm', 'active');
+            try { await taskFn(); } finally { _setStatus('ltm', 'idle'); }
+        },
+        async function(e) {
+            _setStatus('ltm', 'idle');
+            throw e;
+        }
+    );
+    return _ltmQueue;
 }
 
 /**
- * @returns {boolean}
- */
-export function isIdle() {
-    return _pipelinePhase === 'idle';
-}
-
-/**
- * @returns {string|null}
- */
-export function getPipelinePhase() {
-    return _pipelinePhase;
-}
-
-/**
- * @returns {string}
+ * @returns {{state:string, stm:string, ltm:string}}
  */
 export function getState() {
-    return _pipelinePhase;
+    return { state: _status.state, stm: _status.stm, ltm: _status.ltm };
 }
 
 /**
  * @returns {void}
  */
 export function reset() {
-    _pipelinePhase = 'idle';
-    _stateSince = 0;
+    _stateQueue = Promise.resolve();
+    _stmQueue = Promise.resolve();
+    _ltmQueue = Promise.resolve();
+    _status = { state: 'idle', stm: 'idle', ltm: 'idle' };
     _notifyChange();
-    var waiters = _pipelineWaiters.splice(0);
-    _pipelineWaiters = [];
-    for (var i = 0; i < waiters.length; i++) {
-        try { waiters[i].resolve(); } catch (e) {}
+}
+
+// ── Deprecated (kept for backward compatibility) ──
+
+var _deprecatedWarned = {};
+
+function _warnDeprecated(name) {
+    if (!_deprecatedWarned[name]) {
+        _deprecatedWarned[name] = true;
+        console.warn('[NE-GUARD] ' + name + ' is deprecated. Use enqueueStateWrite / enqueueStmWrite / enqueueLtmWrite instead.');
     }
-    console.log('[NE-GUARD] reset → idle');
 }
 
 /**
+ * @deprecated Use enqueueStateWrite / enqueueStmWrite / enqueueLtmWrite instead.
+ * @returns {boolean} Always returns true (no-op).
+ */
+export function tryAcquire() {
+    _warnDeprecated('tryAcquire');
+    return true;
+}
+
+/**
+ * @deprecated Queue model handles serialization internally.
+ * @returns {void}
+ */
+export function releasePipeline() {
+    _warnDeprecated('releasePipeline');
+}
+
+/**
+ * @deprecated Queue model handles waiting internally.
  * @param {number} [timeoutMs]
- * @returns {Promise<boolean>}
+ * @returns {Promise<void>} Always resolves immediately.
  */
 export function waitForPipelineTrackIdle(timeoutMs) {
-    timeoutMs = timeoutMs || 15000;
-    return new Promise(function(resolve) {
-        if (_pipelinePhase === 'idle') { resolve(); return; }
-        var resolved = false;
-        var timer = setTimeout(function() {
-            if (!resolved) {
-                resolved = true;
-                var idx = _pipelineWaiters.indexOf(entry);
-                if (idx !== -1) _pipelineWaiters.splice(idx, 1);
-                var stuckMs = Date.now() - _stateSince;
-                console.warn('[NE-GUARD] pipeline wait timeout after ' + timeoutMs + 'ms, phase=' + _pipelinePhase + ', stuck for ' + stuckMs + 'ms');
-                addAnomaly('pipeline_timeout', { phase: _pipelinePhase, timeoutMs: timeoutMs, stuckMs: stuckMs });
-                resolve();
-            }
-        }, timeoutMs);
-        var entry = { resolve: function() {
-            if (!resolved) {
-                resolved = true;
-                clearTimeout(timer);
-                resolve();
-            }
-        }};
-        _pipelineWaiters.push(entry);
-    });
+    _warnDeprecated('waitForPipelineTrackIdle');
+    return Promise.resolve();
+}
+
+/**
+ * @deprecated Use getState() instead.
+ * @returns {boolean} true if no pipeline is active.
+ */
+export function isIdle() {
+    _warnDeprecated('isIdle');
+    return _status.state === 'idle' && _status.stm === 'idle' && _status.ltm === 'idle';
+}
+
+/**
+ * @deprecated Use getState() instead.
+ * @returns {string}
+ */
+export function getPipelinePhase() {
+    _warnDeprecated('getPipelinePhase');
+    var active = [];
+    if (_status.state === 'active') active.push('state');
+    if (_status.stm === 'active') active.push('stm');
+    if (_status.ltm === 'active') active.push('ltm');
+    return active.length > 0 ? active.join(',') : 'idle';
+}
+
+/**
+ * @deprecated Queue model transitions are handled internally.
+ * @returns {void}
+ */
+export function transitionTo() {
+    _warnDeprecated('transitionTo');
 }

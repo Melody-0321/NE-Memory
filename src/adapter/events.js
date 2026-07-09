@@ -19,7 +19,7 @@ import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
-import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
+import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
 import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
@@ -432,81 +432,72 @@ export async function runLtmConsolidation(chatId) {
     var MAX_LTM_BATCHES = 5;
     var ranLtm = false;
     for (var batchPass = 0; batchPass < MAX_LTM_BATCHES; batchPass++) {
-        var postStmVault = await read(chatId);
-        if (!postStmVault || !postStmVault.content) return;
+        await enqueueLtmWrite(async function() {
+            var postStmVault = await read(chatId);
+            if (!postStmVault || !postStmVault.content) return;
 
-        var eligibleIds = getEligibleStmIds(postStmVault);
-        if (eligibleIds.length === 0) {
-            if (batchPass === 0) {
-                var uncCount = ((postStmVault.content || {}).unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; }).length;
-                var threshold2 = (function() { try { var r = localStorage.getItem('ne_settings'); if (r) { var s2 = JSON.parse(r); return Number(s2.stmMaxUnconsolidated) || 5; } } catch(e) {} return 5; })();
-                console.log('[NE] LTM: no eligible STM — unconsolidated=' + uncCount + ' threshold=' + threshold2);
-            }
-            break;
-        }
-
-        if (!tryAcquire('ltm')) {
-            console.log('[NE] LTM batch ' + (batchPass+1) + ': waiting for pipeline track — state=' + getState());
-            await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-            if (!tryAcquire('ltm')) {
-                console.log('[NE] LTM: guard still blocked, deferring remaining batches');
-                break;
-            }
-        }
-        console.log('[NE-GUARD] acquire ltm (idle → ltm) — batch ' + (batchPass+1) + ', eligible=' + eligibleIds.length);
-
-        ranLtm = true;
-        var decisionGroups = [];
-        try {
-            decisionGroups = await runBatchLtmDecision(postStmVault, eligibleIds, callMemoryPipeline);
-            console.log('[NE] LTM batch: got ' + (decisionGroups || []).length + ' decision groups for ' + eligibleIds.length + ' STMs');
-        } catch (e) {
-            console.warn('[NE] LTM batch decision failed:', e);
-        }
-
-        if (decisionGroups && decisionGroups.length > 0) {
-            applyBatchLtmDecision(postStmVault, decisionGroups);
-            try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
-                console.warn('[NE] LTM save failed, rolling back vault');
-                postStmVault = await read(chatId);
-            }
-            globalThis.__ne_debug_last_ltm_decision = {
-                batch: true,
-                groups: decisionGroups.length,
-                stmCount: eligibleIds.length,
-                pass: batchPass + 1,
-                time: new Date().toISOString()
-            };
-            console.log('[NE] LTM: batch decision applied — groups=' + decisionGroups.length + ', stms=' + eligibleIds.length);
-            notifyVaultChanged();
-        } else {
-            console.warn('[NE] LTM batch: no decision returned, applying per-STM fallback');
-            for (var fi = 0; fi < eligibleIds.length; fi++) {
-                var fallbackDecision = createMinimalLtm(postStmVault, eligibleIds[fi]);
-                if (fallbackDecision) {
-                    var refreshed = await read(chatId);
-                    applyBatchLtmDecision(refreshed, [fallbackDecision]);
-                    try { await saveVaultWithSnapshot(chatId, refreshed); } catch (e) {
-                        console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
-                    }
-                } else {
-                    console.warn('[NE] LTM fallback also failed for ' + eligibleIds[fi] + ', skipping');
+            var eligibleIds = getEligibleStmIds(postStmVault);
+            if (eligibleIds.length === 0) {
+                if (batchPass === 0) {
+                    var uncCount = ((postStmVault.content || {}).unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; }).length;
+                    var threshold2 = (function() { try { var r = localStorage.getItem('ne_settings'); if (r) { var s2 = JSON.parse(r); return Number(s2.stmMaxUnconsolidated) || 5; } } catch(e) {} return 5; })();
+                    console.log('[NE] LTM: no eligible STM — unconsolidated=' + uncCount + ' threshold=' + threshold2);
                 }
+                return;
             }
-            notifyVaultChanged();
-        }
+            console.log('[NE] LTM batch ' + (batchPass+1) + ': eligible=' + eligibleIds.length);
 
-        releasePipeline();
-        console.log('[NE-GUARD] release pipeline (ltm → idle) — batch ' + (batchPass+1));
+            ranLtm = true;
+            var decisionGroups = [];
+            try {
+                decisionGroups = await runBatchLtmDecision(postStmVault, eligibleIds, callMemoryPipeline);
+                console.log('[NE] LTM batch: got ' + (decisionGroups || []).length + ' decision groups for ' + eligibleIds.length + ' STMs');
+            } catch (e) {
+                console.warn('[NE] LTM batch decision failed:', e);
+            }
+
+            if (decisionGroups && decisionGroups.length > 0) {
+                applyBatchLtmDecision(postStmVault, decisionGroups);
+                try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
+                    console.warn('[NE] LTM save failed, rolling back vault');
+                    postStmVault = await read(chatId);
+                }
+                globalThis.__ne_debug_last_ltm_decision = {
+                    batch: true,
+                    groups: decisionGroups.length,
+                    stmCount: eligibleIds.length,
+                    pass: batchPass + 1,
+                    time: new Date().toISOString()
+                };
+                console.log('[NE] LTM: batch decision applied — groups=' + decisionGroups.length + ', stms=' + eligibleIds.length);
+                notifyVaultChanged();
+            } else {
+                console.warn('[NE] LTM batch: no decision returned, applying per-STM fallback');
+                for (var fi = 0; fi < eligibleIds.length; fi++) {
+                    var fallbackDecision = createMinimalLtm(postStmVault, eligibleIds[fi]);
+                    if (fallbackDecision) {
+                        var refreshed = await read(chatId);
+                        applyBatchLtmDecision(refreshed, [fallbackDecision]);
+                        try { await saveVaultWithSnapshot(chatId, refreshed); } catch (e) {
+                            console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
+                        }
+                    } else {
+                        console.warn('[NE] LTM fallback also failed for ' + eligibleIds[fi] + ', skipping');
+                    }
+                }
+                notifyVaultChanged();
+            }
+        });
 
         var checkVault = await read(chatId);
         if (getEligibleStmIds(checkVault).length === 0) break;
     }
 
     try {
-        var rebatchVault = await read(chatId);
-        var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
-        if (orphans.length > 0 && ranLtm && tryAcquire('ltm')) {
+        await enqueueLtmWrite(async function() {
+            var rebatchVault = await read(chatId);
+            var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
+            if (orphans.length === 0 || !ranLtm) return;
             console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
             var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
             if (rebatchResult.consumed > 0) {
@@ -514,25 +505,14 @@ export async function runLtmConsolidation(chatId) {
                 notifyVaultChanged();
                 console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
             }
-            releasePipeline();
-        }
+        });
     } catch (e) {
         console.warn('[NE] LTM rebatch failed:', e);
-        releasePipeline();
     }
 }
 
 async function flushPendingMessages() {
-    if (!tryAcquire('stm')) {
-        console.log('[NE] flushPendingMessages: waiting for state pipeline — state=' + getState());
-        await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-        if (!tryAcquire('stm')) {
-            console.log('[NE] flushPendingMessages: guard still blocked after wait, deferring');
-            return;
-        }
-        console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
-    }
-    try {
+    return enqueueStmWrite(async function() {
     if (pendingMessages.length === 0) return;
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var chatMessages = runtime.getChat ? runtime.getChat() : [];
@@ -556,7 +536,6 @@ async function flushPendingMessages() {
             recordTelemetry({ turns: batch.length, events: result.added });
         }
 
-        // Record vault size snapshot
         var content = latestVault && latestVault.content ? latestVault.content : {};
         var stmCount = ((content.unconsolidated_stm || []).concat(content.stm_entries || [])).length;
         var ltmCount = (content.ltm_entries || []).length;
@@ -579,31 +558,28 @@ async function flushPendingMessages() {
             persistPending();
         }
     }
-    } finally {
-        console.log('[NE] Pipeline: releasing guard pipeline (stm)');
-        releasePipeline();
-        persistPending();
 
-        runLtmConsolidation(chatId).catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
+    persistPending();
+    runLtmConsolidation(chatId).catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
 
-        if (pendingMessages.length > 0) {
-            (async function() {
-                var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
-                var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
-                var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
-                if ((pendingMessages.length >= await getStmBatchSize()
-                    || (pressureVal >= 0.50 && pressureVal > 0))
-                    && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
-                    _drainContinuationCount++;
-                    console.log('[NE] Continuation drain #' + _drainContinuationCount + ' — pending=' + pendingMessages.length);
-                    flushPendingMessages().catch(function(e) {
-                        console.warn('[NE] Continuation drain failed:', e);
-                    });
-                }
-                _drainContinuationCount = 0;
-            })().catch(function(e) { console.warn('[NE] Drain check failed:', e); });
-        }
+    if (pendingMessages.length > 0) {
+        (async function() {
+            var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
+            var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
+            var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
+            if ((pendingMessages.length >= await getStmBatchSize()
+                || (pressureVal >= 0.50 && pressureVal > 0))
+                && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
+                _drainContinuationCount++;
+                console.log('[NE] Continuation drain #' + _drainContinuationCount + ' — pending=' + pendingMessages.length);
+                flushPendingMessages().catch(function(e) {
+                    console.warn('[NE] Continuation drain failed:', e);
+                });
+            }
+            _drainContinuationCount = 0;
+        })().catch(function(e) { console.warn('[NE] Drain check failed:', e); });
     }
+    });
 }
 
 function triggerPerRoundExtraction(assistantMsg) {
@@ -611,39 +587,35 @@ function triggerPerRoundExtraction(assistantMsg) {
         console.log('[NE] State: skipped (State Schema disabled — enable in NE Memory settings)');
         return;
     }
-    if (!tryAcquire('state')) {
-        console.log('[NE] State: skipped (pipeline guard busy, state=' + getState() + ')');
-        return;
-    }
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
-    extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
-        if (stateResult && stateResult.vault) notifyVaultChanged();
-        // #13: 首次模板初始化 system message
-        if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
-            var sig = stateResult.vault.content._templateInitSignal;
-            var schemeCount = (sig.schemes && sig.schemes.length) || 0;
-            if (schemeCount > 0) {
-                var schemesStr = sig.schemes.join(', ');
-                sendNeInteraction(null,
-                    '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr,
-                    {
-                        buttons: [{ text: '\u67E5\u770B\u6A21\u677F\u5E93', key: 'open_templates' }],
-                        timeoutMs: 15000,
-                        onConfirm: function(key) {
-                            if (key === 'open_templates') {
-                                try { PD.navigate('templates'); } catch(e) {}
+    enqueueStateWrite(async function() {
+        try {
+            var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+            if (stateResult && stateResult.vault) notifyVaultChanged();
+            if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
+                var sig = stateResult.vault.content._templateInitSignal;
+                var schemeCount = (sig.schemes && sig.schemes.length) || 0;
+                if (schemeCount > 0) {
+                    var schemesStr = sig.schemes.join(', ');
+                    sendNeInteraction(null,
+                        '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr,
+                        {
+                            buttons: [{ text: '\u67E5\u770B\u6A21\u677F\u5E93', key: 'open_templates' }],
+                            timeoutMs: 15000,
+                            onConfirm: function(key) {
+                                if (key === 'open_templates') {
+                                    try { PD.navigate('templates'); } catch(e) {}
+                                }
                             }
                         }
-                    }
-                );
+                    );
+                }
+                delete stateResult.vault.content._templateInitSignal;
             }
-            delete stateResult.vault.content._templateInitSignal;
+        } catch (e) {
+            console.warn('[NE] Per-round state pipeline failed:', e);
         }
-    }).catch(function(e) {
-        console.warn('[NE] Per-round state pipeline failed:', e);
-    }).finally(function() {
-        releasePipeline();
     });
 }
 

@@ -3,7 +3,7 @@ import { loadVault } from '../core/auto-restore.js';
 import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
+import { getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
 import { runLtmConsolidation } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
@@ -422,15 +422,25 @@ export async function renderVaultPanel(getChatId) {
             }
         });
 
-        // ── Pipeline status callback (no polling — push from pipeline-guard) ──
-        var _updatePipelineUI = function(phase) {
+        // ── Pipeline status callback (push from pipeline-guard) ──
+        var _updatePipelineUI = function(status) {
             var el = panelById('ne_pipeline_status');
             if (!el) return;
-            if (phase === 'idle') {
+            var dots = [
+                { key: 'state', label: t('State') },
+                { key: 'stm',   label: t('STM') },
+                { key: 'ltm',   label: t('LTM') }
+            ];
+            var activeCount = dots.filter(function(d) { return status[d.key] === 'active'; }).length;
+            if (activeCount === 0) {
                 el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
                 el.style.color = 'var(--grey-50)';
             } else {
-                el.innerHTML = '<span style="color:var(--ne-success);">\u25CF</span> ' + t('Active:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
+                var parts = dots.map(function(d) {
+                    var color = status[d.key] === 'active' ? 'var(--ne-success)' : 'var(--grey-50)';
+                    return '<span style="color:' + color + ';" title="' + d.label + '">\u25CF</span>';
+                });
+                el.innerHTML = parts.join(' ') + ' <span style="font-size:0.85em;">' + activeCount + ' ' + t('active') + '</span>';
                 el.style.color = 'var(--grey-60)';
             }
         };

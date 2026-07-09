@@ -9,7 +9,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, pane
 import { read, write, collectAllMsgIds } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState } from '../core/engine/pipeline-guard.js';
+import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
 import { renderHistory } from './panel-popout.js';
 import { initTestRunner } from './panel-tools.js';
 
@@ -831,8 +831,8 @@ export function renderSettingsIntoSlide(container) {
                         else if (cpData.t && cpData.i > 0) { processedCount = cpData.i; }
                     }
                 } catch (e) {}
+                await enqueueStmWrite(async function() {
                 var PIPELINE_TIMEOUT_MS = 60000;
-                if (!tryAcquire('stm')) { await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS); if (!tryAcquire('stm')) { reset(); tryAcquire('stm'); } }
                 var accumTurns = processedCount, batchStart = processedCount, batchChars = 0;
                 for (var i = processedCount; i < total; i++) {
                     var msgLen = toProcess[i].mes.length;
@@ -853,12 +853,12 @@ export function renderSettingsIntoSlide(container) {
                     try { localStorage.removeItem(cpKey); } catch (e3) {}
                 }
                 processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
+                });
             } catch (e) {
                 console.error('[NE] Process history failed:', e);
                 processHistoryBtn.textContent = t('Failed');
                 showToast(t('Process History') + ': ' + e.message, 'error', 6000);
             } finally {
-                releasePipeline();
                 setTimeout(function() { processHistoryBtn.textContent = prevText; processHistoryBtn.disabled = false; }, 2000);
                 busEmit('vault:updated', { getChatId: _currentGetChatId });
             }
