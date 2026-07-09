@@ -653,10 +653,11 @@ function triggerPerRoundExtraction(assistantMsg) {
     }
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
+    _neCheckChatIntegrity('triggerPerRoundExtraction:before');
     enqueueStateWrite(async function() {
         try {
+            _neCheckChatIntegrity('enqueueStateWrite:entry');
             var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
-            if (stateResult && stateResult.vault) notifyVaultChanged();
             if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
                 var sig = stateResult.vault.content._templateInitSignal;
                 var schemeCount = (sig.schemes && sig.schemes.length) || 0;

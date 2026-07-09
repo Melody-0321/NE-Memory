@@ -6,6 +6,7 @@ import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from 
 import { recordMemoryVersion, initializeChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
 import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
+import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 
@@ -414,6 +415,8 @@ function buildStmSummaryPrompt(segments, turns, vault, ratio) {
 }
 
 export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
+    _resetCheckChatTag();
+    _checkChatIntegrity('executeIncrementalUpdate:entry');
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
@@ -473,6 +476,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var MAX_RETRIES = 1;
             for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
                 try {
+                    _checkChatIntegrity('executeIncrementalUpdate:beforeLLM');
                     responseText = await callMemoryPipeline([
                         { role: 'system', content: summaryPrompt.system },
                         { role: 'user', content: summaryPrompt.user }
@@ -482,6 +486,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     console.warn('[NE] STM LLM attempt ' + (attempt + 1) + ' failed:', e);
                 }
             }
+
+            _checkChatIntegrity('executeIncrementalUpdate:afterLLM');
 
             if (responseText) {
                 var parsed = safeJsonParse(responseText);
@@ -554,7 +560,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         vault._meta = vault._meta || {};
         vault._meta.last_pipeline_task = 'stm_extract';
         vault._meta.last_pipeline_time = new Date().toISOString();
+        _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
         try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {
 

@@ -4,6 +4,27 @@ import { persistVaultToChatFile } from '../auto-restore.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 
+var _checkChatTag = '';
+
+export function _checkChatIntegrity(tag) {
+    try {
+        var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        var chat = ctx && ctx.chat;
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                if (!_checkChatTag) {
+                    _checkChatTag = tag;
+                    console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                }
+                return;
+            }
+        }
+    } catch (e) {}
+}
+
+export function _resetCheckChatTag() { _checkChatTag = ''; }
+
 export async function saveVaultWithSnapshot(chatId, vault) {
     vault.version = (vault.version || 0) + 1;
     vault.updated_at = new Date().toISOString();

@@ -1,6 +1,6 @@
 import { read } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
-import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion } from './pipeline-shared.js';
+import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
@@ -774,6 +774,8 @@ function _persistCardConfig(charName, state) {
     }
 }
 export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
+    _resetCheckChatTag();
+    _checkChatIntegrity('extractStateChangesOnly:entry');
     var vault = await read(chatId);
     if (!vault || !vault.content) return { vault, changed: false };
 
@@ -823,6 +825,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         var sysMsgs = statePrompt.system.map(function(s) {
             return { role: 'system', content: s };
         });
+        _checkChatIntegrity('extractStateChangesOnly:beforeLLM');
         stateResponse = await callMemoryPipeline(
             sysMsgs.concat([{ role: 'user', content: statePrompt.user }]),
             { operation: 'state_extract' }, chatId
@@ -832,8 +835,11 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         return { vault, changed: false };
     }
 
-    var parsed = parseSTMResponse(stateResponse);
-    var stateChanges = parsed.stateChanges || {};
+    _checkChatIntegrity('extractStateChangesOnly:afterLLM');
+
+    var stateChanges = parseSTMResponse(stateResponse).stateChanges;
+
+    _checkChatIntegrity('extractStateChangesOnly:afterParse');
     // 提取 world_context（含在下层 JSON block 的 state_changes 外）
     var rawParsed = safeJsonParse(String(stateResponse || '').trim());
     if (rawParsed && rawParsed.world_context && typeof rawParsed.world_context === 'object' && rawParsed.world_context.genre) {
@@ -930,7 +936,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     vault._meta.last_state_task = 'per_round';
     vault._meta.last_state_time = new Date().toISOString();
 
+    _checkChatIntegrity('extractStateChangesOnly:beforeSaveVault');
     await saveVaultWithSnapshot(chatId, vault);
+    _checkChatIntegrity('extractStateChangesOnly:afterSaveVault');
 
     recordTelemetry({
         pipeline_task: 'state_per_round',
