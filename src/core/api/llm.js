@@ -589,7 +589,8 @@ async function callCustomAPI(config, messages, options) {
 
         // 2. Retry through ST CORS proxy
         try {
-            var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
+            var origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'http://127.0.0.1:8000';
+            var proxyUrl = origin + '/proxy/' + encodeURIComponent(config.url);
             var result = await attemptFetch(proxyUrl);
             result._viaProxy = true;
             if (!_proxyNotified) {
@@ -601,11 +602,13 @@ async function callCustomAPI(config, messages, options) {
             lastError = e2;
             if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
                 lastError = new Error(
-                    'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content). ' +
-                    'ST CORS proxy is disabled or unreachable. Enable it:\n' +
-                    '1. Open SillyTavern/config.yaml\n' +
-                    '2. Set enableCorsProxy: true\n' +
-                    '3. Restart SillyTavern'
+                    'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content) and ST CORS proxy is unreachable. ' +
+                    'Check:\n' +
+                    '1. SillyTavern is running (not just the config file)\n' +
+                    '2. config.yaml: enableCorsProxy: true\n' +
+                    '3. Restarted SillyTavern after changing config\n' +
+                    '4. URL is accessible from this machine (not behind VPN/firewall)\n' +
+                    'Proxy URL tried: ' + proxyUrl
                 );
             } else if (e2.name === 'AbortError') {
                 lastError = new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
