@@ -169,7 +169,7 @@ export function renderSettingsTab() {
             '<div class="ne-settings-grid">' +
             '<div><label>' + t('API URL') + '</label><input type="text" id="nes_embedding_url" placeholder="https://api.siliconflow.cn/v1/embeddings" value="' + escapeHtml(embApi.url || '') + '"></div>' +
             '<div><label>' + t('API Key') + '</label><input type="password" id="nes_embedding_key" placeholder="sk-..." value="' + escapeHtml(embApi.key || '') + '"></div>' +
-            '<div><label>' + t('Model') + '</label><input type="text" id="nes_embedding_model" placeholder="BAAI/bge-m3" value="' + escapeHtml(embApi.model || '') + '"></div>' +
+            '<div><label>' + t('Model') + ' <span style="color:#ef5350;">*</span></label><input type="text" id="nes_embedding_model" placeholder="BAAI/bge-m3" value="' + escapeHtml(embApi.model || '') + '"></div>' +
             '</div>' +
             '<div style="display:flex;gap:8px;align-items:center;">' +
             '<button class="ne-api-btn" id="nes_embedding_connect">' + t('Connect') + '</button>' +
