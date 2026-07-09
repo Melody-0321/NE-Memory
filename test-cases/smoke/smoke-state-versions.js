@@ -19,50 +19,9 @@
 
     var DB_NAME = 'ne_memory_vault';
 
-    function getChatIdRobust() {
-        // 1. 通过 __ne_debug（iframe 上下文）
-        try {
-            var dbg = window.__ne_debug;
-            if (!dbg) {
-                // 尝试 parent 窗口（iframe 内时 SillyTavern 在 parent 上）
-                var pw = window.parent || window;
-                if (pw && pw !== window && pw.__ne_debug) dbg = pw.__ne_debug;
-            }
-            if (!dbg) {
-                // 扫描 iframe（主窗口时 __ne_debug 在 iframe 里）
-                var iframes = document.querySelectorAll('iframe');
-                for (var i = 0; i < iframes.length; i++) {
-                    try { var w = iframes[i].contentWindow; if (w && w.__ne_debug) { dbg = w.__ne_debug; break; } } catch (e) {}
-                }
-            }
-            if (dbg && dbg.getCurrentChatId) {
-                var id = dbg.getCurrentChatId();
-                if (id && id !== 'ne_x_0') return id;
-            }
-        } catch (e) {}
+    console.log('[SMOKE] 启动，正在从 IndexedDB 扫描活跃 chat...');
 
-        // 2. 通过 SillyTavern.getContext()（主窗口有；iframe 内需走 parent）
-        try {
-            var st = window.SillyTavern;
-            if (!st) {
-                var pw2 = window.parent || window;
-                if (pw2 && pw2 !== window) st = pw2.SillyTavern;
-            }
-            if (st && st.getContext) {
-                var ctx = st.getContext();
-                if (ctx && ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
-            }
-        } catch (e) {}
-
-        return null;
-    }
-
-    var chatId = getChatIdRobust();
-
-    if (!chatId) {
-        console.error('[SMOKE] 无法获取 chatId，请确保 NE-Memory 已初始化');
-        return;
-    }
+    var chatId = null;
 
     var results = { passed: 0, failed: 0, skipped: 0 };
     function ok(cond, msg) {
@@ -71,10 +30,46 @@
     }
     function skip(msg) { results.skipped++; console.warn('  ⏭️ ' + msg); }
 
-    function openDB() {
+    function dbVaultScanner() {
+        return new Promise(function(resolve) {
+            var req = indexedDB.open(DB_NAME);
+            req.onsuccess = function() {
+                var db = req.result;
+                if (!db.objectStoreNames.contains('vaults')) { db.close(); resolve(null); return; }
+                var tx = db.transaction('vaults', 'readonly');
+                var store = tx.objectStore('vaults');
+                var cursorReq = store.openCursor();
+                var best = null;
+                var bestTime = 0;
+                cursorReq.onsuccess = function(e) {
+                    var cursor = e.target.result;
+                    if (cursor) {
+                        var v = cursor.value;
+                        var ts = v.updated_at || 0;
+                        if (ts > bestTime) { bestTime = ts; best = v; }
+                        cursor.continue();
+                    } else {
+                        db.close();
+                        resolve(best ? best.chat_id : null);
+                    }
+                };
+                cursorReq.onerror = function() { db.close(); resolve(null); };
+            };
+            req.onerror = function() { resolve(null); };
+        });
+    }
+
+    function getOne(storeName, key) {
         return new Promise(function(resolve, reject) {
             var req = indexedDB.open(DB_NAME);
-            req.onsuccess = function() { resolve(req.result); };
+            req.onsuccess = function() {
+                var db = req.result;
+                var tx = db.transaction(storeName, 'readonly');
+                var store = tx.objectStore(storeName);
+                var getReq = store.get(key);
+                getReq.onsuccess = function() { db.close(); resolve(getReq.result); };
+                getReq.onerror = function() { db.close(); reject(getReq.error); };
+            };
             req.onerror = function() { reject(req.error); };
         });
     }
@@ -100,21 +95,6 @@
                     else { db.close(); resolve(items); }
                 };
                 cursorReq.onerror = function() { db.close(); reject(cursorReq.error); };
-            };
-            req.onerror = function() { reject(req.error); };
-        });
-    }
-
-    function getOne(storeName, key) {
-        return new Promise(function(resolve, reject) {
-            var req = indexedDB.open(DB_NAME);
-            req.onsuccess = function() {
-                var db = req.result;
-                var tx = db.transaction(storeName, 'readonly');
-                var store = tx.objectStore(storeName);
-                var getReq = store.get(key);
-                getReq.onsuccess = function() { db.close(); resolve(getReq.result); };
-                getReq.onerror = function() { db.close(); reject(getReq.error); };
             };
             req.onerror = function() { reject(req.error); };
         });
@@ -173,7 +153,12 @@
     }
 
     async function run() {
-        console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
+        chatId = await dbVaultScanner();
+        if (!chatId) {
+            console.error('[SMOKE] 无法找到活跃 vault，请先用 NE-Memory 进行至少一轮对话');
+            return;
+        }
+        console.log('[SMOKE] 选定 chatId:', chatId);
         console.log('┃  State Delta 版本链 Smoke 测试       ┃');
         console.log('┃  chatId: ' + chatId);
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
@@ -249,11 +234,8 @@
             // 获取 vault content.state 作为预期值
             var vaultContent = null;
             try {
-                if (window.__ne_debug && window.__ne_debug.dumpVault) {
-                    vaultContent = await window.__ne_debug.dumpVault();
-                } else if (window.parent && window.parent.__ne_debug && window.parent.__ne_debug.dumpVault) {
-                    vaultContent = await window.parent.__ne_debug.dumpVault();
-                }
+                var rawVault = await getOne('vaults', chatId);
+                if (rawVault && rawVault.content) vaultContent = rawVault.content;
             } catch(e) {}
 
             if (vaultContent && vaultContent.state) {
