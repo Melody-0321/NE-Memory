@@ -1,5 +1,6 @@
 import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
 import { loadVault } from '../core/auto-restore.js';
+import { getActiveChain } from '../core/vault/state-versions.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
@@ -77,7 +78,9 @@ export async function updateVaultViewerPopout(getChatId) {
     try {
         var verEl = panelById('ne-memory-version');
         if (verEl) {
-            var verText = t('Version:') + ' ' + (vault.version || 0);
+            var chain = await getActiveChain(getChatId());
+            var memVer = chain && chain.mem_active ? chain.mem_active[chain.mem_active.length - 1] : null;
+            var verText = t('Memory v') + ' ' + (memVer || '-');
             var ts = formatLocalTime(vault.updated_at);
             if (ts) verText += ' \u00b7 ' + ts;
             verEl.textContent = verText;

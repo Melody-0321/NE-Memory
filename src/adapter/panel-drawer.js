@@ -2,7 +2,7 @@ import { write } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast, closeSlidePanel } from './panel-shared.js';
-import { renderHistory, createVaultPopout } from './panel-popout.js';
+import { createVaultPopout } from './panel-popout.js';
 import { renderUsageTab } from './panel-usage.js';
 
 export var _currentCollapseState = {};
@@ -66,9 +66,6 @@ export function setupAccordionHandlers(chatId) {
         if (acc.closest('#tab-memory') || acc.closest('#tab-state')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
-        }
-        if (acc.classList.contains('open') && acc.id === 'ne-tool-history') {
-            renderHistory(_currentGetChatId);
         }
     });
     // ── L3: Accordion keyboard support (Enter/Space) ──

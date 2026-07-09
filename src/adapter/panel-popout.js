@@ -41,9 +41,3 @@ export function createVaultPopout(getChatId) {
 
 export function toggleVaultPanel(getChatId) { createVaultPopout(getChatId); }
 export { closeVaultOverlay };
-
-export async function renderHistory(getChatId) {
-    var container = panelById('narrative_vault_history_list');
-    if (!container) return;
-    container.innerHTML = emptyStateHtml('\u{1F504}', t('No history yet'), t('Version history is not available in this version.'));
-}

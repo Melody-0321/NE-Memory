@@ -10,7 +10,6 @@ import { read, write, collectAllMsgIds } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
-import { renderHistory } from './panel-popout.js';
 import { initTestRunner } from './panel-tools.js';
 
 export function renderSettingsTab() {
@@ -762,9 +761,6 @@ export function renderSettingsIntoSlide(container) {
     var diagTitle = pdCreate('div');
     diagTitle.className = 'ne-tool-card';
     diagTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
-        '<div class="ne-accordion" id="ne-tool-history">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
-        '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
         '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
         '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>';
@@ -933,7 +929,6 @@ export function renderSettingsIntoSlide(container) {
                 var count = 0;
                 orphans.forEach(function(o) { purgeOrphanChatData(o.chat_id); count++; });
                 alert(t('Cleaned') + ' ' + count + ' ' + t('orphan entries') + '.');
-                if (_currentGetChatId) renderHistory(_currentGetChatId);
             } catch (e) { alert(t('Clean Orphan Data') + ' failed: ' + e.message); cleanBtn.disabled = false; cleanBtn.textContent = t('Clean Orphan Data'); }
         };
     }
@@ -947,16 +942,13 @@ export function renderSettingsIntoSlide(container) {
         };
     }
 
-    // Accordion setup for history/test runner
+    // Accordion setup for test runner
     var accs = container.querySelectorAll('.ne-accordion-header');
     accs.forEach(function(header) {
         header.onclick = function() {
             var acc = this.closest('.ne-accordion');
             if (!acc) return;
             acc.classList.toggle('open');
-            if (acc.id === 'ne-tool-history' && acc.classList.contains('open')) {
-                if (_currentGetChatId) renderHistory(_currentGetChatId);
-            }
         };
     });
 

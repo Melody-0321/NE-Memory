@@ -26,7 +26,6 @@ import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
 import { updateVaultViewerPopout } from './panel-content.js';
 import { renderUsageIntoContainer } from './panel-usage.js';
 import { renderSettingsIntoSlide } from './panel-settings.js';
-import { renderHistory } from './panel-popout.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
 import { renderVersionHistoryPanel } from './panel-version-history.js';
 
@@ -58,10 +57,7 @@ export async function renderVaultPanel(getChatId) {
             }
         });
         busOn('vault:updated', function() {
-            var slidePanel = panelById('ne-slide-panel');
-            if (slidePanel && slidePanel.classList.contains('open')) {
-                try { renderHistory(_currentGetChatId); } catch (e) { console.warn('[NE] History auto-refresh failed:', e); }
-            }
+            // Version history is now handled by panel-version-history.js (~state-versions)
         });
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
         var vault = await loadVault(getChatId());
