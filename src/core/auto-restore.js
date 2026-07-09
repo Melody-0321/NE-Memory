@@ -28,9 +28,25 @@ function _saveChatFile() {
     } catch (e) { console.warn('[NE] _saveChatFile failed:', e.message); }
 }
 
+function _checkChatIntegrity(tag) {
+    try {
+        var chat = runtime.getChat && runtime.getChat();
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                return;
+            }
+        }
+    } catch (e) {}
+}
+
 export function persistVaultToChatFile(vault) {
+    _checkChatIntegrity('persistVaultToChatFile:before');
     _setChatMetadataNeVault(vault);
+    _checkChatIntegrity('persistVaultToChatFile:after_setMetadata');
     _saveChatFile();
+    _checkChatIntegrity('persistVaultToChatFile:after_saveChat');
 }
 
 /**

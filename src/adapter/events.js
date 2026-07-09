@@ -22,6 +22,22 @@ import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
+
+var _neCheckTag = '';
+
+function _neCheckChatIntegrity(tag) {
+    try {
+        var chat = getChatMessagesFn && getChatMessagesFn();
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                if (!_neCheckTag) _neCheckTag = tag;
+                return;
+            }
+        }
+    } catch (e) {}
+}
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
 import { recordMemoryVersion, getActiveChain, initializeChain } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
@@ -205,6 +221,7 @@ export function onMessageSent(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
+            _neCheckChatIntegrity('onMessageReceived:beforeNeCharStrip');
             message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
             pendingMessages.push({ role: 'user', content: message.mes || '', id: message._ne_id, timestamp: Date.now() });
             persistPending();
@@ -291,6 +308,7 @@ async function consumeNeCharBlocks(messageIndex) {
 export async function onMessageReceived(messageIndex) {
     try {
         if (!getChatMessagesFn) return;
+        _neCheckChatIntegrity('onMessageReceived:entry');
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
         const chat = getChatMessagesFn();
         var message = chat[messageIndex];
@@ -387,6 +405,7 @@ export async function onMessageReceived(messageIndex) {
                     message.swipes[message.swipe_id || 0] = strippedMes;
                 }
                 assistantMsg.content = strippedMes;
+                _neCheckChatIntegrity('onMessageReceived:afterNeCharStrip');
                 console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
                     ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
             }
