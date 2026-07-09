@@ -33,6 +33,7 @@
 7. **跨模块改动**：同时涉及 2+ 个 `src/core/engine/` 文件
 8. **新增架构元素**：新建模块文件、新增 Vault 字段类型
 9. **需求本身模糊**：用户描述中不含明确的输入/输出、边界条件、或改动范围
+10. **涉及 engine 或 vault 模块**：自动读取对应目录下的 `.rules.md` 获取模块级约束
 
 ### 第三层：直接执行（自动加载 skill）
 
@@ -61,8 +62,38 @@
 | `src/ui/` | 🟢 | 豁免清单 |
 | `test/` 单元测试 | 🟢 | 豁免清单 |
 | `test-cases/` 集成测试 | 🟢 | 豁免清单 |
+| `.trae/documents/` | 🟢 | 豁免清单 |
+| `.github/` | 🟢 | 豁免清单 |
+| `src/core/engine/.rules.md` | 🟢 | 纯规则文档 |
+| `src/core/vault/.rules.md` | 🟢 | 纯规则文档 |
 
 更新后简要告知用户新增了哪个文件、归入哪一层。
+
+## Plan-Rule：计划文档追踪
+
+当你执行 `.trae/documents/` 中的计划文档时，**必须在编辑该文件时同步更新其 YAML frontmatter**：
+
+```yaml
+---
+status: in_progress  # 或 completed / not_started / abandoned
+created: 2026-06-10
+updated: 2026-07-09
+---
+```
+
+### 何时更新
+
+| 时机 | 操作 |
+|------|------|
+| **开始执行计划** | 将 `status` 改为 `in_progress`，更新 `updated` |
+| **计划全部完成** | 将 `status` 改为 `completed`，更新 `updated` |
+| **创建新计划文档** | 必须带完整 frontmatter（status + created + updated） |
+| **计划被废弃** | 将 `status` 改为 `abandoned`，更新 `updated` |
+
+### 不需要手动维护
+
+- `INDEX.md` 由 `npm run build:doc-index` 脚本自动从 frontmatter 生成，挂载在 `.githooks/pre-commit` 中。**不要手动编辑 INDEX.md。**
+- 查看所有计划的状态汇总：打开项目根目录下的 `PLAN_INDEX.md`。
 
 ## 项目上下文
 

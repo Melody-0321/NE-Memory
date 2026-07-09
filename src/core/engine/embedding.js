@@ -60,7 +60,7 @@ export function isVectorSearchEnabled() {
 
 export async function computeEmbedding(text) {
     var cfg = loadEmbeddingApiConfig();
-    if (!cfg || !cfg.url || !cfg.model) return null;
+    if (!cfg || !cfg.url) return null;
 
     try {
         var resp = await fetchWithTimeout(cfg.url, {
@@ -85,7 +85,7 @@ export async function computeEmbedding(text) {
 
 export async function computeEmbeddings(texts) {
     var cfg = loadEmbeddingApiConfig();
-    if (!cfg || !cfg.url || !cfg.model) return null;
+    if (!cfg || !cfg.url) return null;
     if (!texts || texts.length === 0) return [];
 
     var BATCH_SIZE = 40;
@@ -135,7 +135,6 @@ export function cosineSimilarity(a, b) {
 export async function testEmbeddingApiConnection(cfg) {
     var testCfg = cfg || loadEmbeddingApiConfig();
     if (!testCfg || !testCfg.url) return { success: false, error: 'No API URL configured' };
-    if (!testCfg.model) return { success: false, error: 'Model is required — please enter an embedding model name (e.g. BAAI/bge-m3)' };
     try {
         var resp = await fetchWithTimeout(testCfg.url, {
             method: 'POST',

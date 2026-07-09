@@ -8,6 +8,8 @@
     "build:script": "node scripts/generate-test-data.cjs && cross-env BUILD_MODE=script rollup -c",
     "build:extension": "cross-env BUILD_MODE=extension rollup -c",
     "build:all": "node scripts/generate-test-data.cjs && cross-env BUILD_MODE=all rollup -c",
+    "build:readme": "node scripts/build-readme-html.cjs",
+    "build:doc-index": "node scripts/build-doc-index.cjs",
     "publish:extension": "node scripts/publish-extension.cjs",
     "watch": "rollup -c -w",
     "prepare": "git config core.hooksPath .githooks || true",
@@ -26,6 +28,7 @@
     "@rollup/plugin-node-resolve": "^16.0.3",
     "@rollup/plugin-terser": "^1.0.0",
     "cross-env": "^7.0.3",
+    "marked": "^18.0.5",
     "rollup": "^4.60.4"
   },
   "dependencies": {

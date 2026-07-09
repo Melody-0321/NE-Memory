@@ -240,4 +240,4 @@ __ne_debug.runTestByName('smartpush-01-not-empty')
 - 作者：Melody
 - 仓库：[https://github.com/Melody-0321/NE-Memory](https://github.com/Melody-0321/NE-Memory)
 - 许可：[AGPL-3.0](./LICENSE)
-- 行为准则：基于 [Contributor Covenant](https://www.contributor-covenant.org/)
+- 行为准则：[Contributor Covenant](./CODE_OF_CONDUCT.md)

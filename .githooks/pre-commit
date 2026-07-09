@@ -6,8 +6,20 @@ if ! npm run build; then
     exit 1
 fi
 
+echo "[NE] pre-commit: npm run build:readme..."
+if ! npm run build:readme; then
+    echo "[NE] README.html build failed, commit aborted."
+    exit 1
+fi
+
+echo "[NE] pre-commit: npm run build:doc-index..."
+if ! npm run build:doc-index; then
+    echo "[NE] Doc index build failed, commit aborted."
+    exit 1
+fi
+
 # Stage built artifacts if they changed
-git add dist/index.js src/core/test-runner/test-data.generated.js
+git add dist/index.js src/core/test-runner/test-data.generated.js README.html .trae/documents/INDEX.md PLAN_INDEX.md
 
 echo "[NE] pre-commit: OK"
 exit 0
