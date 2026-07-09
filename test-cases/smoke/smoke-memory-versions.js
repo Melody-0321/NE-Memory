@@ -4,6 +4,7 @@
  * 使用方法：
  *   1. 在 SillyTavern 中正常使用 NE-Memory（触发 STM 提取 和 LTM 合并）
  *   2. F12 打开控制台，粘贴整个脚本，回车
+ *      （主窗口控制台或 NE-Memory 面板 iframe 控制台均可）
  *   3. 查看控制台输出的测试报告
  *
  * 测试覆盖：
@@ -17,7 +18,36 @@
     'use strict';
 
     var DB_NAME = 'ne_memory_vault';
-    var chatId = (window.__ne_debug && window.__ne_debug.getCurrentChatId) ? window.__ne_debug.getCurrentChatId() : null;
+
+    function findNeDebug() {
+        if (window.__ne_debug) return window.__ne_debug;
+        var iframes = document.querySelectorAll('iframe');
+        for (var i = 0; i < iframes.length; i++) {
+            try {
+                var w = iframes[i].contentWindow;
+                if (w && w.__ne_debug) return w.__ne_debug;
+            } catch (e) {}
+        }
+        return null;
+    }
+
+    function getChatIdRobust() {
+        var dbg = findNeDebug();
+        if (dbg && dbg.getCurrentChatId) {
+            var id = dbg.getCurrentChatId();
+            if (id) return id;
+        }
+        try {
+            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                var ctx = SillyTavern.getContext();
+                if (ctx && ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
+            }
+        } catch (e) {}
+        return null;
+    }
+
+    var neDebug = findNeDebug();
+    var chatId = getChatIdRobust();
 
     if (!chatId) {
         console.error('[SMOKE] 无法获取 chatId，请确保 NE-Memory 已初始化');
@@ -203,8 +233,8 @@
         if (versions.length > 0) {
             var vaultContent = null;
             try {
-                if (window.__ne_debug && window.__ne_debug.dumpVault) {
-                    vaultContent = await window.__ne_debug.dumpVault();
+                if (neDebug && neDebug.dumpVault) {
+                    vaultContent = await neDebug.dumpVault();
                 }
             } catch(e) {}
 
