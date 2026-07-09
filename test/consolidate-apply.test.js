@@ -82,7 +82,7 @@ var vault5 = {
 };
 applyLtmDecision(vault5, { action: 'append' }, ['stm_x']);
 assert(vault5.content.ltm_entries[0].id, 'new LTM gets an id');
-assert(vault5.content.ltm_entries[0].title, 'new LTM gets default title');
+eq(vault5.content.ltm_entries[0].title, '', 'new LTM gets empty title when LLM provides no updated_title');
 
 console.log('\n--- consolidate-apply: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);
