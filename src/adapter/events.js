@@ -185,16 +185,14 @@ export function onMessageSent(messageIndex) {
                 retroCapturedChatId = currentChatId;
                 for (var i = 0; i < chat.length; i++) {
                     var earlyMsg = chat[i];
-                    var earlyId = ensureNeMsgId(earlyMsg);
+                    ensureNeMsgId(earlyMsg);
                     if (i === messageIndex) break;
-                    if (earlyId !== null) {
-                        pendingMessages.push({
-                            role: earlyMsg.is_user ? 'user' : 'assistant',
-                            content: earlyMsg.mes || '',
-                            id: earlyId,
-                            timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
-                        });
-                    }
+                    pendingMessages.push({
+                        role: earlyMsg.is_user ? 'user' : 'assistant',
+                        content: earlyMsg.mes || '',
+                        id: i,
+                        timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
+                    });
                 }
                 if (pendingMessages.length > 0) {
                     persistPending();
@@ -206,8 +204,8 @@ export function onMessageSent(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            var msgId = ensureNeMsgId(message);
-            pendingMessages.push({ role: 'user', content: message.mes || '', id: msgId, timestamp: Date.now() });
+            ensureNeMsgId(message);
+            pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
@@ -308,7 +306,7 @@ export async function onMessageReceived(messageIndex) {
                 ' | hasNE-BANNER=' + hasNeBanner +
                 ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
 
-            var assistantMsg = { role: 'assistant', content: rawMes, id: message.__ne_msg_id, timestamp: Date.now() };
+            var assistantMsg = { role: 'assistant', content: rawMes, id: messageIndex, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(

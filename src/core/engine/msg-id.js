@@ -20,3 +20,16 @@ export function getNeMsgId(message) {
     if (!message || typeof message !== 'object') return null;
     return message.__ne_msg_id || null;
 }
+
+export function findMessageInChat(chatMessages, identifier) {
+    if (!chatMessages || !Array.isArray(chatMessages)) return null;
+    var idx = Number(identifier);
+    if (idx >= 0 && idx < chatMessages.length && chatMessages[idx]) {
+        return chatMessages[idx];
+    }
+    for (var i = 0; i < chatMessages.length; i++) {
+        var m = chatMessages[i];
+        if (m && m.__ne_msg_id === identifier) return m;
+    }
+    return null;
+}

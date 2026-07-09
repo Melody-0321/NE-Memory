@@ -4,7 +4,7 @@ import { extractEntityNames, lookupEntityChains, mergePipelines, groupCandidates
 import { resolveAmbiguousReferences } from './ambiguity.js';
 import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
-import { getNeMsgId } from './msg-id.js';
+import { findMessageInChat } from './msg-id.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -602,7 +602,7 @@ function prefetchOriginalTexts(mapObj, chatMessages, visibleWindow, topK) {
 
         var originalLines = [];
         msgIds.forEach(function(mid) {
-            var msg = chatMessages.find(function(m) { return (getNeMsgId(m) && String(getNeMsgId(m)) === String(mid)); });
+            var msg = findMessageInChat(chatMessages, mid);
             if (msg) {
                 var name = msg.name || (msg.role === 'user' ? 'User' : 'AI');
                 var text = typeof msg.mes === 'string' ? msg.mes : (msg.content || '');

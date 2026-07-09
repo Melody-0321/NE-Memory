@@ -7,7 +7,6 @@ import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { read, write, collectAllMsgIds } from '../core/vault/store.js';
-import { ensureNeMsgId } from '../core/engine/msg-id.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
@@ -811,8 +810,7 @@ export function renderSettingsIntoSlide(container) {
                 chatMessages.forEach(function(msg, idx) {
                     var content = msg.mes || '';
                     if (content.trim().length > 0) {
-                        var msgId = ensureNeMsgId(msg);
-                        toProcess.push({ id: msgId, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
+                        toProcess.push({ id: idx, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
                     }
                 });
                 if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
