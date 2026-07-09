@@ -30,7 +30,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                 // msg#95 or bare digit 95 → original message
                 if (ref.indexOf('msg#') === 0 || /^\d+$/.test(ref)) {
                     refType = 'msg';
-                    var msgId = parseInt(ref.replace('msg#', ''));
+                    var numId = parseInt(ref.replace('msg#', ''));
                     var chat = getChatMessages();
                     var msg = chat[numId];
                     if (!msg) {
@@ -40,7 +40,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                                 || (getNeMsgId(m) && String(getNeMsgId(m)) === String(numId));
                         });
                     }
-                    if (!msg) result = 'Message #' + msgId + ' not found.';
+                    if (!msg) result = 'Message #' + numId + ' not found.';
                     else {
                         var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
                         if (entities && entities.length > 0) {
