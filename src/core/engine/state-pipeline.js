@@ -779,9 +779,13 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var vault = await read(chatId);
     if (!vault || !vault.content) return { vault, changed: false };
 
-    initializeChain(chatId, vault.content || {}).catch(function(err) {
-        console.error('[NE] initializeChain failed for ' + chatId, err);
-    });
+    console.log('[NE] extractStateChangesOnly: vault loaded, initializing chain...');
+    try {
+        await initializeChain(chatId, vault.content || {});
+        console.log('[NE] extractStateChangesOnly: initializeChain done');
+    } catch (err) {
+        console.error('[NE] extractStateChangesOnly: initializeChain FAILED for ' + chatId, err);
+    }
 
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);

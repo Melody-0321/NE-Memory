@@ -422,7 +422,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
+            if (isStateSchemaEnabled()) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {

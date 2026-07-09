@@ -237,6 +237,8 @@ export async function recordStateDelta(chatId, deltaData) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
     });
 
+    console.log('[NE] recordStateDelta: chatId=' + chatId + ' seq=' + newSeq + ' changes=' + changes.length + ' summary=' + summary);
+
     var stateLimit = _getVersionLimit('ne_state_version_limit');
     if (chain.state_active.length > stateLimit) {
         compact(chatId).catch(function(e) { console.warn('[NE] auto-compact state failed:', e); });
