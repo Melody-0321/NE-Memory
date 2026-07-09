@@ -157,53 +157,80 @@ var pcState = { protagonist_name: 'Hero' };
 ensureCharacterTemplate(pcState, 'Hero');
 eq(pcState.characters['Hero'].status, '', 'PC template uses string defaults from protagonist schema');
 
-console.log('\n=== schema: mergeStateChanges ===');
+console.log('\n=== schema: mergeStateChanges (return {state, changes}) ===');
 
 var baseState = { main_event: '', characters: {} };
 var merged = mergeStateChanges(baseState, { 'main_event': 'big event' });
-eq(merged.main_event, 'big event', 'simple merge');
-assert(merged !== baseState, 'merge returns new object');
+eq(merged.state.main_event, 'big event', 'simple merge - state');
+assert(merged.state !== baseState, 'merge returns new state object');
+ok(Array.isArray(merged.changes), 'changes is an array');
+eq(merged.changes.length, 1, 'one change captured');
+eq(merged.changes[0].path, 'main_event', 'change path');
+eq(merged.changes[0].old, '', 'change old value');
+eq(merged.changes[0].new, 'big event', 'change new value');
 
 var merged2 = mergeStateChanges(baseState, {
     'characters.ZhangSan': { status: '活跃', name: 'ZhangSan' }
 });
-ok(merged2.characters && merged2.characters['ZhangSan'], 'character created via merge');
-eq(merged2.characters['ZhangSan'].status, '活跃', 'character status set');
-eq(merged2.characters['ZhangSan'].name, 'ZhangSan', 'character name set');
-eq(merged2.present_characters, 'ZhangSan', 'present_characters auto-rebuilt');
+ok(merged2.state.characters && merged2.state.characters['ZhangSan'], 'character created via merge');
+eq(merged2.state.characters['ZhangSan'].status, '活跃', 'character status set');
+eq(merged2.state.characters['ZhangSan'].name, 'ZhangSan', 'character name set');
+eq(merged2.state.present_characters, 'ZhangSan', 'present_characters auto-rebuilt');
+ok(merged2.changes.length >= 1, 'at least 1 change (status, name same as template default skipped)');
 
 var merged3 = mergeStateChanges(baseState, {
     'characters.ZhangSan._scheme': 'custom_scheme'
 });
-ok(merged3.characters && merged3.characters['ZhangSan'], 'character entry created for _scheme');
+ok(merged3.state.characters && merged3.state.characters['ZhangSan'], 'character entry created for _scheme');
 
 var merged4 = mergeStateChanges(baseState, {
     'characters.ZhangSan.affection': { __inc: true, delta: 10 }
 });
-eq(merged4.characters['ZhangSan'].affection, 10, 'affection increment from 0');
+eq(merged4.state.characters['ZhangSan'].affection, 10, 'affection increment from 0');
+eq(merged4.changes[0].old, 0, 'affection captured old=0');
+eq(merged4.changes[0].new, 10, 'affection captured new=10');
 
 var stateWithAffection = { characters: { 'LiSi': { name: 'LiSi', affection: 80 } } };
 var merged5 = mergeStateChanges(stateWithAffection, {
     'characters.LiSi.affection': { __inc: true, delta: 25 }
 });
-eq(merged5.characters['LiSi'].affection, 100, 'affection clamped at 100');
+eq(merged5.state.characters['LiSi'].affection, 100, 'affection clamped at 100');
+eq(merged5.changes[0].old, 80, 'affection increment old=80');
+eq(merged5.changes[0].new, 100, 'affection increment new=100');
 
 var merged6 = mergeStateChanges(stateWithAffection, {
     'characters.LiSi.affection': { __inc: true, delta: -10 }
 });
-eq(merged6.characters['LiSi'].affection, 70, 'affection decrement');
+eq(merged6.state.characters['LiSi'].affection, 70, 'affection decrement');
 
 var merged7 = mergeStateChanges({ characters: { 'Hero': { _role: 'protagonist' } }, protagonist_name: 'Hero' }, {
     'characters.Hero._role': 'npc'
 });
-eq(merged7.characters['Hero']._role, 'protagonist', 'protagonist _role protected');
+eq(merged7.state.characters['Hero']._role, 'protagonist', 'protagonist _role protected');
+eq(merged7.changes.length, 0, 'protected _role → no change captured');
 
 var merged8 = mergeStateChanges({}, {
     'quests.MainQuest.name': 'MainQuest', 'quests.MainQuest.status': '正在进行'
 });
-ok(merged8.quests && merged8.quests.tasks && merged8.quests.tasks['MainQuest'], 'legacy quest path remapped to tasks');
-eq(merged8.quests.tasks['MainQuest'].name, 'MainQuest', 'quest name set in tasks');
-eq(merged8.quests.tasks['MainQuest'].status, '正在进行', 'quest status set in tasks');
+ok(merged8.state.quests && merged8.state.quests.tasks && merged8.state.quests.tasks['MainQuest'], 'legacy quest path remapped to tasks');
+eq(merged8.state.quests.tasks['MainQuest'].name, 'MainQuest', 'quest name set in tasks');
+eq(merged8.state.quests.tasks['MainQuest'].status, '正在进行', 'quest status set in tasks');
+
+console.log('\n=== schema: mergeStateChanges 旁路捕获 ===');
+
+var s1 = { characters: { 'Hero': { name: 'Hero', current_mood: '平静' } } };
+var r1 = mergeStateChanges(s1, { 'characters.Hero.current_mood': '愤怒' });
+eq(r1.changes.length, 1, 'single field change → 1 capture');
+eq(r1.changes[0].path, 'characters.Hero.current_mood', 'capture path uses dot notation');
+eq(r1.changes[0].old, '平静', 'capture old value');
+eq(r1.changes[0].new, '愤怒', 'capture new value');
+
+var rUnchanged = mergeStateChanges(s1, { 'characters.Hero.current_mood': '平静' });
+eq(rUnchanged.changes.length, 0, 'no actual change → empty changes array');
+
+var rEmpty = mergeStateChanges({}, {});
+eq(rEmpty.changes.length, 0, 'empty input → empty changes');
+eq(typeof rEmpty.state, 'object', 'empty input still returns state object');
 
 console.log('\n=== schema: getNpcInjectionFields ===');
 

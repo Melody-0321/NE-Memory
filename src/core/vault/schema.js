@@ -668,16 +668,18 @@ export function mergeStateChanges(state, validatedChanges) {
             }
         }
         var oldVal = current[lastKey];
-        current[lastKey] = flattened[path];
-        capturedChanges.push({ path: path, old: oldVal, new: flattened[path] });
-        hasChanges = true;
+        if (oldVal !== flattened[path]) {
+            current[lastKey] = flattened[path];
+            capturedChanges.push({ path: path, old: oldVal, new: flattened[path] });
+            hasChanges = true;
+        }
     });
 
     if (hasChanges) {
         var oldPresent = newState.present_characters;
         newState = rebuildPresentCharacters(newState);
-        if (JSON.stringify(oldPresent) !== JSON.stringify(newState.present_characters)) {
-            capturedChanges.push({ path: 'present_characters', old: oldPresent || [], new: newState.present_characters || [] });
+        if (oldPresent !== undefined && JSON.stringify(oldPresent) !== JSON.stringify(newState.present_characters)) {
+            capturedChanges.push({ path: 'present_characters', old: oldPresent, new: newState.present_characters });
         }
     }
 

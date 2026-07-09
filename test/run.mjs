@@ -29,7 +29,8 @@ var testMap = {
     'store': 'store.test.js',
     'ne-system-msg': 'ne-system-msg.test.js',
     'json-fallback': 'json-fallback.test.js',
-    'bm25-grouper': 'bm25-grouper.test.js'
+    'bm25-grouper': 'bm25-grouper.test.js',
+    'msg-id': 'msg-id.test.js'
 };
 
 var batchMap = {
