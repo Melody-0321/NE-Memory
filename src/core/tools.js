@@ -2,6 +2,7 @@
  * tools.js — Tool-calling 注册（通过 TH API）
  */
 import { read } from './vault/store.js';
+import { getNeMsgId } from './engine/msg-id.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessagesLegacy } from './engine/retrieval.js';
@@ -31,7 +32,14 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     refType = 'msg';
                     var msgId = parseInt(ref.replace('msg#', ''));
                     var chat = getChatMessages();
-                    var msg = chat.find(function(m) { return (m.id != null && m.id === msgId) || (m.mes_id != null && m.mes_id === msgId); });
+                    var msg = chat[numId];
+                    if (!msg) {
+                        msg = chat.find(function(m) {
+                            return (m.id != null && String(m.id) === String(numId))
+                                || (m.mes_id != null && String(m.mes_id) === String(numId))
+                                || (getNeMsgId(m) && String(getNeMsgId(m)) === String(numId));
+                        });
+                    }
                     if (!msg) result = 'Message #' + msgId + ' not found.';
                     else {
                         var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));

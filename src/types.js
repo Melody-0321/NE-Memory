@@ -243,6 +243,7 @@ export {};
  * @property {string} [_msg_id]
  * @property {number} [_absIdx]
  * @property {number} [_idx]
+ * @property {string} [__ne_msg_id]
  * @property {boolean} [is_system]
  */
 

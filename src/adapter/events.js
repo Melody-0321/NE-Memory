@@ -14,6 +14,7 @@ import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
 import { buildStateInjectionTable } from '../core/vault/schema.js';
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
+import { ensureNeMsgId } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
@@ -184,9 +185,9 @@ export function onMessageSent(messageIndex) {
                 retroCapturedChatId = currentChatId;
                 for (var i = 0; i < chat.length; i++) {
                     var earlyMsg = chat[i];
-                    var earlyId = earlyMsg.id || earlyMsg.mes_id;
-                    if (earlyId === messageIndex) break;
-                    if (earlyId !== undefined) {
+                    var earlyId = ensureNeMsgId(earlyMsg);
+                    if (i === messageIndex) break;
+                    if (earlyId !== null) {
                         pendingMessages.push({
                             role: earlyMsg.is_user ? 'user' : 'assistant',
                             content: earlyMsg.mes || '',
@@ -205,7 +206,8 @@ export function onMessageSent(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            var msgId = ensureNeMsgId(message);
+            pendingMessages.push({ role: 'user', content: message.mes || '', id: msgId, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
@@ -295,6 +297,7 @@ export async function onMessageReceived(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
+            ensureNeMsgId(message);
 
             var rawMes = message.mes || '';
             var hasNeChar = rawMes.indexOf('<!--NE-CHAR') !== -1;
@@ -305,7 +308,7 @@ export async function onMessageReceived(messageIndex) {
                 ' | hasNE-BANNER=' + hasNeBanner +
                 ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
 
-            var assistantMsg = { role: 'assistant', content: rawMes, id: messageIndex, timestamp: Date.now() };
+            var assistantMsg = { role: 'assistant', content: rawMes, id: message.__ne_msg_id, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(
@@ -381,6 +384,9 @@ export async function onMessageReceived(messageIndex) {
             });
             if (stripCount > 0) {
                 message.mes = strippedMes;
+                if (message.swipes && message.swipes.length > 0) {
+                    message.swipes[message.swipe_id || 0] = strippedMes;
+                }
                 assistantMsg.content = strippedMes;
                 console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
                     ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
