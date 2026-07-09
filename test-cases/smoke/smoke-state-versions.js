@@ -12,7 +12,6 @@
  *   - Delta 记录完整性（source/changes/message_dates/timestamp）
  *   - foldState 可逆性（fold 后状态与 vault.state 一致）
  *   - rollbackState + restoreBranch 正确性
- *   - compact 压缩正确性（压缩后 fold 结果不变）
  */
 
 (function() {
@@ -20,34 +19,44 @@
 
     var DB_NAME = 'ne_memory_vault';
 
-    function findNeDebug() {
-        if (window.__ne_debug) return window.__ne_debug;
-        var iframes = document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-            try {
-                var w = iframes[i].contentWindow;
-                if (w && w.__ne_debug) return w.__ne_debug;
-            } catch (e) {}
-        }
-        return null;
-    }
-
     function getChatIdRobust() {
-        var dbg = findNeDebug();
-        if (dbg && dbg.getCurrentChatId) {
-            var id = dbg.getCurrentChatId();
-            if (id) return id;
-        }
+        // 1. 通过 __ne_debug（iframe 上下文）
         try {
-            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-                var ctx = SillyTavern.getContext();
+            var dbg = window.__ne_debug;
+            if (!dbg) {
+                // 尝试 parent 窗口（iframe 内时 SillyTavern 在 parent 上）
+                var pw = window.parent || window;
+                if (pw && pw !== window && pw.__ne_debug) dbg = pw.__ne_debug;
+            }
+            if (!dbg) {
+                // 扫描 iframe（主窗口时 __ne_debug 在 iframe 里）
+                var iframes = document.querySelectorAll('iframe');
+                for (var i = 0; i < iframes.length; i++) {
+                    try { var w = iframes[i].contentWindow; if (w && w.__ne_debug) { dbg = w.__ne_debug; break; } } catch (e) {}
+                }
+            }
+            if (dbg && dbg.getCurrentChatId) {
+                var id = dbg.getCurrentChatId();
+                if (id && id !== 'ne_x_0') return id;
+            }
+        } catch (e) {}
+
+        // 2. 通过 SillyTavern.getContext()（主窗口有；iframe 内需走 parent）
+        try {
+            var st = window.SillyTavern;
+            if (!st) {
+                var pw2 = window.parent || window;
+                if (pw2 && pw2 !== window) st = pw2.SillyTavern;
+            }
+            if (st && st.getContext) {
+                var ctx = st.getContext();
                 if (ctx && ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
             }
         } catch (e) {}
+
         return null;
     }
 
-    var neDebug = findNeDebug();
     var chatId = getChatIdRobust();
 
     if (!chatId) {
@@ -156,6 +165,13 @@
         });
     }
 
+    function getOneActiveChain(chatId) {
+        return getOne('active_chains', chatId).then(function(row) {
+            if (!row) return null;
+            return row.chain || row;
+        });
+    }
+
     async function run() {
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓');
         console.log('┃  State Delta 版本链 Smoke 测试       ┃');
@@ -163,7 +179,7 @@
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
 
         // ── 1. 检查 active_chain ──
-        var chain = await getOne('active_chains', chatId);
+        var chain = await getOneActiveChain(chatId);
         ok(!!chain, 'active_chain 存在');
         if (!chain) {
             console.error('[SMOKE] 没有 active_chain，请先触发 State 更新（多轮对话后在 State 面板确认 AI 已更新状态）');
@@ -233,8 +249,10 @@
             // 获取 vault content.state 作为预期值
             var vaultContent = null;
             try {
-                if (neDebug && neDebug.dumpVault) {
-                    vaultContent = await neDebug.dumpVault();
+                if (window.__ne_debug && window.__ne_debug.dumpVault) {
+                    vaultContent = await window.__ne_debug.dumpVault();
+                } else if (window.parent && window.parent.__ne_debug && window.parent.__ne_debug.dumpVault) {
+                    vaultContent = await window.parent.__ne_debug.dumpVault();
                 }
             } catch(e) {}
 
@@ -324,13 +342,13 @@
             // 更新 chain
             chain.state_head_seq = targetSeq;
             chain.state_versions.pop();
-            await put('active_chains', chain);
+            await put('active_chains', { chat_id: chatId, chain: chain });
 
             // 验证 delta 数减少
             var afterDeltas = await getAll('state_deltas', 'chat_id', chatId);
             ok(afterDeltas.length === deltas.length - 1, 'rollback 后 delta 减 1 (' + afterDeltas.length + ')');
 
-            var afterChain = await getOne('active_chains', chatId);
+            var afterChain = await getOneActiveChain(chatId);
             ok(afterChain.state_head_seq === targetSeq, 'chain.state_head_seq 更新为 targetSeq');
 
             var afterOrphans = await getAll('orphaned_branches', 'chat_id', chatId);
@@ -349,12 +367,12 @@
 
                 chain.state_head_seq = rolledBackSeq;
                 chain.state_versions.push(orphanToRestore);
-                await put('active_chains', chain);
+                await put('active_chains', { chat_id: chatId, chain: chain });
 
                 var restoredDeltas = await getAll('state_deltas', 'chat_id', chatId);
                 ok(restoredDeltas.length === deltas.length, 'restoreBranch 后 delta 恢复 (' + restoredDeltas.length + ')');
 
-                var finalChain = await getOne('active_chains', chatId);
+                var finalChain = await getOneActiveChain(chatId);
                 ok(finalChain.state_head_seq === rolledBackSeq, 'chain.state_head_seq 恢复');
 
                 var finalOrphans = await getAll('orphaned_branches', 'chat_id', chatId);

@@ -19,34 +19,42 @@
 
     var DB_NAME = 'ne_memory_vault';
 
-    function findNeDebug() {
-        if (window.__ne_debug) return window.__ne_debug;
-        var iframes = document.querySelectorAll('iframe');
-        for (var i = 0; i < iframes.length; i++) {
-            try {
-                var w = iframes[i].contentWindow;
-                if (w && w.__ne_debug) return w.__ne_debug;
-            } catch (e) {}
-        }
-        return null;
-    }
-
     function getChatIdRobust() {
-        var dbg = findNeDebug();
-        if (dbg && dbg.getCurrentChatId) {
-            var id = dbg.getCurrentChatId();
-            if (id) return id;
-        }
+        // 1. 通过 __ne_debug（iframe 上下文）
         try {
-            if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-                var ctx = SillyTavern.getContext();
+            var dbg = window.__ne_debug;
+            if (!dbg) {
+                var pw = window.parent || window;
+                if (pw && pw !== window && pw.__ne_debug) dbg = pw.__ne_debug;
+            }
+            if (!dbg) {
+                var iframes = document.querySelectorAll('iframe');
+                for (var i = 0; i < iframes.length; i++) {
+                    try { var w = iframes[i].contentWindow; if (w && w.__ne_debug) { dbg = w.__ne_debug; break; } } catch (e) {}
+                }
+            }
+            if (dbg && dbg.getCurrentChatId) {
+                var id = dbg.getCurrentChatId();
+                if (id && id !== 'ne_x_0') return id;
+            }
+        } catch (e) {}
+
+        // 2. 通过 SillyTavern.getContext()
+        try {
+            var st = window.SillyTavern;
+            if (!st) {
+                var pw2 = window.parent || window;
+                if (pw2 && pw2 !== window) st = pw2.SillyTavern;
+            }
+            if (st && st.getContext) {
+                var ctx = st.getContext();
                 if (ctx && ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
             }
         } catch (e) {}
+
         return null;
     }
 
-    var neDebug = findNeDebug();
     var chatId = getChatIdRobust();
 
     if (!chatId) {
@@ -139,7 +147,8 @@
         console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┛');
 
         // ── 1. 检查 active_chain ──
-        var chain = await getOne('active_chains', chatId);
+        var chainEx = await getOne('active_chains', chatId);
+        var chain = chainEx && chainEx.chain ? chainEx.chain : chainEx;
         ok(!!chain, 'active_chain 存在');
         if (!chain) {
             console.error('[SMOKE] 没有 active_chain，请先触发 STM 提取（多轮对话后查看 Memory 面板）');
@@ -233,8 +242,10 @@
         if (versions.length > 0) {
             var vaultContent = null;
             try {
-                if (neDebug && neDebug.dumpVault) {
-                    vaultContent = await neDebug.dumpVault();
+                if (window.__ne_debug && window.__ne_debug.dumpVault) {
+                    vaultContent = await window.__ne_debug.dumpVault();
+                } else if (window.parent && window.parent.__ne_debug && window.parent.__ne_debug.dumpVault) {
+                    vaultContent = await window.parent.__ne_debug.dumpVault();
                 }
             } catch(e) {}
 
@@ -300,14 +311,15 @@
             // 更新 chain
             chain.mem_head_seq = targetSeq;
             chain.mem_active.pop();
-            await put('active_chains', chain);
+            await put('active_chains', { chat_id: chatId, chain: chain });
 
             // 验证
             var afterVersions = await getAll('memory_versions', 'chat_id', chatId);
             ok(afterVersions.length === versions.length - 1,
                 'rollbackMemory 后 version 减 1 (' + afterVersions.length + ')');
 
-            var afterChain = await getOne('active_chains', chatId);
+            var afterRaw = await getOne('active_chains', chatId);
+            var afterChain = afterRaw && afterRaw.chain ? afterRaw.chain : afterRaw;
             ok(afterChain.mem_head_seq === targetSeq, 'chain.mem_head_seq 更新为 targetSeq');
 
             // 恢复
@@ -317,7 +329,7 @@
 
             chain.mem_head_seq = lastVersion.seq;
             chain.mem_active.push(lastVersion.seq);
-            await put('active_chains', chain);
+            await put('active_chains', { chat_id: chatId, chain: chain });
 
             var restoredVersions = await getAll('memory_versions', 'chat_id', chatId);
             ok(restoredVersions.length === versions.length,
