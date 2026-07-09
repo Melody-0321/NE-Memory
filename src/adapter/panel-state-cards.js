@@ -471,7 +471,7 @@ function saveCardFields(cardDiv) {
             summary: '\u624B\u52A8\u7F16\u8F91 ' + capturedChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
             changes: capturedChanges,
             message_dates: []
-        }).catch(function(err) { console.warn('[NE] recordStateDelta (manual edit) failed:', err); });
+        }).catch(function(err) { console.error('[NE] recordStateDelta (manual edit) failed for ' + chatId, err); });
     }
 }
 

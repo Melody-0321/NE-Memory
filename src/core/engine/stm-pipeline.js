@@ -547,7 +547,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     summary: 'STM batch: ' + addedEntries.length + '条新记忆',
                     delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
                     message_dates: messageDates
-                }).catch(function(err) { console.warn('[NE] recordMemoryVersion (stm) failed:', err); });
+                }).catch(function(err) { console.error('[NE] recordMemoryVersion (stm) failed for ' + chatId, err); });
             }
         }
 

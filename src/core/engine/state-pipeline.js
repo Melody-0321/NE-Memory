@@ -780,7 +780,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     if (!vault || !vault.content) return { vault, changed: false };
 
     initializeChain(chatId, vault.content || {}).catch(function(err) {
-        console.warn('[NE] initializeChain failed:', err);
+        console.error('[NE] initializeChain failed for ' + chatId, err);
     });
 
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
@@ -919,7 +919,8 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     changes: mergeResult.changes,
                     message_dates: aiMsgSendDate ? [aiMsgSendDate] : []
                 }).catch(function(err) {
-                    console.warn('[NE] recordStateDelta failed:', err);
+                    console.error('[NE] recordStateDelta failed for ' + chatId, err,
+                        '\n  changes:', JSON.stringify(mergeResult.changes).substring(0, 200));
                 });
             }
         }

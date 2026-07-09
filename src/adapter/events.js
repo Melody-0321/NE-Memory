@@ -524,7 +524,7 @@ export async function runLtmConsolidation(chatId) {
                         },
                         message_dates: [],
                         derived_from_stm_version: stmVerSeq
-                    }).catch(function(err) { console.warn('[NE] recordMemoryVersion (ltm) failed:', err); });
+                    }).catch(function(err) { console.error('[NE] recordMemoryVersion (ltm) failed for ' + chatId, err); });
                 }
                 globalThis.__ne_debug_last_ltm_decision = {
                     batch: true,
