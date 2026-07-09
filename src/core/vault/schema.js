@@ -562,6 +562,7 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
  */
 export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
+    var capturedChanges = [];
 
     var flattened = {};
     Object.keys(validatedChanges).forEach(function(path) {
@@ -632,7 +633,9 @@ export function mergeStateChanges(state, validatedChanges) {
         if (lastKey === 'affection' && flattened[path] && typeof flattened[path] === 'object' && flattened[path].__inc) {
             var delta = flattened[path].delta;
             var currentAffection = Number(current[lastKey]) || 0;
-            current[lastKey] = Math.max(0, Math.min(100, currentAffection + delta));
+            var newAffection = Math.max(0, Math.min(100, currentAffection + delta));
+            current[lastKey] = newAffection;
+            capturedChanges.push({ path: path, old: currentAffection, new: newAffection });
             hasChanges = true;
             return;
         }
@@ -664,15 +667,21 @@ export function mergeStateChanges(state, validatedChanges) {
                 }
             }
         }
+        var oldVal = current[lastKey];
         current[lastKey] = flattened[path];
+        capturedChanges.push({ path: path, old: oldVal, new: flattened[path] });
         hasChanges = true;
     });
 
     if (hasChanges) {
+        var oldPresent = newState.present_characters;
         newState = rebuildPresentCharacters(newState);
+        if (JSON.stringify(oldPresent) !== JSON.stringify(newState.present_characters)) {
+            capturedChanges.push({ path: 'present_characters', old: oldPresent || [], new: newState.present_characters || [] });
+        }
     }
 
-    return newState;
+    return { state: newState, changes: capturedChanges };
 }
 
 /**

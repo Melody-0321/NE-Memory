@@ -5,7 +5,7 @@
  * 每个 chat_id 对应 IndexedDB 中的一条记录。
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 4;
+const DB_VERSION = 5;
 const STORE_NAME = 'vaults';
 
 function openDB() {
@@ -20,7 +20,6 @@ function openDB() {
                 const snapshotsStore = db.createObjectStore('snapshots', { keyPath: 'id' });
                 snapshotsStore.createIndex('chat_id', 'chat_id', { unique: false });
             } else {
-                // v3 迁移：旧 DB 可能缺 chat_id 索引
                 var tx = e.target.transaction;
                 var snapshotsStore = tx.objectStore('snapshots');
                 if (!snapshotsStore.indexNames.contains('chat_id')) {
@@ -29,6 +28,21 @@ function openDB() {
             }
             if (!db.objectStoreNames.contains('card_configs')) {
                 db.createObjectStore('card_configs', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains('state_deltas')) {
+                var sdStore = db.createObjectStore('state_deltas', { keyPath: 'id' });
+                sdStore.createIndex('chat_id', 'chat_id', { unique: false });
+            }
+            if (!db.objectStoreNames.contains('memory_versions')) {
+                var mvStore = db.createObjectStore('memory_versions', { keyPath: 'id' });
+                mvStore.createIndex('chat_id', 'chat_id', { unique: false });
+            }
+            if (!db.objectStoreNames.contains('active_chains')) {
+                db.createObjectStore('active_chains', { keyPath: 'chat_id' });
+            }
+            if (!db.objectStoreNames.contains('orphaned_branches')) {
+                var obStore = db.createObjectStore('orphaned_branches', { keyPath: 'id' });
+                obStore.createIndex('chat_id', 'chat_id', { unique: false });
             }
         };
         req.onsuccess = () => resolve(req.result);
@@ -252,13 +266,7 @@ export function collectAllMsgIds(vault) {
     const content = vault.content || {};
     const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
     allSTM.forEach(stm => {
-        (stm.msg_ids || []).forEach(id => {
-            var sid = String(id);
-            ids.add(sid);
-            if (sid.startsWith('msg_user_') || sid.startsWith('msg_asst_')) {
-                ids.add(sid.replace(/^msg_(?:user|asst)_/, ''));
-            }
-        });
+        (stm.msg_ids || []).forEach(id => ids.add(String(id)));
     });
     return ids;
 }

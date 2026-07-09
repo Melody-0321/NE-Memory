@@ -4,6 +4,7 @@ import { saveVaultWithSnapshot, ensureStateStructure, parseSTMResponse, handleQu
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
+import { recordStateDelta, buildStateDeltaSummary, initializeChain } from '../vault/state-versions.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -776,6 +777,10 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var vault = await read(chatId);
     if (!vault || !vault.content) return { vault, changed: false };
 
+    initializeChain(chatId, vault.content || {}).catch(function(err) {
+        console.warn('[NE] initializeChain failed:', err);
+    });
+
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(vault);
 
@@ -893,12 +898,24 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         var schema = vault.content.state_schema || null;
         var result = validateStateChanges(schema, stateChanges);
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-        var newState = mergeStateChanges(vault.content.state || {}, result.validated);
-        if (JSON.stringify(newState) === JSON.stringify(vault.content.state || {})) {
+        var mergeResult = mergeStateChanges(vault.content.state || {}, result.validated);
+        if (JSON.stringify(mergeResult.state) === JSON.stringify(vault.content.state || {})) {
             console.log('[NE] State unchanged, skipping write');
         } else {
-            vault.content.state = newState;
+            vault.content.state = mergeResult.state;
             handleQuestCompletion(vault.content.state, result.validated, vault.content.story_time);
+
+            if (mergeResult.changes.length > 0) {
+                var aiMsgSendDate = latestAssistantMsg && latestAssistantMsg.send_date ? latestAssistantMsg.send_date : null;
+                recordStateDelta(chatId, {
+                    source: 'ai_update',
+                    summary: buildStateDeltaSummary(mergeResult.changes),
+                    changes: mergeResult.changes,
+                    message_dates: aiMsgSendDate ? [aiMsgSendDate] : []
+                }).catch(function(err) {
+                    console.warn('[NE] recordStateDelta failed:', err);
+                });
+            }
         }
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
             console.warn('[NE-HARNESS] All ' + Object.keys(stateChanges).length + ' stateChanges rejected by validateStateChanges — Schema may be missing');

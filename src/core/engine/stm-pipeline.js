@@ -3,6 +3,7 @@ import { isStateSchemaEnabled } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
+import { recordMemoryVersion, initializeChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
 import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
@@ -416,6 +417,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const vault = await read(chatId);
 
+    initializeChain(chatId, vault.content || {}).catch(function(err) {
+        console.warn('[NE] initializeChain failed:', err);
+    });
+
     // 给消息打绝对位置标记——使用消息在原始 chat 中的位置 (m.id) 而非 batch 循环下标
     // m.id 在 processHistory 中设为原始 chat idx，在 onMessageSent/Received 中设为 ST 的 messageIndex
     // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
@@ -527,6 +532,17 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
             postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
             appendSTMEntries(vault, events);
+
+            var addedEntries = events.filter(function(e) { return e && e.id; });
+            if (addedEntries.length > 0) {
+                var messageDates = filteredMessages.map(function(m) { return m.id || ''; }).filter(Boolean);
+                recordMemoryVersion(chatId, {
+                    type: 'stm_batch',
+                    summary: 'STM batch: ' + addedEntries.length + '条新记忆',
+                    delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
+                    message_dates: messageDates
+                }).catch(function(err) { console.warn('[NE] recordMemoryVersion (stm) failed:', err); });
+            }
         }
 
         cursorResult.totalAdded = events.length;
