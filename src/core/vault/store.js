@@ -8,7 +8,10 @@ const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
 const MEMORY_STORE = 'memory_vaults';
 
-function _hasOldVaults(db) { return db.objectStoreNames.contains('vaults'); }
+function _hasOldVaults(db) {
+    try { if (localStorage.getItem('ne_v7_migrated') === '1') return false; } catch (e) {}
+    return db.objectStoreNames.contains('vaults');
+}
 
 function _migrateVaultsToSplit(db) {
     return new Promise(function (resolve, reject) {
@@ -70,7 +73,8 @@ function _migrateVaultsToSplit(db) {
                                 done++;
                                 if (done >= checks) {
                                     if (allOk) {
-                                        console.log('[NE] v6→v7 migration: ' + migrated + ' vault(s) split. VERIFIED — all data intact.');
+                                        console.log('[NE] v6→v7 migration: ' + migrated + ' vault(s) split. VERIFIED — all data intact. Migration complete.');
+                                        try { localStorage.setItem('ne_v7_migrated', '1'); } catch(e) {}
                                     } else {
                                         console.warn('[NE] v6→v7 migration: ' + migrated + ' vault(s) split. VERIFICATION FAILED — see errors above. Old vaults store preserved.');
                                     }

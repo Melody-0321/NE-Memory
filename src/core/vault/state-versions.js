@@ -28,9 +28,15 @@ function _getVersionLimit(key) {
 function _tx(db, stores, mode, fn) {
     return new Promise(function (resolve, reject) {
         var tx = db.transaction(stores, mode);
-        var result;
-        try { result = fn(tx); } catch (e) { reject(e); return; }
-        tx.oncomplete = function () { resolve(result); };
+        var request;
+        try { request = fn(tx); } catch (e) { reject(e); return; }
+        tx.oncomplete = function () {
+            if (request && typeof request === 'object' && 'result' in request) {
+                resolve(request.result);
+            } else {
+                resolve(request);
+            }
+        };
         tx.onerror = function () { reject(tx.error); };
     });
 }
