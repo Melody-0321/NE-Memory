@@ -7,6 +7,7 @@ import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory, collectAllMsgIds } from '../core/vault/store.js';
+import { getActiveChain, listStateDeltas, listMemoryVersions } from '../core/vault/state-versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
@@ -744,6 +745,7 @@ export function renderSettingsIntoSlide(container) {
     dmTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Data') + '</div>' +
         '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
         '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Export JSON') + '</button>' +
+        '<button id="narrative_vault_export_diag" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + '诊断导出' + '</button>' +
         '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Import JSON') + '</button>' +
         '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Embed into Chat') + '</button>' +
         '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Clean Orphan Data') + '</button>' +
@@ -875,6 +877,40 @@ export function renderSettingsIntoSlide(container) {
                 document.body.appendChild(a); a.click();
                 document.body.removeChild(a); URL.revokeObjectURL(url);
             } catch (e) { alert(t('Export failed') + ': ' + e.message); }
+        };
+    }
+
+    // Diagnostic export button
+    var diagBtn = document.getElementById('narrative_vault_export_diag');
+    if (diagBtn) {
+        diagBtn.onclick = async function() {
+            try {
+                var chatId = _currentGetChatId();
+                var [vault, chain, deltas, versions] = await Promise.all([
+                    readVault(chatId),
+                    getActiveChain(chatId),
+                    listStateDeltas(chatId, 200),
+                    listMemoryVersions(chatId, 200)
+                ]);
+                var output = {
+                    chatId: chatId,
+                    exported_at: new Date().toISOString(),
+                    vault: vault,
+                    versionChain: chain,
+                    stateDeltas: deltas,
+                    memoryVersions: versions
+                };
+                var json = JSON.stringify(output, null, 2);
+                var blob = new Blob([json], { type: 'application/json' });
+                var url = URL.createObjectURL(blob);
+                var a = document.createElement('a');
+                a.href = url; a.download = 'ne_diag_' + chatId + '.json';
+                document.body.appendChild(a); a.click();
+                document.body.removeChild(a); URL.revokeObjectURL(url);
+                showToast('诊断数据已导出', 'success');
+            } catch (e) {
+                showToast('诊断导出失败: ' + e.message, 'error', 6000);
+            }
         };
     }
 
