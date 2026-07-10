@@ -132,14 +132,14 @@ export function buildTools() {
  * @param {Object} [options]
  * @returns {Promise<string>}
  */
-export function callTemplateLLM(messages, options) {
+export function callTemplateLLM(messages, options, chatId) {
     options = options || {};
     var mergedOptions = Object.assign({}, options, {
         operation: options.operation || 'template_scheme',
         temperature: options.temperature || 0.4,
         _forcePipelineApi: false
     });
-    return callMemoryPipeline(messages, mergedOptions);
+    return callMemoryPipeline(messages, mergedOptions, chatId);
 }
 
 /**

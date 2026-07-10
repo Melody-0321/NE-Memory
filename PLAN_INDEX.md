@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-10 | 17 个文档 | 53% 完成
+> 自动生成 | 2026-07-10 | 18 个文档 | 50% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -20,6 +20,7 @@
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
+| `token-classification-fix.md` | ❓ 未知 | — | — | Token 统计分类修复 + SmartPush 死代码清理 |
 | `unify-st-message-id-v2.md` | ❓ 未知 | — | — | 统一 ST 消息身份标识 v2：以 send_date + role 为规范 ID |
 
 ---
@@ -30,4 +31,4 @@
 - ✅ 已完成：9
 - 🔄 进行中：5
 - ⏳ 未开始：1
-- ❓ 未标记：2
+- ❓ 未标记：3
