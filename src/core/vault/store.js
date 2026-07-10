@@ -8,17 +8,99 @@ const DB_VERSION = 7;
 const STATE_STORE = 'state_vaults';
 const MEMORY_STORE = 'memory_vaults';
 
+function _hasOldVaults(db) { return db.objectStoreNames.contains('vaults'); }
+
+function _migrateVaultsToSplit(db) {
+    return new Promise(function (resolve, reject) {
+        try {
+            var tx = db.transaction(['vaults', STATE_STORE, MEMORY_STORE], 'readwrite');
+            var oldStore = tx.objectStore('vaults');
+            var stateStore = tx.objectStore(STATE_STORE);
+            var memStore = tx.objectStore(MEMORY_STORE);
+            var migrated = 0;
+            var cursorReq = oldStore.openCursor();
+            cursorReq.onsuccess = function (event) {
+                var cursor = event.target.result;
+                if (cursor) {
+                    var record = cursor.value;
+                    var vault = record.vault;
+                    if (vault && vault.content) {
+                        var stateVault = _buildStateVault(vault.chat_id, vault);
+                        var memVault = _buildMemoryVault(vault.chat_id, vault);
+                        stateStore.put({ chat_id: vault.chat_id, vault: stateVault, updated_at: record.updated_at || Date.now() });
+                        memStore.put({ chat_id: vault.chat_id, vault: memVault, updated_at: record.updated_at || Date.now() });
+                        migrated++;
+                    }
+                    cursor.continue();
+                } else {
+                    console.log('[NE] v6→v7 migration: ' + migrated + ' vaults split into state_vaults + memory_vaults');
+                    resolve(migrated);
+                }
+            };
+            cursorReq.onerror = function () { reject(cursorReq.error); };
+        } catch (e) { reject(e); }
+    });
+}
+
+function _buildStateVault(chatId, vault) {
+    var content = vault.content || {};
+    var meta = vault._meta || {};
+    return {
+        chat_id: chatId,
+        version: vault.version || 0,
+        tokens: 0,
+        updated_at: vault.updated_at || new Date().toISOString(),
+        _meta: { created_at: meta.created_at || new Date().toISOString(), last_state_task: meta.last_state_task || null, last_state_time: meta.last_state_time || null },
+        content: {
+            state: content.state || {},
+            story_time: content.story_time || '',
+            story_scene: content.story_scene || '',
+            story_date: content.story_date || '',
+            state_schema: content.state_schema || null,
+            state_css: content.state_css || '',
+            character_schema: content.character_schema || null,
+            _active_characters: content._active_characters || [],
+            faction_keywords: content.faction_keywords || {}
+        }
+    };
+}
+
+function _buildMemoryVault(chatId, vault) {
+    var content = vault.content || {};
+    var meta = vault._meta || {};
+    return {
+        chat_id: chatId,
+        version: vault.version || 0,
+        tokens: 0,
+        updated_at: vault.updated_at || new Date().toISOString(),
+        _meta: { created_at: meta.created_at || new Date().toISOString(), last_pipeline_task: meta.last_pipeline_task || null, last_pipeline_time: meta.last_pipeline_time || null },
+        content: {
+            unconsolidated_stm: content.unconsolidated_stm || [],
+            stm_entries: content.stm_entries || [],
+            ltm_entries: content.ltm_entries || [],
+            cursor_state: content.cursor_state || { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } },
+            segment_counter: content.segment_counter || 0,
+            consolidate_threshold: content.consolidate_threshold || 5,
+            language: content.language || 'zh',
+            memory_config: content.memory_config || {},
+            summary: content.summary || '',
+            current_scene: content.current_scene || '',
+            character_states: content.character_states || {},
+            relationships: content.relationships || []
+        },
+        stm_index: vault.stm_index || {},
+        link_index: vault.link_index || {},
+        memory_system_prompt: vault.memory_system_prompt || ''
+    };
+}
+
 function openDB() {
     return new Promise((resolve, reject) => {
-        const req = indexedDB.open(DB_NAME, DB_VERSION);
-        req.onupgradeneeded = (e) => {
-            const db = e.target.result;
-            const tx = e.target.transaction;
+        var req = indexedDB.open(DB_NAME, DB_VERSION);
+        req.onupgradeneeded = function (e) {
+            var db = e.target.result;
             if (db.objectStoreNames.contains('snapshots')) {
                 db.deleteObjectStore('snapshots');
-            }
-            if (db.objectStoreNames.contains('vaults')) {
-                db.deleteObjectStore('vaults');
             }
             if (!db.objectStoreNames.contains('card_configs')) {
                 db.createObjectStore('card_configs', { keyPath: 'id' });
@@ -45,8 +127,21 @@ function openDB() {
                 obStore.createIndex('chat_id', 'chat_id', { unique: false });
             }
         };
-        req.onsuccess = () => resolve(req.result);
-        req.onerror = () => reject(req.error);
+        req.onsuccess = function () {
+            var db = req.result;
+            if (_hasOldVaults(db)) {
+                _migrateVaultsToSplit(db).then(function (count) {
+                    console.log('[NE] v7 migration complete: ' + count + ' vault(s) split. Old vaults store preserved (will clean up in future version).');
+                    resolve(db);
+                }).catch(function (err) {
+                    console.error('[NE] v7 migration failed:', err);
+                    resolve(db);
+                });
+            } else {
+                resolve(db);
+            }
+        };
+        req.onerror = function () { reject(req.error); };
     });
 }
 
