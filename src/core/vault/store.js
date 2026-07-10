@@ -1,10 +1,10 @@
 /**
  * vault/store.js — IndexedDB vault CRUD
  *
- * v7: 拆分为 state_vaults + memory_vaults，State/Memory 管线各自独立读写，消除并行写竞争。
+ * v8: force-reset empty stores from v7 botched upgrade, recover from chat metadata.
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 7;
+const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
 const MEMORY_STORE = 'memory_vaults';
 
@@ -147,6 +147,12 @@ function openDB() {
             var db = e.target.result;
             if (db.objectStoreNames.contains('snapshots')) {
                 db.deleteObjectStore('snapshots');
+            }
+            if (db.objectStoreNames.contains(STATE_STORE)) {
+                db.deleteObjectStore(STATE_STORE);
+            }
+            if (db.objectStoreNames.contains(MEMORY_STORE)) {
+                db.deleteObjectStore(MEMORY_STORE);
             }
             if (!db.objectStoreNames.contains('card_configs')) {
                 db.createObjectStore('card_configs', { keyPath: 'id' });

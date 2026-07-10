@@ -123,15 +123,24 @@ export async function loadVault(chatId) {
     var effectiveVersion = (dbVault && dbVault.version) || 0;
     var chatVersion = (chatVault && chatVault.version) || 0;
 
+    console.log('[NE-VAULT] loadVault chatId=' + chatId + ' chatVer=' + chatVersion + ' dbVer=' + effectiveVersion);
+
     if (chatVersion > effectiveVersion) {
-        try { await _writeSplitVault(chatId, chatVault); } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
+        console.log('[NE-VAULT] Chat metadata is newer — restoring to IndexedDB...');
+        try {
+            await _writeSplitVault(chatId, chatVault);
+            console.log('[NE-VAULT] Restore complete — ' +
+                'STM=' + ((chatVault.content && chatVault.content.unconsolidated_stm || []).length + (chatVault.content && chatVault.content.stm_entries || []).length) +
+                ' LTM=' + ((chatVault.content && chatVault.content.ltm_entries || []).length) +
+                ' state_keys=' + Object.keys((chatVault.content && chatVault.content.state) || {}).length);
+        } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
         return chatVault;
     }
 
-    // effectiveVersion >= chatVersion → IndexedDB is the source of truth
-    // (inline edits/deletes write only to IndexedDB, not chat_metadata)
     if (effectiveVersion > 0) {
         persistVaultToChatFile(dbVault);
+    } else {
+        console.log('[NE-VAULT] Both DB and chat metadata are empty — fresh start');
     }
     return dbVault;
 }
