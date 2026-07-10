@@ -783,7 +783,7 @@ export function renderSettingsIntoSlide(container) {
     // Event handlers for data management buttons
 
     // Process History
-    var processHistoryBtn = document.getElementById('narrative_vault_process_history');
+    var processHistoryBtn = container.querySelector('#narrative_vault_process_history');
     if (processHistoryBtn) {
         processHistoryBtn.onclick = async function() {
             if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
@@ -864,7 +864,7 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Export button
-    var exportBtn = document.getElementById('narrative_vault_export_json');
+    var exportBtn = container.querySelector('#narrative_vault_export_json');
     if (exportBtn) {
         exportBtn.onclick = async function() {
             var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
@@ -882,7 +882,7 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Diagnostic export button
-    var diagBtn = document.getElementById('narrative_vault_export_diag');
+    var diagBtn = container.querySelector('#narrative_vault_export_diag');
     if (diagBtn) {
         diagBtn.onclick = async function() {
             var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
@@ -916,16 +916,17 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Import button
-    var importBtn = document.getElementById('narrative_vault_import_json');
+    var importBtn = container.querySelector('#narrative_vault_import_json');
     if (importBtn) {
         importBtn.onclick = function() {
+            var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
             var input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
             input.onchange = async function() {
                 var file = input.files[0]; if (!file) return;
                 try {
                     var text = await new Promise(function(r) { var fr = new FileReader(); fr.onload = function(e) { r(e.target.result); }; fr.readAsText(file); });
                     var imported = JSON.parse(text);
-                    await writeMemory(_currentGetChatId, imported);
+                    await writeMemory(chatId, imported);
                     busEmit('vault:updated', { getChatId: _currentGetChatId });
                 } catch (e) { alert(t('Import failed') + ': ' + e.message); }
             };
@@ -934,7 +935,7 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Embed button
-    var embedBtn = document.getElementById('narrative_vault_embed_chat');
+    var embedBtn = container.querySelector('#narrative_vault_embed_chat');
     if (embedBtn) {
         embedBtn.onclick = async function() {
             try {
@@ -951,7 +952,7 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Clean orphans
-    var cleanBtn = document.getElementById('narrative_vault_clean_orphans');
+    var cleanBtn = container.querySelector('#narrative_vault_clean_orphans');
     if (cleanBtn) {
         cleanBtn.onclick = async function() {
             try {
@@ -971,7 +972,7 @@ export function renderSettingsIntoSlide(container) {
     }
 
     // Legacy schema checkbox
-    var legacyCb = document.getElementById('nes_legacy_schema');
+    var legacyCb = container.querySelector('#nes_legacy_schema');
     if (legacyCb) {
         legacyCb.onchange = function() {
             if (this.checked) localStorage.setItem('ne_use_legacy_schema', 'true');
