@@ -37,6 +37,7 @@ export async function saveStateVault(chatId, stateVault) {
 export async function saveMemoryVault(chatId, memoryVault) {
     memoryVault.version = (memoryVault.version || 0) + 1;
     memoryVault.updated_at = new Date().toISOString();
+    console.log('[NE-DIAG] saveMemoryVault chatId=' + chatId + ' v=' + memoryVault.version + ' unc=' + ((memoryVault.content && memoryVault.content.unconsolidated_stm) || []).length);
     try {
         await writeMemory(chatId, memoryVault);
     } catch (e) {

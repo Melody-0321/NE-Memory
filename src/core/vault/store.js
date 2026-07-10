@@ -361,6 +361,10 @@ export async function writeMemory(chatId, memoryVault) {
 
 export async function readVault(chatId) {
     var [stateVault, memoryVault] = await Promise.all([readState(chatId), readMemory(chatId)]);
+    console.log('[NE-DIAG] readVault chatId=' + chatId
+        + ' stVer=' + (stateVault ? stateVault.version : '?')
+        + ' memVer=' + (memoryVault ? memoryVault.version : '?')
+        + ' unc=' + (memoryVault && memoryVault.content ? (memoryVault.content.unconsolidated_stm || []).length : '?'));
     var v = {
         chat_id: chatId,
         version: Math.max(stateVault.version || 0, memoryVault.version || 0),

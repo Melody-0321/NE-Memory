@@ -540,7 +540,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
             }
             postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault);
-            appendSTMEntries(memoryVault, events);
+            var addedCount = appendSTMEntries(memoryVault, events);
+            console.log('[NE-DIAG] STM pipeline: events_from_llm=' + events.length
+                + ' appendSTM=' + addedCount
+                + ' unc_len=' + (memoryVault.content.unconsolidated_stm || []).length
+                + ' stm_len=' + (memoryVault.content.stm_entries || []).length);
 
             var addedEntries = events.filter(function(e) { return e && e.id; });
             if (addedEntries.length > 0) {
@@ -564,7 +568,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         memoryVault._meta.last_pipeline_task = 'stm_extract';
         memoryVault._meta.last_pipeline_time = new Date().toISOString();
         _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
+        console.log('[NE-DIAG] STM pipeline: about to saveMemoryVault chatId=' + chatId + ' ver=' + memoryVault.version + ' unc=' + (memoryVault.content.unconsolidated_stm || []).length);
         try { await saveMemoryVault(chatId, memoryVault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        console.log('[NE-DIAG] STM pipeline: saveMemoryVault done');
         _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {
