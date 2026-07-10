@@ -426,12 +426,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         console.warn('[NE] initializeMemoryChain failed:', err);
     });
 
-    // 给消息打绝对位置标记——从 _ne_id 的 idx 前缀解析（buildMsgId 格式: {idx}_{send_date}_{role}）
-    for (var mi = 0; mi < newMessages.length; mi++) {
-        var idStr = String(newMessages[mi].id || '');
-        var parsed = parseInt(idStr, 10);
-        newMessages[mi]._absIdx = isNaN(parsed) ? mi : parsed;
-    }
+    // 给消息打绝对位置标记——m.id 现在是 _ne_id = "idx isoDate"，parseInt 提取 idx
+    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? parseInt(newMessages[mi].id, 10) : mi; }
 
     var processedIds = collectAllMsgIds(memoryVault);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
