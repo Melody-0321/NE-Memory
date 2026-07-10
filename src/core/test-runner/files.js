@@ -2,6 +2,7 @@
  * test-runner/files.js — 测试用例 & 报告文件处理
  */
 import { __KNOWN_TESTS, __TEST_MARKDOWN } from './test-data.generated.js';
+import buildInfo from '../build-info.js';
 
 export function parseTestCase(raw) {
     var tc = {};
@@ -380,6 +381,7 @@ export function appendTraceRound(trace, roundData) {
 export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults, tokenRounds, roundDataList) {
     var lines = [];
     lines.push('# ' + testCase.title + ' — 测试报告');
+    lines.push('Git 提交: `' + (buildInfo.hash || 'unknown') + '` | 构建: ' + (buildInfo.time || 'unknown'));
     lines.push('运行时间: ' + new Date().toISOString());
     lines.push('实际轮次: ' + roundCount);
     lines.push('总耗时: ' + formatDuration(totalDurationMs));
