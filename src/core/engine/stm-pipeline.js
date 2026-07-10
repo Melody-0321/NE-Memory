@@ -419,7 +419,6 @@ function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio) {
 export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
     _resetCheckChatTag();
     _checkChatIntegrity('executeIncrementalUpdate:entry');
-    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
     const memoryVault = await readMemory(chatId);
     const stateVault = await readState(chatId);
 
@@ -433,15 +432,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
     var processedIds = collectAllMsgIds(memoryVault);
-    console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
-    console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages');
-    if (filteredMessages.length !== newMessages.length) {
-        var filteredIds = newMessages.filter(function(m){ return filteredMessages.indexOf(m) === -1; }).map(function(m){return m.id;});
-        console.log('[NE-DIAG] executeIncrementalUpdate — filtered OUT msg ids:', filteredIds.join(','));
-    }
     if (filteredMessages.length === 0 && !force) {
-        console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
         return { vault: memoryVault, added: 0 };
     }
 
@@ -468,43 +460,66 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var stmRatio = stmRatio || 0.05;
 
             var chunks = chunkSegmentsForLLM(segments, turns, maxChars);
-            var subSegments = [];
-            for (var ci = 0; ci < chunks.length; ci++) {
-                subSegments = subSegments.concat(chunks[ci]);
-            }
-            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + subSegments.length + ' subSegments (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
+            console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
 
-            var summaryPrompt = buildStmSummaryPrompt(subSegments, turns, memoryVault, stateVault, stmRatio);
-            var responseText = '';
-            var MAX_RETRIES = 1;
-            for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+            for (var ci = 0; ci < chunks.length; ci++) {
+                var chunk = chunks[ci];
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio);
+                var responseText = '';
                 try {
                     _checkChatIntegrity('executeIncrementalUpdate:beforeLLM');
                     responseText = await callMemoryPipeline([
                         { role: 'system', content: summaryPrompt.system },
                         { role: 'user', content: summaryPrompt.user }
                     ], { operation: 'stm_extract' }, chatId);
-                    if (responseText) break;
                 } catch (e) {
-                    console.warn('[NE] STM LLM attempt ' + (attempt + 1) + ' failed:', e);
+                    console.warn('[NE] Chunk ' + (ci+1) + '/' + chunks.length + ' LLM failed:', e);
                 }
-            }
 
-            _checkChatIntegrity('executeIncrementalUpdate:afterLLM');
+                _checkChatIntegrity('executeIncrementalUpdate:afterLLM');
 
-            if (responseText) {
-                var parsed = safeJsonParse(responseText);
-                if (parsed && parsed.events) {
-                    for (var ei = 0; ei < Math.min(parsed.events.length, subSegments.length); ei++) {
-                        mapEventData(parsed.events[ei], subSegments[ei], turns, segments);
-                        events.push(parsed.events[ei]);
+                if (!responseText && chunk.length > 1) {
+                    console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
+                    for (var si = 0; si < chunk.length; si++) {
+                        var singleSeg = [chunk[si]];
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio);
+                        try {
+                            responseText = await callMemoryPipeline([
+                                { role: 'system', content: singlePrompt.system },
+                                { role: 'user', content: singlePrompt.user }
+                            ], { operation: 'stm_extract' }, chatId);
+                        } catch (e2) {
+                            console.warn('[NE] Chunk ' + (ci+1) + ' segment ' + (si+1) + ' fallback failed:', e2);
+                            continue;
+                        }
+                        if (responseText) {
+                            var chunkParsed = safeJsonParse(responseText);
+                            if (chunkParsed && chunkParsed.events) {
+                                for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
+                                    mapEventData(chunkParsed.events[ei], chunk[si], turns, segments);
+                                    events.push(chunkParsed.events[ei]);
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                }
+
+                if (responseText) {
+                    var chunkParsed = safeJsonParse(responseText);
+                    if (chunkParsed) {
+                        var chunkEvents = chunkParsed.events || [];
+                        for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
+                            mapEventData(chunkEvents[ei], chunk[ei], turns, segments);
+                            events.push(chunkEvents[ei]);
+                        }
                     }
                 }
             }
 
             if (events.length === 0 && filteredMessages.length > 0) {
                 console.warn('[NE] STM pipeline: all LLM attempts failed, no events extracted');
-                recordTelemetry({ pipeline_task: 'stm_extract', error: 'all_attempts_failed', subSegments: subSegments.length }, chatId);
+                recordTelemetry({ pipeline_task: 'stm_extract', error: 'all_attempts_failed', chunks: chunks.length }, chatId);
             }
         }
 
@@ -541,10 +556,6 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
             postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault);
             var addedCount = appendSTMEntries(memoryVault, events);
-            console.log('[NE-DIAG] STM pipeline: events_from_llm=' + events.length
-                + ' appendSTM=' + addedCount
-                + ' unc_len=' + (memoryVault.content.unconsolidated_stm || []).length
-                + ' stm_len=' + (memoryVault.content.stm_entries || []).length);
 
             var addedEntries = events.filter(function(e) { return e && e.id; });
             if (addedEntries.length > 0) {
@@ -568,9 +579,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         memoryVault._meta.last_pipeline_task = 'stm_extract';
         memoryVault._meta.last_pipeline_time = new Date().toISOString();
         _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
-        console.log('[NE-DIAG] STM pipeline: about to saveMemoryVault chatId=' + chatId + ' ver=' + memoryVault.version + ' unc=' + (memoryVault.content.unconsolidated_stm || []).length);
         try { await saveMemoryVault(chatId, memoryVault); } catch (e) { console.warn('[NE] STM save failed:', e); }
-        console.log('[NE-DIAG] STM pipeline: saveMemoryVault done');
         _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {

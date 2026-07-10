@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-10 | 16 个文档 | 56% 完成
+> 自动生成 | 2026-07-10 | 17 个文档 | 53% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -16,6 +16,7 @@
 | `open-character-schema-ui-plan.md` | 🔄 进行中 | 2026-07-05 | 2026-07-07 | Open Character Schema UI 实施计划 |
 | `open-character-schema-ux-engineering.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
+| `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
@@ -29,4 +30,4 @@
 - ✅ 已完成：9
 - 🔄 进行中：5
 - ⏳ 未开始：1
-- ❓ 未标记：1
+- ❓ 未标记：2

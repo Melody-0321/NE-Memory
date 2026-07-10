@@ -632,7 +632,7 @@ async function flushPendingMessages() {
     }
 
     persistPending();
-    runLtmConsolidation(chatId).catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
+    try { await runLtmConsolidation(chatId); } catch(e) { console.warn('[NE] LTM pipeline failed:', e); }
 
     if (pendingMessages.length > 0) {
         (async function() {
