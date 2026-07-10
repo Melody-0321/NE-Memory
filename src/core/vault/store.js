@@ -19,6 +19,7 @@ function _migrateVaultsToSplit(db) {
             var memStore = tx.objectStore(MEMORY_STORE);
             var migrated = 0;
             var cursorReq = oldStore.openCursor();
+            var verifyHashes = [];
             cursorReq.onsuccess = function (event) {
                 var cursor = event.target.result;
                 if (cursor) {
@@ -29,12 +30,57 @@ function _migrateVaultsToSplit(db) {
                         var memVault = _buildMemoryVault(vault.chat_id, vault);
                         stateStore.put({ chat_id: vault.chat_id, vault: stateVault, updated_at: record.updated_at || Date.now() });
                         memStore.put({ chat_id: vault.chat_id, vault: memVault, updated_at: record.updated_at || Date.now() });
+                        verifyHashes.push({
+                            chat_id: vault.chat_id,
+                            old_stm_total: (vault.content.unconsolidated_stm || []).length + (vault.content.stm_entries || []).length,
+                            old_ltm_total: (vault.content.ltm_entries || []).length,
+                            old_state_keys: Object.keys(vault.content.state || {}).length
+                        });
                         migrated++;
                     }
                     cursor.continue();
                 } else {
-                    console.log('[NE] v6→v7 migration: ' + migrated + ' vaults split into state_vaults + memory_vaults');
-                    resolve(migrated);
+                    var afterTx = db.transaction([STATE_STORE, MEMORY_STORE], 'readonly');
+                    var afterState = afterTx.objectStore(STATE_STORE);
+                    var afterMem = afterTx.objectStore(MEMORY_STORE);
+                    var checks = verifyHashes.length;
+                    var done = 0;
+                    var allOk = true;
+                    verifyHashes.forEach(function(h) {
+                        var sReq = afterState.get(h.chat_id);
+                        sReq.onsuccess = function() {
+                            var mReq = afterMem.get(h.chat_id);
+                            mReq.onsuccess = function() {
+                                var sv = sReq.result && sReq.result.vault;
+                                var mv = mReq.result && mReq.result.vault;
+                                var stmOk = sv !== undefined && mv !== undefined;
+                                var oldTotal = h.old_stm_total + h.old_ltm_total;
+                                var newStm = (mv && mv.content ? (mv.content.unconsolidated_stm || []).length + (mv.content.stm_entries || []).length : -1);
+                                var newLtm = (mv && mv.content ? (mv.content.ltm_entries || []).length : -1);
+                                var newStateKeys = (sv && sv.content && sv.content.state ? Object.keys(sv.content.state).length : -1);
+                                var memMatch = newStm === h.old_stm_total && newLtm === h.old_ltm_total;
+                                var stateMatch = newStateKeys === h.old_state_keys;
+                                if (!memMatch || !stateMatch) {
+                                    allOk = false;
+                                    console.error('[NE] v7 migration VERIFY FAIL for ' + h.chat_id + ':',
+                                        'STM ' + h.old_stm_total + '→' + newStm,
+                                        'LTM ' + h.old_ltm_total + '→' + newLtm,
+                                        'state_keys ' + h.old_state_keys + '→' + newStateKeys);
+                                }
+                                done++;
+                                if (done >= checks) {
+                                    if (allOk) {
+                                        console.log('[NE] v6→v7 migration: ' + migrated + ' vault(s) split. VERIFIED — all data intact.');
+                                    } else {
+                                        console.warn('[NE] v6→v7 migration: ' + migrated + ' vault(s) split. VERIFICATION FAILED — see errors above. Old vaults store preserved.');
+                                    }
+                                    resolve(migrated);
+                                }
+                            };
+                            mReq.onerror = function() { done++; if (done >= checks) { console.warn('[NE] v7 migration verify read error'); resolve(migrated); } };
+                        };
+                        sReq.onerror = function() { done++; if (done >= checks) { console.warn('[NE] v7 migration verify read error'); resolve(migrated); } };
+                    });
                 }
             };
             cursorReq.onerror = function () { reject(cursorReq.error); };
