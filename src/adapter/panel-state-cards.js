@@ -1,4 +1,4 @@
-import { write, loadTemplateLibrary, getTemplate, saveTemplate } from '../core/vault/store.js';
+import { readState, writeState, loadTemplateLibrary, getTemplate, saveTemplate } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
@@ -422,8 +422,8 @@ export function enterCardEditMode(editBtn) {
 function saveCardFields(cardDiv) {
     var stored = _pendingInlineStorage;
     if (!stored || !stored.vault) return;
-    var vault = stored.vault;
-    var c = vault.content || {};
+    var stateVault = stored.vault;
+    var c = stateVault.content || {};
     var state = c.state || {};
     var chars = state.characters || {};
 
@@ -461,7 +461,7 @@ function saveCardFields(cardDiv) {
 
     var getChatId = stored.getChatId;
     var chatId = getChatId();
-    write(chatId, vault).then(function() {
+    writeState(chatId, stateVault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
     });
 
@@ -764,7 +764,7 @@ function deleteCharacterCard(cardDiv, charName) {
     c.state = state;
 
     var getChatId = stored.getChatId;
-    write(getChatId(), vault).then(function() {
+    writeState(getChatId(), vault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
     });
 }

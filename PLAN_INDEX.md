@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-09 | 15 个文档 | 60% 完成
+> 自动生成 | 2026-07-10 | 16 个文档 | 56% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -17,6 +17,7 @@
 | `open-character-schema-ux-engineering.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
+| `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
 | `unify-st-message-id-v2.md` | ❓ 未知 | — | — | 统一 ST 消息身份标识 v2：以 send_date + role 为规范 ID |
 
@@ -26,6 +27,6 @@
 
 ### 统计
 - ✅ 已完成：9
-- 🔄 进行中：4
+- 🔄 进行中：5
 - ⏳ 未开始：1
 - ❓ 未标记：1

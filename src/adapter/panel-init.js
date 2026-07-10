@@ -1,5 +1,4 @@
-import { read, collectAllMsgIds, getFieldFromLibrary } from '../core/vault/store.js';
-import { loadVault } from '../core/auto-restore.js';
+import { readVault, collectAllMsgIds, getFieldFromLibrary } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
@@ -60,7 +59,7 @@ export async function renderVaultPanel(getChatId) {
             // Version history is now handled by panel-version-history.js (~state-versions)
         });
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
-        var vault = await loadVault(getChatId());
+        var vault = await readVault(getChatId());
         var c = vault.content || {};
         console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
 

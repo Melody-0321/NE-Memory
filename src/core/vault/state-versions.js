@@ -237,8 +237,6 @@ export async function recordStateDelta(chatId, deltaData) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
     });
 
-    console.log('[NE] recordStateDelta: chatId=' + chatId + ' seq=' + newSeq + ' changes=' + changes.length + ' summary=' + summary);
-
     var stateLimit = _getVersionLimit('ne_state_version_limit');
     if (chain.state_active.length > stateLimit) {
         compact(chatId).catch(function(e) { console.warn('[NE] auto-compact state failed:', e); });
@@ -732,26 +730,53 @@ export async function listMemoryVersions(chatId, limit) {
 }
 
 /**
- * 初始化或迁移——从现有 vault.content 创建初始版本
+ * 初始化 State 版本链 — 从现有 state vault 内容创建 seq=0 快照
  *
  * @param {string} chatId
- * @param {object} vaultContent
+ * @param {object} stateVaultContent — 含 state 字段（如 stateVault.content）
  * @returns {Promise<void>}
  */
-export async function initializeChain(chatId, vaultContent) {
-    var chain = await getActiveChain(chatId);
-    if (chain && chain.state_head_seq > 0) return;
+export async function initializeStateChain(chatId, stateVaultContent) {
+    var db = await openDB();
+    var existingDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+        return tx.objectStore('state_deltas').get(_generateId('delta', chatId, 0));
+    });
+    if (existingDelta) return;
 
-    var content = vaultContent || {};
+    var content = stateVaultContent || {};
     var foldedState = content.state ? JSON.parse(JSON.stringify(content.state)) : {};
-    var foldedStm = (content.stm_entries || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
-    var foldedUnconsolidated = (content.unconsolidated_stm || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
-    var foldedLtm = (content.ltm_entries || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
 
     var stateDelta = _emptyStateDelta(chatId);
     stateDelta.id = _generateId('delta', chatId, 0);
     stateDelta.folded_state = foldedState;
     stateDelta.summary = '初始迁移';
+
+    var chain = await _getOrCreateChain(chatId);
+
+    await _tx(db, ['state_deltas', 'active_chains'], 'readwrite', function (tx) {
+        tx.objectStore('state_deltas').put(stateDelta);
+        tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
+    });
+}
+
+/**
+ * 初始化 Memory 版本链 — 从现有 memory vault 内容创建 seq=0 快照
+ *
+ * @param {string} chatId
+ * @param {object} memoryVaultContent — 含 stm_entries, unconsolidated_stm, ltm_entries 字段
+ * @returns {Promise<void>}
+ */
+export async function initializeMemoryChain(chatId, memoryVaultContent) {
+    var db = await openDB();
+    var existingVersion = await _tx(db, ['memory_versions'], 'readonly', function (tx) {
+        return tx.objectStore('memory_versions').get(_generateId('memver', chatId, 0));
+    });
+    if (existingVersion) return;
+
+    var content = memoryVaultContent || {};
+    var foldedStm = (content.stm_entries || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
+    var foldedUnconsolidated = (content.unconsolidated_stm || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
+    var foldedLtm = (content.ltm_entries || []).map(function (e) { return JSON.parse(JSON.stringify(e)); });
 
     var memVersion = _emptyMemoryVersion(chatId);
     memVersion.id = _generateId('memver', chatId, 0);
@@ -760,14 +785,20 @@ export async function initializeChain(chatId, vaultContent) {
     memVersion.folded_ltm_entries = foldedLtm;
     memVersion.summary = '初始迁移';
 
-    var newChain = _emptyChain(chatId);
+    var chain = await _getOrCreateChain(chatId);
 
-    var db = await openDB();
-    await _tx(db, ['state_deltas', 'memory_versions', 'active_chains'], 'readwrite', function (tx) {
-        tx.objectStore('state_deltas').put(stateDelta);
+    await _tx(db, ['memory_versions', 'active_chains'], 'readwrite', function (tx) {
         tx.objectStore('memory_versions').put(memVersion);
-        tx.objectStore('active_chains').put({ chat_id: chatId, chain: newChain });
+        tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
     });
+}
+
+/**
+ * @deprecated 使用 initializeStateChain 和 initializeMemoryChain 分别初始化
+ */
+export async function initializeChain(chatId, vaultContent) {
+    await initializeStateChain(chatId, vaultContent);
+    await initializeMemoryChain(chatId, vaultContent);
 }
 
 export { buildStateDeltaSummary };

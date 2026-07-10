@@ -1,10 +1,10 @@
-import { read } from '../vault/store.js';
+import { readState } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
-import { saveVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
+import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
-import { recordStateDelta, buildStateDeltaSummary, initializeChain } from '../vault/state-versions.js';
+import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -776,53 +776,49 @@ function _persistCardConfig(charName, state) {
 export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssistantMsg) {
     _resetCheckChatTag();
     _checkChatIntegrity('extractStateChangesOnly:entry');
-    var vault = await read(chatId);
-    if (!vault || !vault.content) return { vault, changed: false };
+    var stateVault = await readState(chatId);
+    if (!stateVault || !stateVault.content) return { stateVault, changed: false };
 
-    console.log('[NE] extractStateChangesOnly: vault loaded, initializing chain...');
-    try {
-        await initializeChain(chatId, vault.content || {});
-        console.log('[NE] extractStateChangesOnly: initializeChain done');
-    } catch (err) {
-        console.error('[NE] extractStateChangesOnly: initializeChain FAILED for ' + chatId, err);
-    }
+    initializeStateChain(chatId, stateVault.content || {}).catch(function(err) {
+        console.error('[NE] initializeStateChain failed for ' + chatId, err);
+    });
 
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
-    ensureStateStructure(vault);
+    ensureStateStructure(stateVault);
 
     var messages = [];
     if (latestUserMsg) messages.push(latestUserMsg);
     if (latestAssistantMsg) messages.push(latestAssistantMsg);
 
     // Inferred protagonist_name: 优先 state 已存值，否则从最新用户消息推断
-    var state = vault.content.state || {};
+    var state = stateVault.content.state || {};
     if (!state.protagonist_name && latestUserMsg && latestUserMsg.name) {
         state.protagonist_name = latestUserMsg.name;
-        vault.content.state = state;
+        stateVault.content.state = state;
     }
 
     // 首次初始化：运行 NPC 方案发现（仅一次）
-    if (!(vault.content.state || {}).npc_schemes) {
-        var schemeResult = await resolveNpcSchemes(vault, chatId, messages);
+    if (!(stateVault.content.state || {}).npc_schemes) {
+        var schemeResult = await resolveNpcSchemes(stateVault, chatId, messages);
         if (schemeResult && schemeResult.templateInit && !schemeResult.skipSystemMessage) {
-            vault.content._templateInitSignal = schemeResult;
+            stateVault.content._templateInitSignal = schemeResult;
         }
     }
 
-    if (vault.content.faction_keywords) {
+    if (stateVault.content.faction_keywords) {
         var scanText = '';
         if (latestUserMsg && latestUserMsg.content) scanText += latestUserMsg.content + ' ';
         if (latestAssistantMsg && latestAssistantMsg.content) scanText += latestAssistantMsg.content;
-        scanMessageForFactions(scanText, vault.content.faction_keywords, vault.content.state);
+        scanMessageForFactions(scanText, stateVault.content.faction_keywords, stateVault.content.state);
     }
 
-    if (messages.length === 0) return { vault, changed: false };
+    if (messages.length === 0) return { stateVault, changed: false };
 
-    var newNames = findNewCharacterNames(vault);
+    var newNames = findNewCharacterNames(stateVault);
     var worldBookText = newNames.length > 0 ? await _fetchWorldBookText(newNames) : '';
     var neCharFallback = !!globalThis.__ne_char_fallback_needed;
     globalThis.__ne_char_fallback_needed = false;
-    var statePrompt = buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCharFallback);
+    var statePrompt = buildStatePrompt_Preset(messages, stateVault, worldBookText, newNames, neCharFallback);
 
     var stateResponse;
     try {
@@ -836,7 +832,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         );
     } catch (e) {
         console.warn('[NE] Per-round state extraction failed:', e);
-        return { vault, changed: false };
+        return { stateVault, changed: false };
     }
 
     _checkChatIntegrity('extractStateChangesOnly:afterLLM');
@@ -847,7 +843,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     // 提取 world_context（含在下层 JSON block 的 state_changes 外）
     var rawParsed = safeJsonParse(String(stateResponse || '').trim());
     if (rawParsed && rawParsed.world_context && typeof rawParsed.world_context === 'object' && rawParsed.world_context.genre) {
-        var stateRef = vault.content.state || {};
+        var stateRef = stateVault.content.state || {};
         stateRef._world_context_cache = {
             genre: rawParsed.world_context.genre || '',
             tropes: rawParsed.world_context.tropes || [],
@@ -855,23 +851,23 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
             source: 'ai',
             _extractedAt: new Date().toISOString()
         };
-        vault.content.state = stateRef;
+        stateVault.content.state = stateRef;
         console.log('[NE] world_context extracted:', JSON.stringify(rawParsed.world_context));
     }
 
     // 优先：Main LLM 状态块 — 解析后直接写入 vault 全局数据 + 更新 status
     var pendingBlock = globalThis.__ne_pending_state_block;
     if (pendingBlock) {
-        if (pendingBlock.time) vault.content.story_time = pendingBlock.time;
-        if (pendingBlock.scene) vault.content.story_scene = pendingBlock.scene;
-        if (pendingBlock.day) vault.content.story_date = '第' + pendingBlock.day + '天';
+        if (pendingBlock.time) stateVault.content.story_time = pendingBlock.time;
+        if (pendingBlock.scene) stateVault.content.story_scene = pendingBlock.scene;
+        if (pendingBlock.day) stateVault.content.story_date = '第' + pendingBlock.day + '天';
         if (pendingBlock.event) {
-            var stateGlobal = vault.content.state || {};
+            var stateGlobal = stateVault.content.state || {};
             stateGlobal.main_event = pendingBlock.event;
-            vault.content.state = stateGlobal;
+            stateVault.content.state = stateGlobal;
         }
         if (pendingBlock.present && pendingBlock.present.length > 0) {
-            var state = vault.content.state || {};
+            var state = stateVault.content.state || {};
             var chars = state.characters || {};
             var presentSet = {};
             pendingBlock.present.forEach(function(n) { presentSet[n.trim()] = true; });
@@ -890,30 +886,30 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                 }
             });
             state.characters = chars;
-            vault.content.state = state;
-            vault.content._active_characters = pendingBlock.present.map(function(n) { return n.trim(); });
+            stateVault.content.state = state;
+            stateVault.content._active_characters = pendingBlock.present.map(function(n) { return n.trim(); });
         }
         globalThis.__ne_pending_state_block = null;
     }
 
     // 回退：State LLM 的 state_changes.time / state_changes.scene
     if (stateChanges.time) {
-        vault.content.story_time = String(stateChanges.time);
+        stateVault.content.story_time = String(stateChanges.time);
     }
     if (stateChanges.scene) {
-        vault.content.story_scene = String(stateChanges.scene);
+        stateVault.content.story_scene = String(stateChanges.scene);
     }
 
     if (isStateSchemaEnabled() && Object.keys(stateChanges).length > 0) {
-        var schema = vault.content.state_schema || null;
+        var schema = stateVault.content.state_schema || null;
         var result = validateStateChanges(schema, stateChanges);
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
-        var mergeResult = mergeStateChanges(vault.content.state || {}, result.validated);
-        if (JSON.stringify(mergeResult.state) === JSON.stringify(vault.content.state || {})) {
+        var mergeResult = mergeStateChanges(stateVault.content.state || {}, result.validated);
+        if (JSON.stringify(mergeResult.state) === JSON.stringify(stateVault.content.state || {})) {
             console.log('[NE] State unchanged, skipping write');
         } else {
-            vault.content.state = mergeResult.state;
-            handleQuestCompletion(vault.content.state, result.validated, vault.content.story_time);
+            stateVault.content.state = mergeResult.state;
+            handleQuestCompletion(stateVault.content.state, result.validated, stateVault.content.story_time);
 
             if (mergeResult.changes.length > 0) {
                 var aiMsgSendDate = latestAssistantMsg && latestAssistantMsg.send_date ? latestAssistantMsg.send_date : null;
@@ -934,15 +930,15 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     }
 
     if (isStateSchemaEnabled()) {
-        vault.content.state = autoDecayStaleCharacters(vault.content.state, messages);
+        stateVault.content.state = autoDecayStaleCharacters(stateVault.content.state, messages);
     }
 
-    vault._meta = vault._meta || {};
-    vault._meta.last_state_task = 'per_round';
-    vault._meta.last_state_time = new Date().toISOString();
+    stateVault._meta = stateVault._meta || {};
+    stateVault._meta.last_state_task = 'per_round';
+    stateVault._meta.last_state_time = new Date().toISOString();
 
     _checkChatIntegrity('extractStateChangesOnly:beforeSaveVault');
-    await saveVault(chatId, vault);
+    await saveStateVault(chatId, stateVault);
     _checkChatIntegrity('extractStateChangesOnly:afterSaveVault');
 
     recordTelemetry({
@@ -953,9 +949,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     globalThis.__ne_debug_last_pipeline = {
         changes: stateChanges || {},
-        mergedState: vault.content.state || null,
+        mergedState: stateVault.content.state || null,
         time: new Date().toISOString()
     };
 
-    return { vault, changed: true };
+    return { stateVault, changed: true };
 }

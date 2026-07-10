@@ -4,7 +4,7 @@
  * 遍历 IndexedDB 中所有 chat_id，与 ST ctx.characters / ctx.groups
  * 做差集对比，找出并清理已删除聊天遗留的 vault 数据。
  */
-import { read, remove, openDB } from './store.js';
+import { readVault, remove, openDB } from './store.js';
 
 var _gcImportsReady = true;
 
@@ -81,7 +81,7 @@ export async function scanOrphans() {
         }
 
         try {
-            var vault = await read(key);
+            var vault = await readVault(key);
             var stmCount = 0;
             var ltmCount = 0;
             if (vault && vault.content) {

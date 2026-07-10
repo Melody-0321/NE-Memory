@@ -1,4 +1,4 @@
-import { read, write } from './vault/store.js';
+import { readState, writeState, readMemory, writeMemory, readVault } from './vault/store.js';
 import { runtime } from './runtime.js';
 
 var _loadedChatIds = {};
@@ -61,6 +61,55 @@ export function persistVaultToChatFile(vault) {
  *   - 仅有 chat_metadata 无 IndexedDB → 自动恢复到 IndexedDB
  *   - 两者都有 → 取 version 更高的
  */
+var _stateContentFields = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+var _memoryContentFields = ['unconsolidated_stm', 'stm_entries', 'ltm_entries', 'cursor_state', 'segment_counter', 'consolidate_threshold', 'language', 'memory_config', 'summary', 'current_scene', 'character_states', 'relationships'];
+
+function _splitMergedVault(chatId, mergedVault) {
+    var content = mergedVault.content || {};
+
+    var stateContent = {};
+    _stateContentFields.forEach(function (f) { if (content[f] !== undefined) stateContent[f] = content[f]; });
+
+    var memoryContent = {};
+    _memoryContentFields.forEach(function (f) { if (content[f] !== undefined) memoryContent[f] = content[f]; });
+
+    var stateVault = {
+        chat_id: chatId,
+        version: mergedVault.version || 0,
+        tokens: mergedVault.tokens || 0,
+        updated_at: mergedVault.updated_at || new Date().toISOString(),
+        _meta: {
+            created_at: (mergedVault._meta && mergedVault._meta.created_at) || new Date().toISOString(),
+            last_state_task: (mergedVault._meta && mergedVault._meta.last_state_task) || null,
+            last_state_time: (mergedVault._meta && mergedVault._meta.last_state_time) || null
+        },
+        content: stateContent
+    };
+
+    var memoryVault = {
+        chat_id: chatId,
+        version: mergedVault.version || 0,
+        tokens: mergedVault.tokens || 0,
+        updated_at: mergedVault.updated_at || new Date().toISOString(),
+        _meta: {
+            created_at: (mergedVault._meta && mergedVault._meta.created_at) || new Date().toISOString(),
+            last_pipeline_task: (mergedVault._meta && mergedVault._meta.last_pipeline_task) || null,
+            last_pipeline_time: (mergedVault._meta && mergedVault._meta.last_pipeline_time) || null
+        },
+        content: memoryContent,
+        stm_index: mergedVault.stm_index || {},
+        link_index: mergedVault.link_index || {},
+        memory_system_prompt: mergedVault.memory_system_prompt || ''
+    };
+
+    return { stateVault: stateVault, memoryVault: memoryVault };
+}
+
+async function _writeSplitVault(chatId, mergedVault) {
+    var split = _splitMergedVault(chatId, mergedVault);
+    await Promise.all([writeState(chatId, split.stateVault), writeMemory(chatId, split.memoryVault)]);
+}
+
 export async function loadVault(chatId) {
     var neVaultJson = _getChatMetadataNeVault();
     var chatVault = null;
@@ -69,13 +118,13 @@ export async function loadVault(chatId) {
     }
 
     var dbVault = null;
-    try { dbVault = await read(chatId); } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
+    try { dbVault = await readVault(chatId); } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
 
     var effectiveVersion = (dbVault && dbVault.version) || 0;
     var chatVersion = (chatVault && chatVault.version) || 0;
 
     if (chatVersion > effectiveVersion) {
-        try { await write(chatId, chatVault); } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
+        try { await _writeSplitVault(chatId, chatVault); } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
         return chatVault;
     }
 

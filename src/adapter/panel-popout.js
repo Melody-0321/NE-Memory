@@ -2,7 +2,7 @@ import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import { isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
-import { read } from '../core/vault/store.js';
+import { readVault } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, injectPinCSS, injectBottomDrawerCSS,
   setVaultActivity, freezeIframeHeight, vaultLLMLog, lastVaultStateJson,
   closeVaultOverlay, sortLtmByMsgOrder, busEmit, panelById, panelQSA, showConfirm, emptyStateHtml,

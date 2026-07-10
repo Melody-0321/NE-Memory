@@ -1,17 +1,18 @@
-import { read, appendSTMEntries, collectAllMsgIds } from '../vault/store.js';
+import { readMemory, readState, appendSTMEntries, collectAllMsgIds } from '../vault/store.js';
 import { isStateSchemaEnabled } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
-import { recordMemoryVersion, initializeChain } from '../vault/state-versions.js';
+import { recordMemoryVersion, initializeMemoryChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
-import { saveVault, filterNewMessages } from './pipeline-shared.js';
+import { saveMemoryVault, filterNewMessages } from './pipeline-shared.js';
 import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 
-function buildCursorPrompt(windowItems, position, pendingPartials, vault, force) {
+function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateVault, force) {
     var content = vault.content || {};
+    var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
     // 格式化窗口消息
@@ -24,10 +25,10 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
 
     // 当前状态摘要
     var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    if (stateContent.story_time || stateContent.story_scene || stateContent.story_date) {
+        currentStateSnapshot = 'story_day: ' + (stateContent.story_time || '') + '\nstory_date: ' + (stateContent.story_date || '') + '\nstory_scene: ' + (stateContent.story_scene || '') + '\n';
     }
-    var state = content.state || {};
+    var state = stateContent.state || {};
     var allChars = state.characters ? Object.keys(state.characters) : [];
     if (allChars.length > 0) {
         currentStateSnapshot += '已知角色: ' + allChars.join(', ') + '\n';
@@ -352,8 +353,9 @@ function computePerSegmentGuidance(segments, turns, ratio, lang) {
     });
 }
 
-function buildStmSummaryPrompt(segments, turns, vault, ratio) {
+function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio) {
     var content = vault.content || {};
+    var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var bannerMatched = globalThis.__ne_banner_matched;
     var _ratio = ratio || 0.05;
@@ -378,11 +380,11 @@ function buildStmSummaryPrompt(segments, turns, vault, ratio) {
         segmentsText += '\n';
     }
 
-    if (vault.content.story_date || vault.content.story_time || vault.content.story_scene) {
+    if (stateContent.story_date || stateContent.story_time || stateContent.story_scene) {
         segmentsText += '\n## 当前故事状态\n';
-        if (vault.content.story_date) segmentsText += '天数: ' + vault.content.story_date + '\n';
-        if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
-        if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
+        if (stateContent.story_date) segmentsText += '天数: ' + stateContent.story_date + '\n';
+        if (stateContent.story_time) segmentsText += '时间: ' + stateContent.story_time + '\n';
+        if (stateContent.story_scene) segmentsText += '场景: ' + stateContent.story_scene + '\n';
         segmentsText += '\n';
     } else {
         segmentsText += '\n## 当前故事状态\n（请从上文和近期记忆条目中推断当前的时间和场景）\n\n';
@@ -418,10 +420,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     _resetCheckChatTag();
     _checkChatIntegrity('executeIncrementalUpdate:entry');
     console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
-    const vault = await read(chatId);
+    const memoryVault = await readMemory(chatId);
+    const stateVault = await readState(chatId);
 
-    initializeChain(chatId, vault.content || {}).catch(function(err) {
-        console.warn('[NE] initializeChain failed:', err);
+    initializeMemoryChain(chatId, memoryVault.content || {}).catch(function(err) {
+        console.warn('[NE] initializeMemoryChain failed:', err);
     });
 
     // 给消息打绝对位置标记——使用消息在原始 chat 中的位置 (m.id) 而非 batch 循环下标
@@ -429,7 +432,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
     for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
 
-    var processedIds = collectAllMsgIds(vault);
+    var processedIds = collectAllMsgIds(memoryVault);
     console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
     console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages');
@@ -439,16 +442,16 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
     if (filteredMessages.length === 0 && !force) {
         console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
-        return { vault: vault, added: 0 };
+        return { vault: memoryVault, added: 0 };
     }
 
     console.log('[NE] STM pipeline starting — messages=' + filteredMessages.length);
     if (onProgress) onProgress({ processedTurns: 0, totalTurns: filteredMessages.length });
-    var cursorResult = { vault: vault, totalAdded: 0 };
+    var cursorResult = { vault: memoryVault, totalAdded: 0 };
     var newEntries = [];
     try {
         var turns = groupMessagesIntoTurns(filteredMessages);
-        var segments = await segmentTurns(turns, vault, callMemoryPipeline);
+        var segments = await segmentTurns(turns, memoryVault, callMemoryPipeline);
 
         var events = [];
 
@@ -471,7 +474,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
             console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + subSegments.length + ' subSegments (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
 
-            var summaryPrompt = buildStmSummaryPrompt(subSegments, turns, vault, stmRatio);
+            var summaryPrompt = buildStmSummaryPrompt(subSegments, turns, memoryVault, stateVault, stmRatio);
             var responseText = '';
             var MAX_RETRIES = 1;
             for (var attempt = 0; attempt <= MAX_RETRIES; attempt++) {
@@ -531,13 +534,13 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         }
 
         if (events.length > 0) {
-            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, vault, filteredMessages.length);
+            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, memoryVault, filteredMessages.length);
             if (stmValidationErrors.length > 0) {
                 console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
                 recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
             }
-            postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
-            appendSTMEntries(vault, events);
+            postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault);
+            appendSTMEntries(memoryVault, events);
 
             var addedEntries = events.filter(function(e) { return e && e.id; });
             if (addedEntries.length > 0) {
@@ -557,11 +560,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         globalThis.__ne_inner_thoughts_cache = {};
 
         // Persist — always save vault even with zero events to prevent infinite re-processing loop
-        vault._meta = vault._meta || {};
-        vault._meta.last_pipeline_task = 'stm_extract';
-        vault._meta.last_pipeline_time = new Date().toISOString();
+        memoryVault._meta = memoryVault._meta || {};
+        memoryVault._meta.last_pipeline_task = 'stm_extract';
+        memoryVault._meta.last_pipeline_time = new Date().toISOString();
         _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
-        try { await saveVault(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        try { await saveMemoryVault(chatId, memoryVault); } catch (e) { console.warn('[NE] STM save failed:', e); }
         _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {
@@ -584,5 +587,5 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
 
     if (onProgress) onProgress({ processedTurns: newEntries.length, totalTurns: newMessages.length });
-    return { vault: vault, added: newEntries.length };
+    return { vault: memoryVault, added: newEntries.length };
 }

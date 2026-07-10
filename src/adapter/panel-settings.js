@@ -6,7 +6,7 @@ import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
-import { read, write, collectAllMsgIds } from '../core/vault/store.js';
+import { readVault, writeMemory, collectAllMsgIds } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
 import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
@@ -810,7 +810,7 @@ export function renderSettingsIntoSlide(container) {
                     }
                 });
                 if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
-                var vault = await read(_currentGetChatId);
+                var vault = await readVault(_currentGetChatId);
                 var stmMsgIdSet = collectAllMsgIds(vault);
                 toProcess = toProcess.filter(function(msg) { return !stmMsgIdSet.has(String(msg.id)); });
                 if (toProcess.length === 0) { alert(t('All messages have already been processed.')); return; }
@@ -866,7 +866,7 @@ export function renderSettingsIntoSlide(container) {
     if (exportBtn) {
         exportBtn.onclick = async function() {
             try {
-                var vault = await read(_currentGetChatId);
+                var vault = await readVault(_currentGetChatId);
                 var json = JSON.stringify(vault, null, 2);
                 var blob = new Blob([json], { type: 'application/json' });
                 var url = URL.createObjectURL(blob);
@@ -888,7 +888,7 @@ export function renderSettingsIntoSlide(container) {
                 try {
                     var text = await new Promise(function(r) { var fr = new FileReader(); fr.onload = function(e) { r(e.target.result); }; fr.readAsText(file); });
                     var imported = JSON.parse(text);
-                    await write(_currentGetChatId, imported);
+                    await writeMemory(_currentGetChatId, imported);
                     busEmit('vault:updated', { getChatId: _currentGetChatId });
                 } catch (e) { alert(t('Import failed') + ': ' + e.message); }
             };
@@ -904,7 +904,7 @@ export function renderSettingsIntoSlide(container) {
                 if (!confirm(t('Embed vault into chat_metadata for backup?'))) return;
                 var ctx = window.parent.SillyTavern && window.parent.SillyTavern.getContext ? window.parent.SillyTavern.getContext() : null;
                 if (!ctx || !ctx.chatMetadata || typeof ctx.saveChat !== 'function') { alert(t('Cannot access chat metadata.')); return; }
-                var vault = await read(_currentGetChatId);
+                var vault = await readVault(_currentGetChatId);
                 ctx.chatMetadata.ne_embedded_vault = vault;
                 if (typeof ctx.saveChatDebounced === 'function') ctx.saveChatDebounced();
                 else if (typeof ctx.saveChat === 'function') ctx.saveChat();

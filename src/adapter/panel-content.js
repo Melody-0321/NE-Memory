@@ -1,5 +1,4 @@
-import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
-import { loadVault } from '../core/auto-restore.js';
+import { readVault, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
 import { getActiveChain } from '../core/vault/state-versions.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
@@ -62,7 +61,7 @@ export async function updateVaultViewerPopout(getChatId) {
 
     var vault, c;
     try {
-        vault = await loadVault(getChatId());
+        vault = await readVault(getChatId());
         c = vault.content || {};
         console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
         setPendingInlineStorage({ vault: vault, getChatId: getChatId });

@@ -1,7 +1,7 @@
 /**
  * tools.js — Tool-calling 注册（通过 TH API）
  */
-import { read } from './vault/store.js';
+import { readVault } from './vault/store.js';
 import { findMessageInChat } from './engine/msg-id.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
@@ -23,7 +23,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
             var t0 = Date.now();
             try {
                 var chatId = getChatId ? getChatId() : 'default';
-                var vault = await read(chatId);
+                var vault = await readVault(chatId);
                 var content = vault.content || {};
                 var state = content.state || {};
 
@@ -254,7 +254,7 @@ function registerRecallMemory(getChatId) {
             try {
                 if (!args || !args.query) return 'Error: Missing query';
 
-                var vault = await read(chatId);
+                var vault = await readVault(chatId);
                 var content = vault.content || {};
                 allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
                 allLTM = content.ltm_entries || [];

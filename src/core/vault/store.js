@@ -1,26 +1,33 @@
 /**
  * vault/store.js — IndexedDB vault CRUD
  *
- * 替代 Python vault_store.py 的 JSON 文件读写。
- * 每个 chat_id 对应 IndexedDB 中的一条记录。
+ * v7: 拆分为 state_vaults + memory_vaults，State/Memory 管线各自独立读写，消除并行写竞争。
  */
 const DB_NAME = 'ne_memory_vault';
-const DB_VERSION = 6;
-const STORE_NAME = 'vaults';
+const DB_VERSION = 7;
+const STATE_STORE = 'state_vaults';
+const MEMORY_STORE = 'memory_vaults';
 
 function openDB() {
     return new Promise((resolve, reject) => {
         const req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = (e) => {
             const db = e.target.result;
+            const tx = e.target.transaction;
             if (db.objectStoreNames.contains('snapshots')) {
                 db.deleteObjectStore('snapshots');
             }
-            if (!db.objectStoreNames.contains(STORE_NAME)) {
-                db.createObjectStore(STORE_NAME, { keyPath: 'chat_id' });
+            if (db.objectStoreNames.contains('vaults')) {
+                db.deleteObjectStore('vaults');
             }
             if (!db.objectStoreNames.contains('card_configs')) {
                 db.createObjectStore('card_configs', { keyPath: 'id' });
+            }
+            if (!db.objectStoreNames.contains(STATE_STORE)) {
+                db.createObjectStore(STATE_STORE, { keyPath: 'chat_id' });
+            }
+            if (!db.objectStoreNames.contains(MEMORY_STORE)) {
+                db.createObjectStore(MEMORY_STORE, { keyPath: 'chat_id' });
             }
             if (!db.objectStoreNames.contains('state_deltas')) {
                 var sdStore = db.createObjectStore('state_deltas', { keyPath: 'id' });
@@ -47,85 +54,223 @@ export { openDB };
 
 var _storageBlocked = false;
 
-/**
- * @returns {boolean}
- */
 export function isStorageBlocked() {
     return _storageBlocked;
 }
 
-/**
- * @param {string} chatId
- * @returns {Promise<import('../../types.js').Vault|null>}
- */
-export async function read(chatId) {
+// ====== State Vault ======
+
+export function emptyStateVault(chatId) {
+    return {
+        chat_id: chatId,
+        version: 0,
+        tokens: 0,
+        updated_at: new Date().toISOString(),
+        _meta: {
+            created_at: new Date().toISOString(),
+            last_state_task: null,
+            last_state_time: null
+        },
+        content: {
+            state: {},
+            story_time: '',
+            story_scene: '',
+            story_date: '',
+            state_schema: null,
+            state_css: '',
+            character_schema: null,
+            _active_characters: [],
+            faction_keywords: {}
+        }
+    };
+}
+
+export async function readState(chatId) {
     var db;
     try {
         db = await openDB();
         _storageBlocked = false;
     } catch (e) {
-        console.warn('[NE] IndexedDB open failed (tracking prevention?), using empty vault:', e.message);
+        console.warn('[NE] IndexedDB open failed:', e.message);
         _storageBlocked = true;
-        return emptyVault(chatId);
+        return emptyStateVault(chatId);
     }
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readonly');
-        const store = tx.objectStore(STORE_NAME);
-        const req = store.get(chatId);
+        var tx = db.transaction(STATE_STORE, 'readonly');
+        var store = tx.objectStore(STATE_STORE);
+        var req = store.get(chatId);
         req.onsuccess = () => {
-            const result = req.result;
-            if (result) {
-                const vault = result.vault;
-                if (!vault || typeof vault !== 'object' || !vault.chat_id) {
-                    console.warn('[NE] IndexedDB vault record corrupted for', chatId, '→ reinitializing');
-                    resolve(emptyVault(chatId));
-                    return;
-                }
-                migrateTimeRange(vault);
-                ensureCursorState(vault);
-                if (!vault._meta) {
-                    vault._meta = {
-                        created_at: vault.created_at || new Date().toISOString(),
-                        last_pipeline_task: null,
-                        last_pipeline_time: null
-                    };
-                }
-                resolve(vault);
+            var result = req.result;
+            if (result && result.vault && result.vault.content) {
+                resolve(result.vault);
             } else {
-                resolve(emptyVault(chatId));
+                resolve(emptyStateVault(chatId));
             }
         };
         req.onerror = () => reject(req.error);
     });
 }
 
-/**
- * @param {string} chatId
- * @param {import('../../types.js').Vault} vault
- * @returns {Promise<void>}
- */
-export async function write(chatId, vault) {
+export async function writeState(chatId, stateVault) {
     var db;
     try {
         db = await openDB();
         _storageBlocked = false;
     } catch (e) {
-        console.warn('[NE] IndexedDB write failed (tracking prevention?):', e.message);
+        console.warn('[NE] IndexedDB writeState failed:', e.message);
         _storageBlocked = true;
         return;
     }
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.put({ chat_id: chatId, vault: vault, updated_at: Date.now() });
-        tx.oncomplete = () => { console.log('[NE] IndexedDB write OK for', chatId); resolve(); };
-        tx.onerror = () => { console.error('[NE] IndexedDB write ERROR:', tx.error); reject(tx.error); };
+        var tx = db.transaction(STATE_STORE, 'readwrite');
+        var store = tx.objectStore(STATE_STORE);
+        store.put({ chat_id: chatId, vault: stateVault, updated_at: Date.now() });
+        tx.oncomplete = () => { console.log('[NE] IndexedDB writeState OK for', chatId); resolve(); };
+        tx.onerror = () => { console.error('[NE] IndexedDB writeState ERROR:', tx.error); reject(tx.error); };
     });
 }
 
+// ====== Memory Vault ======
+
+export function emptyMemoryVault(chatId) {
+    return {
+        chat_id: chatId,
+        version: 0,
+        tokens: 0,
+        updated_at: new Date().toISOString(),
+        _meta: {
+            created_at: new Date().toISOString(),
+            last_pipeline_task: null,
+            last_pipeline_time: null
+        },
+        content: {
+            unconsolidated_stm: [],
+            stm_entries: [],
+            ltm_entries: [],
+            cursor_state: { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } },
+            segment_counter: 0,
+            consolidate_threshold: 5,
+            language: 'zh',
+            memory_config: {},
+            summary: '',
+            current_scene: '',
+            character_states: {},
+            relationships: []
+        },
+        stm_index: {},
+        link_index: {},
+        memory_system_prompt: ''
+    };
+}
+
+export async function readMemory(chatId) {
+    var db;
+    try {
+        db = await openDB();
+        _storageBlocked = false;
+    } catch (e) {
+        console.warn('[NE] IndexedDB open failed:', e.message);
+        _storageBlocked = true;
+        return emptyMemoryVault(chatId);
+    }
+    return new Promise((resolve, reject) => {
+        var tx = db.transaction(MEMORY_STORE, 'readonly');
+        var store = tx.objectStore(MEMORY_STORE);
+        var req = store.get(chatId);
+        req.onsuccess = () => {
+            var result = req.result;
+            if (result && result.vault && result.vault.content) {
+                var v = result.vault;
+                ensureCursorState(v);
+                resolve(v);
+            } else {
+                resolve(emptyMemoryVault(chatId));
+            }
+        };
+        req.onerror = () => reject(req.error);
+    });
+}
+
+export async function writeMemory(chatId, memoryVault) {
+    var db;
+    try {
+        db = await openDB();
+        _storageBlocked = false;
+    } catch (e) {
+        console.warn('[NE] IndexedDB writeMemory failed:', e.message);
+        _storageBlocked = true;
+        return;
+    }
+    return new Promise((resolve, reject) => {
+        var tx = db.transaction(MEMORY_STORE, 'readwrite');
+        var store = tx.objectStore(MEMORY_STORE);
+        store.put({ chat_id: chatId, vault: memoryVault, updated_at: Date.now() });
+        tx.oncomplete = () => { console.log('[NE] IndexedDB writeMemory OK for', chatId); resolve(); };
+        tx.onerror = () => { console.error('[NE] IndexedDB writeMemory ERROR:', tx.error); reject(tx.error); };
+    });
+}
+
+// ====== Merged Read (for UI / compat) ======
+
+export async function readVault(chatId) {
+    var [stateVault, memoryVault] = await Promise.all([readState(chatId), readMemory(chatId)]);
+    var v = {
+        chat_id: chatId,
+        version: Math.max(stateVault.version || 0, memoryVault.version || 0),
+        tokens: (stateVault.tokens || 0) + (memoryVault.tokens || 0),
+        updated_at: new Date().toISOString(),
+        _meta: {
+            created_at: stateVault._meta && stateVault._meta.created_at || new Date().toISOString(),
+            last_pipeline_task: memoryVault._meta && memoryVault._meta.last_pipeline_task || null,
+            last_pipeline_time: memoryVault._meta && memoryVault._meta.last_pipeline_time || null,
+            last_state_task: stateVault._meta && stateVault._meta.last_state_task || null,
+            last_state_time: stateVault._meta && stateVault._meta.last_state_time || null
+        },
+        content: Object.assign({}, stateVault.content || {}, memoryVault.content || {}),
+        stm_index: memoryVault.stm_index || {},
+        link_index: memoryVault.link_index || {},
+        memory_system_prompt: memoryVault.memory_system_prompt || ''
+    };
+    migrateTimeRange(v);
+    ensureCursorState(v);
+    if (!v.content.cursor_state) {
+        v.content.cursor_state = { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } };
+    }
+    return v;
+}
+
+// ====== Deprecated compat wrappers ======
+
+export function emptyVault(chatId) {
+    return readVault(chatId);
+}
+
+export async function read(chatId) {
+    return readVault(chatId);
+}
+
+export async function write(chatId, vault) {
+    console.warn('[NE] write() is deprecated — use writeState() or writeMemory() directly');
+    var content = vault.content || {};
+    var stateVault = {
+        chat_id: chatId, version: vault.version || 0, tokens: 0, updated_at: new Date().toISOString(),
+        _meta: { created_at: (vault._meta && vault._meta.created_at) || new Date().toISOString(), last_state_task: (vault._meta && vault._meta.last_state_task) || null, last_state_time: (vault._meta && vault._meta.last_state_time) || null },
+        content: { state: content.state || {}, story_time: content.story_time || '', story_scene: content.story_scene || '', story_date: content.story_date || '', state_schema: content.state_schema || null, state_css: content.state_css || '', character_schema: content.character_schema || null, _active_characters: content._active_characters || [], faction_keywords: content.faction_keywords || {} }
+    };
+    var memoryVault = {
+        chat_id: chatId, version: vault.version || 0, tokens: 0, updated_at: new Date().toISOString(),
+        _meta: { created_at: (vault._meta && vault._meta.created_at) || new Date().toISOString(), last_pipeline_task: (vault._meta && vault._meta.last_pipeline_task) || null, last_pipeline_time: (vault._meta && vault._meta.last_pipeline_time) || null },
+        content: { unconsolidated_stm: content.unconsolidated_stm || [], stm_entries: content.stm_entries || [], ltm_entries: content.ltm_entries || [], cursor_state: content.cursor_state || { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } }, segment_counter: content.segment_counter || 0, consolidate_threshold: content.consolidate_threshold || 5, language: content.language || 'zh', memory_config: content.memory_config || {}, summary: content.summary || '', current_scene: content.current_scene || '', character_states: content.character_states || {}, relationships: content.relationships || [] },
+        stm_index: vault.stm_index || {}, link_index: vault.link_index || {}, memory_system_prompt: vault.memory_system_prompt || ''
+    };
+    return Promise.all([writeState(chatId, stateVault), writeMemory(chatId, memoryVault)]);
+}
+
+// ====== Common ======
+
 function migrateTimeRange(vault) {
-    const content = vault.content || {};
-    const ltms = content.ltm_entries || [];
+    var content = vault.content || {};
+    var ltms = content.ltm_entries || [];
     var dirty = false;
     ltms.forEach(function (ltm) {
         if (!ltm.time_range && ltm.period) {
@@ -141,81 +286,32 @@ function ensureCursorState(vault) {
     if (!content.cursor_state) {
         content.cursor_state = { stm: { completedTurns: 0, position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } };
     }
-    // Migrate old position-based stm state to completedTurns
     var stm = content.cursor_state.stm;
     if (stm && stm.completedTurns === undefined) {
         stm.completedTurns = stm.position || 0;
     }
 }
 
-/**
- * @param {string} chatId
- * @returns {Promise<void>}
- */
 export async function remove(chatId) {
-    const db = await openDB();
+    var db = await openDB();
     return new Promise((resolve, reject) => {
-        const tx = db.transaction(STORE_NAME, 'readwrite');
-        const store = tx.objectStore(STORE_NAME);
-        store.delete(chatId);
+        var tx = db.transaction([STATE_STORE, MEMORY_STORE], 'readwrite');
+        tx.objectStore(STATE_STORE).delete(chatId);
+        tx.objectStore(MEMORY_STORE).delete(chatId);
         tx.oncomplete = () => resolve();
         tx.onerror = () => reject(tx.error);
     });
 }
 
-/**
- * @param {string} chatId
- * @returns {import('../../types.js').Vault}
- */
-export function emptyVault(chatId) {
-    return {
-        chat_id: chatId,
-        version: 0,
-        tokens: 0,
-        updated_at: new Date().toISOString(),
-        _meta: {
-            created_at: new Date().toISOString(),
-            last_pipeline_task: null,
-            last_pipeline_time: null
-        },
-        content: {
-            story_time: '',
-            story_scene: '',
-            story_date: '',
-            summary: '',
-            state: {},
-            state_css: '',
-            state_schema: null,
-            ltm_entries: [],
-            stm_entries: [],
-            unconsolidated_stm: [],
-            segment_counter: 0,
-            current_scene: '',
-            character_states: {},
-            relationships: [],
-            consolidate_threshold: 5,
-            memory_config: {},
-            language: 'zh',
-            cursor_state: { stm: { position: 0, pending_partials: [] }, ltm: { position: 0, pending_partials: [] } }
-        },
-        link_index: {},
-        stm_index: {},
-        memory_system_prompt: ''
-    };
-}
+// ====== mergeVaultFromMessages ======
 
-/**
- * @param {Array<import('../../types.js').Message>} messages
- * @param {import('../../types.js').Vault} [existingVault]
- * @returns {{vault: import('../../types.js').Vault, newMessages: Array<import('../../types.js').Message>}}
- */
 export function mergeVaultFromMessages(messages, existingVault) {
-    const vault = existingVault || emptyVault('');
-    const processedIds = collectAllMsgIds(vault);
-    const newMessages = [];
-    for (let i = 0; i < messages.length; i++) {
-        const msg = messages[i];
-        const msgId = (msg.id != null) ? msg.id : msg.mes_id;
+    var vault = existingVault || emptyMemoryVault('');
+    var processedIds = collectAllMsgIds(vault);
+    var newMessages = [];
+    for (var i = 0; i < messages.length; i++) {
+        var msg = messages[i];
+        var msgId = (msg.id != null) ? msg.id : msg.mes_id;
         if (msgId == null || !processedIds.has(String(msgId))) {
             newMessages.push({ id: msgId != null ? msgId : i, role: msg.is_user ? 'user' : 'assistant', content: msg.mes || '', name: msg.name || '' });
         }
@@ -223,24 +319,16 @@ export function mergeVaultFromMessages(messages, existingVault) {
     return { vault, newMessages };
 }
 
-/**
- * @param {import('../../types.js').Vault} vault
- * @returns {Set<string>}
- */
 export function collectAllMsgIds(vault) {
-    const ids = new Set();
-    const content = vault.content || {};
-    const allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-    allSTM.forEach(stm => {
-        (stm.msg_ids || []).forEach(id => ids.add(String(id)));
+    var ids = new Set();
+    var content = vault.content || {};
+    var allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    allSTM.forEach(function (stm) {
+        (stm.msg_ids || []).forEach(function (id) { ids.add(String(id)); });
     });
     return ids;
 }
 
-/**
- * @param {Array<import('../../types.js').STMEvent>} entries
- * @returns {Array<import('../../types.js').STMEvent>}
- */
 export function sortStmByMsgOrder(entries) {
     if (!entries || entries.length < 2) return entries;
     return entries.slice().sort(function (a, b) {
@@ -250,31 +338,25 @@ export function sortStmByMsgOrder(entries) {
     });
 }
 
-/**
- * @param {import('../../types.js').Vault} vault
- * @param {Array<import('../../types.js').STMEvent>} stmEntries
- * @returns {number}
- */
 export function appendSTMEntries(vault, stmEntries) {
-    const content = vault.content;
-    const existingIds = new Set();
-    content.unconsolidated_stm.forEach(e => existingIds.add(e.id));
-    content.stm_entries.forEach(e => existingIds.add(e.id));
-    let maxId = 0;
-    content.unconsolidated_stm.forEach(e => {
-        const num = parseInt(String(e.id).replace('stm_', ''), 10);
+    var content = vault.content;
+    var existingIds = new Set();
+    content.unconsolidated_stm.forEach(function (e) { existingIds.add(e.id); });
+    content.stm_entries.forEach(function (e) { existingIds.add(e.id); });
+    var maxId = 0;
+    content.unconsolidated_stm.forEach(function (e) {
+        var num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
-    content.stm_entries.forEach(e => {
-        const num = parseInt(String(e.id).replace('stm_', ''), 10);
+    content.stm_entries.forEach(function (e) {
+        var num = parseInt(String(e.id).replace('stm_', ''), 10);
         if (num > maxId) maxId = num;
     });
-
-    let addedCount = 0;
-    stmEntries.sort(function(a, b) {
+    var addedCount = 0;
+    stmEntries.sort(function (a, b) {
         return (a.absMsgStart !== undefined ? a.absMsgStart : Infinity) - (b.absMsgStart !== undefined ? b.absMsgStart : Infinity);
     });
-    stmEntries.forEach(entry => {
+    stmEntries.forEach(function (entry) {
         if (!entry.id) {
             maxId++;
             entry.id = 'stm_' + maxId;
@@ -294,19 +376,14 @@ export function appendSTMEntries(vault, stmEntries) {
     return addedCount;
 }
 
-/**
- * @param {import('../../types.js').Vault} vault
- * @param {(number|string)[]} removedMsgIds
- * @returns {{removedSTM: number, removedLTM: number}}
- */
 export function rollbackByMsgIds(vault, removedMsgIds) {
-    const content = vault.content || {};
-    const ridSet = new Set(removedMsgIds);
-    const updated = { removedSTM: 0, removedLTM: 0 };
-    const filterSTM = (list) => {
-        const kept = [];
-        list.forEach(stm => {
-            const hasRemoved = (stm.msg_ids || []).some(id => ridSet.has(id));
+    var content = vault.content || {};
+    var ridSet = new Set(removedMsgIds);
+    var updated = { removedSTM: 0, removedLTM: 0 };
+    var filterSTM = function (list) {
+        var kept = [];
+        list.forEach(function (stm) {
+            var hasRemoved = (stm.msg_ids || []).some(function (id) { return ridSet.has(id); });
             if (hasRemoved) {
                 updated.removedSTM++;
                 if (stm.parent_ltm && vault.stm_index && vault.stm_index[stm.id]) {
@@ -320,11 +397,11 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
     };
     content.unconsolidated_stm = filterSTM(content.unconsolidated_stm || []);
     content.stm_entries = filterSTM(content.stm_entries || []);
-    const keptLTM = [];
-    (content.ltm_entries || []).forEach(ltm => {
-        const refs = (ltm.stm_refs || []).filter(stmId => {
-            const idx = (vault.stm_index || {})[stmId];
-            return idx && !(idx.msg_ids || []).some(id => ridSet.has(id));
+    var keptLTM = [];
+    (content.ltm_entries || []).forEach(function (ltm) {
+        var refs = (ltm.stm_refs || []).filter(function (stmId) {
+            var idx = (vault.stm_index || {})[stmId];
+            return idx && !(idx.msg_ids || []).some(function (id) { return ridSet.has(id); });
         });
         if (refs.length === 0) {
             updated.removedLTM++;
@@ -334,13 +411,11 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
         }
     });
     content.ltm_entries = keptLTM;
-
     return updated;
 }
 
 // ====== Template Library CRUD (localStorage) ======
 
-/** @returns {import('../../types.js').TemplateLibrary} */
 export function loadTemplateLibrary() {
     try {
         var raw = localStorage.getItem('ne_template_library');
@@ -349,7 +424,6 @@ export function loadTemplateLibrary() {
     return { templates: {}, updatedAt: new Date().toISOString() };
 }
 
-/** @param {import('../../types.js').TemplateLibrary} lib */
 export function saveTemplateLibrary(lib) {
     try {
         lib.updatedAt = new Date().toISOString();
@@ -357,10 +431,6 @@ export function saveTemplateLibrary(lib) {
     } catch (e) {}
 }
 
-/**
- * @param {import('../../types.js').Template} template
- * @returns {boolean}
- */
 export function saveTemplate(template) {
     var lib = loadTemplateLibrary();
     template.updatedAt = new Date().toISOString();
@@ -370,10 +440,6 @@ export function saveTemplate(template) {
     return true;
 }
 
-/**
- * @param {string} templateId
- * @returns {boolean}
- */
 export function deleteTemplate(templateId) {
     var lib = loadTemplateLibrary();
     if (!lib.templates[templateId]) return false;
@@ -382,21 +448,13 @@ export function deleteTemplate(templateId) {
     return true;
 }
 
-/**
- * @param {string} templateId
- * @returns {import('../../types.js').Template|null}
- */
 export function getTemplate(templateId) {
     var lib = loadTemplateLibrary();
     return lib.templates[templateId] || null;
 }
 
-// ====== Card-Level Template Configuration (localStorage + IndexedDB dual) ======
+// ====== Card-Level Template Configuration ======
 
-/**
- * @param {string} charName
- * @returns {import('../../types.js').CardConfig|null}
- */
 export function loadCardConfig(charName) {
     try {
         var raw = localStorage.getItem('ne_card_templates_' + charName);
@@ -404,39 +462,32 @@ export function loadCardConfig(charName) {
     } catch (e) {}
     try {
         var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
-        return new Promise(function(resolve) {
-            dbReq.onsuccess = function() {
+        return new Promise(function (resolve) {
+            dbReq.onsuccess = function () {
                 var db = dbReq.result;
                 var tx = db.transaction('card_configs', 'readonly');
                 var store = tx.objectStore('card_configs');
                 var getReq = store.get(charName);
-                getReq.onsuccess = function() {
+                getReq.onsuccess = function () {
                     if (getReq.result) {
                         var config = getReq.result;
                         delete config.id;
-                        try {
-                            localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
-                        } catch (e) {}
+                        try { localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config)); } catch (e) {}
                         resolve(config);
                     } else {
                         resolve(null);
                     }
                     db.close();
                 };
-                getReq.onerror = function() { resolve(null); db.close(); };
+                getReq.onerror = function () { resolve(null); db.close(); };
             };
-            dbReq.onerror = function() { resolve(null); };
+            dbReq.onerror = function () { resolve(null); };
         });
     } catch (e) {
         return null;
     }
 }
 
-/**
- * Load card config synchronously (from localStorage only, for hot paths).
- * @param {string} charName
- * @returns {import('../../types.js').CardConfig|null}
- */
 export function loadCardConfigSync(charName) {
     try {
         var raw = localStorage.getItem('ne_card_templates_' + charName);
@@ -445,77 +496,61 @@ export function loadCardConfigSync(charName) {
     return null;
 }
 
-/**
- * @param {string} charName
- * @param {import('../../types.js').CardConfig} config
- * @returns {boolean}
- */
 export function saveCardConfig(charName, config) {
     var current = loadCardConfigSync(charName);
     var nextVersion = (current && current._version || 0) + 1;
     config._version = nextVersion;
     config._updatedAt = new Date().toISOString();
     if (!config._createdAt) config._createdAt = config._updatedAt;
-
     var existingRaw = localStorage.getItem('ne_card_templates_' + charName);
     if (existingRaw) {
         try {
             var existing = JSON.parse(existingRaw);
             if (existing._version >= nextVersion) {
-                console.warn('[NE] Card config version conflict for', charName,
-                    'expected <', nextVersion, 'got', existing._version, '— skipping write');
+                console.warn('[NE] Card config version conflict for', charName, 'expected <', nextVersion, 'got', existing._version, '— skipping write');
                 return false;
             }
         } catch (e) {}
     }
-
     try {
         localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
     } catch (e) {
         console.warn('[NE] localStorage write failed for', charName, e.message);
         return false;
     }
-
     try {
         var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
-        dbReq.onsuccess = function() {
+        dbReq.onsuccess = function () {
             var db = dbReq.result;
             var tx = db.transaction('card_configs', 'readwrite');
             var store = tx.objectStore('card_configs');
             var toStore = Object.assign({ id: charName }, config);
             store.put(toStore);
-            tx.oncomplete = function() { db.close(); };
+            tx.oncomplete = function () { db.close(); };
         };
-        dbReq.onerror = function() {
-            console.warn('[NE] IndexedDB write failed for card_config:', charName);
-        };
+        dbReq.onerror = function () { console.warn('[NE] IndexedDB write failed for card_config:', charName); };
     } catch (e) {
         console.warn('[NE] IndexedDB write failed for', charName, e.message);
     }
-
     return true;
 }
 
-/**
- * @param {string} charName
- */
 export function deleteCardConfig(charName) {
     try { localStorage.removeItem('ne_card_templates_' + charName); } catch (e) {}
     try {
         var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
-        dbReq.onsuccess = function() {
+        dbReq.onsuccess = function () {
             var db = dbReq.result;
             var tx = db.transaction('card_configs', 'readwrite');
             var store = tx.objectStore('card_configs');
             store.delete(charName);
-            tx.oncomplete = function() { db.close(); };
+            tx.oncomplete = function () { db.close(); };
         };
     } catch (e) {}
 }
 
 // ====== Field Library Operations ======
 
-/** @returns {import('../../types.js').FieldLibrary} */
 export function loadFieldLibrary() {
     try {
         var raw = localStorage.getItem('ne_field_library');
@@ -524,7 +559,6 @@ export function loadFieldLibrary() {
     return { fields: {}, updatedAt: new Date().toISOString() };
 }
 
-/** @param {import('../../types.js').FieldLibrary} lib */
 export function saveFieldLibrary(lib) {
     try {
         lib.updatedAt = new Date().toISOString();
@@ -532,10 +566,6 @@ export function saveFieldLibrary(lib) {
     } catch (e) {}
 }
 
-/**
- * @param {string} fieldName
- * @param {import('../../types.js').FieldLibraryEntry} entry
- */
 export function addFieldToLibrary(fieldName, entry) {
     var lib = loadFieldLibrary();
     var now = new Date().toISOString();
@@ -546,10 +576,6 @@ export function addFieldToLibrary(fieldName, entry) {
     saveFieldLibrary(lib);
 }
 
-/**
- * @param {string} fieldName
- * @returns {boolean}
- */
 export function removeFieldFromLibrary(fieldName) {
     var lib = loadFieldLibrary();
     if (!lib.fields[fieldName]) return false;
@@ -563,10 +589,6 @@ export function removeFieldFromLibrary(fieldName) {
     return true;
 }
 
-/**
- * @param {string} fieldName
- * @returns {import('../../types.js').FieldLibraryEntry|null}
- */
 export function getFieldFromLibrary(fieldName) {
     var lib = loadFieldLibrary();
     return lib.fields[fieldName] || null;
@@ -574,10 +596,6 @@ export function getFieldFromLibrary(fieldName) {
 
 // ====== Reference Tracking ======
 
-/**
- * @param {string} fieldName
- * @param {string} templateId
- */
 export function addTemplateRefToField(fieldName, templateId) {
     var lib = loadFieldLibrary();
     var entry = lib.fields[fieldName];
@@ -589,10 +607,6 @@ export function addTemplateRefToField(fieldName, templateId) {
     }
 }
 
-/**
- * @param {string} fieldName
- * @param {string} templateId
- */
 export function removeTemplateRefFromField(fieldName, templateId) {
     var lib = loadFieldLibrary();
     var entry = lib.fields[fieldName];
@@ -606,20 +620,12 @@ export function removeTemplateRefFromField(fieldName, templateId) {
 
 // ====== Card-Level Template Operations ======
 
-/**
- * Clone a global template into a character card's dialogue templates.
- * @param {string} charName
- * @param {import('../../types.js').Template} template
- * @returns {string} The dialogue template key
- */
 export function cloneTemplateToCard(charName, template) {
     var config = loadCardConfigSync(charName) || { _dialogueTemplates: {}, _templateConfig: {}, _version: 0 };
     if (!config._dialogueTemplates) config._dialogueTemplates = {};
-
     var now = new Date().toISOString();
     var suffix = Math.random().toString(36).slice(2, 8);
     var key = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
-
     config._dialogueTemplates[key] = {
         _templateId: template.id,
         createdAt: now,
@@ -628,40 +634,25 @@ export function cloneTemplateToCard(charName, template) {
         customFieldRefs: (template.customFieldRefs || []).slice(),
         _state: 'synced'
     };
-
     saveCardConfig(charName, config);
     return key;
 }
 
-/**
- * Get active version (latest by createdAt) of a template within a card's dialogue templates.
- * @param {Object<string, import('../../types.js').DialogueTemplate>} dialogueTemplates
- * @param {string} templateId
- * @returns {import('../../types.js').DialogueTemplate|null}
- */
 export function getActiveVersion(dialogueTemplates, templateId) {
     var matches = [];
-    Object.keys(dialogueTemplates).forEach(function(k) {
+    Object.keys(dialogueTemplates).forEach(function (k) {
         var t = dialogueTemplates[k];
         if (t._templateId === templateId) matches.push(t);
     });
     if (matches.length === 0) return null;
-    matches.sort(function(a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
+    matches.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
     return matches[0];
 }
 
-/**
- * Upgrade all non-locked characters pointing to the old latest version to the new version.
- * Called after AI or user creates a new template version.
- * @param {import('../../types.js').State} state
- * @param {string} oldKey - The previous active version key
- * @param {string} newKey - The new version key (just created)
- * @param {string} [lockedCharName] - Optional: char locked, skip notification for them
- */
 export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     if (!state || !state.characters) return;
     var lockedNames = [];
-    Object.keys(state.characters).forEach(function(name) {
+    Object.keys(state.characters).forEach(function (name) {
         var charData = state.characters[name];
         if (charData._templateKey === oldKey) {
             if (charData._templateLocked) {
@@ -674,13 +665,6 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     return lockedNames;
 }
 
-// ====== #10: 模板→字段引用操作 ======
-
-/**
- * Register a field reference into a template's customFieldRefs.
- * @param {string} templateId
- * @param {string} fieldName
- */
 export function registerFieldToTemplate(templateId, fieldName) {
     var lib = loadTemplateLibrary();
     var tpl = lib.templates[templateId];
@@ -692,11 +676,6 @@ export function registerFieldToTemplate(templateId, fieldName) {
     }
 }
 
-/**
- * Remove a field reference from a template's customFieldRefs.
- * @param {string} templateId
- * @param {string} fieldName
- */
 export function unregisterFieldFromTemplate(templateId, fieldName) {
     var lib = loadTemplateLibrary();
     var tpl = lib.templates[templateId];
@@ -708,16 +687,6 @@ export function unregisterFieldFromTemplate(templateId, fieldName) {
     }
 }
 
-// ====== #10a: 角色卡级模板操作 ======
-
-/**
- * Edit a dialog template's field composition within a card.
- * Synchronizes: if _state === 'synced', marks as 'forked'.
- * @param {string} charName
- * @param {string} dialogueTemplateKey
- * @param {string[]} presetFields
- * @param {string[]} customFieldRefs
- */
 export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, customFieldRefs) {
     var config = loadCardConfigSync(charName);
     if (!config || !config._dialogueTemplates) return false;
@@ -729,13 +698,6 @@ export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, 
     return saveCardConfig(charName, config);
 }
 
-/**
- * Swap a template in the NPC template pool at a given index.
- * Updates _templateConfig.npc[index].
- * @param {string} charName
- * @param {number} poolIndex
- * @param {string} templateId — global template id
- */
 export function swapTemplateInPool(charName, poolIndex, templateId) {
     var config = loadCardConfigSync(charName);
     if (!config || !config._templateConfig) return false;
@@ -748,13 +710,6 @@ export function swapTemplateInPool(charName, poolIndex, templateId) {
     return saveCardConfig(charName, config);
 }
 
-/**
- * Fork a global template into a card's dialogue templates, marking as 'forked'.
- * Same as cloneTemplateToCard but sets _state = 'forked'.
- * @param {string} charName
- * @param {import('../../types.js').Template} template
- * @returns {string} The dialogue template key
- */
 export function forkTemplateInCard(charName, template) {
     var key = cloneTemplateToCard(charName, template);
     if (key) {
@@ -767,13 +722,6 @@ export function forkTemplateInCard(charName, template) {
     return key;
 }
 
-/**
- * Push a card-local dialog template back to the global template library.
- * Creates a new global template from the dialog template's configuration.
- * @param {string} charName
- * @param {string} dialogueTemplateKey
- * @returns {string|null} New global template ID, or null on failure
- */
 export function pushTemplateToGlobal(charName, dialogueTemplateKey) {
     var config = loadCardConfigSync(charName);
     if (!config || !config._dialogueTemplates) return null;
@@ -798,13 +746,6 @@ export function pushTemplateToGlobal(charName, dialogueTemplateKey) {
     return newId;
 }
 
-// ====== #8: 旧模板迁移 ======
-
-/**
- * Migrate old template format (customFields array) to new (customFieldRefs).
- * Called by saveTemplate automatically on first load of an old-format template.
- * @param {import('../../types.js').Template} template
- */
 export function migrateTemplateFormat(template) {
     if (!template) return;
     if (template.customFields && Array.isArray(template.customFields)) {
@@ -814,45 +755,30 @@ export function migrateTemplateFormat(template) {
     }
 }
 
-// ====== #14: 跨vault扫描 ======
-
-/**
- * Scan IndexedDB vaults for schemes used with a given character name.
- * Returns deduplicated scheme keys found across vaults.
- * @param {string} charName
- * @returns {Promise<string[]>}
- */
 export function scanRecentVaultsForSchemes(charName) {
-    return new Promise(function(resolve) {
+    return new Promise(function (resolve) {
         try {
             var dbReq = indexedDB.open(DB_NAME, DB_VERSION);
-            dbReq.onsuccess = function() {
+            dbReq.onsuccess = function () {
                 var db = dbReq.result;
                 if (!db.objectStoreNames.contains('card_configs')) { db.close(); resolve([]); return; }
                 var tx = db.transaction('card_configs', 'readonly');
                 var store = tx.objectStore('card_configs');
                 var getReq = store.get(charName);
-                getReq.onsuccess = function() {
+                getReq.onsuccess = function () {
                     if (getReq.result && getReq.result._dialogueTemplates) {
                         var keys = Object.keys(getReq.result._dialogueTemplates);
                         db.close();
                         resolve(keys);
                     } else { db.close(); resolve([]); }
                 };
-                getReq.onerror = function() { db.close(); resolve([]); };
+                getReq.onerror = function () { db.close(); resolve([]); };
             };
-            dbReq.onerror = function() { resolve([]); };
+            dbReq.onerror = function () { resolve([]); };
         } catch (e) { resolve([]); }
     });
 }
 
-// ====== #36: per-character local custom fields ======
-
-/**
- * Get per-character local custom fields (pending AI proposals).
- * @param {string} charName
- * @returns {Object<string, {type: string, description: string, source: string}>}
- */
 export function getLocalCustomFields(charName) {
     try {
         var raw = localStorage.getItem('ne_local_fields_' + charName);
@@ -861,12 +787,6 @@ export function getLocalCustomFields(charName) {
     return {};
 }
 
-/**
- * Add a local custom field proposal for a character (pending user confirmation).
- * @param {string} charName
- * @param {string} fieldName
- * @param {{type: string, description: string, source: string}} meta
- */
 export function addLocalCustomField(charName, fieldName, meta) {
     var fields = getLocalCustomFields(charName);
     fields[fieldName] = meta;
@@ -875,11 +795,6 @@ export function addLocalCustomField(charName, fieldName, meta) {
     } catch (e) {}
 }
 
-/**
- * Remove a local custom field after user confirms or rejects.
- * @param {string} charName
- * @param {string} fieldName
- */
 export function removeLocalCustomField(charName, fieldName) {
     var fields = getLocalCustomFields(charName);
     delete fields[fieldName];
@@ -887,4 +802,3 @@ export function removeLocalCustomField(charName, fieldName) {
         localStorage.setItem('ne_local_fields_' + charName, JSON.stringify(fields));
     } catch (e) {}
 }
-

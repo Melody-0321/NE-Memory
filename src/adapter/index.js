@@ -4,7 +4,7 @@
  * 植入：注入 SillyTavern 实现到 Core runtime，然后启动 Core bootstrap。
  */
 import { runtime } from '../core/runtime.js';
-import { read, write } from '../core/vault/store.js';
+import { readVault } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
@@ -12,7 +12,6 @@ import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
 import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setDynamicStateMode } from '../core/vault/schema.js';
-import { loadVault } from '../core/auto-restore.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';
@@ -298,7 +297,7 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await loadVault(chatId2);
+                    var vault = await readVault(chatId2);
                     await migrateVaultIfNeeded(chatId2, vault);
                     notifyVaultChanged();
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
@@ -327,7 +326,7 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await loadVault(chatId2b);
+                    var vault = await readVault(chatId2b);
                     await migrateVaultIfNeeded(chatId2b, vault);
                     notifyVaultChanged();
                 });
@@ -417,11 +416,11 @@ function _buildDebugApi() {
     return {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
-            try { var v = await read(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
+            try { var v = await readVault(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
         },
         getVaultSummary: async function() {
             try {
-                var v = await read(getChatId());
+                var v = await readVault(getChatId());
                 if (!v || !v.content) return null;
                 return { stmCount: (v.content.unconsolidated_stm || []).length + (v.content.stm_entries || []).length, ltmCount: (v.content.ltm_entries || []).length, unconsolidatedCount: (v.content.unconsolidated_stm || []).length };
             } catch (e) { return null; }
@@ -434,7 +433,7 @@ function _buildDebugApi() {
         getCursor: function() { return globalThis.__ne_debug_last_cursor || null; },
         getSmartpushPrompt: function() { return globalThis.__ne_debug_last_smartpush_prompt || null; },
         dumpVault: async function() {
-            try { var v = await read(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content)); } catch (e) { return null; }
+            try { var v = await readVault(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content)); } catch (e) { return null; }
         },
         getFactionSummary: function() {
             try {

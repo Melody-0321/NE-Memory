@@ -1,10 +1,11 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate, extractStateChangesOnly, saveVault } from '../core/engine/update.js';
+import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engine/update.js';
+import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
+import { readVault, rollbackByMsgIds } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
@@ -240,7 +241,7 @@ async function consumeNeCharBlocks(messageIndex) {
     globalThis.__ne_pending_char_blocks = null;
     try {
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
-        var vault = await read(chatId);
+        var vault = await readVault(chatId);
         if (!vault || !vault.content) {
             console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
             return;
@@ -293,7 +294,7 @@ async function consumeNeCharBlocks(messageIndex) {
         }
         charState.characters = charState.characters;
         vault.content.state = charState;
-        await saveVault(chatId, vault);
+        await saveStateVault(chatId, vault);
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
@@ -422,7 +423,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled()) {
+            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
@@ -457,7 +458,7 @@ export async function runLtmConsolidation(chatId) {
     var ranLtm = false;
     for (var batchPass = 0; batchPass < MAX_LTM_BATCHES; batchPass++) {
         await enqueueLtmWrite(async function() {
-            var postStmVault = await read(chatId);
+            var postStmVault = await readVault(chatId);
             if (!postStmVault || !postStmVault.content) return;
 
             var eligibleIds = getEligibleStmIds(postStmVault);
@@ -487,9 +488,9 @@ export async function runLtmConsolidation(chatId) {
                     unconsolidated_stm: JSON.parse(JSON.stringify(postStmVault.content.unconsolidated_stm || []))
                 };
                 applyBatchLtmDecision(postStmVault, decisionGroups);
-                try { await saveVault(chatId, postStmVault); } catch (e) {
+                try { await saveMemoryVault(chatId, postStmVault); } catch (e) {
                     console.warn('[NE] LTM save failed, rolling back vault');
-                    postStmVault = await read(chatId);
+                    postStmVault = await readVault(chatId);
                 }
 
                 var content = postStmVault.content || {};
@@ -540,9 +541,9 @@ export async function runLtmConsolidation(chatId) {
                 for (var fi = 0; fi < eligibleIds.length; fi++) {
                     var fallbackDecision = createMinimalLtm(postStmVault, eligibleIds[fi]);
                     if (fallbackDecision) {
-                        var refreshed = await read(chatId);
+                        var refreshed = await readVault(chatId);
                         applyBatchLtmDecision(refreshed, [fallbackDecision]);
-                        try { await saveVault(chatId, refreshed); } catch (e) {
+                        try { await saveMemoryVault(chatId, refreshed); } catch (e) {
                             console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
                         }
                     } else {
@@ -553,19 +554,19 @@ export async function runLtmConsolidation(chatId) {
             }
         });
 
-        var checkVault = await read(chatId);
+        var checkVault = await readVault(chatId);
         if (getEligibleStmIds(checkVault).length === 0) break;
     }
 
     try {
         await enqueueLtmWrite(async function() {
-            var rebatchVault = await read(chatId);
+            var rebatchVault = await readVault(chatId);
             var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
             if (orphans.length === 0 || !ranLtm) return;
             console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
             var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
             if (rebatchResult.consumed > 0) {
-                await saveVault(chatId, rebatchVault);
+                await saveMemoryVault(chatId, rebatchVault);
                 notifyVaultChanged();
                 console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
             }
@@ -911,7 +912,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             lastKnownChatId = chatId;
             pendingMessages = [];
         }
-        const vault = await read(chatId);
+        const vault = await readVault(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         incrementChatTurn(chatId);
         console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
@@ -1148,14 +1149,14 @@ async function rollbackByMessageDates(chatId, chatMessages, currentVault) {
 function _handleMessageRollback(chatId) {
     enqueueStmWrite(async function() {
         try {
-            var vault = await read(chatId);
+            var vault = await readVault(chatId);
             var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
             chatMessages = Array.isArray(chatMessages) ? chatMessages : (chatMessages && chatMessages.messages ? chatMessages.messages : []);
 
             var result = await rollbackByMessageDates(chatId, chatMessages, vault);
 
             if (result.degraded) {
-                await write(chatId, vault);
+                await saveMemoryVault(chatId, vault);
             }
 
             if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
