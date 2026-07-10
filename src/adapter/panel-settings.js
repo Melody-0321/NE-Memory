@@ -867,13 +867,14 @@ export function renderSettingsIntoSlide(container) {
     var exportBtn = document.getElementById('narrative_vault_export_json');
     if (exportBtn) {
         exportBtn.onclick = async function() {
+            var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
             try {
-                var vault = await readVault(_currentGetChatId);
+                var vault = await readVault(chatId);
                 var json = JSON.stringify(vault, null, 2);
                 var blob = new Blob([json], { type: 'application/json' });
                 var url = URL.createObjectURL(blob);
                 var a = document.createElement('a');
-                a.href = url; a.download = 'ne_vault_' + _currentGetChatId() + '.json';
+                a.href = url; a.download = 'ne_vault_' + chatId + '.json';
                 document.body.appendChild(a); a.click();
                 document.body.removeChild(a); URL.revokeObjectURL(url);
             } catch (e) { alert(t('Export failed') + ': ' + e.message); }
@@ -884,8 +885,8 @@ export function renderSettingsIntoSlide(container) {
     var diagBtn = document.getElementById('narrative_vault_export_diag');
     if (diagBtn) {
         diagBtn.onclick = async function() {
+            var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
             try {
-                var chatId = _currentGetChatId();
                 var [vault, chain, deltas, versions] = await Promise.all([
                     readVault(chatId),
                     getActiveChain(chatId),
