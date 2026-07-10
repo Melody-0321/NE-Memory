@@ -653,6 +653,10 @@ function saveSettingsTab() {
         settings.memoryConfig.extraction_temperature = Number(panelById('nes_extraction_temperature').value);
         settings.memoryConfig.temperature = settings.memoryConfig.extraction_temperature;
     }
+    if (panelById('nes_secondary_url')) {
+        settings.memoryConfig.url = panelById('nes_secondary_url').value.trim();
+        settings.memoryConfig.model = getModelValue('nes_secondary');
+    }
 
     var schemaEl = panelById('nes_state_schema');
     if (schemaEl) {

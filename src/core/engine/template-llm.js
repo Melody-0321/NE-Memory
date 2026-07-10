@@ -55,6 +55,12 @@ export function checkFunctionCallingSupport() {
         var raw = localStorage.getItem('ne_settings');
         var settings = raw ? JSON.parse(raw) : {};
         var secondaryConfig = settings.memoryConfig || {};
+        if (!secondaryConfig.url) {
+            try {
+                var secRaw = localStorage.getItem('ne_secondary_api');
+                if (secRaw) { var secApi = JSON.parse(secRaw); if (secApi.url && secApi.model) secondaryConfig = secApi; }
+            } catch (e) {}
+        }
         var disabled = settings.disableFunctionCalling;
         if (disabled) {
             _functionCallingSupported = false;
