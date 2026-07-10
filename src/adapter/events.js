@@ -348,18 +348,25 @@ export async function onMessageReceived(messageIndex) {
                 console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
             }
 
-            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
+            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>([\s\S]*?)<!--\/NE-CHAR-->/g;
             var charBlockMatch;
             var newCharBlocks = [];
             while ((charBlockMatch = charBlockRegex.exec(rawMes)) !== null) {
                 var charName = (charBlockMatch[1] || '').trim();
-                var charJson = (charBlockMatch[2] || '').trim();
+                var charContent = (charBlockMatch[2] || '').trim();
+                var charData = null;
                 try {
-                    var charData = JSON.parse(charJson);
+                    charData = JSON.parse(charContent);
+                } catch (e1) {
+                    try {
+                        charData = JSON.parse('{' + charContent + '}');
+                    } catch (e2) {}
+                }
+                if (charData) {
                     newCharBlocks.push({ name: charName, fields: charData });
                     console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
-                } catch (e) {
-                    console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' json=' + charJson.substring(0, 200) + ' error=' + e.message);
+                } else {
+                    console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' content=' + charContent.substring(0, 200));
                 }
             }
             console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
@@ -392,7 +399,7 @@ export async function onMessageReceived(messageIndex) {
             }
 
             // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
-            var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
+            var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>[\s\S]*?<!--\/NE-CHAR-->/g;
             var stripCount = 0;
             var strippedNames = [];
             var strippedMes = rawMes.replace(stripRegex, function(match, name) {
@@ -730,7 +737,7 @@ function registerGlobalBannerRegex() {
             '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
             '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
             '```\n';
-        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>\\\\{[\\\\s\\\\S]*?\\\\}<!--\\\\/NE-CHAR-->)/g';
+        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>[\\\\s\\\\S]*?<!--\\\\/NE-CHAR-->)/g';
 
         var BANNER_DISPLAY_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
         var PROMPT_PATTERN = /^(?:ne-state-banner-prompt(?:-v\d+)?|ne-state-prompt(?:-v\d+)?|ne-char-block-prompt(?:-v\d+)?)$/;
@@ -806,7 +813,7 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
-        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
+        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>[\\s\\S]*?<!--\\/NE-CHAR-->/g';
         var CHAR_DISPLAY_ID = 'ne-char-block-display';
         var CHAR_DISPLAY_NAME = 'NE Character Block Strip (Display)';
         var CHAR_VERSION = '1.3';
