@@ -1,4 +1,4 @@
-import { readState, writeState, loadTemplateLibrary, getTemplate, saveTemplate } from '../core/vault/store.js';
+import { readState, writeState, loadTemplateLibrary, getEffectiveTemplates, getTemplate, saveTemplate } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { DEFAULT_CHARACTER_SCHEMA, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
@@ -490,7 +490,7 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     }
 
     // Load template data
-    var lib = loadTemplateLibrary();
+    var lib = getEffectiveTemplates();
     var templates = (lib && lib.templates) ? lib.templates : {};
     var state = _getCurrentState();
     var schemeData = (state && state._character_schemes && state._character_schemes[charName]) || {};

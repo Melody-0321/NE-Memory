@@ -12,7 +12,7 @@ if (typeof localStorage === 'undefined') {
 }
 
 import {
-    loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate,
+    loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
     loadFieldLibrary, saveFieldLibrary, addFieldToLibrary, removeFieldFromLibrary, getFieldFromLibrary,
     addTemplateRefToField, removeTemplateRefFromField,
     registerFieldToTemplate, unregisterFieldFromTemplate,
@@ -78,10 +78,11 @@ eq(Object.keys(loadTemplateLibrary().templates).length, 2, '2 templates');
 deleteTemplate('a');
 deleteTemplate('b');
 
-// Save system template
-saveTemplate({ id: '_default_npc', name: 'Default NPC', role: 'npc', system: true });
-var sysTpl = getTemplate('_default_npc');
-eq(sysTpl.system, true, 'system flag preserved');
+// Verify default templates are accessible via getEffectiveTemplates
+var eff = getEffectiveTemplates();
+ok(eff.templates['_default_pc'], 'default PC accessible via getEffectiveTemplates');
+ok(eff.templates['_default_npc'], 'default NPC accessible via getEffectiveTemplates');
+eq(eff.templates['_default_npc'].system, true, 'system flag on default NPC');
 
 // ====== Field Library CRUD ======
 console.log('\n=== store: field library CRUD ===');

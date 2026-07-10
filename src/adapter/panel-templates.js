@@ -9,7 +9,7 @@
  * Replaces panel-scheme.js — full implementation for Phase 6.
  */
 
-import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate,
+import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
@@ -46,7 +46,7 @@ export function renderTemplatesIntoSlide(container) {
     var ticket = ++_renderTicket;
 
     // Load data
-    var lib = loadTemplateLibrary();
+    var lib = getEffectiveTemplates();
     var templates = (lib && lib.templates) ? lib.templates : {};
     var order = (lib && lib.order) ? lib.order : [];
     // Try to load card config using SillyTavern context character name

@@ -3,6 +3,7 @@
  *
  * v8: force-reset empty stores from v7 botched upgrade, recover from chat metadata.
  */
+import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from './schema.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
@@ -566,6 +567,15 @@ export function rollbackByMsgIds(vault, removedMsgIds) {
 
 // ====== Template Library CRUD (localStorage) ======
 
+var _DEFAULT_TEMPLATES = null;
+function _getDefaultTemplates() {
+    if (_DEFAULT_TEMPLATES) return _DEFAULT_TEMPLATES;
+    _DEFAULT_TEMPLATES = {};
+    _DEFAULT_TEMPLATES[DEFAULT_PC_TEMPLATE.id] = DEFAULT_PC_TEMPLATE;
+    _DEFAULT_TEMPLATES[DEFAULT_NPC_TEMPLATE.id] = DEFAULT_NPC_TEMPLATE;
+    return _DEFAULT_TEMPLATES;
+}
+
 export function loadTemplateLibrary() {
     try {
         var raw = localStorage.getItem('ne_template_library');
@@ -574,10 +584,24 @@ export function loadTemplateLibrary() {
     return { templates: {}, updatedAt: new Date().toISOString() };
 }
 
+export function getEffectiveTemplates() {
+    var lib = loadTemplateLibrary();
+    var merged = Object.assign({}, _getDefaultTemplates(), lib.templates || {});
+    return { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id], updatedAt: lib.updatedAt };
+}
+
 export function saveTemplateLibrary(lib) {
     try {
         lib.updatedAt = new Date().toISOString();
-        localStorage.setItem('ne_template_library', JSON.stringify(lib));
+        var toStore = Object.assign({}, lib);
+        if (toStore.templates) {
+            var userOnly = {};
+            Object.keys(toStore.templates).forEach(function(id) {
+                if (!toStore.templates[id].system) userOnly[id] = toStore.templates[id];
+            });
+            toStore.templates = userOnly;
+        }
+        localStorage.setItem('ne_template_library', JSON.stringify(toStore));
     } catch (e) {}
 }
 
