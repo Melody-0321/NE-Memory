@@ -336,6 +336,14 @@ export async function foldState(chatId, targetSeq, headState) {
         }
     }
 
+    var chars = base.characters;
+    if (chars) {
+        for (var charName in chars) {
+            if (!chars.hasOwnProperty(charName)) continue;
+            if (!base[charName] || typeof base[charName] !== 'object') base[charName] = {};
+        }
+    }
+
     if (Object.keys(base).length === 0) {
         try {
             var fallbackVault = headState ? { content: { state: headState } } : null;
