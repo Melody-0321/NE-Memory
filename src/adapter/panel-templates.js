@@ -85,7 +85,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     var worldCtx = (cardConfig && cardConfig._worldContext) ? cardConfig._worldContext : null;
 
     var pcOptions = Object.keys(templates).filter(function (id) {
-        return templates[id] && templates[id].role === 'protagonist';
+        return templates[id] && templates[id].role === 'pc';
     });
     var npcOptions = Object.keys(templates).filter(function (id) {
         return templates[id] && templates[id].role === 'npc';
@@ -167,7 +167,7 @@ function _renderLibraryHTML(templates, order) {
     order.forEach(function (id) {
         var tpl = templates[id];
         if (!tpl) return;
-        if (tpl.role === 'protagonist') { pcIds.push(id); }
+        if (tpl.role === 'pc') { pcIds.push(id); }
         else { npcIds.push(id); }
     });
 
