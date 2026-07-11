@@ -96,7 +96,14 @@ export var PRESET_FIELDS = {
         status_effects:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
     },
     inventory: {
-        inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory' }
+        inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory',
+            item_schema: {
+                name:        { type: 'string', max_length: 60, description: '物品名称' },
+                description: { type: 'string', max_length: 200, description: '外观/来源/背景' },
+                rarity:      { type: 'string', max_length: 20, description: '稀有度/品质/品阶' },
+                properties:  { type: 'string', max_length: 200, description: '特殊属性/词条/附魔效果' }
+            }
+        }
     }
 };
 
@@ -788,6 +795,10 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                     else if (fk === 'affection') suffix = ' (0-100)';
                     else if (fieldDef.type === 'enum' && fieldDef.values) suffix = ' (enum: ' + fieldDef.values.join('/') + ')';
                     else if (fieldDef.type === 'number' && fieldDef.min !== undefined && fieldDef.max !== undefined) suffix = ' (' + fieldDef.min + '-' + fieldDef.max + ')';
+                    else if (fieldDef.type === 'object' && fieldDef.item_schema) {
+                        var isKeys = Object.keys(fieldDef.item_schema);
+                        suffix = ' (object, 每个物品应包含: ' + isKeys.join('/') + ')';
+                    }
                     var translatedLabel = t_field(fk);
                     if (fieldDef.required && isEmpty) {
                         suffix = ' (未填)' + suffix;
