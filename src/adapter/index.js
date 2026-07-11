@@ -7,7 +7,7 @@ import { runtime } from '../core/runtime.js';
 import { readVault } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
@@ -305,6 +305,8 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
+            try { eventSource.on('chat_deleted', onChatDeleted); } catch (e) {}
+            try { eventSource.on('group_chat_deleted', onChatDeleted); } catch (e) {}
             _tryRegisterBannerRegex(0);
             console.log('[NE] Event listeners registered via eventSource');
         }

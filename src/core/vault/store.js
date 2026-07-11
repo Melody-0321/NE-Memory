@@ -441,11 +441,37 @@ function ensureCursorState(vault) {
 export async function remove(chatId) {
     var db = await openDB();
     return new Promise((resolve, reject) => {
-        var tx = db.transaction([STATE_STORE, MEMORY_STORE], 'readwrite');
+        var tx = db.transaction(
+            [STATE_STORE, MEMORY_STORE, 'state_deltas', 'memory_versions', 'active_chains', 'orphaned_branches'],
+            'readwrite'
+        );
         tx.objectStore(STATE_STORE).delete(chatId);
         tx.objectStore(MEMORY_STORE).delete(chatId);
-        tx.oncomplete = () => resolve();
-        tx.onerror = () => reject(tx.error);
+        tx.objectStore('active_chains').delete(chatId);
+
+        var sdIdx = tx.objectStore('state_deltas').index('chat_id_seq');
+        var sdCursorReq = sdIdx.openCursor(IDBKeyRange.bound([chatId, 0], [chatId, Infinity]));
+        sdCursorReq.onsuccess = function(e) {
+            var cursor = e.target.result;
+            if (cursor) { cursor.delete(); cursor.continue(); }
+        };
+
+        var mvIdx = tx.objectStore('memory_versions').index('chat_id_seq');
+        var mvCursorReq = mvIdx.openCursor(IDBKeyRange.bound([chatId, 0], [chatId, Infinity]));
+        mvCursorReq.onsuccess = function(e) {
+            var cursor = e.target.result;
+            if (cursor) { cursor.delete(); cursor.continue(); }
+        };
+
+        var obIdx = tx.objectStore('orphaned_branches').index('chat_id');
+        var obCursorReq = obIdx.openCursor(IDBKeyRange.only(chatId));
+        obCursorReq.onsuccess = function(e) {
+            var cursor = e.target.result;
+            if (cursor) { cursor.delete(); cursor.continue(); }
+        };
+
+        tx.oncomplete = function() { resolve(); };
+        tx.onerror = function() { reject(tx.error); };
     });
 }
 

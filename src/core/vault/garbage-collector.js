@@ -160,17 +160,39 @@ export async function listAllChatIds() {
     var db = await openDB();
     return new Promise(function(resolve, reject) {
         try {
-            var tx = db.transaction('vaults', 'readonly');
-            var store = tx.objectStore('vaults');
-            var req = store.getAllKeys();
-            req.onsuccess = function() {
-                try { db.close(); } catch (e) {}
-                resolve(req.result || []);
-            };
-            req.onerror = function() {
-                try { db.close(); } catch (e) {}
-                reject(req.error);
-            };
+            var stores = ['vaults', 'state_vaults', 'active_chains'];
+            var remaining = stores.length;
+            var idSet = {};
+            for (var si = 0; si < stores.length; si++) {
+                (function(storeName) {
+                    try {
+                        var tx = db.transaction(storeName, 'readonly');
+                        var req = tx.objectStore(storeName).getAllKeys();
+                        req.onsuccess = function() {
+                            var keys = req.result || [];
+                            for (var ki = 0; ki < keys.length; ki++) { idSet[keys[ki]] = true; }
+                            remaining--;
+                            if (remaining === 0) {
+                                try { db.close(); } catch (e) {}
+                                resolve(Object.keys(idSet));
+                            }
+                        };
+                        req.onerror = function() {
+                            remaining--;
+                            if (remaining === 0) {
+                                try { db.close(); } catch (e) {}
+                                resolve(Object.keys(idSet));
+                            }
+                        };
+                    } catch (e) {
+                        remaining--;
+                        if (remaining === 0) {
+                            try { db.close(); } catch (e2) {}
+                            resolve(Object.keys(idSet));
+                        }
+                    }
+                })(stores[si]);
+            }
         } catch (e) {
             try { db.close(); } catch (e2) {}
             reject(e);

@@ -5,7 +5,7 @@ import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engin
 import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { readVault, rollbackByMsgIds } from '../core/vault/store.js';
+import { readVault, rollbackByMsgIds, remove } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
@@ -1244,6 +1244,29 @@ export async function onMessageSwiped(messageId) {
 export async function onMessageUpdated(messageId) {
     if (!getChatIdFn) return;
     _handleMessageRollback(getChatIdFn());
+}
+
+export async function onChatDeleted(chatId) {
+    if (!chatId) return;
+    try {
+        await remove(chatId);
+        try {
+            var statsKey = 'ne_chat_stats';
+            var raw = localStorage.getItem(statsKey);
+            if (raw) {
+                var stats = JSON.parse(raw);
+                if (stats && stats[chatId]) {
+                    delete stats[chatId];
+                    localStorage.setItem(statsKey, JSON.stringify(stats));
+                }
+            }
+        } catch (e) {}
+        try { localStorage.removeItem('ne_ph_' + chatId); } catch (e) {}
+        try { localStorage.removeItem('ne_collapse_' + chatId); } catch (e) {}
+        console.log('[NE] Chat deleted, cleaned up:', chatId);
+    } catch (e) {
+        console.warn('[NE] Chat delete cleanup failed for', chatId, ':', e.message);
+    }
 }
 
 /* ──────── 矛盾检测（容器C）──────── */
