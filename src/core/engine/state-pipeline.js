@@ -42,31 +42,26 @@ function collectAllManagedFields(state) {
 }
 
 /**
- * Get layer==='static' field names from scheme definitions.
- * Used by findNewCharacterNames and newCharHint generation.
+ * Get identity field names that should be extracted from sources for new characters.
+ * These are the core identity fields that character cards / world books typically define.
  * @returns {string[]}
  */
-function getStaticFieldNames() {
-    var names = [];
-    Object.keys(ALL_PREDEFINED_FIELDS).forEach(function(fk) {
-        var def = ALL_PREDEFINED_FIELDS[fk];
-        if (def.layer === 'static' && !def._system) names.push(fk);
-    });
-    return names;
+function getIdentityFieldNames() {
+    return ['gender_age', 'physique', 'occupation', 'personality', 'past_experience'];
 }
 
 /**
  * Build a new-character example JSON string for the prompt,
- * dynamically generated from layer==='static' field definitions.
+ * dynamically generated from identity field definitions.
  * @param {string} name - character name for the example
  * @param {boolean} isEn - language flag
  * @returns {string}
  */
 function buildNewCharacterExample(name, isEn) {
-    var staticNames = getStaticFieldNames();
+    var identityNames = getIdentityFieldNames();
     var sampleName = name || (isEn ? 'Alice' : '安然');
     var sampleFields = {};
-    staticNames.forEach(function(fk) {
+    identityNames.forEach(function(fk) {
         if (isEn) {
             if (fk === 'gender_age') sampleFields[fk] = 'Female,26';
             else if (fk === 'physique') sampleFields[fk] = '170cm tall, athletic build, short black hair';
@@ -89,12 +84,12 @@ function buildNewCharacterExample(name, isEn) {
 function findNewCharacterNames(vault) {
     var state = (vault && vault.content && vault.content.state) || {};
     var chars = state.characters || {};
-    var staticFields = getStaticFieldNames();
+    var identityFields = getIdentityFieldNames();
     var newNames = [];
     Object.keys(chars).forEach(function(name) {
         var card = chars[name];
         if (!card || typeof card !== 'object') return;
-        var allEmpty = staticFields.every(function(fk) {
+        var allEmpty = identityFields.every(function(fk) {
             return !card[fk] || card[fk] === '' || card[fk] === '(未填)';
         });
         if (allEmpty) newNames.push(name);
@@ -225,7 +220,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
 
     var managedFields = collectAllManagedFields(state);
     var managedList = managedFields.join(', ');
-    var staticNames = getStaticFieldNames();
+    var identityNames = getIdentityFieldNames();
 
     var rulesStaticEn = '\n## Field Rules\n' +
         '- You manage: ' + managedList + '.\n' +
@@ -268,7 +263,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         var newCharHintEn = '';
         if (newNames.length > 0) {
             var sourceLabel = worldBook ? 'World Book' : 'Character Cards';
-            var staticFieldsDesc = staticNames.map(function(fn) {
+            var identityFieldsDesc = identityNames.map(function(fn) {
                 var def = ALL_PREDEFINED_FIELDS[fn];
                 var desc = '- ' + fn;
                 if (def && def.max_length) desc += ': max ' + def.max_length + ' chars';
@@ -278,7 +273,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             newCharHintEn = '\n## New Characters (MUST fill)\n' +
                 'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
                 'You MUST output state_changes.characters.<name> containing:\n' +
-                staticFieldsDesc + '\n' +
+                identityFieldsDesc + '\n' +
                 (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above.\n' : 'Extract values from ' + sourceLabel + ' above.\n') +
                 '\nCorrect example:\n' + example + '\n';
         }
@@ -287,13 +282,13 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
                 (charCard || '') + rulesStaticEn,
                 stateTable + worldBook + fallbackNote + newCharHintEn
             ],
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill static fields from sources above; infer current-snapshot fields from dialogue + scene context.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill identity fields from sources above; infer other fields from dialogue + scene context.'
         };
     }
     var newCharHintZh = '';
     if (newNames.length > 0) {
         var sourceLabelZh = worldBook ? 'World Book' : '角色卡';
-        var staticFieldsDescZh = staticNames.map(function(fn) {
+        var identityFieldsDescZh = identityNames.map(function(fn) {
             var def = ALL_PREDEFINED_FIELDS[fn];
             var desc = '- ' + fn;
             if (def && def.max_length) desc += '：最长 ' + def.max_length + ' 字符';
@@ -303,7 +298,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         newCharHintZh = '\n## 新角色（必须填充）\n' +
             '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
             '你必须输出 state_changes.characters.<name> 包含：\n' +
-            staticFieldsDescZh + '\n' +
+            identityFieldsDescZh + '\n' +
             (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取。\n' : '从上方 ' + sourceLabelZh + ' 中提取。\n') +
             '\n正确示例：\n' + exampleZh + '\n';
     }
@@ -312,7 +307,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             (charCard || '') + rulesStaticZh,
             stateTable + worldBook + fallbackNote + newCharHintZh
         ],
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。静态字段从上方来源填充；当前快照字段从对话 + 场景上下文推断。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。身份字段从上方来源填充；其它字段从对话 + 场景上下文推断。'
     };
 }
 

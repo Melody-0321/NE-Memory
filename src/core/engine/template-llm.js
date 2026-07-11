@@ -160,7 +160,7 @@ export function buildNewSchemePrompt(roleInstruction, charProfile, worldContext,
     var fieldKeys = Object.keys(ALL_PREDEFINED_FIELDS).sort();
     var fieldList = fieldKeys.map(function(fk) {
         var def = ALL_PREDEFINED_FIELDS[fk];
-        var label = '- ' + fk + ' (' + (def.type || 'string') + ')' + (def.layer === 'static' ? ' [static]' : ' [dynamic]');
+        var label = '- ' + fk + ' (' + ((def && def.type) || 'string') + ')';
         if (def.category) label += ' cat:' + def.category;
         return label;
     }).join('\n');
@@ -464,7 +464,6 @@ export function resolveFieldProposal(args, state, charName) {
             name: fieldName,
             type: fieldType,
             description: description,
-            layer: 'dynamic',
             usedByTemplates: []
         });
 
@@ -472,7 +471,7 @@ export function resolveFieldProposal(args, state, charName) {
 
         return {
             accepted: true,
-            fieldDef: { type: fieldType, description: description, layer: 'dynamic', _source: 'ai_generated' },
+            fieldDef: { type: fieldType, description: description, _source: 'ai_generated' },
             reason: parsed.reason || 'AI accepted the proposal.'
         };
     }).catch(function(e) {

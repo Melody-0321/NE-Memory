@@ -308,7 +308,6 @@ export {};
  * @property {Object<string, SchemaFieldDef>} [fields]
  * @property {SchemaFieldDef} [schema]
  * @property {boolean} [required]
- * @property {'static'|'dynamic'} [layer]
  * @property {boolean} [_system]
  * @property {string} [category]
  * @property {'ai_generated'|'user_created'|'global'} [_source]
@@ -350,7 +349,6 @@ export {};
  * @property {number} [min]
  * @property {number} [max]
  * @property {number} [max_length]
- * @property {'static'|'dynamic'} [layer]
  * @property {string} [category]
  * @property {string[]} usedByTemplates
  * @property {string} createdAt

@@ -70,33 +70,33 @@ export const POWER_SLOTS_TEMPLATES = {
 
 /** @type {import('../../types.js').SchemaFieldDef} */
 export var SYSTEM_REQUIRED_FIELDS = {
-    name:   { type: 'string', max_length: 30, required: true, layer: 'static',  _system: true },
-    status: { type: 'enum',   values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true }
+    name:   { type: 'string', max_length: 30, required: true, _system: true },
+    status: { type: 'enum',   values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, _system: true }
 };
 
 export var PRESET_FIELDS = {
     identity: {
-        gender_age:      { type: 'string', max_length: 20,  required: false, layer: 'static',  category: 'identity' },
-        physique:        { type: 'string', max_length: 60,  required: false, layer: 'static',  category: 'identity' },
-        occupation:      { type: 'string', max_length: 30,  required: false, layer: 'static',  category: 'identity' },
-        clothing_build:  { type: 'string', max_length: 60,  required: false, layer: 'dynamic', category: 'identity' },
-        personality:     { type: 'string', max_length: 80,  required: false, layer: 'static',  category: 'identity' },
-        past_experience: { type: 'string', max_length: 200, required: false, layer: 'static',  category: 'identity' }
+        gender_age:      { type: 'string', max_length: 20,  required: false, category: 'identity' },
+        physique:        { type: 'string', max_length: 60,  required: false, category: 'identity' },
+        occupation:      { type: 'string', max_length: 30,  required: false, category: 'identity' },
+        clothing_build:  { type: 'string', max_length: 60,  required: false, category: 'identity' },
+        personality:     { type: 'string', max_length: 80,  required: false, category: 'identity' },
+        past_experience: { type: 'string', max_length: 200, required: false, category: 'identity' }
     },
     psychology: {
-        inner_thoughts:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'psychology' },
-        current_mood:    { type: 'string', max_length: 30,  required: false, layer: 'dynamic', category: 'psychology' }
+        inner_thoughts:  { type: 'string', max_length: 120, required: false, category: 'psychology' },
+        current_mood:    { type: 'string', max_length: 30,  required: false, category: 'psychology' }
     },
     social: {
-        affection:       { type: 'number', min: 0, max: 100, required: false, layer: 'dynamic', category: 'social' },
-        relationship:    { type: 'string', max_length: 50,  required: false, layer: 'dynamic', category: 'social' }
+        affection:       { type: 'number', min: 0, max: 100, required: false, category: 'social' },
+        relationship:    { type: 'string', max_length: 50,  required: false, category: 'social' }
     },
     battle: {
-        injuries:        { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
-        status_effects:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
+        injuries:        { type: 'string', max_length: 120, required: false, category: 'battle' },
+        status_effects:  { type: 'string', max_length: 120, required: false, category: 'battle' }
     },
     inventory: {
-        inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory',
+        inventory:       { type: 'object', required: false, category: 'inventory',
             item_schema: {
                 name:        { type: 'string', max_length: 60, description: '物品名称' },
                 description: { type: 'string', max_length: 200, description: '外观/来源/背景' },
@@ -152,10 +152,10 @@ export var DEFAULT_NPC_TEMPLATE = {
 export function buildCharacterSchemaFromTemplates(pcTemplate, npcTemplate) {
     var pcFields = expandTemplateFields(pcTemplate);
     var npcFields = expandTemplateFields(npcTemplate);
-    pcFields.name = { type: 'string', max_length: 30, required: true, layer: 'static', _system: true };
-    pcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true };
-    npcFields.name = { type: 'string', max_length: 30, required: true, layer: 'static', _system: true };
-    npcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true };
+    pcFields.name = { type: 'string', max_length: 30, required: true, _system: true };
+    pcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, _system: true };
+    npcFields.name = { type: 'string', max_length: 30, required: true, _system: true };
+    npcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, _system: true };
     return { protagonist: { fields: pcFields }, npc: { fields: npcFields } };
 }
 
@@ -631,34 +631,6 @@ export function mergeStateChanges(state, validatedChanges) {
             hasChanges = true;
             return;
         }
-        // 静态字段保护：已有非空值的 layer:'static' 字段不允许 LLM 覆盖
-        if (parts[0] === 'characters' && parts.length >= 4) {
-            var staticCharName = parts[1];
-            var staticFieldName = parts[3];
-            var existingVal = (newState.characters && newState.characters[staticCharName]) ? newState.characters[staticCharName][staticFieldName] : undefined;
-            var isExistingNonEmpty = existingVal !== undefined && existingVal !== null && existingVal !== '' &&
-                (typeof existingVal !== 'number' || existingVal !== 0);
-            if (isExistingNonEmpty) {
-                var resolvedObj = resolveFieldDef(staticFieldName);
-                if (resolvedObj.def && resolvedObj.def.layer === 'static') {
-                    console.warn('[NE] Static field protected: characters.' + staticCharName + '.' + staticFieldName + ' layer=static, ignoring LLM overwrite');
-                    return;
-                }
-            }
-        }
-        if (path.startsWith('factions.') || path.startsWith('quests.')) {
-            var topPathParts = path.split('.');
-            var topFieldName = topPathParts.length >= 2 ? topPathParts[topPathParts.length - 1] : '';
-            var topResolvedObj = resolveFieldDef(topFieldName);
-            if (topResolvedObj.def && topResolvedObj.def.layer === 'static') {
-                var topExistingVal = getNestedValue(newState, path);
-                var topIsExistingNonEmpty = topExistingVal !== undefined && topExistingVal !== null && topExistingVal !== '';
-                if (topIsExistingNonEmpty) {
-                    console.warn('[NE] Static field protected: ' + path + ' layer=static, ignoring LLM overwrite');
-                    return;
-                }
-            }
-        }
         var oldVal = current[lastKey];
         if (oldVal !== flattened[path]) {
             current[lastKey] = flattened[path];
@@ -802,7 +774,6 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                     var translatedLabel = t_field(fk);
                     if (fieldDef.required && isEmpty) {
                         suffix = ' (未填)' + suffix;
-                        if (fieldDef.layer === 'static') suffix += ' (静态字段，从来源提取)';
                     }
                     if (fk !== 'name') parts.push('  ' + translatedLabel + ' (' + fk + '): ' + valStr + suffix);
                 }
@@ -956,7 +927,6 @@ export function expandTemplateFields(template) {
                 if (def.min !== undefined) fields[fn].min = def.min;
                 if (def.max !== undefined) fields[fn].max = def.max;
                 if (def.values) fields[fn].values = def.values.slice();
-                if (def.layer) fields[fn].layer = def.layer;
                 if (def.category) fields[fn].category = def.category;
             }
         });
@@ -1011,7 +981,6 @@ export function saveFieldLibrary(lib) {
  */
 export function registerFieldToScheme(scheme, fieldName, fieldDef, source) {
     if (!scheme || !scheme.fields) scheme.fields = {};
-    if (!fieldDef.layer) fieldDef.layer = 'dynamic';
     fieldDef._source = source || 'ai_generated';
     scheme.fields[fieldName] = fieldDef;
 }
