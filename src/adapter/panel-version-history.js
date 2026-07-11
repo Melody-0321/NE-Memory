@@ -203,16 +203,11 @@ async function _saveOrigIfAtHead(type) {
 }
 
 async function _navigateToVersion(targetSeq, type, container) {
-    if (!_chatId || !_chain) {
-        console.warn('[NE-UI] _navigateToVersion: missing _chatId or _chain', { chatId: _chatId, chain: !!_chain });
-        return;
-    }
+    if (!_chatId || !_chain) return;
     var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
-    console.log('[NE-UI] _navigateToVersion:', type, 'targetSeq=', targetSeq, 'headSeq=', headSeq, 'cursor=', type === 'state' ? _stateCursor : _memCursor);
 
     try {
         if (targetSeq === headSeq && (type === 'state' ? _origStateVault : _origMemVault)) {
-            console.log('[NE-UI] _navigateToVersion: restoring original vault to head');
             if (type === 'state') {
                 await writeState(_chatId, _origStateVault);
                 _origStateVault = null;
@@ -223,27 +218,21 @@ async function _navigateToVersion(targetSeq, type, container) {
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
             if (type === 'state') {
-                console.log('[NE-UI] _navigateToVersion: folding state to seq', targetSeq);
                 var foldedState = await foldState(_chatId, targetSeq);
-                console.log('[NE-UI] _navigateToVersion: folded state keys', Object.keys(foldedState || {}));
                 var currentVault = await readState(_chatId);
                 currentVault.content.state = foldedState;
                 await writeState(_chatId, currentVault);
-                console.log('[NE-UI] _navigateToVersion: wrote state vault');
             } else {
-                console.log('[NE-UI] _navigateToVersion: folding memory to seq', targetSeq);
                 var foldedMem = await foldMemory(_chatId, targetSeq);
-                console.log('[NE-UI] _navigateToVersion: folded mem stm_entries=', (foldedMem.stm_entries || []).length, 'ltm_entries=', (foldedMem.ltm_entries || []).length);
                 var currentVault = await readMemory(_chatId);
                 currentVault.content.stm_entries = foldedMem.stm_entries;
                 currentVault.content.unconsolidated_stm = foldedMem.unconsolidated_stm;
                 currentVault.content.ltm_entries = foldedMem.ltm_entries;
                 await writeMemory(_chatId, currentVault);
-                console.log('[NE-UI] _navigateToVersion: wrote memory vault');
             }
         }
     } catch (e) {
-        console.error('[NE-UI] _navigateToVersion failed:', e);
+        console.error('[NE] _navigateToVersion failed:', e);
         return;
     }
 

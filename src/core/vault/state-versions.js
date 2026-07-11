@@ -162,7 +162,7 @@ async function _getBaseSnapshot(chatId) {
                 base.state = (stateDelta.folded_state) ? JSON.parse(JSON.stringify(stateDelta.folded_state)) : {};
             }
         }
-        if (chain.mem_base_seq > 0) {
+        if (chain.mem_base_seq >= 0) {
             var memVer = await _tx(db, ['memory_versions'], 'readonly', function (tx) {
                 return tx.objectStore('memory_versions').get(_generateId('memver', chatId, chain.mem_base_seq));
             });
@@ -326,6 +326,7 @@ export async function foldState(chatId, targetSeq) {
     if (targetSeq <= 0) return {};
 
     var base = {};
+    var usedFallback = false;
     if (chain.state_base_seq >= 0) {
         var baseDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
             return tx.objectStore('state_deltas').get(_generateId('delta', chatId, chain.state_base_seq));
@@ -345,7 +346,6 @@ export async function foldState(chatId, targetSeq) {
                 for (var ri = chain.state_active.length - 1; ri >= 0; ri--) {
                     var rseq = chain.state_active[ri];
                     if (rseq <= targetSeq) break;
-                    /** @type {object|null} */
                     var rdelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
                         return tx.objectStore('state_deltas').get(_generateId('delta', chatId, rseq));
                     });
@@ -355,27 +355,28 @@ export async function foldState(chatId, targetSeq) {
                         if (rc.old !== undefined) _setByPath(base, rc.path, rc.old);
                     }
                 }
+                usedFallback = true;
             }
         } catch (e) {
             console.warn('[NE] foldState fallback failed:', e);
         }
     }
 
-    var startIdx = chain.state_active.indexOf(chain.state_base_seq);
-    if (startIdx < 0) startIdx = 0;
-    for (var i = startIdx; i < chain.state_active.length; i++) {
-        var seq = chain.state_active[i];
-        if (seq > targetSeq) break;
-        if (seq === chain.state_base_seq) continue;
-
-        /** @type {object|null} */
-        var delta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, seq));
-        });
-        if (!delta || !delta.changes) continue;
-        for (var ci = 0; ci < delta.changes.length; ci++) {
-            var c = delta.changes[ci];
-            _setByPath(base, c.path, c.new);
+    if (!usedFallback) {
+        var startIdx = chain.state_active.indexOf(chain.state_base_seq);
+        if (startIdx < 0) startIdx = 0;
+        for (var i = startIdx; i < chain.state_active.length; i++) {
+            var seq = chain.state_active[i];
+            if (seq > targetSeq) break;
+            if (seq === chain.state_base_seq) continue;
+            var delta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+                return tx.objectStore('state_deltas').get(_generateId('delta', chatId, seq));
+            });
+            if (!delta || !delta.changes) continue;
+            for (var ci = 0; ci < delta.changes.length; ci++) {
+                var c = delta.changes[ci];
+                _setByPath(base, c.path, c.new);
+            }
         }
     }
 
@@ -401,7 +402,7 @@ export async function foldMemory(chatId, targetSeq) {
 
     var memory = { stm_entries: [], unconsolidated_stm: [], ltm_entries: [] };
 
-    if (chain.mem_base_seq > 0) {
+    if (chain.mem_base_seq >= 0) {
         var baseVer = await _tx(db, ['memory_versions'], 'readonly', function (tx) {
             return tx.objectStore('memory_versions').get(_generateId('memver', chatId, chain.mem_base_seq));
         });
