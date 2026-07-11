@@ -218,60 +218,21 @@ export async function callMemoryPipeline(messages, options = {}, chatId = null) 
 export async function callMemoryPipelineWithTools(messages, options, chatId) {
     options = options || {};
     var tools = options.tools;
-    var processFn = options.processToolCalls;
-    var maxIterations = options.maxToolIterations || 5;
-    var state = options._state || {};
-    var charName = options._charName || '';
-
     if (!tools || !tools.length) {
-        return callMemoryPipeline(messages, options, chatId);
+        var textResp = await callMemoryPipeline(messages, options, chatId);
+        return { text: textResp, tool_calls: null };
     }
 
-    var currentMessages = messages.slice();
-    var iteration = 0;
+    var mc = await loadMemoryConfig();
+    var result = await callMemoryLLM(messages, Object.assign({}, options, {
+        _forcePipelineApi: true,
+        _returnRaw: true,
+        temperature: mc.extraction_temperature || mc.temperature || 0.2,
+        max_tokens: mc.stm_max_tokens,
+        chatId: chatId
+    }));
 
-    while (iteration < maxIterations) {
-        iteration++;
-        var result = await callMemoryLLM(currentMessages, Object.assign({}, options, {
-            _forcePipelineApi: true,
-            chatId: chatId,
-            _returnRaw: true
-        }));
-
-        var toolCalls = result.tool_calls || [];
-
-        if (toolCalls.length > 0) {
-            currentMessages.push({
-                role: 'assistant',
-                content: result.content || null,
-                tool_calls: toolCalls
-            });
-
-            if (processFn) {
-                var toolResult = await processFn(toolCalls, state, charName);
-                var results = toolResult.results || [];
-
-                results.forEach(function(tr) {
-                    currentMessages.push({
-                        role: 'tool',
-                        tool_call_id: tr.tool_call_id,
-                        content: typeof tr.content === 'string' ? tr.content : JSON.stringify(tr.content)
-                    });
-                });
-
-                if (toolResult.degraded) {
-                    console.warn('[NE-FC] Tool call loop degraded at iteration ' + iteration);
-                }
-            }
-
-            continue;
-        }
-
-        return result.content || '';
-    }
-
-    console.warn('[NE-FC] Tool call loop exceeded max iterations (' + maxIterations + ')');
-    return '';
+    return { text: result.content || '', tool_calls: result.tool_calls || null };
 }
 
 

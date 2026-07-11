@@ -1,10 +1,11 @@
-import { readState, saveTemplate } from '../vault/store.js';
+import { readState } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
-import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
+import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
 import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
+import { buildTools, processToolCalls, isFunctionCallingSupported } from './template-llm.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -204,6 +205,30 @@ function scanMessageForFactions(text, factionKeywords, state) {
     });
 }
 
+function buildTemplateLibrarySection() {
+    var raw = null;
+    try { raw = localStorage.getItem('ne_template_library'); } catch(e) {}
+    if (!raw) return '';
+    try {
+        var lib = JSON.parse(raw);
+        var templates = lib.templates || {};
+        var npcKeys = Object.keys(templates).filter(function(k) {
+            return templates[k] && templates[k].role === 'npc' && !templates[k].system;
+        });
+        if (npcKeys.length === 0) return '';
+        var lines = ['\n## NPC Templates Available'];
+        lines.push('When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<template_key>".');
+        lines.push('Only call get_character_scheme when no template matches or existing templates are insufficient (e.g. need new fields).');
+        npcKeys.forEach(function(k) {
+            var t = templates[k];
+            var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
+            lines.push('- ' + k + ' (' + (t.name || k) + '): ' + fields.join(', '));
+        });
+        lines.push('- _default: baseline tracking, works for any NPC (status, gender_age, physique, occupation, personality, inner_thoughts, current_mood, affection)');
+        return lines.join('\n');
+    } catch(e) { return ''; }
+}
+
 function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCharFallback) {
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -277,9 +302,10 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
                 (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above.\n' : 'Extract values from ' + sourceLabel + ' above.\n') +
                 '\nCorrect example:\n' + example + '\n';
         }
+        var templateSection = buildTemplateLibrarySection();
         return {
             system: [
-                (charCard || '') + rulesStaticEn,
+                (charCard || '') + rulesStaticEn + templateSection,
                 stateTable + worldBook + fallbackNote + newCharHintEn
             ],
             user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill identity fields from sources above; infer other fields from dialogue + scene context.'
@@ -302,9 +328,10 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取。\n' : '从上方 ' + sourceLabelZh + ' 中提取。\n') +
             '\n正确示例：\n' + exampleZh + '\n';
     }
+    var templateSection = buildTemplateLibrarySection();
     return {
         system: [
-            (charCard || '') + rulesStaticZh,
+            (charCard || '') + rulesStaticZh + templateSection,
             stateTable + worldBook + fallbackNote + newCharHintZh
         ],
         user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。身份字段从上方来源填充；其它字段从对话 + 场景上下文推断。'
@@ -438,43 +465,7 @@ function buildWorldBookSystemBlock(worldBookEntries) {
     return { role: 'system', content: text };
 }
 
-function buildSchemeCharPrompt(messages, isEn) {
-    var msgText = '';
-    if (messages && messages.length > 0) {
-        msgText = '\n## Current Dialogue\n';
-        messages.forEach(function(m) {
-            msgText += (m.name || m.role || '') + ': ' + (m.content || '') + '\n';
-        });
-    }
 
-    var fieldKeys = Object.keys(ALL_PREDEFINED_FIELDS).filter(function(k) { return k !== 'name'; });
-    var fieldDescs = fieldKeys.map(function(k) { return '  ' + k + ' (' + ((ALL_PREDEFINED_FIELDS[k].type) || 'string') + ')'; }).join('\n');
-
-    return '' +
-        msgText +
-        '\n## Task\n' +
-        'Based on the world setting (see system message) and dialogue above, determine:\n' +
-        '1. What NPC character tracking schemes are needed (1-3 schemes)\n' +
-        '2. Identify all characters mentioned (protagonist + NPCs)\n' +
-        '\nAvailable fields (name reserved, not output):\n' +
-        fieldDescs + '\n' +
-        '\nRules:\n' +
-        '- Every scheme MUST include "status"\n' +
-        '- "default" scheme is mandatory (catch-all)\n' +
-        '- Field names MUST be from the available list above\n' +
-        '- required: fields always tracked; optional: tracked when relevant\n' +
-        '\nOutput ONLY valid JSON:\n' +
-        '{\n' +
-        '  "schemes": {\n' +
-        '    "default": { "description": "...", "required": [...], "optional": [...] },\n' +
-        '    "scheme_name": { ... }\n' +
-        '  },\n' +
-        '  "initial_characters": [\n' +
-        '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" },\n' +
-        '    { "name": "\u89d2\u8272\u540d", "_role": "protagonist|npc", "_scheme": "scheme_name|null" }\n' +
-        '  ]\n' +
-        '}';
-}
 
 function buildFactionExtractionPrompt() {
     return '## Task\n' +
@@ -495,285 +486,6 @@ function buildFactionExtractionPrompt() {
         '}\n' +
         '\nIf no factions exist:\n' +
         '{"factions":{}}';
-}
-
-export async function resolveNpcSchemes(vault, chatId, messages) {
-    if (!vault || !vault.content) return { templateInit: false };
-
-    var state = vault.content.state || {};
-
-    // 闸门 A：已存在角色卡级配置 → 跳过
-    var charName = vault._charName || state.protagonist_name || '';
-    var cardConfig = null;
-    if (charName) {
-        var rawCfg = null;
-        try { rawCfg = localStorage.getItem('ne_card_templates_' + charName); } catch(e) {}
-        if (rawCfg) {
-            try { cardConfig = JSON.parse(rawCfg); } catch(e) {}
-        }
-        if (cardConfig && cardConfig._dialogueTemplates && Object.keys(cardConfig._dialogueTemplates).length > 0) {
-            console.log('[NE] Card-level templates already exist for ' + charName + ', skipping resolveNpcSchemes');
-            restoreStateFromCardConfig(state, cardConfig);
-            vault.content.state = state;
-            return { templateInit: false };
-        }
-    }
-
-    // 闸门 B：检查 state.characters 中是否已有角色通过模板初始化
-    var hasFilledChars = false;
-    if (state.characters) {
-        var charKeys = Object.keys(state.characters);
-        for (var ci = 0; ci < charKeys.length; ci++) {
-            var ch = state.characters[charKeys[ci]];
-            if (ch && typeof ch === 'object' && ch._templateKey) { hasFilledChars = true; break; }
-        }
-    }
-    if (hasFilledChars) {
-        console.log('[NE] characters already initialized with _templateKey, skipping resolveNpcSchemes');
-        return { templateInit: false };
-    }
-
-    if (state.npc_schemes) return { templateInit: false };
-
-    // G1: 检查模板库是否为空（仅含系统模板）
-    var rawLib = null;
-    try { rawLib = localStorage.getItem('ne_template_library'); } catch(e) {}
-    var templateLibEmpty = true;
-    if (rawLib) {
-        try {
-            var parsedLib = JSON.parse(rawLib);
-            var nonSystemCount = 0;
-            Object.keys(parsedLib.templates || {}).forEach(function(k) {
-                if (!parsedLib.templates[k].system) nonSystemCount++;
-            });
-            templateLibEmpty = nonSystemCount === 0;
-        } catch(e) {}
-    }
-
-    var worldBookContent = await collectWorldBookContent();
-    state.characters = state.characters || {};
-
-    if (!worldBookContent || worldBookContent.length === 0) {
-        initCharactersFromDefaults(state);
-        vault.content.state = state;
-
-        var notifyPayload = {
-            templateInit: templateLibEmpty ? false : true,
-            schemes: templateLibEmpty ? [] : ['_default_pc', '_default_npc'],
-            charName: charName,
-            skipSystemMessage: templateLibEmpty
-        };
-        return notifyPayload;
-    }
-
-    var worldBookMsg = buildWorldBookSystemBlock(worldBookContent);
-
-    try {
-        var [resp1, resp2] = await Promise.all([
-            callMemoryPipeline([
-                worldBookMsg,
-                { role: 'system', content: 'You are a world-building analyst. Determine NPC tracking schemes and list all characters.' },
-                { role: 'user', content: buildSchemeCharPrompt(messages) }
-            ], { operation: 'scheme_discovery' }, chatId),
-
-            callMemoryPipeline([
-                worldBookMsg,
-                { role: 'system', content: 'You extract organizations and factions from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}.' },
-                { role: 'user', content: buildFactionExtractionPrompt() }
-            ], { operation: 'faction_discovery' }, chatId)
-        ]);
-
-        var parsed1 = safeJsonParse(String(resp1 || '').trim());
-
-        // 保留旧 npc_schemes 格式用于向后兼容
-        if (parsed1 && parsed1.schemes) {
-            state.npc_schemes = parsed1.schemes;
-        } else {
-            state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
-        }
-
-        if (parsed1 && parsed1.initial_characters && Array.isArray(parsed1.initial_characters)) {
-            var discoveredProtagonist = parsed1.initial_characters.find(function(ch) { return ch._role === 'protagonist'; });
-            if (discoveredProtagonist && discoveredProtagonist.name && discoveredProtagonist.name !== state.protagonist_name) {
-                state.protagonist_name = discoveredProtagonist.name;
-                console.log('[NE] protagonist_name updated from scheme_discovery: ' + discoveredProtagonist.name);
-            }
-
-            var schemeMap = {};
-            parsed1.initial_characters.forEach(function(ch) {
-                if (ch.name) {
-                    var isProtagonist = (ch.name === state.protagonist_name);
-                    var chRole = isProtagonist ? 'protagonist' : 'npc';
-                    schemeMap[ch.name] = { _role: chRole, _scheme: isProtagonist ? null : (ch._scheme || null) };
-                }
-            });
-            state._character_schemes = schemeMap;
-
-            var msgText = '';
-            if (messages && messages.length > 0) {
-                msgText = messages.map(function(m) { return (m.name || '') + ' ' + (m.content || ''); }).join(' ');
-            }
-            parsed1.initial_characters.forEach(function(ch) {
-                if (!ch.name) return;
-                var isProtagonist = (ch.name === state.protagonist_name);
-                var isMentioned = msgText.indexOf(ch.name) !== -1;
-                if (!isProtagonist && !isMentioned) return;
-                var schemeKey = isProtagonist ? null : (ch._scheme || 'default');
-                ensureCharacterTemplate(state, ch.name, schemeKey);
-                if (state.characters && state.characters[ch.name]) {
-                    state.characters[ch.name]._role = isProtagonist ? 'protagonist' : 'npc';
-                    if (!isProtagonist && ch._scheme) state.characters[ch.name]._scheme = ch._scheme;
-                }
-            });
-
-            if (parsed1.initial_characters) {
-                var wbCache = {};
-                var protagonistName = state.protagonist_name || '';
-
-                try {
-                    var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
-                    var allEntries = (ctx && ctx.worldInfo && ctx.worldInfo.entries) ? ctx.worldInfo.entries : {};
-                    var entryList = [];
-
-                    Object.keys(allEntries).forEach(function(uid) {
-                        var entry = allEntries[uid];
-                        if (!entry || entry.disable || !entry.content) return;
-                        entryList.push(entry);
-                    });
-
-                    if (entryList.length > 0) {
-                        parsed1.initial_characters.forEach(function(ch) {
-                            if (!ch.name) return;
-
-                            var matched = entryList.filter(function(entry) {
-                                return _matchEntryKeyToName(entry, ch.name, protagonistName);
-                            }).map(function(entry) {
-                                var label = (entry.key && entry.key.length > 0) ? entry.key[0] : '';
-                                return label ? ('[' + label + '] ' + entry.content) : entry.content;
-                            });
-
-                            wbCache[ch.name] = matched;
-                        });
-                    }
-                } catch (e) {
-                    console.warn('[NE] WB cache build from entries failed:', e && e.message);
-                }
-
-                if (Object.keys(wbCache).length > 0) {
-                    state._world_book_cache = wbCache;
-                }
-            }
-        }
-
-        var parsed2 = safeJsonParse(String(resp2 || '').trim());
-
-        if (parsed2 && parsed2.factions && typeof parsed2.factions === 'object') {
-            var foundFactions = parsed2.factions;
-            var factionNames = Object.keys(foundFactions);
-            if (factionNames.length > 0) {
-                state.factions = state.factions || {};
-                factionNames.forEach(function(name) {
-                    var f = foundFactions[name];
-                    if (!f || typeof f !== 'object') return;
-                    state.factions[name] = {
-                        name: f.name || name,
-                        description: f.description || '',
-                        leader: f.leader || '',
-                        attitude_toward_player: f.attitude_toward_player || '未知',
-                        notes: '',
-                        aliases: f.aliases || [],
-                        _hidden: true
-                    };
-                });
-                vault.content.faction_keywords = buildFactionKeywords(state.factions);
-            }
-        }
-    } catch (e) {
-        console.warn('[NE] Scheme discovery failed:', e);
-        initCharactersFromDefaults(state);
-    }
-
-    _persistCardConfig(charName, state);
-
-    var npcSchemes = state.npc_schemes;
-    if (npcSchemes && typeof npcSchemes === 'object') {
-        Object.keys(npcSchemes).forEach(function (schemeKey) {
-            var scheme = npcSchemes[schemeKey];
-            if (!scheme || !scheme.fields || typeof scheme.fields !== 'object') return;
-            var fieldNames = Object.keys(scheme.fields);
-            var presetFields = [];
-            var customFieldRefs = [];
-            fieldNames.forEach(function (fn) {
-                if (ALL_PREDEFINED_FIELDS[fn] || fn === 'name' || fn === 'status') {
-                    presetFields.push(fn);
-                } else {
-                    customFieldRefs.push(fn);
-                }
-            });
-            if (presetFields.length === 0 && customFieldRefs.length === 0) return;
-            var templateId = 'ai_' + schemeKey.replace(/^_/, '');
-            var displayName = schemeKey === '_default' ? 'AI Default NPC' : ('AI ' + schemeKey.charAt(0).toUpperCase() + schemeKey.slice(1).replace(/_/g, ' '));
-            saveTemplate({
-                id: templateId,
-                name: displayName,
-                role: 'npc',
-                description: 'Auto-generated NPC tracking scheme',
-                source: 'ai_generated',
-                system: false,
-                presetFields: presetFields,
-                customFieldRefs: customFieldRefs,
-                tags: [schemeKey],
-                _locked: false
-            });
-        });
-    }
-
-    vault.content.state = state;
-
-    var discoveredSchemes = state.npc_schemes ? Object.keys(state.npc_schemes) : [];
-
-    globalThis.__ne_debug_template_discovery = {
-        operation: 'scheme_discovery',
-        schemes: state.npc_schemes,
-        charName: charName,
-        timestamp: Date.now()
-    };
-
-    return {
-        templateInit: true,
-        schemes: discoveredSchemes,
-        charName: charName,
-        skipSystemMessage: false
-    };
-}
-
-/**
- * Initialize character state from default templates (no World Book available).
- * @param {Object} state
- */
-function initCharactersFromDefaults(state) {
-    state.npc_schemes = state.npc_schemes || JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
-    state._character_schemes = state._character_schemes || {};
-    state.characters = state.characters || {};
-
-    if (state.protagonist_name) {
-        state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
-        ensureCharacterTemplate(state, state.protagonist_name);
-        if (state.characters[state.protagonist_name]) {
-            state.characters[state.protagonist_name]._role = 'protagonist';
-        }
-    }
-}
-
-/**
- * Restore state.characters from card-level config after skip (Gate A).
- * @param {Object} state
- * @param {Object} cardConfig
- */
-function restoreStateFromCardConfig(state, cardConfig) {
-    state.characters = state.characters || {};
-    var dialogueTemplates = cardConfig._dialogueTemplates || {};
-    // 仅确保现有 character 不被错误清空；实际填充由 per-round pipeline 处理
 }
 
 /**
@@ -824,12 +536,53 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         stateVault.content.state = state;
     }
 
-    // 首次初始化：运行 NPC 方案发现（仅一次）
+    // 首次初始化：faction_discovery + 默认兜底
     if (!(stateVault.content.state || {}).npc_schemes) {
-        var schemeResult = await resolveNpcSchemes(stateVault, chatId, messages);
-        if (schemeResult && schemeResult.templateInit && !schemeResult.skipSystemMessage) {
-            stateVault.content._templateInitSignal = schemeResult;
+        var wbContent = await collectWorldBookContent();
+        if (wbContent && wbContent.length > 0) {
+            try {
+                var wbSysBlock = buildWorldBookSystemBlock(wbContent);
+                var factionResp = await callMemoryPipeline([
+                    wbSysBlock,
+                    { role: 'system', content: 'You extract organizations and factions from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}.' },
+                    { role: 'user', content: buildFactionExtractionPrompt() }
+                ], { operation: 'faction_discovery' }, chatId);
+
+                var fp = safeJsonParse(String(factionResp || '').trim());
+                if (fp && fp.factions && typeof fp.factions === 'object') {
+                    var foundFactions = fp.factions;
+                    var factionNames = Object.keys(foundFactions);
+                    if (factionNames.length > 0) {
+                        state.factions = state.factions || {};
+                        factionNames.forEach(function(name) {
+                            var f = foundFactions[name];
+                            if (!f || typeof f !== 'object') return;
+                            state.factions[name] = {
+                                name: f.name || name,
+                                description: f.description || '',
+                                leader: f.leader || '',
+                                attitude_toward_player: f.attitude_toward_player || '\u672A\u77E5',
+                                notes: '',
+                                aliases: f.aliases || [],
+                                _hidden: true
+                            };
+                        });
+                        stateVault.content.faction_keywords = buildFactionKeywords(state.factions);
+                    }
+                }
+            } catch (e) {
+                console.warn('[NE] faction_discovery failed:', e && e.message);
+            }
         }
+
+        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
+        state._character_schemes = state._character_schemes || {};
+        if (state.protagonist_name) {
+            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
+            ensureCharacterTemplate(state, state.protagonist_name);
+        }
+        _persistCardConfig(state.protagonist_name || '', state);
+        stateVault.content.state = state;
     }
 
     if (stateVault.content.faction_keywords) {
@@ -847,16 +600,38 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     globalThis.__ne_char_fallback_needed = false;
     var statePrompt = buildStatePrompt_Preset(messages, stateVault, worldBookText, newNames, neCharFallback);
 
-    var stateResponse;
+    var stateResponseText;
     try {
         var sysMsgs = statePrompt.system.map(function(s) {
             return { role: 'system', content: s };
         });
         _checkChatIntegrity('extractStateChangesOnly:beforeLLM');
-        stateResponse = await callMemoryPipeline(
-            sysMsgs.concat([{ role: 'user', content: statePrompt.user }]),
-            { operation: 'state_extract' }, chatId
-        );
+
+        var tools = isFunctionCallingSupported() ? buildTools() : null;
+        var llmMessages = sysMsgs.concat([{ role: 'user', content: statePrompt.user }]);
+        var stateResp;
+
+        if (tools) {
+            stateResp = await callMemoryPipelineWithTools(llmMessages, { operation: 'state_extract', tools: tools }, chatId);
+        } else {
+            stateResp = { text: await callMemoryPipeline(llmMessages, { operation: 'state_extract' }, chatId), tool_calls: null };
+        }
+
+        var MAX_TOOL_ROUNDS = 3;
+        var toolRound = 0;
+        while (stateResp.tool_calls && stateResp.tool_calls.length > 0 && toolRound < MAX_TOOL_ROUNDS) {
+            toolRound++;
+            var _stateForTools = stateVault.content.state || {};
+            var toolResults = await processToolCalls(stateResp.tool_calls, _stateForTools, _stateForTools.protagonist_name || '');
+            llmMessages.push({ role: 'assistant', content: stateResp.text || null, tool_calls: stateResp.tool_calls });
+            for (var ti = 0; ti < toolResults.length; ti++) {
+                var tr = toolResults[ti];
+                llmMessages.push({ role: 'tool', tool_call_id: tr.id, content: JSON.stringify(tr.result) });
+            }
+            stateResp = await callMemoryPipelineWithTools(llmMessages, { operation: 'state_extract', tools: tools }, chatId);
+        }
+
+        stateResponseText = stateResp.text || '';
     } catch (e) {
         console.warn('[NE] Per-round state extraction failed:', e);
         return { stateVault, changed: false };
@@ -864,11 +639,11 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
     _checkChatIntegrity('extractStateChangesOnly:afterLLM');
 
-    var stateChanges = parseSTMResponse(stateResponse).stateChanges;
+    var stateChanges = parseSTMResponse(stateResponseText).stateChanges;
 
     _checkChatIntegrity('extractStateChangesOnly:afterParse');
     // 提取 world_context（含在下层 JSON block 的 state_changes 外）
-    var rawParsed = safeJsonParse(String(stateResponse || '').trim());
+    var rawParsed = safeJsonParse(String(stateResponseText || '').trim());
     if (rawParsed && rawParsed.world_context && typeof rawParsed.world_context === 'object' && rawParsed.world_context.genre) {
         var stateRef = stateVault.content.state || {};
         stateRef._world_context_cache = {
