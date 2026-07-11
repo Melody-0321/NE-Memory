@@ -1,6 +1,6 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
-import { readState, writeState, readMemory, writeMemory } from '../core/vault/store.js';
+import { readVault, write } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, closeSlidePanel, emptyStateHtml, busEmit } from './panel-shared.js';
 
 var STATE_VERSION_LIMIT_KEY = 'ne_state_version_limit';
@@ -31,8 +31,7 @@ var _chain = null;
 var _stateCursor = -1;
 var _memCursor = -1;
 
-var _origStateVault = null;
-var _origMemVault = null;
+var _origVault = null;
 
 function _versionDotClass(isHead, isCursor) {
     if (isHead) return 'ne-version-dot active';
@@ -193,12 +192,8 @@ async function _saveOrigIfAtHead(type) {
     if (!_chain) return;
     var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
     var cursor = type === 'state' ? _stateCursor : _memCursor;
-    if (cursor === headSeq) {
-        if (type === 'state' && !_origStateVault) {
-            _origStateVault = await readState(_chatId);
-        } else if (type === 'memory' && !_origMemVault) {
-            _origMemVault = await readMemory(_chatId);
-        }
+    if (cursor === headSeq && !_origVault) {
+        _origVault = await readVault(_chatId);
     }
 }
 
@@ -207,35 +202,21 @@ async function _navigateToVersion(targetSeq, type, container) {
     var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
 
     try {
-        if (targetSeq === headSeq && (type === 'state' ? _origStateVault : _origMemVault)) {
-            if (type === 'state') {
-                await writeState(_chatId, _origStateVault);
-                _origStateVault = null;
-            } else {
-                await writeMemory(_chatId, _origMemVault);
-                _origMemVault = null;
-            }
+        if (targetSeq === headSeq && _origVault) {
+            await write(_chatId, _origVault);
+            _origVault = null;
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
+            var vault = await readVault(_chatId);
             if (type === 'state') {
-                var beforeVault = await readState(_chatId);
-                var foldedState = await foldState(_chatId, targetSeq);
-                var beforeKeys = beforeVault && beforeVault.content && beforeVault.content.state
-                    ? Object.keys(beforeVault.content.state) : [];
-                var afterKeys = Object.keys(foldedState || {});
-                console.log('[NE-SU8] foldState result: beforeK=' + beforeKeys.length + ' afterK=' + afterKeys.length + ' same=' + (JSON.stringify(beforeVault && beforeVault.content && beforeVault.content.state) === JSON.stringify(foldedState)));
-                beforeVault.content.state = foldedState;
-                await writeState(_chatId, beforeVault);
-                var verify = await readState(_chatId);
-                console.log('[NE-SU8] verify write: state keys=' + (verify && verify.content && verify.content.state ? Object.keys(verify.content.state).length : 0) + ' same=' + (verify && verify.content && verify.content.state && beforeVault.content && beforeVault.content.state ? JSON.stringify(verify.content.state) === JSON.stringify(beforeVault.content.state) : false));
+                vault.content.state = await foldState(_chatId, targetSeq);
             } else {
                 var foldedMem = await foldMemory(_chatId, targetSeq);
-                var currentVault = await readMemory(_chatId);
-                currentVault.content.stm_entries = foldedMem.stm_entries;
-                currentVault.content.unconsolidated_stm = foldedMem.unconsolidated_stm;
-                currentVault.content.ltm_entries = foldedMem.ltm_entries;
-                await writeMemory(_chatId, currentVault);
+                vault.content.stm_entries = foldedMem.stm_entries;
+                vault.content.unconsolidated_stm = foldedMem.unconsolidated_stm;
+                vault.content.ltm_entries = foldedMem.ltm_entries;
             }
+            await write(_chatId, vault);
         }
     } catch (e) {
         console.error('[NE] _navigateToVersion failed:', e);
