@@ -218,10 +218,16 @@ async function _navigateToVersion(targetSeq, type, container) {
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
             if (type === 'state') {
+                var beforeVault = await readState(_chatId);
                 var foldedState = await foldState(_chatId, targetSeq);
-                var currentVault = await readState(_chatId);
-                currentVault.content.state = foldedState;
-                await writeState(_chatId, currentVault);
+                var beforeKeys = beforeVault && beforeVault.content && beforeVault.content.state
+                    ? Object.keys(beforeVault.content.state) : [];
+                var afterKeys = Object.keys(foldedState || {});
+                console.log('[NE-SU8] foldState result: beforeK=' + beforeKeys.length + ' afterK=' + afterKeys.length + ' same=' + (JSON.stringify(beforeVault && beforeVault.content && beforeVault.content.state) === JSON.stringify(foldedState)));
+                beforeVault.content.state = foldedState;
+                await writeState(_chatId, beforeVault);
+                var verify = await readState(_chatId);
+                console.log('[NE-SU8] verify write: state keys=' + (verify && verify.content && verify.content.state ? Object.keys(verify.content.state).length : 0) + ' same=' + (verify && verify.content && verify.content.state && beforeVault.content && beforeVault.content.state ? JSON.stringify(verify.content.state) === JSON.stringify(beforeVault.content.state) : false));
             } else {
                 var foldedMem = await foldMemory(_chatId, targetSeq);
                 var currentVault = await readMemory(_chatId);
