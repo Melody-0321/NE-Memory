@@ -568,6 +568,32 @@ export function mergeStateChanges(state, validatedChanges) {
         }
     });
 
+    var knownChars = {};
+    if (newState && newState.characters) {
+        Object.keys(newState.characters).forEach(function (n) { knownChars[n] = true; });
+    }
+    Object.keys(flattened).forEach(function (p) {
+        var pp = p.split('.');
+        if (pp[0] === 'characters' && pp[1] && pp[1] !== '*') {
+            knownChars[pp[1]] = true;
+        }
+    });
+    var normalizedFlattened = {};
+    Object.keys(flattened).forEach(function (path) {
+        var parts = path.split('.');
+        var newPath = path;
+        if (parts.length === 2 && knownChars[parts[1]]) {
+            newPath = 'characters.' + parts[1] + '.' + parts[0];
+        } else if (parts.length === 2 && knownChars[parts[0]] && parts[0] !== 'characters') {
+            newPath = 'characters.' + parts[0] + '.' + parts[1];
+        }
+        if (newPath !== path) {
+            console.warn('[NE] Normalized legacy path:', path, '\u2192', newPath);
+        }
+        normalizedFlattened[newPath] = flattened[path];
+    });
+    flattened = normalizedFlattened;
+
     var hasChanges = false;
     Object.keys(flattened).forEach(function (path) {
         var parts = path.split('.');

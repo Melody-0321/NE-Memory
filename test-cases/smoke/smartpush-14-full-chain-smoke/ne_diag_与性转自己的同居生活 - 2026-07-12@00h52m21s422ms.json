@@ -1,0 +1,1100 @@
+{
+  "chatId": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+  "exported_at": "2026-07-11T17:20:43.432Z",
+  "vault": {
+    "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+    "version": 9,
+    "tokens": 0,
+    "updated_at": "2026-07-11T17:20:43.430Z",
+    "_meta": {
+      "created_at": "2026-07-11T16:53:10.279Z",
+      "last_pipeline_task": "stm_extract",
+      "last_pipeline_time": "2026-07-11T17:01:00.154Z",
+      "last_state_task": "per_round",
+      "last_state_time": "2026-07-11T16:53:48.654Z"
+    },
+    "content": {
+      "state": {
+        "characters": {
+          "江岚": {
+            "gender_age": "男, 大学二年级, 约19-20岁",
+            "physique": "肩部宽于骨盆, 体脂率低, 腹直肌轮廓可见",
+            "occupation": "大学二年级学生 / 网络小说作者",
+            "personality": "沉静、内敛、自律, 说话简洁有主见",
+            "clothing_build": "",
+            "injuries": "",
+            "status_effects": "",
+            "past_experience": "与安然为异性同位体, 世界线融合后共同生活, 现合租公寓",
+            "inventory": "",
+            "name": "江岚",
+            "status": "活跃",
+            "_role": "protagonist",
+            "current_mood": "意外。他没想到自己会主动提起这件事，更没想到安然会问那三个人的名字",
+            "inner_thoughts": "她问名字干什么？都过去这么多年了，难不成还想去找人算账。不过提起卡大纲的事，她倒是一针见血。我自己稿子卡哪了——其实也没那么复杂，就是主角面临的那个选择，和我自己经历过的事太像，写不下去。"
+          },
+          "安然": {
+            "status": "活跃",
+            "current_mood": "被江岚提起的陈年往事触动，想问清楚但又不想显得太在意，于是用稿子的事转移话题",
+            "relationship": "",
+            "gender_age": "女, 大学二年级, 约19-20岁",
+            "physique": "身高约170cm, 黑色短发, 假小子风格, 有腹肌线条",
+            "occupation": "大学二年级学生 / 网络小说作者",
+            "clothing_build": "",
+            "personality": "外在帅气直率, 独立自主, 略带挑衅与幽默",
+            "past_experience": "与江岚为异性同位体, 世界线融合后共同生活, 现合租公寓",
+            "inner_thoughts": "他在那栋楼下被揍的时候我在哪？哦，那时候我还没搬过来。不对，就算搬过来了，我也不会管——那时候我们又不认识。但现在我想管了。那些人是哪个班的？妈的，过了这么多年，问了也白问。还是说稿子吧，问他大纲卡哪了，他总愿意答的。",
+            "affection": null,
+            "injuries": "",
+            "status_effects": "",
+            "inventory": "",
+            "name": "安然",
+            "_scheme": "default",
+            "_role": "npc"
+          }
+        },
+        "npc_schemes": {
+          "default": {
+            "description": "Catch-all scheme for NPCs without specific tracking needs",
+            "required": [
+              "status",
+              "current_mood",
+              "relationship"
+            ],
+            "optional": [
+              "gender_age",
+              "physique",
+              "occupation",
+              "clothing_build",
+              "personality",
+              "past_experience",
+              "inner_thoughts",
+              "affection",
+              "injuries",
+              "status_effects",
+              "inventory"
+            ]
+          },
+          "friend": {
+            "description": "Scheme for close friends and recurring NPCs",
+            "required": [
+              "status",
+              "current_mood",
+              "relationship",
+              "affection"
+            ],
+            "optional": [
+              "gender_age",
+              "physique",
+              "occupation",
+              "clothing_build",
+              "personality",
+              "past_experience",
+              "inner_thoughts",
+              "injuries",
+              "status_effects",
+              "inventory"
+            ]
+          },
+          "romantic_interest": {
+            "description": "Scheme for potential romantic partners or love interests",
+            "required": [
+              "status",
+              "current_mood",
+              "affection",
+              "inner_thoughts",
+              "relationship"
+            ],
+            "optional": [
+              "gender_age",
+              "physique",
+              "occupation",
+              "clothing_build",
+              "personality",
+              "past_experience",
+              "injuries",
+              "status_effects",
+              "inventory"
+            ]
+          }
+        },
+        "protagonist_name": "江岚",
+        "_character_schemes": {
+          "江岚": {
+            "_role": "protagonist",
+            "_scheme": null
+          },
+          "安然": {
+            "_role": "npc",
+            "_scheme": null
+          },
+          "林晚星": {
+            "_role": "npc",
+            "_scheme": "romantic_interest"
+          },
+          "夏小满": {
+            "_role": "npc",
+            "_scheme": "friend"
+          },
+          "陈浩": {
+            "_role": "npc",
+            "_scheme": "friend"
+          }
+        },
+        "main_event": "江岚对安然提出同居约法三章",
+        "present_characters": "江岚, 安然"
+      },
+      "story_time": "2024-05-21 21:32",
+      "story_scene": "未知",
+      "story_date": "2024-05-21",
+      "state_schema": {
+        "type": "object",
+        "fields": {
+          "main_event": {
+            "type": "string",
+            "max_length": 120
+          },
+          "present_characters": {
+            "type": "string",
+            "max_length": 80
+          },
+          "characters": {
+            "type": "object",
+            "schema": {
+              "type": "object",
+              "fields": {
+                "*": {
+                  "fields": {
+                    "gender_age": {
+                      "type": "string",
+                      "max_length": 20,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "physique": {
+                      "type": "string",
+                      "max_length": 60,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "occupation": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "personality": {
+                      "type": "string",
+                      "max_length": 80,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "clothing_build": {
+                      "type": "string",
+                      "max_length": 60,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "inner_thoughts": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "psychology"
+                    },
+                    "relationship": {
+                      "type": "string",
+                      "max_length": 50,
+                      "required": false,
+                      "category": "social"
+                    },
+                    "current_mood": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": false,
+                      "category": "psychology"
+                    },
+                    "past_experience": {
+                      "type": "string",
+                      "max_length": 200,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "injuries": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "battle"
+                    },
+                    "status_effects": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "battle"
+                    },
+                    "inventory": {
+                      "type": "object",
+                      "required": false,
+                      "category": "inventory",
+                      "item_schema": {
+                        "name": {
+                          "type": "string",
+                          "max_length": 60,
+                          "description": "物品名称"
+                        },
+                        "description": {
+                          "type": "string",
+                          "max_length": 200,
+                          "description": "外观/来源/背景"
+                        },
+                        "rarity": {
+                          "type": "string",
+                          "max_length": 20,
+                          "description": "稀有度/品质/品阶"
+                        },
+                        "properties": {
+                          "type": "string",
+                          "max_length": 200,
+                          "description": "特殊属性/词条/附魔效果"
+                        }
+                      }
+                    },
+                    "name": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": true,
+                      "_system": true
+                    },
+                    "status": {
+                      "type": "enum",
+                      "values": [
+                        "活跃",
+                        "非活跃",
+                        "已死亡",
+                        "已归隐",
+                        "已离去"
+                      ],
+                      "required": true,
+                      "_system": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "factions": {
+            "type": "object",
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "fields": {
+                "*": {
+                  "type": "object",
+                  "fields": {
+                    "name": {
+                      "type": "string",
+                      "max_length": 20
+                    },
+                    "description": {
+                      "type": "string",
+                      "max_length": 80
+                    },
+                    "leader": {
+                      "type": "string",
+                      "max_length": 30
+                    },
+                    "attitude_toward_player": {
+                      "type": "enum",
+                      "values": [
+                        "友好",
+                        "中立",
+                        "冷淡",
+                        "敌对"
+                      ]
+                    },
+                    "relations": {
+                      "type": "object"
+                    },
+                    "notes": {
+                      "type": "string",
+                      "max_length": 200
+                    },
+                    "_hidden": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "quests": {
+            "type": "object",
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "fields": {
+                "tasks": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "deadline": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "正在进行",
+                              "已完成",
+                              "已失败",
+                              "已过期"
+                            ]
+                          },
+                          "type": {
+                            "type": "enum",
+                            "values": [
+                              "主线",
+                              "支线",
+                              "事件"
+                            ]
+                          },
+                          "issuer": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 200
+                          },
+                          "progress": {
+                            "type": "string",
+                            "max_length": 60
+                          },
+                          "posted_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "reward": {
+                            "type": "string",
+                            "max_length": 100
+                          },
+                          "penalty": {
+                            "type": "string",
+                            "max_length": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "goals": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "进行中",
+                              "已达成",
+                              "已放弃"
+                            ]
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 200
+                          },
+                          "progress": {
+                            "type": "string",
+                            "max_length": 60
+                          },
+                          "posted_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "completed_time": {
+                            "type": "string",
+                            "max_length": 30
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "events": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "持续中",
+                              "已平息",
+                              "已结束"
+                            ]
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 300
+                          },
+                          "started_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "ended_time": {
+                            "type": "string",
+                            "max_length": 30
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "state_css": "",
+      "character_schema": null,
+      "_active_characters": [
+        "江岚",
+        "安然"
+      ],
+      "faction_keywords": {},
+      "unconsolidated_stm": [
+        {
+          "event": "江岚告诉安然打他的人已毕业，并解释大纲卡住的技术问题：主角选择困境与关系网漏洞。安然指出他遗忘的支线，建议明确主角恐惧，并问他是否觉得憋屈。",
+          "period": "2024-05-21 21:32",
+          "scene": "侧卧门口",
+          "msg_ids": [
+            "11_2026-07-11T17:00:26.798Z_user",
+            "12_2026-07-11T17:00:28.489Z_assistant"
+          ],
+          "absMsgStart": 11,
+          "absMsgEnd": 12,
+          "msgRange": [
+            11,
+            12
+          ],
+          "status": "closed",
+          "entities": [
+            "江岚",
+            "安然"
+          ],
+          "_inner_thoughts": {
+            "江岚": [
+              "她说得没错，老太妃那条线我确实忘了。她居然记得比我清楚——也对，她就是我。这种被看穿的感觉，换做别人会觉得不爽，但被她看穿好像没什么，反正骂也是骂在点子上。只是她问我是不是憋屈……这个问题不太好答。"
+            ],
+            "安然": [
+              "他那大纲的问题我一针见血，但我问的是别的事。他被揍这件事憋了这么多年，今天突然提起来，不是偶然。我问是不是觉得憋屈，他最好别又用'没什么'糊弄过去。"
+            ]
+          },
+          "id": "stm_7"
+        }
+      ],
+      "stm_entries": [
+        {
+          "event": "江岚下班回到公寓，发现正在换衣服的短发女孩安然，误以为对方是入侵者。两人争执后，发现彼此拥有完全相同的租房合同和身份证，推测是平行世界融合导致性转版本的自己出现。经过比对，二人生活细节几乎一致，最终接受现实。夜晚，江岚与安然在阳台抽烟，安然提议二人只能同居。",
+          "period": "2024-05-21 21:32",
+          "scene": "阳台",
+          "msg_ids": [
+            "0_2026-07-11T16:52:21.430Z_assistant"
+          ],
+          "absMsgStart": 0,
+          "absMsgEnd": 0,
+          "msgRange": [
+            0,
+            0
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_1",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚向安然提出同居约法三章，安然同意并补充冰箱物品归属规则。",
+          "period": "2024-05-21 21:32",
+          "scene": "阳台",
+          "msg_ids": [
+            "1_2026-07-11T16:52:50.777Z_user",
+            "2_2026-07-11T16:52:52.161Z_assistant"
+          ],
+          "absMsgStart": 1,
+          "absMsgEnd": 2,
+          "msgRange": [
+            1,
+            2
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_2",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚给水瓶写下岚字并与安然就键盘轴体达成一致，回房后安然在客厅默默认可了新室友。",
+          "period": "2024-05-21 21:32",
+          "scene": "客厅",
+          "msg_ids": [
+            "3_2026-07-11T16:55:20.760Z_user",
+            "4_2026-07-11T16:55:22.177Z_assistant"
+          ],
+          "absMsgStart": 3,
+          "absMsgEnd": 4,
+          "msgRange": [
+            3,
+            4
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_3",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚洗完澡后，发现安然已在客厅沙发上睡着，便帮她盖好毯子并收起打火机，随后返回自己房间。",
+          "period": "2024-05-21 21:55",
+          "scene": "客厅",
+          "msg_ids": [
+            "5_2026-07-11T16:55:59.795Z_user",
+            "6_2026-07-11T16:56:01.160Z_assistant"
+          ],
+          "absMsgStart": 5,
+          "absMsgEnd": 6,
+          "msgRange": [
+            5,
+            6
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_4",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚因大纲卡壳去客厅倒水，发觉安然醒着。安然正为读者指责其伏笔抄袭而气恼。她向江岚索要老家老楼的照片，江岚找出一张初中时拍的照片，安然凝视照片上自己曾养的仙人掌，心生感慨。",
+          "period": "2024-05-21 22:30",
+          "scene": "客厅",
+          "msg_ids": [
+            "7_2026-07-11T16:56:34.769Z_user",
+            "8_2026-07-11T16:56:36.196Z_assistant"
+          ],
+          "absMsgStart": 7,
+          "absMsgEnd": 8,
+          "msgRange": [
+            7,
+            8
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_5",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚向安然坦白照片拍摄当天被三个高年级学生揍的经历，因近视未戴眼镜。安然追问揍人者身份，并调侃江岚自己的大纲写不出却指导她修改。",
+          "period": "2024-05-21 21:32",
+          "scene": "客厅",
+          "msg_ids": [
+            "9_2026-07-11T16:57:19.761Z_user",
+            "10_2026-07-11T16:57:21.184Z_assistant"
+          ],
+          "absMsgStart": 9,
+          "absMsgEnd": 10,
+          "msgRange": [
+            9,
+            10
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_6",
+          "parent_ltm": "ltm_1"
+        }
+      ],
+      "ltm_entries": [
+        {
+          "id": "ltm_1",
+          "status": "open",
+          "stm_refs": [
+            "stm_1",
+            "stm_2",
+            "stm_3",
+            "stm_4",
+            "stm_5",
+            "stm_6"
+          ],
+          "title": "",
+          "event": "",
+          "period": "",
+          "entities": [],
+          "timestamp": 1783789130449,
+          "time_range": "2024-05-21 21:32"
+        }
+      ],
+      "cursor_state": {
+        "stm": {
+          "position": 0,
+          "pending_partials": [],
+          "completedTurns": 0
+        },
+        "ltm": {
+          "position": 0,
+          "pending_partials": []
+        }
+      },
+      "segment_counter": 0,
+      "consolidate_threshold": 5,
+      "language": "zh",
+      "memory_config": {},
+      "summary": "",
+      "current_scene": "",
+      "character_states": {},
+      "relationships": []
+    },
+    "stm_index": {
+      "stm_1": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚下班回到公寓，发现正在换衣服的短发女孩安然，误以为对方是入侵者。两人争执后，发现彼此拥有完全相同的租房合同和身份证，推测是平行世界融合导致性转版本的自己出现。经过比对，二人生活细节几乎一致，最终接",
+        "msg_ids": [
+          "0_2026-07-11T16:52:21.430Z_assistant"
+        ]
+      },
+      "stm_2": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚向安然提出同居约法三章，安然同意并补充冰箱物品归属规则。",
+        "msg_ids": [
+          "1_2026-07-11T16:52:50.777Z_user",
+          "2_2026-07-11T16:52:52.161Z_assistant"
+        ]
+      },
+      "stm_3": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚给水瓶写下岚字并与安然就键盘轴体达成一致，回房后安然在客厅默默认可了新室友。",
+        "msg_ids": [
+          "3_2026-07-11T16:55:20.760Z_user",
+          "4_2026-07-11T16:55:22.177Z_assistant"
+        ]
+      },
+      "stm_4": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚洗完澡后，发现安然已在客厅沙发上睡着，便帮她盖好毯子并收起打火机，随后返回自己房间。",
+        "msg_ids": [
+          "5_2026-07-11T16:55:59.795Z_user",
+          "6_2026-07-11T16:56:01.160Z_assistant"
+        ]
+      },
+      "stm_5": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚因大纲卡壳去客厅倒水，发觉安然醒着。安然正为读者指责其伏笔抄袭而气恼。她向江岚索要老家老楼的照片，江岚找出一张初中时拍的照片，安然凝视照片上自己曾养的仙人掌，心生感慨。",
+        "msg_ids": [
+          "7_2026-07-11T16:56:34.769Z_user",
+          "8_2026-07-11T16:56:36.196Z_assistant"
+        ]
+      },
+      "stm_6": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚向安然坦白照片拍摄当天被三个高年级学生揍的经历，因近视未戴眼镜。安然追问揍人者身份，并调侃江岚自己的大纲写不出却指导她修改。",
+        "msg_ids": [
+          "9_2026-07-11T16:57:19.761Z_user",
+          "10_2026-07-11T16:57:21.184Z_assistant"
+        ]
+      },
+      "stm_7": {
+        "ltm_id": null,
+        "summary": "江岚告诉安然打他的人已毕业，并解释大纲卡住的技术问题：主角选择困境与关系网漏洞。安然指出他遗忘的支线，建议明确主角恐惧，并问他是否觉得憋屈。",
+        "msg_ids": [
+          "11_2026-07-11T17:00:26.798Z_user",
+          "12_2026-07-11T17:00:28.489Z_assistant"
+        ]
+      }
+    },
+    "link_index": {},
+    "memory_system_prompt": ""
+  },
+  "versionChain": {
+    "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+    "state_head_seq": 1,
+    "state_base_seq": 0,
+    "state_active": [
+      0,
+      1
+    ],
+    "mem_head_seq": 3,
+    "mem_base_seq": 0,
+    "mem_active": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  "stateDeltas": [
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_1",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 1,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T16:53:48.660Z",
+      "source": "ai_update",
+      "summary": "gender_age：→男, 大学二年级, 约19-2，physique：→肩部宽于骨盆, 体脂率低, 腹，occupation：→大学二年级学生 / 网络小说作，personality：→沉静、内敛、自律, 说话简洁有，past_experience：→与安然为异性同位体, 世界线融，...等12项",
+      "changes": [
+        {
+          "path": "characters.江岚.gender_age",
+          "old": "",
+          "new": "男, 大学二年级, 约19-20岁"
+        },
+        {
+          "path": "characters.江岚.physique",
+          "old": "",
+          "new": "肩部宽于骨盆, 体脂率低, 腹直肌轮廓可见"
+        },
+        {
+          "path": "characters.江岚.occupation",
+          "old": "",
+          "new": "大学二年级学生 / 网络小说作者"
+        },
+        {
+          "path": "characters.江岚.personality",
+          "old": "",
+          "new": "沉静、内敛、自律, 说话简洁有主见"
+        },
+        {
+          "path": "characters.江岚.past_experience",
+          "old": "",
+          "new": "与安然为异性同位体, 世界线融合后共同生活, 现合租公寓"
+        },
+        {
+          "path": "characters.安然.gender_age",
+          "old": "",
+          "new": "女, 大学二年级, 约19-20岁"
+        },
+        {
+          "path": "characters.安然.physique",
+          "old": "",
+          "new": "身高约170cm, 黑色短发, 假小子风格, 有腹肌线条"
+        },
+        {
+          "path": "characters.安然.occupation",
+          "old": "",
+          "new": "大学二年级学生 / 网络小说作者"
+        },
+        {
+          "path": "characters.安然.personality",
+          "old": "",
+          "new": "外在帅气直率, 独立自主, 略带挑衅与幽默"
+        },
+        {
+          "path": "characters.安然.past_experience",
+          "old": "",
+          "new": "与江岚为异性同位体, 世界线融合后共同生活, 现合租公寓"
+        },
+        {
+          "path": "characters.安然.current_mood",
+          "old": "",
+          "new": "轻松愉快, 略带挑衅"
+        },
+        {
+          "path": "characters.安然.inner_thoughts",
+          "old": "",
+          "new": "这家伙倒是挺有条理，不过可不能让他太得意，得让他知道谁才是这里真正的主人。"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_0",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 0,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T16:53:10.307Z",
+      "source": "init",
+      "summary": "初始迁移",
+      "changes": [],
+      "message_dates": [],
+      "derived_from_stm_version": null,
+      "folded_state": {
+        "characters": {}
+      }
+    }
+  ],
+  "memoryVersions": [
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_3",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 3,
+      "prev_seq": 2,
+      "timestamp": "2026-07-11T17:01:00.164Z",
+      "type": "stm_batch",
+      "summary": "STM batch: 1条新记忆",
+      "delta": {
+        "stm_added": [
+          {
+            "event": "江岚告诉安然打他的人已毕业，并解释大纲卡住的技术问题：主角选择困境与关系网漏洞。安然指出他遗忘的支线，建议明确主角恐惧，并问他是否觉得憋屈。",
+            "period": "2024-05-21 21:32",
+            "scene": "侧卧门口",
+            "msg_ids": [
+              "11_2026-07-11T17:00:26.798Z_user",
+              "12_2026-07-11T17:00:28.489Z_assistant"
+            ],
+            "absMsgStart": 11,
+            "absMsgEnd": 12,
+            "msgRange": [
+              11,
+              12
+            ],
+            "status": "closed",
+            "entities": [
+              "江岚",
+              "安然"
+            ],
+            "_inner_thoughts": {
+              "江岚": [
+                "她说得没错，老太妃那条线我确实忘了。她居然记得比我清楚——也对，她就是我。这种被看穿的感觉，换做别人会觉得不爽，但被她看穿好像没什么，反正骂也是骂在点子上。只是她问我是不是憋屈……这个问题不太好答。"
+              ],
+              "安然": [
+                "他那大纲的问题我一针见血，但我问的是别的事。他被揍这件事憋了这么多年，今天突然提起来，不是偶然。我问是不是觉得憋屈，他最好别又用'没什么'糊弄过去。"
+              ]
+            },
+            "id": "stm_7"
+          }
+        ],
+        "stm_removed": [],
+        "stm_moved": [],
+        "ltm_added": [],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [
+        "11_2026-07-11T17:00:26.798Z_user",
+        "12_2026-07-11T17:00:28.489Z_assistant"
+      ],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_2",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 2,
+      "prev_seq": 1,
+      "timestamp": "2026-07-11T16:58:50.455Z",
+      "type": "ltm_consolidation",
+      "summary": "LTM 巩固: 1个新arc 6条STM已巩固",
+      "delta": {
+        "stm_added": [],
+        "stm_removed": [],
+        "stm_moved": [
+          "stm_1",
+          "stm_2",
+          "stm_3",
+          "stm_4",
+          "stm_5",
+          "stm_6"
+        ],
+        "ltm_added": [
+          {
+            "id": "ltm_1",
+            "status": "open",
+            "stm_refs": [
+              "stm_1",
+              "stm_2",
+              "stm_3",
+              "stm_4",
+              "stm_5",
+              "stm_6"
+            ],
+            "title": "",
+            "event": "",
+            "period": "",
+            "entities": [],
+            "timestamp": 1783789130449,
+            "time_range": "2024-05-21 21:32"
+          }
+        ],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [],
+      "derived_from_stm_version": 1
+    },
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_1",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 1,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T16:58:29.295Z",
+      "type": "stm_batch",
+      "summary": "STM batch: 6条新记忆",
+      "delta": {
+        "stm_added": [
+          {
+            "event": "江岚下班回到公寓，发现正在换衣服的短发女孩安然，误以为对方是入侵者。两人争执后，发现彼此拥有完全相同的租房合同和身份证，推测是平行世界融合导致性转版本的自己出现。经过比对，二人生活细节几乎一致，最终接受现实。夜晚，江岚与安然在阳台抽烟，安然提议二人只能同居。",
+            "period": "2024-05-21 21:32",
+            "scene": "阳台",
+            "msg_ids": [
+              "0_2026-07-11T16:52:21.430Z_assistant"
+            ],
+            "absMsgStart": 0,
+            "absMsgEnd": 0,
+            "msgRange": [
+              0,
+              0
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_1"
+          },
+          {
+            "event": "江岚向安然提出同居约法三章，安然同意并补充冰箱物品归属规则。",
+            "period": "2024-05-21 21:32",
+            "scene": "阳台",
+            "msg_ids": [
+              "1_2026-07-11T16:52:50.777Z_user",
+              "2_2026-07-11T16:52:52.161Z_assistant"
+            ],
+            "absMsgStart": 1,
+            "absMsgEnd": 2,
+            "msgRange": [
+              1,
+              2
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_2"
+          },
+          {
+            "event": "江岚给水瓶写下岚字并与安然就键盘轴体达成一致，回房后安然在客厅默默认可了新室友。",
+            "period": "2024-05-21 21:32",
+            "scene": "客厅",
+            "msg_ids": [
+              "3_2026-07-11T16:55:20.760Z_user",
+              "4_2026-07-11T16:55:22.177Z_assistant"
+            ],
+            "absMsgStart": 3,
+            "absMsgEnd": 4,
+            "msgRange": [
+              3,
+              4
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_3"
+          },
+          {
+            "event": "江岚洗完澡后，发现安然已在客厅沙发上睡着，便帮她盖好毯子并收起打火机，随后返回自己房间。",
+            "period": "2024-05-21 21:55",
+            "scene": "客厅",
+            "msg_ids": [
+              "5_2026-07-11T16:55:59.795Z_user",
+              "6_2026-07-11T16:56:01.160Z_assistant"
+            ],
+            "absMsgStart": 5,
+            "absMsgEnd": 6,
+            "msgRange": [
+              5,
+              6
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_4"
+          },
+          {
+            "event": "江岚因大纲卡壳去客厅倒水，发觉安然醒着。安然正为读者指责其伏笔抄袭而气恼。她向江岚索要老家老楼的照片，江岚找出一张初中时拍的照片，安然凝视照片上自己曾养的仙人掌，心生感慨。",
+            "period": "2024-05-21 22:30",
+            "scene": "客厅",
+            "msg_ids": [
+              "7_2026-07-11T16:56:34.769Z_user",
+              "8_2026-07-11T16:56:36.196Z_assistant"
+            ],
+            "absMsgStart": 7,
+            "absMsgEnd": 8,
+            "msgRange": [
+              7,
+              8
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_5"
+          },
+          {
+            "event": "江岚向安然坦白照片拍摄当天被三个高年级学生揍的经历，因近视未戴眼镜。安然追问揍人者身份，并调侃江岚自己的大纲写不出却指导她修改。",
+            "period": "2024-05-21 21:32",
+            "scene": "客厅",
+            "msg_ids": [
+              "9_2026-07-11T16:57:19.761Z_user",
+              "10_2026-07-11T16:57:21.184Z_assistant"
+            ],
+            "absMsgStart": 9,
+            "absMsgEnd": 10,
+            "msgRange": [
+              9,
+              10
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_6"
+          }
+        ],
+        "stm_removed": [],
+        "stm_moved": [],
+        "ltm_added": [],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [
+        "0_2026-07-11T16:52:21.430Z_assistant",
+        "1_2026-07-11T16:52:50.777Z_user",
+        "2_2026-07-11T16:52:52.161Z_assistant",
+        "3_2026-07-11T16:55:20.760Z_user",
+        "4_2026-07-11T16:55:22.177Z_assistant",
+        "5_2026-07-11T16:55:59.795Z_user",
+        "6_2026-07-11T16:56:01.160Z_assistant",
+        "7_2026-07-11T16:56:34.769Z_user",
+        "8_2026-07-11T16:56:36.196Z_assistant",
+        "9_2026-07-11T16:57:19.761Z_user",
+        "10_2026-07-11T16:57:21.184Z_assistant"
+      ],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@00h52m21s422ms_0",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@00h52m21s422ms",
+      "seq": 0,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T16:57:46.597Z",
+      "type": "init",
+      "summary": "初始迁移",
+      "delta": {
+        "stm_added": [],
+        "stm_removed": [],
+        "stm_moved": [],
+        "ltm_added": [],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [],
+      "derived_from_stm_version": null,
+      "folded_stm_entries": [],
+      "folded_unconsolidated_stm": [],
+      "folded_ltm_entries": []
+    }
+  ]
+}

@@ -473,6 +473,12 @@ function saveCardFields(cardDiv) {
             message_dates: []
         }).catch(function(err) { console.error('[NE] recordStateDelta (manual edit) failed for ' + chatId, err); });
     }
+
+    cardDiv.classList.remove('ne-card-editing');
+    var form = cardDiv.querySelector('.ne-card-edit-form');
+    if (form) form.remove();
+    var btnBar = cardDiv.querySelector('.ne-card-edit-btns');
+    if (btnBar) btnBar.remove();
 }
 
 var _schemeEditStates = {};  // per-character scheme editor state

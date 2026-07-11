@@ -1,0 +1,1139 @@
+{
+  "chatId": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+  "exported_at": "2026-07-11T18:38:37.295Z",
+  "vault": {
+    "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+    "version": 8,
+    "tokens": 0,
+    "updated_at": "2026-07-11T18:38:37.293Z",
+    "_meta": {
+      "created_at": "2026-07-11T18:19:15.852Z",
+      "last_pipeline_task": "stm_extract",
+      "last_pipeline_time": "2026-07-11T18:23:05.610Z",
+      "last_state_task": "per_round",
+      "last_state_time": "2026-07-11T18:22:46.219Z"
+    },
+    "content": {
+      "state": {
+        "characters": {
+          "江岚": {
+            "gender_age": "男,20岁",
+            "physique": "肩宽腰窄,体脂率低,腹肌可见,黑色短发",
+            "occupation": "大学二年级学生/网络小说作者",
+            "personality": "话少,吐槽平淡,喜欢逗弄安然,表面冷淡实则在意",
+            "past_experience": "父母异地抚养,每月视频通话,与安然作为同位体同居生活",
+            "name": "江"
+          },
+          "安然": {
+            "gender_age": "女,20岁",
+            "physique": "身高约170cm,假小子风格,黑色短发,健美体型,腹肌线条可见",
+            "occupation": "大学二年级学生/网络小说作者",
+            "personality": "直率毒舌,假小子风,自信独立,生气时语速快,爱吐槽",
+            "past_experience": "与江岚为异性同位体,在同一家庭长大,现同居生活,稿费收入独立"
+          }
+        },
+        "current_mood": {
+          "安然": "愤怒不服,觉得江岚在耍赖",
+          "江岚": "轻松调侃,享受逗弄她的感觉"
+        },
+        "inner_thoughts": {
+          "安然": "这家伙居然想占我便宜！稿费是我辛辛苦苦写的,绝对不给他！",
+          "江岚": "看她炸毛的样子挺有意思的,反正最后还是得听我的。"
+        },
+        "status": {
+          "江岚": "活跃",
+          "安然": "活跃"
+        },
+        "relationship": {
+          "江岚-安然": "同居室友,异性同位体,平时拌嘴但默契十足"
+        },
+        "江岚": {
+          "current_mood": "放松，略带无奈",
+          "inner_thoughts": "今天的怪事：多了个室友。女的。长得像我妈年轻时照片上那样。性格比我还讨厌。但好像……也还行。",
+          "relationship": "与安然为异性同位体室友，开始享受与她斗嘴的日常",
+          "affection": 30
+        },
+        "安然": {
+          "current_mood": "有点不自在但心里感动，嘴硬但认可关心",
+          "inner_thoughts": "他竟然还记得热水器的事，上次我忘毛巾他也记得。虽然嘴上说两清，但明天帮他带豆浆也算还了人情。其实他这样……还挺好的。",
+          "relationship": "江岚：室友/同位体，好感增加",
+          "affection": 65
+        }
+      },
+      "story_time": "21:47",
+      "story_scene": "未知",
+      "story_date": "Day 1",
+      "state_schema": {
+        "type": "object",
+        "fields": {
+          "main_event": {
+            "type": "string",
+            "max_length": 120
+          },
+          "present_characters": {
+            "type": "string",
+            "max_length": 80
+          },
+          "characters": {
+            "type": "object",
+            "schema": {
+              "type": "object",
+              "fields": {
+                "*": {
+                  "fields": {
+                    "gender_age": {
+                      "type": "string",
+                      "max_length": 20,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "physique": {
+                      "type": "string",
+                      "max_length": 60,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "occupation": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "personality": {
+                      "type": "string",
+                      "max_length": 80,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "clothing_build": {
+                      "type": "string",
+                      "max_length": 60,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "inner_thoughts": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "psychology"
+                    },
+                    "relationship": {
+                      "type": "string",
+                      "max_length": 50,
+                      "required": false,
+                      "category": "social"
+                    },
+                    "current_mood": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": false,
+                      "category": "psychology"
+                    },
+                    "past_experience": {
+                      "type": "string",
+                      "max_length": 200,
+                      "required": false,
+                      "category": "identity"
+                    },
+                    "injuries": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "battle"
+                    },
+                    "status_effects": {
+                      "type": "string",
+                      "max_length": 120,
+                      "required": false,
+                      "category": "battle"
+                    },
+                    "inventory": {
+                      "type": "object",
+                      "required": false,
+                      "category": "inventory",
+                      "item_schema": {
+                        "name": {
+                          "type": "string",
+                          "max_length": 60,
+                          "description": "物品名称"
+                        },
+                        "description": {
+                          "type": "string",
+                          "max_length": 200,
+                          "description": "外观/来源/背景"
+                        },
+                        "rarity": {
+                          "type": "string",
+                          "max_length": 20,
+                          "description": "稀有度/品质/品阶"
+                        },
+                        "properties": {
+                          "type": "string",
+                          "max_length": 200,
+                          "description": "特殊属性/词条/附魔效果"
+                        }
+                      }
+                    },
+                    "name": {
+                      "type": "string",
+                      "max_length": 30,
+                      "required": true,
+                      "_system": true
+                    },
+                    "status": {
+                      "type": "enum",
+                      "values": [
+                        "活跃",
+                        "非活跃",
+                        "已死亡",
+                        "已归隐",
+                        "已离去"
+                      ],
+                      "required": true,
+                      "_system": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "factions": {
+            "type": "object",
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "fields": {
+                "*": {
+                  "type": "object",
+                  "fields": {
+                    "name": {
+                      "type": "string",
+                      "max_length": 20
+                    },
+                    "description": {
+                      "type": "string",
+                      "max_length": 80
+                    },
+                    "leader": {
+                      "type": "string",
+                      "max_length": 30
+                    },
+                    "attitude_toward_player": {
+                      "type": "enum",
+                      "values": [
+                        "友好",
+                        "中立",
+                        "冷淡",
+                        "敌对"
+                      ]
+                    },
+                    "relations": {
+                      "type": "object"
+                    },
+                    "notes": {
+                      "type": "string",
+                      "max_length": 200
+                    },
+                    "_hidden": {
+                      "type": "boolean",
+                      "default": true
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "quests": {
+            "type": "object",
+            "enabled": true,
+            "schema": {
+              "type": "object",
+              "fields": {
+                "tasks": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "deadline": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "正在进行",
+                              "已完成",
+                              "已失败",
+                              "已过期"
+                            ]
+                          },
+                          "type": {
+                            "type": "enum",
+                            "values": [
+                              "主线",
+                              "支线",
+                              "事件"
+                            ]
+                          },
+                          "issuer": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 200
+                          },
+                          "progress": {
+                            "type": "string",
+                            "max_length": 60
+                          },
+                          "posted_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "reward": {
+                            "type": "string",
+                            "max_length": 100
+                          },
+                          "penalty": {
+                            "type": "string",
+                            "max_length": 100
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "goals": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "进行中",
+                              "已达成",
+                              "已放弃"
+                            ]
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 200
+                          },
+                          "progress": {
+                            "type": "string",
+                            "max_length": 60
+                          },
+                          "posted_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "completed_time": {
+                            "type": "string",
+                            "max_length": 30
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                "events": {
+                  "type": "object",
+                  "schema": {
+                    "type": "object",
+                    "fields": {
+                      "*": {
+                        "type": "object",
+                        "fields": {
+                          "name": {
+                            "type": "string",
+                            "max_length": 40
+                          },
+                          "status": {
+                            "type": "enum",
+                            "values": [
+                              "持续中",
+                              "已平息",
+                              "已结束"
+                            ]
+                          },
+                          "desc": {
+                            "type": "string",
+                            "max_length": 300
+                          },
+                          "started_time": {
+                            "type": "string",
+                            "max_length": 30
+                          },
+                          "ended_time": {
+                            "type": "string",
+                            "max_length": 30
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "state_css": "",
+      "character_schema": null,
+      "_active_characters": [
+        "江岚",
+        "安然"
+      ],
+      "faction_keywords": {},
+      "unconsolidated_stm": [],
+      "stm_entries": [
+        {
+          "event": "傍晚七点，江岚健身回家，发现陌生女子安然在自己公寓。两人对峙后，惊讶地发现彼此是平行世界的性转版本，拥有相同的身份证和租房合同。经过“对账”确认后，他们接受了世界融合的现实。夜色中，两人在阳台抽烟，安然提议同居。",
+          "period": "21:47",
+          "scene": "702公寓·安然房门口",
+          "msg_ids": [
+            "0_2026-07-11T18:18:24.467Z_assistant"
+          ],
+          "absMsgStart": 0,
+          "absMsgEnd": 0,
+          "msgRange": [
+            0,
+            0
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_1",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚以稿费差额要求安然承担房租差价，两人争执不休；江岚以不吃香菜为调侃，安然追讨无果后江岚回房。",
+          "period": "21:47",
+          "scene": "702公寓·安然房门口",
+          "msg_ids": [
+            "1_2026-07-11T18:18:39.814Z_user",
+            "2_2026-07-11T18:18:40.681Z_assistant"
+          ],
+          "absMsgStart": 1,
+          "absMsgEnd": 2,
+          "msgRange": [
+            1,
+            2
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_2",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚靠在门后笑，安然在客厅放狠话后也笑了。江岚回卧室嫉妒安然稿费更高，决定接受这位麻烦室友。",
+          "period": "21:33",
+          "scene": "702公寓·安然房门口",
+          "msg_ids": [
+            "3_2026-07-11T18:19:45.792Z_user",
+            "4_2026-07-11T18:19:47.407Z_assistant"
+          ],
+          "absMsgStart": 3,
+          "absMsgEnd": 4,
+          "msgRange": [
+            3,
+            4
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_3",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚走出卧室叩门问安然明天早餐，安然从生气转为要求小笼包和油条，江岚答应并约定轮流，安然追问之前关于香菜的高贵论。",
+          "period": "21:46",
+          "scene": "702公寓·安然房门口",
+          "msg_ids": [
+            "5_2026-07-11T18:20:38.762Z_user",
+            "6_2026-07-11T18:20:40.218Z_assistant"
+          ],
+          "absMsgStart": 5,
+          "absMsgEnd": 6,
+          "msgRange": [
+            5,
+            6
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_4",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚在门口问清安然要鲜肉蟹粉小笼包和多醋，回到卧室记在备忘录上。",
+          "period": "21:47",
+          "scene": "702公寓·江岚房间",
+          "msg_ids": [
+            "7_2026-07-11T18:21:10.777Z_user",
+            "8_2026-07-11T18:21:12.134Z_assistant"
+          ],
+          "absMsgStart": 7,
+          "absMsgEnd": 8,
+          "msgRange": [
+            7,
+            8
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_5",
+          "parent_ltm": "ltm_1"
+        },
+        {
+          "event": "江岚在702公寓安然房门口敲门提醒热水器定时时间，安然回应后调侃江岚为管家婆，告知已备好毛巾并走出房间去洗澡。",
+          "period": "21:48",
+          "scene": "702公寓·安然房门口",
+          "msg_ids": [
+            "9_2026-07-11T18:22:12.771Z_user",
+            "10_2026-07-11T18:22:14.307Z_assistant"
+          ],
+          "absMsgStart": 9,
+          "absMsgEnd": 10,
+          "msgRange": [
+            9,
+            10
+          ],
+          "status": "closed",
+          "entities": [],
+          "id": "stm_6",
+          "parent_ltm": "ltm_1"
+        }
+      ],
+      "ltm_entries": [
+        {
+          "id": "ltm_1",
+          "status": "open",
+          "stm_refs": [
+            "stm_1",
+            "stm_2",
+            "stm_3",
+            "stm_4",
+            "stm_5",
+            "stm_6"
+          ],
+          "title": "",
+          "event": "",
+          "period": "",
+          "entities": [],
+          "timestamp": 1783794193062,
+          "time_range": "21:47 → 21:48"
+        }
+      ],
+      "cursor_state": {
+        "stm": {
+          "position": 0,
+          "pending_partials": [],
+          "completedTurns": 0
+        },
+        "ltm": {
+          "position": 0,
+          "pending_partials": []
+        }
+      },
+      "segment_counter": 0,
+      "consolidate_threshold": 5,
+      "language": "zh",
+      "memory_config": {},
+      "summary": "",
+      "current_scene": "",
+      "character_states": {},
+      "relationships": []
+    },
+    "stm_index": {
+      "stm_1": {
+        "ltm_id": "ltm_1",
+        "summary": "傍晚七点，江岚健身回家，发现陌生女子安然在自己公寓。两人对峙后，惊讶地发现彼此是平行世界的性转版本，拥有相同的身份证和租房合同。经过“对账”确认后，他们接受了世界融合的现实。夜色中，两人在阳台抽烟，安",
+        "msg_ids": [
+          "0_2026-07-11T18:18:24.467Z_assistant"
+        ]
+      },
+      "stm_2": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚以稿费差额要求安然承担房租差价，两人争执不休；江岚以不吃香菜为调侃，安然追讨无果后江岚回房。",
+        "msg_ids": [
+          "1_2026-07-11T18:18:39.814Z_user",
+          "2_2026-07-11T18:18:40.681Z_assistant"
+        ]
+      },
+      "stm_3": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚靠在门后笑，安然在客厅放狠话后也笑了。江岚回卧室嫉妒安然稿费更高，决定接受这位麻烦室友。",
+        "msg_ids": [
+          "3_2026-07-11T18:19:45.792Z_user",
+          "4_2026-07-11T18:19:47.407Z_assistant"
+        ]
+      },
+      "stm_4": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚走出卧室叩门问安然明天早餐，安然从生气转为要求小笼包和油条，江岚答应并约定轮流，安然追问之前关于香菜的高贵论。",
+        "msg_ids": [
+          "5_2026-07-11T18:20:38.762Z_user",
+          "6_2026-07-11T18:20:40.218Z_assistant"
+        ]
+      },
+      "stm_5": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚在门口问清安然要鲜肉蟹粉小笼包和多醋，回到卧室记在备忘录上。",
+        "msg_ids": [
+          "7_2026-07-11T18:21:10.777Z_user",
+          "8_2026-07-11T18:21:12.134Z_assistant"
+        ]
+      },
+      "stm_6": {
+        "ltm_id": "ltm_1",
+        "summary": "江岚在702公寓安然房门口敲门提醒热水器定时时间，安然回应后调侃江岚为管家婆，告知已备好毛巾并走出房间去洗澡。",
+        "msg_ids": [
+          "9_2026-07-11T18:22:12.771Z_user",
+          "10_2026-07-11T18:22:14.307Z_assistant"
+        ]
+      }
+    },
+    "link_index": {},
+    "memory_system_prompt": ""
+  },
+  "versionChain": {
+    "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+    "state_head_seq": 8,
+    "state_base_seq": 0,
+    "state_active": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "mem_head_seq": 2,
+    "mem_base_seq": 0,
+    "mem_active": [
+      0,
+      1,
+      2
+    ]
+  },
+  "stateDeltas": [
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_8",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 8,
+      "prev_seq": 7,
+      "timestamp": "2026-07-11T18:24:00.662Z",
+      "source": "manual_edit",
+      "summary": "手动编辑 gender_age",
+      "changes": [
+        {
+          "path": "characters.江岚.gender_age",
+          "old": "男,20岁",
+          "new": "男,20"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_7",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 7,
+      "prev_seq": 6,
+      "timestamp": "2026-07-11T18:23:55.278Z",
+      "source": "manual_edit",
+      "summary": "手动编辑 name",
+      "changes": [
+        {
+          "path": "characters.江岚.name",
+          "old": "江岚",
+          "new": "江"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_6",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 6,
+      "prev_seq": 5,
+      "timestamp": "2026-07-11T18:23:48.282Z",
+      "source": "manual_edit",
+      "summary": "手动编辑 name",
+      "changes": [
+        {
+          "path": "characters.江岚.name",
+          "old": "江岚",
+          "new": "江山"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_5",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 5,
+      "prev_seq": 4,
+      "timestamp": "2026-07-11T18:22:46.229Z",
+      "source": "ai_update",
+      "summary": "current_mood：缓和，带点笑意→有点不自在但心里感动，嘴硬但认，inner_thoughts：他居然主动来问早餐...虽然嘴→他竟然还记得热水器的事，上次我，relationship：与江岚为异性同位体，青梅竹马般→江岚：室友/同位体，好感增加，affection：20→65，current_mood：好笑又略在意→放松，略带无奈，...等6项",
+      "changes": [
+        {
+          "path": "安然.current_mood",
+          "old": "缓和，带点笑意",
+          "new": "有点不自在但心里感动，嘴硬但认可关心"
+        },
+        {
+          "path": "安然.inner_thoughts",
+          "old": "他居然主动来问早餐...虽然嘴上不饶人，但还算有点良心。香菜那事儿半真半假？算了，明天有免费早餐，不亏。",
+          "new": "他竟然还记得热水器的事，上次我忘毛巾他也记得。虽然嘴上说两清，但明天帮他带豆浆也算还了人情。其实他这样……还挺好的。"
+        },
+        {
+          "path": "安然.relationship",
+          "old": "与江岚为异性同位体，青梅竹马般同居的室友，日常互怼但关心对方",
+          "new": "江岚：室友/同位体，好感增加"
+        },
+        {
+          "path": "安然.affection",
+          "old": 20,
+          "new": 65
+        },
+        {
+          "path": "江岚.current_mood",
+          "old": "好笑又略在意",
+          "new": "放松，略带无奈"
+        },
+        {
+          "path": "江岚.inner_thoughts",
+          "old": "觉得记备忘录有点奇怪，好像很在意她说什么似的，但最终还是没删除。",
+          "new": "今天的怪事：多了个室友。女的。长得像我妈年轻时照片上那样。性格比我还讨厌。但好像……也还行。"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_4",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 4,
+      "prev_seq": 3,
+      "timestamp": "2026-07-11T18:21:36.752Z",
+      "source": "ai_update",
+      "summary": "inner_thoughts：承认自己确实嫉妒安然写得更松弛→觉得记备忘录有点奇怪，好像很在",
+      "changes": [
+        {
+          "path": "江岚.inner_thoughts",
+          "old": "承认自己确实嫉妒安然写得更松弛，但和她斗嘴比码字有意思。",
+          "new": "觉得记备忘录有点奇怪，好像很在意她说什么似的，但最终还是没删除。"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_3",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 3,
+      "prev_seq": 2,
+      "timestamp": "2026-07-11T18:20:59.827Z",
+      "source": "ai_update",
+      "summary": "current_mood：哭笑不得→缓和，带点笑意，inner_thoughts：放完狠话后自己反而笑了，觉得江→他居然主动来问早餐...虽然嘴，relationship：与江岚为异性同位体室友，被他用→与江岚为异性同位体，青梅竹马般",
+      "changes": [
+        {
+          "path": "安然.current_mood",
+          "old": "哭笑不得",
+          "new": "缓和，带点笑意"
+        },
+        {
+          "path": "安然.inner_thoughts",
+          "old": "放完狠话后自己反而笑了，觉得江岚神经病但莫名好笑，打算明天给他外卖加香菜。",
+          "new": "他居然主动来问早餐...虽然嘴上不饶人，但还算有点良心。香菜那事儿半真半假？算了，明天有免费早餐，不亏。"
+        },
+        {
+          "path": "安然.relationship",
+          "old": "与江岚为异性同位体室友，被他用香菜逻辑噎住后既生气又觉得好笑",
+          "new": "与江岚为异性同位体，青梅竹马般同居的室友，日常互怼但关心对方"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_2",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 2,
+      "prev_seq": 1,
+      "timestamp": "2026-07-11T18:20:26.307Z",
+      "source": "ai_update",
+      "summary": "current_mood：→好笑又略在意，inner_thoughts：→承认自己确实嫉妒安然写得更松弛，relationship：→与安然为异性同位体室友，开始享，affection：→30，current_mood：→哭笑不得，...等8项",
+      "changes": [
+        {
+          "path": "江岚.current_mood",
+          "new": "好笑又略在意"
+        },
+        {
+          "path": "江岚.inner_thoughts",
+          "new": "承认自己确实嫉妒安然写得更松弛，但和她斗嘴比码字有意思。"
+        },
+        {
+          "path": "江岚.relationship",
+          "new": "与安然为异性同位体室友，开始享受与她斗嘴的日常"
+        },
+        {
+          "path": "江岚.affection",
+          "new": 30
+        },
+        {
+          "path": "安然.current_mood",
+          "new": "哭笑不得"
+        },
+        {
+          "path": "安然.inner_thoughts",
+          "new": "放完狠话后自己反而笑了，觉得江岚神经病但莫名好笑，打算明天给他外卖加香菜。"
+        },
+        {
+          "path": "安然.relationship",
+          "new": "与江岚为异性同位体室友，被他用香菜逻辑噎住后既生气又觉得好笑"
+        },
+        {
+          "path": "安然.affection",
+          "new": 20
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_1",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 1,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T18:19:31.109Z",
+      "source": "ai_update",
+      "summary": "gender_age：→男,20岁，physique：→肩宽腰窄,体脂率低,腹肌可见,，occupation：→大学二年级学生/网络小说作者，personality：→话少,吐槽平淡,喜欢逗弄安然,，past_experience：→父母异地抚养,每月视频通话,与，...等17项",
+      "changes": [
+        {
+          "path": "characters.江岚.gender_age",
+          "old": "",
+          "new": "男,20岁"
+        },
+        {
+          "path": "characters.江岚.physique",
+          "old": "",
+          "new": "肩宽腰窄,体脂率低,腹肌可见,黑色短发"
+        },
+        {
+          "path": "characters.江岚.occupation",
+          "old": "",
+          "new": "大学二年级学生/网络小说作者"
+        },
+        {
+          "path": "characters.江岚.personality",
+          "old": "",
+          "new": "话少,吐槽平淡,喜欢逗弄安然,表面冷淡实则在意"
+        },
+        {
+          "path": "characters.江岚.past_experience",
+          "old": "",
+          "new": "父母异地抚养,每月视频通话,与安然作为同位体同居生活"
+        },
+        {
+          "path": "characters.安然.gender_age",
+          "old": "",
+          "new": "女,20岁"
+        },
+        {
+          "path": "characters.安然.physique",
+          "old": "",
+          "new": "身高约170cm,假小子风格,黑色短发,健美体型,腹肌线条可见"
+        },
+        {
+          "path": "characters.安然.occupation",
+          "old": "",
+          "new": "大学二年级学生/网络小说作者"
+        },
+        {
+          "path": "characters.安然.personality",
+          "old": "",
+          "new": "直率毒舌,假小子风,自信独立,生气时语速快,爱吐槽"
+        },
+        {
+          "path": "characters.安然.past_experience",
+          "old": "",
+          "new": "与江岚为异性同位体,在同一家庭长大,现同居生活,稿费收入独立"
+        },
+        {
+          "path": "current_mood.安然",
+          "new": "愤怒不服,觉得江岚在耍赖"
+        },
+        {
+          "path": "current_mood.江岚",
+          "new": "轻松调侃,享受逗弄她的感觉"
+        },
+        {
+          "path": "inner_thoughts.安然",
+          "new": "这家伙居然想占我便宜！稿费是我辛辛苦苦写的,绝对不给他！"
+        },
+        {
+          "path": "inner_thoughts.江岚",
+          "new": "看她炸毛的样子挺有意思的,反正最后还是得听我的。"
+        },
+        {
+          "path": "status.江岚",
+          "new": "活跃"
+        },
+        {
+          "path": "status.安然",
+          "new": "活跃"
+        },
+        {
+          "path": "relationship.江岚-安然",
+          "new": "同居室友,异性同位体,平时拌嘴但默契十足"
+        }
+      ],
+      "message_dates": [],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "delta_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_0",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 0,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T18:19:15.869Z",
+      "source": "init",
+      "summary": "初始迁移",
+      "changes": [],
+      "message_dates": [],
+      "derived_from_stm_version": null,
+      "folded_state": {
+        "characters": {}
+      }
+    }
+  ],
+  "memoryVersions": [
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_2",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 2,
+      "prev_seq": 1,
+      "timestamp": "2026-07-11T18:23:13.067Z",
+      "type": "ltm_consolidation",
+      "summary": "LTM 巩固: 1个新arc 6条STM已巩固",
+      "delta": {
+        "stm_added": [],
+        "stm_removed": [],
+        "stm_moved": [
+          "stm_1",
+          "stm_2",
+          "stm_3",
+          "stm_4",
+          "stm_5",
+          "stm_6"
+        ],
+        "ltm_added": [
+          {
+            "id": "ltm_1",
+            "status": "open",
+            "stm_refs": [
+              "stm_1",
+              "stm_2",
+              "stm_3",
+              "stm_4",
+              "stm_5",
+              "stm_6"
+            ],
+            "title": "",
+            "event": "",
+            "period": "",
+            "entities": [],
+            "timestamp": 1783794193062,
+            "time_range": "21:47 → 21:48"
+          }
+        ],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [],
+      "derived_from_stm_version": 1
+    },
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_1",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 1,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T18:23:05.618Z",
+      "type": "stm_batch",
+      "summary": "STM batch: 6条新记忆",
+      "delta": {
+        "stm_added": [
+          {
+            "event": "傍晚七点，江岚健身回家，发现陌生女子安然在自己公寓。两人对峙后，惊讶地发现彼此是平行世界的性转版本，拥有相同的身份证和租房合同。经过“对账”确认后，他们接受了世界融合的现实。夜色中，两人在阳台抽烟，安然提议同居。",
+            "period": "21:47",
+            "scene": "702公寓·安然房门口",
+            "msg_ids": [
+              "0_2026-07-11T18:18:24.467Z_assistant"
+            ],
+            "absMsgStart": 0,
+            "absMsgEnd": 0,
+            "msgRange": [
+              0,
+              0
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_1"
+          },
+          {
+            "event": "江岚以稿费差额要求安然承担房租差价，两人争执不休；江岚以不吃香菜为调侃，安然追讨无果后江岚回房。",
+            "period": "21:47",
+            "scene": "702公寓·安然房门口",
+            "msg_ids": [
+              "1_2026-07-11T18:18:39.814Z_user",
+              "2_2026-07-11T18:18:40.681Z_assistant"
+            ],
+            "absMsgStart": 1,
+            "absMsgEnd": 2,
+            "msgRange": [
+              1,
+              2
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_2"
+          },
+          {
+            "event": "江岚靠在门后笑，安然在客厅放狠话后也笑了。江岚回卧室嫉妒安然稿费更高，决定接受这位麻烦室友。",
+            "period": "21:33",
+            "scene": "702公寓·安然房门口",
+            "msg_ids": [
+              "3_2026-07-11T18:19:45.792Z_user",
+              "4_2026-07-11T18:19:47.407Z_assistant"
+            ],
+            "absMsgStart": 3,
+            "absMsgEnd": 4,
+            "msgRange": [
+              3,
+              4
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_3"
+          },
+          {
+            "event": "江岚走出卧室叩门问安然明天早餐，安然从生气转为要求小笼包和油条，江岚答应并约定轮流，安然追问之前关于香菜的高贵论。",
+            "period": "21:46",
+            "scene": "702公寓·安然房门口",
+            "msg_ids": [
+              "5_2026-07-11T18:20:38.762Z_user",
+              "6_2026-07-11T18:20:40.218Z_assistant"
+            ],
+            "absMsgStart": 5,
+            "absMsgEnd": 6,
+            "msgRange": [
+              5,
+              6
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_4"
+          },
+          {
+            "event": "江岚在门口问清安然要鲜肉蟹粉小笼包和多醋，回到卧室记在备忘录上。",
+            "period": "21:47",
+            "scene": "702公寓·江岚房间",
+            "msg_ids": [
+              "7_2026-07-11T18:21:10.777Z_user",
+              "8_2026-07-11T18:21:12.134Z_assistant"
+            ],
+            "absMsgStart": 7,
+            "absMsgEnd": 8,
+            "msgRange": [
+              7,
+              8
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_5"
+          },
+          {
+            "event": "江岚在702公寓安然房门口敲门提醒热水器定时时间，安然回应后调侃江岚为管家婆，告知已备好毛巾并走出房间去洗澡。",
+            "period": "21:48",
+            "scene": "702公寓·安然房门口",
+            "msg_ids": [
+              "9_2026-07-11T18:22:12.771Z_user",
+              "10_2026-07-11T18:22:14.307Z_assistant"
+            ],
+            "absMsgStart": 9,
+            "absMsgEnd": 10,
+            "msgRange": [
+              9,
+              10
+            ],
+            "status": "closed",
+            "entities": [],
+            "id": "stm_6"
+          }
+        ],
+        "stm_removed": [],
+        "stm_moved": [],
+        "ltm_added": [],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [
+        "0_2026-07-11T18:18:24.467Z_assistant",
+        "1_2026-07-11T18:18:39.814Z_user",
+        "2_2026-07-11T18:18:40.681Z_assistant",
+        "3_2026-07-11T18:19:45.792Z_user",
+        "4_2026-07-11T18:19:47.407Z_assistant",
+        "5_2026-07-11T18:20:38.762Z_user",
+        "6_2026-07-11T18:20:40.218Z_assistant",
+        "7_2026-07-11T18:21:10.777Z_user",
+        "8_2026-07-11T18:21:12.134Z_assistant",
+        "9_2026-07-11T18:22:12.771Z_user",
+        "10_2026-07-11T18:22:14.307Z_assistant"
+      ],
+      "derived_from_stm_version": null
+    },
+    {
+      "id": "memver_与性转自己的同居生活 - 2026-07-12@02h18m24s459ms_0",
+      "chat_id": "与性转自己的同居生活 - 2026-07-12@02h18m24s459ms",
+      "seq": 0,
+      "prev_seq": 0,
+      "timestamp": "2026-07-11T18:22:31.613Z",
+      "type": "init",
+      "summary": "初始迁移",
+      "delta": {
+        "stm_added": [],
+        "stm_removed": [],
+        "stm_moved": [],
+        "ltm_added": [],
+        "ltm_removed": [],
+        "ltm_modified": []
+      },
+      "message_dates": [],
+      "derived_from_stm_version": null,
+      "folded_stm_entries": [],
+      "folded_unconsolidated_stm": [],
+      "folded_ltm_entries": []
+    }
+  ]
+}

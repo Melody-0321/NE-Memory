@@ -336,14 +336,6 @@ export async function foldState(chatId, targetSeq, headState) {
         }
     }
 
-    var chars = base.characters;
-    if (chars) {
-        for (var charName in chars) {
-            if (!chars.hasOwnProperty(charName)) continue;
-            if (!base[charName] || typeof base[charName] !== 'object') base[charName] = {};
-        }
-    }
-
     if (Object.keys(base).length === 0) {
         try {
             var fallbackVault = headState ? { content: { state: headState } } : null;
@@ -389,6 +381,18 @@ export async function foldState(chatId, targetSeq, headState) {
                 _setByPath(base, c.path, c.new);
             }
         }
+    }
+
+    var chars = base.characters;
+    if (chars) {
+        var protoName = base.protagonist_name || '';
+        Object.keys(chars).forEach(function (charName) {
+            var card = chars[charName];
+            if (!card || typeof card !== 'object') return;
+            if (!card.name) card.name = charName;
+            if (!card.status) card.status = '\u6D3B\u8DC3';
+            if (protoName && charName === protoName && !card._role) card._role = 'protagonist';
+        });
     }
 
     return base;

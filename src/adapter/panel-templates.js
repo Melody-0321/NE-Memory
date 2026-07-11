@@ -445,17 +445,6 @@ function _showEditor(container, templateId, isNew, templates, order) {
             _removeCustomFieldFromEditor(container, fn);
         });
     }
-
-    // Rollback to version
-    var rollbackBtns = container.querySelectorAll('[data-rollback-ver]');
-    for (var rb = 0; rb < rollbackBtns.length; rb++) {
-        rollbackBtns[rb].addEventListener('click', function () {
-            var verId = this.getAttribute('data-rollback-ver');
-            _rollbackTemplateVersion(templateId, verId, templates, function() {
-                _showEditor(container, templateId, false, templates, order);
-            });
-        });
-    }
 }
 
 function _renderVersionHistoryHTML(tpl) {
@@ -474,66 +463,13 @@ function _renderVersionHistoryHTML(tpl) {
         html += '<span class="' + dotClass + '"></span>';
         html += '<div class="ne-version-info">';
         html += '<span class="ne-version-date">' + escapeHtml(date) + '</span>';
-        if (isActive) {
-            html += ' <span class="ne-version-badge">(' + escapeHtml(t('current')) + ')</span>';
-        } else {
-            html += ' <button class="ne-btn-small ne-rollback-btn" data-rollback-ver="' + escapeHtml(ver._versionId) + '">' + escapeHtml(t('restore')) + '</button>';
-        }
+        if (isActive) html += ' <span class="ne-version-badge">(' + escapeHtml(t('current')) + ')</span>';
         if (ver.added && ver.added.length) html += '<div class="ne-version-diff">+ ' + escapeHtml(ver.added.join(', ')) + '</div>';
         if (ver.removed && ver.removed.length) html += '<div class="ne-version-diff ne-diff-removed">- ' + escapeHtml(ver.removed.join(', ')) + '</div>';
         html += '</div></div>';
     });
     html += '</div></div>';
     return html;
-}
-
-function _rollbackTemplateVersion(templateId, targetVerId, templates, onDone) {
-    var tpl = templates[templateId];
-    if (!tpl) return;
-    var versions = (tpl.versions && Array.isArray(tpl.versions)) ? tpl.versions : [];
-    var targetVer = null;
-    for (var i = 0; i < versions.length; i++) {
-        if (versions[i]._versionId === targetVerId) { targetVer = versions[i]; break; }
-    }
-    if (!targetVer) return;
-
-    showConfirm(
-        t('restore_version_confirm') || 'Restore this version? Current fields will be replaced.',
-        function() {
-            // Record current state as a version before rollback
-            var snapVerId = 'v_' + Date.now();
-            var currentPreset = (tpl.presetFields || []).slice();
-            var currentCustom = (tpl.customFieldRefs || []).slice();
-            var targetPreset = (targetVer.presetFields || []).slice();
-            var targetCustom = (targetVer.customFieldRefs || []).slice();
-
-            var allCurrent = currentPreset.concat(currentCustom);
-            var allTarget = targetPreset.concat(targetCustom);
-            var added = allTarget.filter(function(f) { return allCurrent.indexOf(f) === -1; });
-            var removed = allCurrent.filter(function(f) { return allTarget.indexOf(f) === -1; });
-
-            var snapshotVersion = {
-                _versionId: snapVerId,
-                createdAt: new Date().toISOString(),
-                added: added,
-                removed: removed,
-                presetFields: targetPreset,
-                customFieldRefs: targetCustom
-            };
-            versions.push(snapshotVersion);
-
-            // Apply target version's fields
-            tpl.presetFields = targetPreset;
-            tpl.customFieldRefs = targetCustom;
-            tpl.versions = versions;
-            tpl._activeVersion = snapVerId;
-            tpl.updatedAt = new Date().toISOString();
-
-            saveTemplate(tpl);
-            showToast(t('version_restored'), 'success', 3000);
-            onDone();
-        }
-    );
 }
 
 function _saveTemplateFromEditor(container, templateId, isNew, templates, order) {
@@ -565,14 +501,6 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     var tags = tagsEl ? tagsEl.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
     var isLocked = lockEl ? lockEl.checked : false;
 
-    // ── Version diff (skip for new templates) ──
-    var oldPreset = [];
-    var oldCustom = [];
-    if (!isNew && templates[templateId]) {
-        oldPreset = (templates[templateId].presetFields || []).slice();
-        oldCustom = (templates[templateId].customFieldRefs || []).slice();
-    }
-
     var template = {
         id: isNew ? ('tpl_' + Date.now()) : templateId,
         name: nameEl.value.trim(),
@@ -586,35 +514,6 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
         createdAt: isNew ? new Date().toISOString() : (templates[templateId] ? templates[templateId].createdAt : new Date().toISOString()),
         updatedAt: new Date().toISOString()
     };
-
-    // ── Build version record ──
-    if (!isNew) {
-        var allOld = oldPreset.concat(oldCustom);
-        var allNew = presetFields.concat(customFieldRefs);
-        var added = allNew.filter(function(f) { return allOld.indexOf(f) === -1; });
-        var removed = allOld.filter(function(f) { return allNew.indexOf(f) === -1; });
-
-        if (added.length > 0 || removed.length > 0) {
-            var versions = (templates[templateId].versions && Array.isArray(templates[templateId].versions))
-                ? templates[templateId].versions.slice()
-                : [];
-            var verId = 'v_' + Date.now();
-            versions.push({
-                _versionId: verId,
-                createdAt: new Date().toISOString(),
-                added: added,
-                removed: removed,
-                presetFields: presetFields.slice(),
-                customFieldRefs: customFieldRefs.slice()
-            });
-            template.versions = versions;
-            template._activeVersion = verId;
-        } else {
-            // Preserve existing versions and activeVer if no changes
-            template.versions = templates[templateId].versions;
-            template._activeVersion = templates[templateId]._activeVersion;
-        }
-    }
 
     saveTemplate(template);
     showToast(t('template_saved'), 'success', 3000);
