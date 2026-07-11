@@ -335,6 +335,32 @@ export async function foldState(chatId, targetSeq) {
         }
     }
 
+    if (Object.keys(base).length === 0) {
+        try {
+            var fallbackVault = await readState(chatId);
+            var fallbackState = (fallbackVault && fallbackVault.content && fallbackVault.content.state)
+                ? JSON.parse(JSON.stringify(fallbackVault.content.state)) : {};
+            if (Object.keys(fallbackState).length > 0) {
+                base = fallbackState;
+                for (var ri = chain.state_active.length - 1; ri >= 0; ri--) {
+                    var rseq = chain.state_active[ri];
+                    if (rseq <= targetSeq) break;
+                    /** @type {object|null} */
+                    var rdelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+                        return tx.objectStore('state_deltas').get(_generateId('delta', chatId, rseq));
+                    });
+                    if (!rdelta || !rdelta.changes) continue;
+                    for (var rci = 0; rci < rdelta.changes.length; rci++) {
+                        var rc = rdelta.changes[rci];
+                        if (rc.old !== undefined) _setByPath(base, rc.path, rc.old);
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('[NE] foldState fallback failed:', e);
+        }
+    }
+
     var startIdx = chain.state_active.indexOf(chain.state_base_seq);
     if (startIdx < 0) startIdx = 0;
     for (var i = startIdx; i < chain.state_active.length; i++) {
@@ -747,10 +773,17 @@ export async function initializeStateChain(chatId, stateVaultContent) {
     var existingDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
         return tx.objectStore('state_deltas').get(_generateId('delta', chatId, 0));
     });
-    if (existingDelta) return;
-
     var content = stateVaultContent || {};
     var foldedState = content.state ? JSON.parse(JSON.stringify(content.state)) : {};
+
+    if (existingDelta) {
+        if (existingDelta.folded_state) return;
+        existingDelta.folded_state = foldedState;
+        await _tx(db, ['state_deltas'], 'readwrite', function (tx) {
+            tx.objectStore('state_deltas').put(existingDelta);
+        });
+        return;
+    }
 
     var stateDelta = _emptyStateDelta(chatId);
     stateDelta.id = _generateId('delta', chatId, 0);

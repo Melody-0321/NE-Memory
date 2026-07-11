@@ -259,6 +259,7 @@ async function _navigateToVersion(targetSeq, type, container) {
 }
 
 export async function renderVersionHistoryPanel(container, chatId) {
+    var sameChat = _chatId === chatId;
     _chatId = chatId;
 
     container.innerHTML =
@@ -317,8 +318,8 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '</div></div>';
 
     _renderSettings(container);
-    await _refreshState(container);
-    await _refreshMemory(container);
+    await _refreshState(container, sameChat);
+    await _refreshMemory(container, sameChat);
 
     var tabs = container.querySelectorAll('.ne-version-tab');
     tabs.forEach(function(t) {
