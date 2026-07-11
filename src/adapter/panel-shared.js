@@ -452,6 +452,7 @@ export function injectBottomDrawerCSS() {
         '.ne-version-item.ne-version-item-current{background:var(--black20a);border-radius:4px;padding:4px 4px 4px 8px;}' +
         '.ne-version-dot{position:absolute;left:-19px;top:4px;width:10px;height:10px;border-radius:50%;background:var(--grey-50);border:2px solid var(--SmartThemeBorderColor);}' +
         '.ne-version-dot.active{background:var(--ne-success,rgba(34,197,94,1));}' +
+'.ne-version-dot.cursor{background:var(--SmartThemeQuoteColor,rgba(59,130,246,1));box-shadow:0 0 0 3px rgba(59,130,246,0.25);}' +
         '.ne-version-date{font-size:0.8em;color:var(--grey-50);}' +
         '.ne-version-badge{font-size:0.75em;color:var(--ne-success,rgba(34,197,94,1));}' +
         '.ne-version-diff{font-size:0.78em;color:var(--ne-success,#22c55e);margin:2px 0;}' +
