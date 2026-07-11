@@ -315,7 +315,7 @@ export async function recordMemoryVersion(chatId, versionData) {
  * @param {number} [targetSeq] — 目标 seq，不传则 fold 到 head
  * @returns {Promise<object>} fold 后的 state 对象
  */
-export async function foldState(chatId, targetSeq) {
+export async function foldState(chatId, targetSeq, headState) {
     var db = await openDB();
     var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
         return tx.objectStore('active_chains').get(chatId);
@@ -338,7 +338,10 @@ export async function foldState(chatId, targetSeq) {
 
     if (Object.keys(base).length === 0) {
         try {
-            var fallbackVault = await readState(chatId);
+            var fallbackVault = headState ? { content: { state: headState } } : null;
+            if (!fallbackVault) {
+                fallbackVault = await readState(chatId);
+            }
             var fallbackState = (fallbackVault && fallbackVault.content && fallbackVault.content.state)
                 ? JSON.parse(JSON.stringify(fallbackVault.content.state)) : {};
             if (Object.keys(fallbackState).length > 0) {

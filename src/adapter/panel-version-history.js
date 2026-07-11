@@ -207,9 +207,10 @@ async function _navigateToVersion(targetSeq, type, container) {
             _origVault = null;
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
-            var vault = await readVault(_chatId);
+            var vault = _origVault ? JSON.parse(JSON.stringify(_origVault)) : await readVault(_chatId);
             if (type === 'state') {
-                vault.content.state = await foldState(_chatId, targetSeq);
+                var headState = _origVault && _origVault.content ? _origVault.content.state : null;
+                vault.content.state = await foldState(_chatId, targetSeq, headState);
             } else {
                 var foldedMem = await foldMemory(_chatId, targetSeq);
                 vault.content.stm_entries = foldedMem.stm_entries;
