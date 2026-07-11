@@ -203,6 +203,10 @@ async function _navigateToVersion(targetSeq, type, container) {
 
     try {
         if (targetSeq === headSeq && _origVault) {
+            if (type === 'state') {
+                var restoredHeadState = _origVault.content ? _origVault.content.state : null;
+                _origVault.content.state = await foldState(_chatId, headSeq, restoredHeadState);
+            }
             await write(_chatId, _origVault);
             _origVault = null;
         } else if (targetSeq !== headSeq) {

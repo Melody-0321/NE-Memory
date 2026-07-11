@@ -392,6 +392,16 @@ export async function foldState(chatId, targetSeq, headState) {
             if (!card.name) card.name = charName;
             if (!card.status) card.status = '\u6D3B\u8DC3';
             if (protoName && charName === protoName && !card._role) card._role = 'protagonist';
+
+            var rootObj = base[charName];
+            if (rootObj && typeof rootObj === 'object') {
+                Object.keys(rootObj).forEach(function (fk) {
+                    if (card[fk] === undefined || card[fk] === null || card[fk] === '') {
+                        card[fk] = rootObj[fk];
+                    }
+                });
+                delete base[charName];
+            }
         });
     }
 
