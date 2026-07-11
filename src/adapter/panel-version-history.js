@@ -306,12 +306,12 @@ export async function renderVersionHistoryPanel(container, chatId) {
     if (stateRollback) stateRollback.onclick = async function() {
         if (_stateDeltas.length < 2) return;
         var currentIdx = _stateDeltas.findIndex(function(d) { return d.seq === _stateCursor; });
-        var targetIdx = currentIdx - 1;
-        if (targetIdx < 0) targetIdx = 0;
+        if (currentIdx < 0) return;
+        var targetIdx = currentIdx + 1;
+        if (targetIdx >= _stateDeltas.length) return;
         var targetSeq = _stateDeltas[targetIdx].seq;
         await _applyRollback(targetSeq, 'state');
-        _stateCursor = targetSeq;
-        _renderStateTimeline(container);
+        await _refreshState(container);
         _updateCursorInfo(container, 'state');
     };
 
@@ -322,7 +322,6 @@ export async function renderVersionHistoryPanel(container, chatId) {
             var branch = branches.find(function(b) { return b.fork_point_seq === _stateCursor; });
             if (branch) {
                 await _applyRestore(branch.id, 'state');
-                _stateCursor = _chain ? _chain.state_head_seq : 0;
                 await _refreshState(container);
                 _updateCursorInfo(container, 'state');
             }
@@ -333,12 +332,12 @@ export async function renderVersionHistoryPanel(container, chatId) {
     if (memRollback) memRollback.onclick = async function() {
         if (_memVersions.length < 2) return;
         var currentIdx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
-        var targetIdx = currentIdx - 1;
-        if (targetIdx < 0) targetIdx = 0;
+        if (currentIdx < 0) return;
+        var targetIdx = currentIdx + 1;
+        if (targetIdx >= _memVersions.length) return;
         var targetSeq = _memVersions[targetIdx].seq;
         await _applyRollback(targetSeq, 'memory');
-        _memCursor = targetSeq;
-        _renderMemoryTimeline(container);
+        await _refreshMemory(container);
         _updateCursorInfo(container, 'memory');
     };
 
@@ -349,7 +348,6 @@ export async function renderVersionHistoryPanel(container, chatId) {
             var branch = branches.find(function(b) { return b.fork_point_seq === _memCursor; });
             if (branch) {
                 await _applyRestore(branch.id, 'memory');
-                _memCursor = _chain ? _chain.mem_head_seq : 0;
                 await _refreshMemory(container);
                 _updateCursorInfo(container, 'memory');
             }
