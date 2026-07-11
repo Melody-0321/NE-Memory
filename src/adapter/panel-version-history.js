@@ -69,12 +69,12 @@ function _formatTime(ts) {
     } catch (e) { return ts; }
 }
 
-async function _refreshState(container) {
+async function _refreshState(container, keepCursorSeq) {
     if (!_chatId) return;
     try {
         _chain = await getActiveChain(_chatId);
         _stateDeltas = await listStateDeltas(_chatId, 200);
-        _stateCursor = _chain ? _chain.state_head_seq : 0;
+        if (!keepCursorSeq) _stateCursor = _chain ? _chain.state_head_seq : 0;
     } catch (e) {
         _stateDeltas = [];
         _stateCursor = 0;
@@ -82,12 +82,12 @@ async function _refreshState(container) {
     _renderStateTimeline(container);
 }
 
-async function _refreshMemory(container) {
+async function _refreshMemory(container, keepCursorSeq) {
     if (!_chatId) return;
     try {
         _chain = await getActiveChain(_chatId);
         _memVersions = await listMemoryVersions(_chatId, 200);
-        _memCursor = _chain ? _chain.mem_head_seq : 0;
+        if (!keepCursorSeq) _memCursor = _chain ? _chain.mem_head_seq : 0;
     } catch (e) {
         _memVersions = [];
         _memCursor = 0;
@@ -231,10 +231,10 @@ async function _navigateToVersion(targetSeq, type, container) {
 
     if (type === 'state') {
         _stateCursor = targetSeq;
-        await _refreshState(container);
+        await _refreshState(container, true);
     } else {
         _memCursor = targetSeq;
-        await _refreshMemory(container);
+        await _refreshMemory(container, true);
     }
     _updateCursorInfo(container, type);
     busEmit('vault:updated', {});
