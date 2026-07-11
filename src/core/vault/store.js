@@ -153,12 +153,6 @@ function openDB() {
             if (db.objectStoreNames.contains('snapshots')) {
                 db.deleteObjectStore('snapshots');
             }
-            if (db.objectStoreNames.contains(STATE_STORE)) {
-                db.deleteObjectStore(STATE_STORE);
-            }
-            if (db.objectStoreNames.contains(MEMORY_STORE)) {
-                db.deleteObjectStore(MEMORY_STORE);
-            }
             if (!db.objectStoreNames.contains('card_configs')) {
                 db.createObjectStore('card_configs', { keyPath: 'id' });
             }
