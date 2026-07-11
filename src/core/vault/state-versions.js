@@ -326,7 +326,7 @@ export async function foldState(chatId, targetSeq) {
     if (targetSeq <= 0) return {};
 
     var base = {};
-    if (chain.state_base_seq > 0) {
+    if (chain.state_base_seq >= 0) {
         var baseDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
             return tx.objectStore('state_deltas').get(_generateId('delta', chatId, chain.state_base_seq));
         });

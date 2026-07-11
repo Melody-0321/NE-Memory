@@ -256,14 +256,6 @@ async function _navigateToVersion(targetSeq, type, container) {
     }
     _updateCursorInfo(container, type);
     busEmit('vault:updated', {});
-
-    if (type === 'state') {
-        var probe = await readState(_chatId);
-        var chars = probe && probe.content && probe.content.state && probe.content.state.characters;
-        var names = chars ? Object.keys(chars) : [];
-        var sample = names.length ? names[0] + ':' + JSON.stringify(chars[names[0]]).substring(0, 80) : '(empty)';
-        console.log('[NE-UI] _navigateToVersion: read-back state at seq=' + targetSeq, 'chars=' + names.length, 'sample=' + sample);
-    }
 }
 
 export async function renderVersionHistoryPanel(container, chatId) {
