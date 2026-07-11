@@ -122,6 +122,7 @@ export function collectRoundData(roundTag, round) {
         stateBlockInstruction: globalThis.__ne_debug_last_state_block_instruction || null,
         factionState: globalThis.__ne_debug_last_faction_state || null,
         pipelineResponses: globalThis.__ne_debug_all_pipeline_responses || null,
+        templateDiscovery: globalThis.__ne_debug_template_discovery || null,
         truncationCount: truncationCount,
         fallbackCount: fallbackCount,
         vectorUsed: globalThis.__ne_debug_vector_used || false,

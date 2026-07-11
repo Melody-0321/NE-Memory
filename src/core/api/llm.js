@@ -119,9 +119,9 @@ export async function callMemoryLLM(messages, options = {}) {
     var TOKEN_OP_MAP = {
         stm_extract: 'tok_stm',
         ltm_decision: 'tok_ltm', ltm_decision_retry: 'tok_ltm', ltm_rebatch: 'tok_ltm',
-        state_extract: 'tok_state', scheme_discovery: 'tok_state', faction_discovery: 'tok_state',
-        access: 'tok_tool', recall_memory: 'tok_tool',
-        template_scheme: 'tok_tool', template_proposal: 'tok_tool', init_power_slots: 'tok_tool'
+        state_extract: 'tok_state', faction_discovery: 'tok_state',
+        scheme_discovery: 'tok_tool', template_scheme: 'tok_tool', template_proposal: 'tok_tool',
+        access: 'tok_tool', recall_memory: 'tok_tool', init_power_slots: 'tok_tool'
     };
 
     if (chatId) {

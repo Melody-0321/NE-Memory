@@ -371,6 +371,16 @@ export function appendTraceRound(trace, roundData) {
             lines.push('  Jaccard vs 上轮: ' + d.jaccard);
         }
     }
+    if (roundData.templateDiscovery) {
+        var td = roundData.templateDiscovery;
+        var schemeKeys = td.schemes ? Object.keys(td.schemes) : [];
+        lines.push('- 模板发现 (scheme_discovery): ' + schemeKeys.length + ' schemes');
+        for (var ski = 0; ski < schemeKeys.length; ski++) {
+            var sk = schemeKeys[ski];
+            var fields = td.schemes[sk] && td.schemes[sk].fields ? Object.keys(td.schemes[sk].fields) : [];
+            lines.push('  - ' + sk + ': ' + fields.length + ' fields (' + fields.slice(0, 8).join(', ') + (fields.length > 8 ? '...' : '') + ')');
+        }
+    }
     lines.push('');
     lines.push('### 进度评估');
     lines.push(roundData.progressNote || '');

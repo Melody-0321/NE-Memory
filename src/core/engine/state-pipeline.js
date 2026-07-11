@@ -1,4 +1,4 @@
-import { readState } from '../vault/store.js';
+import { readState, saveTemplate } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
@@ -695,9 +695,50 @@ export async function resolveNpcSchemes(vault, chatId, messages) {
 
     _persistCardConfig(charName, state);
 
+    var npcSchemes = state.npc_schemes;
+    if (npcSchemes && typeof npcSchemes === 'object') {
+        Object.keys(npcSchemes).forEach(function (schemeKey) {
+            var scheme = npcSchemes[schemeKey];
+            if (!scheme || !scheme.fields || typeof scheme.fields !== 'object') return;
+            var fieldNames = Object.keys(scheme.fields);
+            var presetFields = [];
+            var customFieldRefs = [];
+            fieldNames.forEach(function (fn) {
+                if (ALL_PREDEFINED_FIELDS[fn] || fn === 'name' || fn === 'status') {
+                    presetFields.push(fn);
+                } else {
+                    customFieldRefs.push(fn);
+                }
+            });
+            if (presetFields.length === 0 && customFieldRefs.length === 0) return;
+            var templateId = 'ai_' + schemeKey.replace(/^_/, '');
+            var displayName = schemeKey === '_default' ? 'AI Default NPC' : ('AI ' + schemeKey.charAt(0).toUpperCase() + schemeKey.slice(1).replace(/_/g, ' '));
+            saveTemplate({
+                id: templateId,
+                name: displayName,
+                role: 'npc',
+                description: 'Auto-generated NPC tracking scheme',
+                source: 'ai_generated',
+                system: false,
+                presetFields: presetFields,
+                customFieldRefs: customFieldRefs,
+                tags: [schemeKey],
+                _locked: false
+            });
+        });
+    }
+
     vault.content.state = state;
 
     var discoveredSchemes = state.npc_schemes ? Object.keys(state.npc_schemes) : [];
+
+    globalThis.__ne_debug_template_discovery = {
+        operation: 'scheme_discovery',
+        schemes: state.npc_schemes,
+        charName: charName,
+        timestamp: Date.now()
+    };
+
     return {
         templateInit: true,
         schemes: discoveredSchemes,
