@@ -26,7 +26,6 @@ function renderCharacterCard(name, card, schema, cardType) {
     var optionalFields = [];
 
     Object.keys(cardSchema.fields).forEach(function (key) {
-        if (key === 'name') return;
         if (key === 'status') return; // shown in card header + grouping, redundant in body
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
@@ -75,10 +74,11 @@ function renderCharacterCard(name, card, schema, cardType) {
         }
     }
 
+    var displayName = card.name || name;
     var html = '<div class="ne-char-card">';
-    html += '<div class="ne-char-card-header" tabindex="0" role="button" aria-label="' + t('Toggle details') + ': ' + escapeHtml(name) + '" onclick="this.parentElement.classList.toggle(\'open\')">';
+    html += '<div class="ne-char-card-header" tabindex="0" role="button" aria-label="' + t('Toggle details') + ': ' + escapeHtml(displayName) + '" onclick="this.parentElement.classList.toggle(\'open\')">';
     html += '<span class="ne-char-toggle">&#9654;</span>';
-    html += '<b>' + escapeHtml(name) + '</b> ';
+    html += '<b>' + escapeHtml(displayName) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
     html += '<button class="ne-card-scheme-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" title="' + escapeHtml(t('edit_scheme')) + '" aria-label="' + escapeHtml(t('edit_scheme')) + '" onclick="event.stopPropagation()">\u2699</button>';
     html += '<button class="ne-card-lock-btn" data-char="' + escapeHtml(name) + '" title="' + escapeHtml(t('lock_character')) + '" aria-label="' + escapeHtml(t('lock_character')) + '" onclick="event.stopPropagation()">\u{1F513}</button>';

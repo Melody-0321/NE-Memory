@@ -99,7 +99,7 @@ function findNewCharacterNames(vault) {
         if (!pc || typeof pc !== 'object') {
             newNames.push(state.protagonist_name);
         } else {
-            var pcEmpty = staticFields.every(function(fk) {
+            var pcEmpty = identityFields.every(function(fk) {
                 return !pc[fk] || pc[fk] === '' || pc[fk] === '(未填)';
             });
             if (pcEmpty) newNames.push(state.protagonist_name);

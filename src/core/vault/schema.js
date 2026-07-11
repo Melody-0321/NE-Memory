@@ -499,7 +499,7 @@ export function rebuildPresentCharacters(state) {
     Object.keys(characters).forEach(function (name) {
         var card = characters[name];
         if (card && typeof card === 'object' && card.status === '活跃') {
-            activeNames.push(name);
+            activeNames.push(card.name || name);
         }
     });
     state.present_characters = activeNames.join(', ');
@@ -730,7 +730,9 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
         if (messages && messages.length > 0) {
             var msgText = messages.map(function(m) { return m.content || ''; }).join(' ');
             charNames.forEach(function(name) {
-                if (msgText.indexOf(name) !== -1) mentionedNames[name] = true;
+                var card = state.characters[name];
+                var displayName = (card && card.name) ? card.name : name;
+                if (msgText.indexOf(name) !== -1 || msgText.indexOf(displayName) !== -1) mentionedNames[name] = true;
             });
         }
 
@@ -738,10 +740,11 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             var card = state.characters[name];
             if (!card || typeof card !== 'object') return;
             var isActive = card.status === '活跃' || mentionedNames[name];
+            var displayName = card.name || name;
             if (isActive) {
-                activeCards.push({ name: name, card: card });
+                activeCards.push({ name: displayName, key: name, card: card });
             } else {
-                inactiveCards.push({ name: name, card: card });
+                inactiveCards.push({ name: displayName, key: name, card: card });
             }
         });
 
@@ -749,8 +752,8 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
         if (activeCards.length > 0) {
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
-                var isPC = (item.name === protagonistName) || (item.card._role === 'protagonist');
-                var fields = isPC ? getCharacterInjectionFields(state, item.name) : getNpcInjectionFields(state, item.name);
+                var isPC = (item.key === protagonistName) || (item.card._role === 'protagonist');
+                var fields = isPC ? getCharacterInjectionFields(state, item.key) : getNpcInjectionFields(state, item.key);
                 var fieldDefs = isPC ? _characterSchema().protagonist.fields : _characterSchema().npc.fields;
 
                 var label = isPC ? '[PC] ' : '[NPC] ';
