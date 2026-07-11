@@ -11,7 +11,7 @@
  *   orphaned_branches keyPath: "id"
  */
 
-import { openDB } from './store.js';
+import { openDB, readState } from './store.js';
 
 var BRANCH_TTL_MS = 24 * 60 * 60 * 1000;
 
