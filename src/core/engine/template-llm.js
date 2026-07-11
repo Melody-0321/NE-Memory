@@ -10,7 +10,7 @@ import { callMemoryPipeline } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import {
     ALL_PREDEFINED_FIELDS, expandTemplateFields, resolveFieldDef,
-    DEFAULT_CHARACTER_SCHEMA, DEFAULT_NPC_TEMPLATE, DEFAULT_PC_TEMPLATE
+    DEFAULT_NPC_TEMPLATE, DEFAULT_PC_TEMPLATE
 } from '../vault/schema.js';
 import {
     loadCardConfigSync, saveCardConfig, loadFieldLibrary, addFieldToLibrary,

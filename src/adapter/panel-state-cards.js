@@ -1,7 +1,7 @@
 import { readState, writeState, loadTemplateLibrary, getEffectiveTemplates, getTemplate, saveTemplate } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { DEFAULT_CHARACTER_SCHEMA, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
+import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 import { recordStateDelta } from '../core/vault/state-versions.js';
@@ -133,12 +133,12 @@ function renderCharacterGroup(label, names, characters, schema, state) {
 }
 
 export function getCharacterSchemaForPanel(content) {
-    return content.character_schema || DEFAULT_CHARACTER_SCHEMA;
+    return content.character_schema || buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
 }
 
 export function renderCharacterPanelHTML(state, characterSchema) {
     var characters = (state && state.characters) ? state.characters : {};
-    var schema = characterSchema || DEFAULT_CHARACTER_SCHEMA;
+    var schema = characterSchema || buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
     var names = Object.keys(characters);
     if (names.length === 0) return '';
 

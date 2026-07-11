@@ -11,7 +11,7 @@
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync } from '../core/vault/store.js';
-import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, DEFAULT_CHARACTER_SCHEMA } from '../core/vault/schema.js';
+import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';

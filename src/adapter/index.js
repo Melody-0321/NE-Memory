@@ -11,7 +11,7 @@ import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, o
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setDynamicStateMode } from '../core/vault/schema.js';
+import { DEFAULT_GLOBAL_SCHEMA, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';

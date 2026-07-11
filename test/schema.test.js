@@ -2,7 +2,8 @@ import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate, getEffectiveSchema,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
-    DEFAULT_CHARACTER_SCHEMA, DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA
+    DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA,
+    buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE
 } from '../src/core/vault/schema.js';
 
 var passed = 0, failed = 0;
@@ -147,7 +148,7 @@ ok(state1.characters, 'characters obj created');
 ok(state1.characters['NewNPC'], 'character entry created');
 eq(state1.characters['NewNPC'].name, 'NewNPC', 'name set');
 eq(typeof state1.characters['NewNPC'].status, 'string', 'status is string (enum default)');
-eq(state1.characters['NewNPC'].affection, null, 'affection (number type) default null');
+eq(state1.characters['NewNPC'].affection, undefined, 'affection removed from default NPC template');
 
 var existingState = { characters: { 'Existing': { name: 'Existing', status: '活跃', affection: 50 } } };
 ensureCharacterTemplate(existingState, 'Existing');
@@ -250,7 +251,7 @@ assert(fields1.indexOf('status') !== -1, 'minimal includes status');
 assert(fields1.indexOf('affection') === -1, 'minimal excludes affection');
 
 var fields2 = getNpcInjectionFields(npcState, 'NoScheme');
-assert(fields2.indexOf('affection') !== -1, 'no scheme => default includes affection');
+assert(fields2.indexOf('affection') === -1, 'no scheme => default excludes affection');
 assert(fields2.indexOf('relationship') !== -1, 'default includes relationship');
 
 var fieldsDefault = getNpcInjectionFields({}, 'Anyone');
@@ -331,14 +332,15 @@ assert(pcFields.indexOf('personality') !== -1, 'PC fields includes personality')
 
 var npcFields = getCharacterInjectionFields(testState, 'Vendor');
 assert(Array.isArray(npcFields), 'getCharacterInjectionFields for NPC returns array');
-assert(npcFields.indexOf('affection') !== -1 || npcFields.indexOf('name') !== -1, 'NPC fields includes NPC-specific fields');
+assert(npcFields.indexOf('relationship') !== -1 || npcFields.indexOf('inner_thoughts') !== -1 || npcFields.indexOf('current_mood') !== -1, 'NPC fields includes NPC-specific fields');
 
 console.log('\n=== schema: DEFAULT schemas ===');
 
 ok(DEFAULT_GLOBAL_SCHEMA.type === 'object', 'DEFAULT_GLOBAL_SCHEMA has type');
 ok(DEFAULT_GLOBAL_SCHEMA.fields, 'DEFAULT_GLOBAL_SCHEMA has fields');
-ok(DEFAULT_CHARACTER_SCHEMA.protagonist, 'DEFAULT_CHARACTER_SCHEMA has protagonist');
-ok(DEFAULT_CHARACTER_SCHEMA.npc, 'DEFAULT_CHARACTER_SCHEMA has npc');
+var builtSchema = buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
+ok(builtSchema.protagonist, 'buildCharacterSchemaFromTemplates has protagonist');
+ok(builtSchema.npc, 'buildCharacterSchemaFromTemplates has npc');
 eq(typeof DEFAULT_NPC_SCHEME, 'object', 'DEFAULT_NPC_SCHEME is object');
 ok(DEFAULT_NPC_SCHEME._default, 'DEFAULT_NPC_SCHEME has _default scheme');
 

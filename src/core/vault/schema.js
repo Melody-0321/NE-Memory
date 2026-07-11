@@ -130,60 +130,45 @@ export var DEFAULT_NPC_TEMPLATE = {
     description: 'Default NPC scheme (14 preset fields)',
     source: 'system',
     system: true,
-    presetFields: ['gender_age','physique','occupation','personality','clothing_build','inner_thoughts','affection','relationship','current_mood','past_experience','injuries','status_effects','inventory'],
+    presetFields: ['gender_age','physique','occupation','personality','clothing_build','inner_thoughts','relationship','current_mood','past_experience','injuries','status_effects','inventory'],
     customFieldRefs: [],
     _locked: false
 };
 
-export const DEFAULT_CHARACTER_SCHEMA = {
-    protagonist: {
-        fields: {
-            name:           { type: 'string',  max_length: 30,  required: true,  layer: 'static',  _system: true },
-            gender_age:     { type: 'string',  max_length: 20,  required: true,  layer: 'static',  category: 'identity' },
-            physique:       { type: 'string',  max_length: 60,  required: true,  layer: 'static',  category: 'identity' },
-            occupation:     { type: 'string',  max_length: 30,  required: true,  layer: 'static',  category: 'identity' },
-            clothing_build: { type: 'string',  max_length: 60,  required: true,  layer: 'dynamic', category: 'identity' },
-            personality:    { type: 'string',  max_length: 80,  required: true,  layer: 'static',  category: 'identity' },
-            status:         { type: 'enum',    values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true },
-            inventory:      { type: 'object',  required: false, layer: 'dynamic', category: 'inventory' },
-            injuries:       { type: 'string',  max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
-            status_effects: { type: 'string',  max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
-        }
-    },
-    npc: {
-        fields: {
-            name:            { type: 'string', max_length: 30,  required: true,  layer: 'static',  _system: true },
-            gender_age:      { type: 'string', max_length: 20,  required: true,  layer: 'static',  category: 'identity' },
-            physique:        { type: 'string', max_length: 60,  required: true,  layer: 'static',  category: 'identity' },
-            occupation:      { type: 'string', max_length: 30,  required: true,  layer: 'static',  category: 'identity' },
-            clothing_build:  { type: 'string', max_length: 60,  required: true,  layer: 'dynamic', category: 'identity' },
-            personality:     { type: 'string', max_length: 80,  required: true,  layer: 'static',  category: 'identity' },
-            inner_thoughts:  { type: 'string', max_length: 120, required: true,  layer: 'dynamic', category: 'psychology' },
-            affection:       { type: 'number', min: 0, max: 100, required: true,  layer: 'dynamic', category: 'social' },
-            relationship:    { type: 'string', max_length: 50,  required: true,  layer: 'dynamic', category: 'social' },
-            current_mood:    { type: 'string', max_length: 30,  required: true,  layer: 'dynamic', category: 'psychology' },
-            past_experience: { type: 'string', max_length: 200, required: false, layer: 'static',  category: 'identity' },
-            status:          { type: 'enum',   values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true },
-            inventory:       { type: 'object', required: false, layer: 'dynamic', category: 'inventory' },
-            injuries:        { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' },
-            status_effects:  { type: 'string', max_length: 120, required: false, layer: 'dynamic', category: 'battle' }
-        }
-    }
-};
-
 /**
- * @returns {Object<string, {fields: Object<string, import('../../types.js').SchemaFieldDef>}>}
+ * Build character schema dynamically from templates.
+ * Returns { protagonist: { fields }, npc: { fields } } shape.
+ * @param {Object} pcTemplate
+ * @param {Object} npcTemplate
+ * @returns {Object}
  */
+export function buildCharacterSchemaFromTemplates(pcTemplate, npcTemplate) {
+    var pcFields = expandTemplateFields(pcTemplate);
+    var npcFields = expandTemplateFields(npcTemplate);
+    pcFields.name = { type: 'string', max_length: 30, required: true, layer: 'static', _system: true };
+    pcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true };
+    npcFields.name = { type: 'string', max_length: 30, required: true, layer: 'static', _system: true };
+    npcFields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, layer: 'dynamic', _system: true };
+    return { protagonist: { fields: pcFields }, npc: { fields: npcFields } };
+}
+
+var __CACHED_CHARACTER_SCHEMA = null;
+function _characterSchema() {
+    if (__CACHED_CHARACTER_SCHEMA) return __CACHED_CHARACTER_SCHEMA;
+    __CACHED_CHARACTER_SCHEMA = buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
+    return __CACHED_CHARACTER_SCHEMA;
+}
+
 export var DEFAULT_NPC_SCHEME = (function() {
-    var npcFields = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+    var npcFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
     var fields = {};
     Object.keys(npcFields).forEach(function(k) {
         if (k === 'name') return;
-        var f = npcFields[k];
-        fields[k] = Object.assign({}, f);
+        fields[k] = Object.assign({}, npcFields[k]);
     });
     return { _default: { fields: fields } };
 })();
+
 
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
@@ -195,7 +180,7 @@ export const DEFAULT_GLOBAL_SCHEMA = {
             schema: {
                 type: 'object',
                 fields: {
-                    '*': DEFAULT_CHARACTER_SCHEMA.npc
+                    '*': _characterSchema().npc
                 }
             }
         },
@@ -527,13 +512,13 @@ export function ensureCharacterTemplate(state, name, schemeKey) {
         (state._character_schemes && state._character_schemes[name] && state._character_schemes[name]._role === 'protagonist');
     var template;
     if (isPC) {
-        template = DEFAULT_CHARACTER_SCHEMA.protagonist.fields;
+        template = _characterSchema().protagonist.fields;
     } else if (schemeKey && state.npc_schemes && state.npc_schemes[schemeKey]) {
         var scheme = state.npc_schemes[schemeKey];
         var norm = normalizeScheme(scheme);
-        template = norm || DEFAULT_CHARACTER_SCHEMA.npc.fields;
+        template = norm || _characterSchema().npc.fields;
     } else {
-        template = DEFAULT_CHARACTER_SCHEMA.npc.fields;
+        template = _characterSchema().npc.fields;
     }
 
     state.characters[name] = {};
@@ -694,7 +679,7 @@ export function getEffectiveSchema(vault) {
     return vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
 }
 
-// Fields injected for NPC — derived from DEFAULT_CHARACTER_SCHEMA.npc
+// Fields injected for NPC — derived from character schema
 
 /**
  * @param {import('../../types.js').State} state
@@ -709,7 +694,7 @@ export function getNpcInjectionFields(state, name) {
     if (!scheme) scheme = DEFAULT_NPC_SCHEME._default;
     var norm = normalizeScheme(scheme);
     if (norm) return Object.keys(norm);
-    return Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).filter(function(k) { return k !== 'name'; });
+    return Object.keys(_characterSchema().npc.fields).filter(function(k) { return k !== 'name'; });
 }
 
 /**
@@ -725,9 +710,9 @@ export function getCharacterInjectionFields(state, name) {
         (charData._role === 'protagonist');
     if (!isPC) return getNpcInjectionFields(state, name);
     if (charData._templateKey) {
-        return Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).filter(function(k) { return k !== 'name'; });
+        return Object.keys(_characterSchema().protagonist.fields).filter(function(k) { return k !== 'name'; });
     }
-    return Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).filter(function(k) { return k !== 'name'; });
+    return Object.keys(_characterSchema().protagonist.fields).filter(function(k) { return k !== 'name'; });
 }
 
 /**
@@ -787,7 +772,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             activeCards.forEach(function(item) {
                 var isPC = (item.name === protagonistName) || (item.card._role === 'protagonist');
                 var fields = isPC ? getCharacterInjectionFields(state, item.name) : getNpcInjectionFields(state, item.name);
-                var fieldDefs = isPC ? DEFAULT_CHARACTER_SCHEMA.protagonist.fields : DEFAULT_CHARACTER_SCHEMA.npc.fields;
+                var fieldDefs = isPC ? _characterSchema().protagonist.fields : _characterSchema().npc.fields;
 
                 var label = isPC ? '[PC] ' : '[NPC] ';
                 parts.push(label + '[' + item.name + ']');
@@ -925,13 +910,12 @@ export function normalizeScheme(scheme) {
     if (scheme.fields && typeof scheme.fields === 'object' && !Array.isArray(scheme.fields)) {
         return scheme.fields;
     }
-    var npcFields = DEFAULT_CHARACTER_SCHEMA.npc.fields;
     var fields = {};
     (scheme.required || []).forEach(function(k) {
-        if (npcFields[k]) fields[k] = Object.assign({}, npcFields[k]);
+        if (ALL_PREDEFINED_FIELDS[k]) fields[k] = Object.assign({}, ALL_PREDEFINED_FIELDS[k]);
     });
     (scheme.optional || []).forEach(function(k) {
-        if (npcFields[k]) fields[k] = Object.assign({}, npcFields[k]);
+        if (ALL_PREDEFINED_FIELDS[k]) fields[k] = Object.assign({}, ALL_PREDEFINED_FIELDS[k]);
     });
     return Object.keys(fields).length > 0 ? fields : null;
 }

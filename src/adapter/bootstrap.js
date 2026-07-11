@@ -3,7 +3,7 @@ import { readState, writeState, readMemory, writeMemory, readVault, emptyStateVa
 import { loadVault, persistVaultToChatFile } from '../core/auto-restore.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
+import { DEFAULT_GLOBAL_SCHEMA, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection } from '../core/api/llm.js';
 import { restorePending } from './events.js';
@@ -64,7 +64,7 @@ export async function bootstrapVault(chatId, locale, settings) {
     if (vault.version === 0 && !vault.content.language) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
         vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
-        vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;
+        vault.content.character_schema = (settings && settings.characterSchema) || buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
 
         var initStateVault = emptyStateVault(chatId);
         initStateVault.content.state_schema = vault.content.state_schema;

@@ -4,7 +4,7 @@ import {
     ALL_PREDEFINED_FIELDS, SYSTEM_REQUIRED_FIELDS, PRESET_FIELDS,
     DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
     DEFAULT_NPC_SCHEME, DEFAULT_FACTION_SCHEMA, DEFAULT_QUESTS_SCHEMA,
-    DEFAULT_CHARACTER_SCHEMA
+    buildCharacterSchemaFromTemplates
 } from '../src/core/vault/schema.js';
 
 var passed = 0, failed = 0;
@@ -153,12 +153,15 @@ ok(DEFAULT_NPC_SCHEME._default, 'DEFAULT_NPC_SCHEME has _default entry');
 ok(DEFAULT_NPC_SCHEME._default.fields, '_default scheme has fields');
 ok(Object.keys(DEFAULT_NPC_SCHEME._default.fields).length >= 5, '_default fields has multiple entries');
 
-// DEFAULT_CHARACTER_SCHEMA structure
-ok(DEFAULT_CHARACTER_SCHEMA.protagonist, 'has protagonist schema');
-ok(DEFAULT_CHARACTER_SCHEMA.npc, 'has npc schema');
-ok(DEFAULT_CHARACTER_SCHEMA.protagonist.fields, 'protagonist has fields');
-ok(DEFAULT_CHARACTER_SCHEMA.npc.fields, 'npc has fields');
-assert(Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).length >= 5, 'protagonist has at least 5 fields');
+// buildCharacterSchemaFromTemplates structure
+var builtSchema = buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
+ok(builtSchema.protagonist, 'has protagonist schema');
+ok(builtSchema.npc, 'has npc schema');
+ok(builtSchema.protagonist.fields, 'protagonist has fields');
+ok(builtSchema.npc.fields, 'npc has fields');
+assert(Object.keys(builtSchema.protagonist.fields).length >= 5, 'protagonist has at least 5 fields');
+// NPC template no longer includes affection
+assert(!builtSchema.npc.fields['affection'], 'npc schema should not have affection');
 
 // No circular template reference
 assert(DEFAULT_PC_TEMPLATE.presetFields.indexOf('name') === -1, 'PC template does not include name');

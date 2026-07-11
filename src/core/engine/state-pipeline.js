@@ -1,5 +1,5 @@
 import { readState } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, DEFAULT_CHARACTER_SCHEMA, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -38,16 +38,7 @@ function buildCharacterCardSection(vault) {
  * @returns {string[]}
  */
 function collectAllManagedFields(state) {
-    var fieldSet = {};
-    // Collect from character definitions
-    Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).forEach(function(fk) {
-        if (fk !== 'name') fieldSet[fk] = true;
-    });
-    // Also collect from PC schema (shared fields)
-    Object.keys(DEFAULT_CHARACTER_SCHEMA.protagonist.fields).forEach(function(fk) {
-        if (fk !== 'name') fieldSet[fk] = true;
-    });
-    return Object.keys(fieldSet).sort();
+    return Object.keys(ALL_PREDEFINED_FIELDS).filter(function(fk) { return fk !== 'name'; }).sort();
 }
 
 /**
@@ -461,8 +452,8 @@ function buildSchemeCharPrompt(messages, isEn) {
         });
     }
 
-    var fieldKeys = Object.keys(DEFAULT_CHARACTER_SCHEMA.npc.fields).filter(function(k) { return k !== 'name'; });
-    var fieldDescs = fieldKeys.map(function(k) { return '  ' + k + ' (' + ((DEFAULT_CHARACTER_SCHEMA.npc.fields[k].type) || 'string') + ')'; }).join('\n');
+    var fieldKeys = Object.keys(ALL_PREDEFINED_FIELDS).filter(function(k) { return k !== 'name'; });
+    var fieldDescs = fieldKeys.map(function(k) { return '  ' + k + ' (' + ((ALL_PREDEFINED_FIELDS[k].type) || 'string') + ')'; }).join('\n');
 
     return '' +
         msgText +
