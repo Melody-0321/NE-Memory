@@ -1,6 +1,6 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { listStateDeltas, listMemoryVersions, getActiveChain, rollbackState, rollbackMemory, restoreBranch } from '../core/vault/state-versions.js';
-import { openDB } from '../core/vault/store.js';
+import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
+import { readState, writeState, readMemory, writeMemory } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, closeSlidePanel, emptyStateHtml, busEmit } from './panel-shared.js';
 
 var STATE_VERSION_LIMIT_KEY = 'ne_state_version_limit';
@@ -30,6 +30,9 @@ var _memVersions = [];
 var _chain = null;
 var _stateCursor = -1;
 var _memCursor = -1;
+
+var _origStateVault = null;
+var _origMemVault = null;
 
 function _versionDotClass(isHead) {
     return 'ne-version-dot' + (isHead ? ' active' : '');
@@ -184,48 +187,57 @@ function _renderSettings(container) {
     container.querySelector('#ne-mem-limit-value').textContent = memLimit;
 }
 
-async function _applyRollback(targetSeq, type) {
-    if (!_chatId) return;
-    try {
-        if (type === 'state') {
-            await rollbackState(_chatId, targetSeq);
-        } else {
-            await rollbackMemory(_chatId, targetSeq);
+async function _saveOrigIfAtHead(type) {
+    if (!_chain) return;
+    var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
+    var cursor = type === 'state' ? _stateCursor : _memCursor;
+    if (cursor === headSeq) {
+        if (type === 'state' && !_origStateVault) {
+            _origStateVault = await readState(_chatId);
+        } else if (type === 'memory' && !_origMemVault) {
+            _origMemVault = await readMemory(_chatId);
         }
-        busEmit('vault:updated', {});
-    } catch (e) {
-        console.warn('[NE] Rollback failed:', e);
     }
 }
 
-async function _applyRestore(branchId, type) {
-    if (!_chatId) return;
-    try {
-        await restoreBranch(_chatId, branchId);
-        _chain = await getActiveChain(_chatId);
-        busEmit('vault:updated', {});
-    } catch (e) {
-        console.warn('[NE] Restore failed:', e);
-    }
-}
+async function _navigateToVersion(targetSeq, type, container) {
+    if (!_chatId || !_chain) return;
+    var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
 
-async function _listBranches(chatId, type) {
-    try {
-        var db = await openDB();
-        return await new Promise(function(resolve, reject) {
-            var tx = db.transaction(['orphaned_branches'], 'readonly');
-            var result = [];
-            tx.objectStore('orphaned_branches').openCursor().onsuccess = function(e) {
-                var cursor = e.target.result;
-                if (cursor) {
-                    var b = cursor.value;
-                    if (b.chat_id === chatId && b.type === type) result.push(b);
-                    cursor.continue();
-                } else { resolve(result); }
-            };
-            tx.onerror = function() { reject(tx.error); };
-        });
-    } catch (e) { return []; }
+    if (targetSeq === headSeq && (type === 'state' ? _origStateVault : _origMemVault)) {
+        if (type === 'state') {
+            await writeState(_chatId, _origStateVault);
+            _origStateVault = null;
+        } else {
+            await writeMemory(_chatId, _origMemVault);
+            _origMemVault = null;
+        }
+    } else if (targetSeq !== headSeq) {
+        await _saveOrigIfAtHead(type);
+        if (type === 'state') {
+            var foldedState = await foldState(_chatId, targetSeq);
+            var currentVault = await readState(_chatId);
+            currentVault.content.state = foldedState;
+            await writeState(_chatId, currentVault);
+        } else {
+            var foldedMem = await foldMemory(_chatId, targetSeq);
+            var currentVault = await readMemory(_chatId);
+            currentVault.content.stm_entries = foldedMem.stm_entries;
+            currentVault.content.unconsolidated_stm = foldedMem.unconsolidated_stm;
+            currentVault.content.ltm_entries = foldedMem.ltm_entries;
+            await writeMemory(_chatId, currentVault);
+        }
+    }
+
+    if (type === 'state') {
+        _stateCursor = targetSeq;
+        await _refreshState(container);
+    } else {
+        _memCursor = targetSeq;
+        await _refreshMemory(container);
+    }
+    _updateCursorInfo(container, type);
+    busEmit('vault:updated', {});
 }
 
 export async function renderVersionHistoryPanel(container, chatId) {
@@ -309,23 +321,15 @@ export async function renderVersionHistoryPanel(container, chatId) {
         if (currentIdx < 0) return;
         var targetIdx = currentIdx + 1;
         if (targetIdx >= _stateDeltas.length) return;
-        var targetSeq = _stateDeltas[targetIdx].seq;
-        await _applyRollback(targetSeq, 'state');
-        await _refreshState(container);
-        _updateCursorInfo(container, 'state');
+        await _navigateToVersion(_stateDeltas[targetIdx].seq, 'state', container);
     };
 
     var stateRestore = container.querySelector('#ne-state-restore-btn');
     if (stateRestore) stateRestore.onclick = async function() {
-        try {
-            var branches = await _listBranches(_chatId, 'state');
-            var branch = branches.find(function(b) { return b.fork_point_seq === _stateCursor; });
-            if (branch) {
-                await _applyRestore(branch.id, 'state');
-                await _refreshState(container);
-                _updateCursorInfo(container, 'state');
-            }
-        } catch (e) { console.warn('[NE] State restore failed:', e); }
+        if (!_stateDeltas.length) return;
+        var currentIdx = _stateDeltas.findIndex(function(d) { return d.seq === _stateCursor; });
+        if (currentIdx <= 0) return;
+        await _navigateToVersion(_stateDeltas[currentIdx - 1].seq, 'state', container);
     };
 
     var memRollback = container.querySelector('#ne-mem-rollback-btn');
@@ -335,23 +339,15 @@ export async function renderVersionHistoryPanel(container, chatId) {
         if (currentIdx < 0) return;
         var targetIdx = currentIdx + 1;
         if (targetIdx >= _memVersions.length) return;
-        var targetSeq = _memVersions[targetIdx].seq;
-        await _applyRollback(targetSeq, 'memory');
-        await _refreshMemory(container);
-        _updateCursorInfo(container, 'memory');
+        await _navigateToVersion(_memVersions[targetIdx].seq, 'memory', container);
     };
 
     var memRestore = container.querySelector('#ne-mem-restore-btn');
     if (memRestore) memRestore.onclick = async function() {
-        try {
-            var branches = await _listBranches(_chatId, 'memory');
-            var branch = branches.find(function(b) { return b.fork_point_seq === _memCursor; });
-            if (branch) {
-                await _applyRestore(branch.id, 'memory');
-                await _refreshMemory(container);
-                _updateCursorInfo(container, 'memory');
-            }
-        } catch (e) { console.warn('[NE] Memory restore failed:', e); }
+        if (!_memVersions.length) return;
+        var currentIdx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
+        if (currentIdx <= 0) return;
+        await _navigateToVersion(_memVersions[currentIdx - 1].seq, 'memory', container);
     };
 
     var stateSlider = container.querySelector('#ne-state-limit-slider');
