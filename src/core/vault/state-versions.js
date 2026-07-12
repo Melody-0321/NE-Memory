@@ -11,7 +11,7 @@
  *   orphaned_branches keyPath: "id"
  */
 
-import { openDB, readState } from './store.js';
+import { openDB, readState, writeState } from './store.js';
 
 var BRANCH_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -604,6 +604,59 @@ export async function rollbackMemory(chatId, targetSeq) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
         tx.objectStore('orphaned_branches').put(branch);
     });
+}
+
+export async function rebuildStateVault(chatId, targetSeq) {
+    var db = await openDB();
+    var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
+        return tx.objectStore('active_chains').get(chatId);
+    });
+    if (!chainData) return;
+    var chain = chainData.chain || chainData;
+    if (targetSeq > chain.state_head_seq) targetSeq = chain.state_head_seq;
+    if (targetSeq < 0) return;
+
+    var base = {};
+    if (chain.state_base_seq >= 0) {
+        var baseDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, chain.state_base_seq));
+        });
+        if (baseDelta && baseDelta.folded_state) {
+            base = JSON.parse(JSON.stringify(baseDelta.folded_state));
+        }
+    }
+
+    if (Object.keys(base).length === 0) {
+        try {
+            var vault = await readState(chatId);
+            if (vault && vault.content && vault.content.state) {
+                base = JSON.parse(JSON.stringify(vault.content.state));
+            }
+        } catch (e) {}
+    }
+
+    var startIdx = chain.state_active.indexOf(chain.state_base_seq);
+    if (startIdx < 0) startIdx = 0;
+    for (var i = startIdx; i < chain.state_active.length; i++) {
+        var seq = chain.state_active[i];
+        if (seq > targetSeq) break;
+        if (seq === chain.state_base_seq) continue;
+        var delta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, seq));
+        });
+        if (!delta || !delta.changes) continue;
+        for (var ci = 0; ci < delta.changes.length; ci++) {
+            var ch = delta.changes[ci];
+            if (ch.new !== undefined) _setByPath(base, ch.path, ch.new);
+        }
+    }
+
+    var stateVault = await readState(chatId);
+    if (stateVault) {
+        stateVault.content = stateVault.content || {};
+        stateVault.content.state = base;
+        await writeState(chatId, stateVault);
+    }
 }
 
 /**
