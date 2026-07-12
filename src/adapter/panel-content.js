@@ -91,7 +91,6 @@ export async function updateVaultViewerPopout(getChatId) {
             if (c.story_time) sceneParts.push(c.story_time);
             if (c.story_scene) sceneParts.push(c.story_scene);
             if (c.story_date) sceneParts.push(c.story_date);
-            if (c.state && c.state.main_event) sceneParts.push(c.state.main_event);
             sceneEl.textContent = sceneParts.join(' \u2500 ');
         }
     } catch (e) { _logSection('header', e); }

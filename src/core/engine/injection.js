@@ -42,7 +42,7 @@ export function estimateComplexityBudget(chatMessages, defaultBudget) {
     return 1200;
 }
 
-function buildRetrievalPrefix(content, state, skipMainEvent) {
+function buildRetrievalPrefix(content, state) {
     var parts = [];
     if (content.story_scene) parts.push('场景: ' + content.story_scene);
     if (content.story_time || content.story_date) {
@@ -52,7 +52,6 @@ function buildRetrievalPrefix(content, state, skipMainEvent) {
         }
         if (timePart) parts.push('时间: ' + timePart);
     }
-    if (state && state.main_event && !skipMainEvent) parts.push('当前事件: ' + state.main_event);
     if (state && state.characters) {
         var activeChars = Object.keys(state.characters).filter(function(n) {
             var c = state.characters[n];
@@ -155,16 +154,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         }
         if (contextParts.length > 0) {
             conversationContext = contextParts.join('\n').substring(0, 1200);
-            var skipMainEvent = false;
-            if (state && state.main_event && conversationContext) {
-                var ek = state.main_event.replace(/[^\u4e00-\u9fa5a-zA-Z0-9]/g, '');
-                if (ek.length >= 2) {
-                    skipMainEvent = ek.split('').every(function(ch) {
-                        return conversationContext.substring(0, 600).indexOf(ch) === -1;
-                    });
-                }
-            }
-            var prefix = buildRetrievalPrefix(content, state, skipMainEvent);
+            var prefix = buildRetrievalPrefix(content, state);
             query = prefix ? prefix + '\n' + conversationContext : conversationContext;
         }
     }
@@ -173,7 +163,6 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         if (content.story_time) queryParts.push(content.story_time);
         if (content.story_date) queryParts.push(content.story_date);
         if (content.story_scene) queryParts.push(content.story_scene);
-        if (state.main_event) queryParts.push(state.main_event);
         query = queryParts.length > 0 ? queryParts.join(' · ') : 'recent events';
     }
 

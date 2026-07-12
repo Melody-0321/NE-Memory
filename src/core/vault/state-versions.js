@@ -115,7 +115,7 @@ function _emptyMemoryVersion(chatId) {
 }
 
 function _emptyChain(chatId) {
-    return { chat_id: chatId, state_head_seq: 0, state_base_seq: 0, state_active: [0], mem_head_seq: 0, mem_base_seq: 0, mem_active: [0] };
+    return { chat_id: chatId, state_head_seq: 0, state_base_seq: 0, state_active: [0], mem_head_seq: 0, mem_base_seq: 0, mem_active: [0], _global_state_seq: 0, _global_mem_seq: 0 };
 }
 
 function _setByPath(obj, path, value) {
@@ -213,7 +213,7 @@ async function _getOrCreateChain(chatId) {
 export async function recordStateDelta(chatId, deltaData) {
     var db = await openDB();
     var chain = await _getOrCreateChain(chatId);
-    var newSeq = chain.state_head_seq + 1;
+    var newSeq = chain._global_state_seq + 1;
 
     var changes = deltaData.changes || [];
     var summary = deltaData.summary || buildStateDeltaSummary(changes);
@@ -235,6 +235,7 @@ export async function recordStateDelta(chatId, deltaData) {
     await _tx(db, ['state_deltas', 'active_chains'], 'readwrite', function (tx) {
         tx.objectStore('state_deltas').put(delta);
         chain.state_head_seq = newSeq;
+        chain._global_state_seq = newSeq;
         chain.state_active.push(newSeq);
         if (chain.state_active.length > MAX_ACTIVE_VERSIONS) {
             chain.state_active = chain.state_active.slice(-MAX_ACTIVE_VERSIONS);
@@ -264,7 +265,7 @@ export async function recordStateDelta(chatId, deltaData) {
 export async function recordMemoryVersion(chatId, versionData) {
     var db = await openDB();
     var chain = await _getOrCreateChain(chatId);
-    var newSeq = chain.mem_head_seq + 1;
+    var newSeq = chain._global_mem_seq + 1;
 
     var delta = versionData.delta || {};
     var summary = versionData.summary || buildMemoryVersionSummary({ delta: delta, type: versionData.type });
@@ -293,6 +294,7 @@ export async function recordMemoryVersion(chatId, versionData) {
     await _tx(db, ['memory_versions', 'active_chains'], 'readwrite', function (tx) {
         tx.objectStore('memory_versions').put(version);
         chain.mem_head_seq = newSeq;
+        chain._global_mem_seq = newSeq;
         chain.mem_active.push(newSeq);
         if (chain.mem_active.length > MAX_ACTIVE_VERSIONS) {
             chain.mem_active = chain.mem_active.slice(-MAX_ACTIVE_VERSIONS);
@@ -556,8 +558,6 @@ export async function rollbackState(chatId, targetSeq) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
         tx.objectStore('orphaned_branches').put(branch);
     });
-
-    await rebuildStateVault(chatId, targetSeq);
 }
 
 /**
@@ -658,6 +658,34 @@ export async function rebuildStateVault(chatId, targetSeq) {
         stateVault.content = stateVault.content || {};
         stateVault.content.state = base;
         await writeState(chatId, stateVault);
+    }
+}
+
+export async function pruneOrphanedBranches(chatId) {
+    var db = await openDB();
+    var branches = await _tx(db, ['orphaned_branches'], 'readonly', function (tx) {
+        return tx.objectStore('orphaned_branches').getAll();
+    });
+    var relevant = branches.filter(function (b) { return b.chat_id === chatId && b.type === 'state'; });
+    if (relevant.length === 0) return;
+
+    var stateDeltas = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+        return tx.objectStore('state_deltas').getAll();
+    });
+
+    var toDelete = [];
+    relevant.forEach(function (branch) {
+        var aiCount = 0;
+        stateDeltas.forEach(function (sd) {
+            if (sd.chat_id === chatId && sd.source === 'ai_update' && sd.seq > branch.fork_point_seq) aiCount++;
+        });
+        if (aiCount >= 2) toDelete.push(branch.id);
+    });
+
+    if (toDelete.length > 0) {
+        await _tx(db, ['orphaned_branches'], 'readwrite', function (tx) {
+            toDelete.forEach(function (id) { tx.objectStore('orphaned_branches').delete(id); });
+        });
     }
 }
 

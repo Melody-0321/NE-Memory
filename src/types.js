@@ -63,7 +63,6 @@ export {};
 
 /**
  * @typedef {Object} State
- * @property {string} [main_event]
  * @property {string} [present_characters]
  * @property {string} [protagonist_name]
  * @property {Object<string, CharacterCard>} [characters]

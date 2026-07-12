@@ -200,7 +200,6 @@ async function _saveOrigIfAtHead(type) {
 async function _navigateToVersion(targetSeq, type, container) {
     if (!_chatId || !_chain) return;
     var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
-    var wasAtHead = (_origVault === null);
 
     try {
         if (targetSeq === headSeq && _origVault) {
@@ -212,8 +211,12 @@ async function _navigateToVersion(targetSeq, type, container) {
             _origVault = null;
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
+            if (type === 'state' && targetSeq < headSeq) {
+                await rollbackState(_chatId, targetSeq);
+            } else if (type === 'memory' && targetSeq < headSeq) {
+                await rollbackMemory(_chatId, targetSeq);
+            }
             var vault = _origVault ? JSON.parse(JSON.stringify(_origVault)) : await readVault(_chatId);
-
             if (type === 'state') {
                 var headState = _origVault && _origVault.content ? _origVault.content.state : null;
                 vault.content.state = await foldState(_chatId, targetSeq, headState);
@@ -224,12 +227,6 @@ async function _navigateToVersion(targetSeq, type, container) {
                 vault.content.ltm_entries = foldedMem.ltm_entries;
             }
             await write(_chatId, vault);
-
-            if (wasAtHead && targetSeq < headSeq) {
-                if (type === 'state') await rollbackState(_chatId, targetSeq);
-                else await rollbackMemory(_chatId, targetSeq);
-                _chain = await getActiveChain(_chatId);
-            }
         }
     } catch (e) {
         console.error('[NE] _navigateToVersion failed:', e);

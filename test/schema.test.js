@@ -87,16 +87,16 @@ eq(resolveSchemaPath(schemaWithDirectFields, 'name').type, 'string', 'fields wit
 
 console.log('\n=== schema: validateStateChanges ===');
 
-var vsResult = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'main_event': 'new event' });
-eq(vsResult.validated['main_event'], 'new event', 'known field validated');
+var vsResult = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'present_characters': '张三' });
+eq(vsResult.validated['present_characters'], '张三', 'known field validated');
 eq(vsResult.warnings.length, 0, 'no warnings for known field');
 
 var vsResult2 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'unknown_field': 'value' });
 eq(vsResult2.validated['unknown_field'], 'value', 'unknown field passed through');
 assert(vsResult2.warnings.length > 0, 'warning for unknown field');
 
-var vsResult3 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'main_event': 'a'.repeat(200) });
-eq(vsResult3.validated['main_event'].length, 120, 'string truncated to max_length');
+var vsResult3 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'present_characters': 'a'.repeat(200) });
+eq(vsResult3.validated['present_characters'].length, 80, 'string truncated to max_length');
 
 var vsResult4 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, {
     'characters.ZhangSan.status': '不在列表中'

@@ -4,7 +4,7 @@ import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestComp
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
-import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
+import { recordStateDelta, buildStateDeltaSummary, initializeStateChain, pruneOrphanedBranches } from '../vault/state-versions.js';
 import { buildTools, processToolCalls, isFunctionCallingSupported } from './template-llm.js';
 
 function buildCharacterCardSection(vault) {
@@ -663,32 +663,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         if (pendingBlock.time) stateVault.content.story_time = pendingBlock.time;
         if (pendingBlock.scene) stateVault.content.story_scene = pendingBlock.scene;
         if (pendingBlock.day) stateVault.content.story_date = '第' + pendingBlock.day + '天';
-        if (pendingBlock.event) {
-            var stateGlobal = stateVault.content.state || {};
-            stateGlobal.main_event = pendingBlock.event;
-            stateVault.content.state = stateGlobal;
-        }
         if (pendingBlock.present && pendingBlock.present.length > 0) {
-            var state = stateVault.content.state || {};
-            var chars = state.characters || {};
-            var presentSet = {};
-            pendingBlock.present.forEach(function(n) { presentSet[n.trim()] = true; });
-            Object.keys(presentSet).forEach(function(name) {
-                if (chars[name] && typeof chars[name] === 'object') {
-                    chars[name].status = '活跃';
-                } else {
-                    if (!chars[name]) chars[name] = {};
-                    var schemeLookup = state._character_schemes && state._character_schemes[name];
-                    var schemeKey = schemeLookup ? schemeLookup._scheme : null;
-                    ensureCharacterTemplate(state, name, schemeKey);
-                    chars = state.characters;
-                    chars[name]._role = (name === state.protagonist_name || (schemeLookup && schemeLookup._role === 'protagonist')) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
-                    if (schemeLookup && schemeLookup._scheme) chars[name]._scheme = schemeLookup._scheme;
-                    chars[name].status = '活跃';
-                }
-            });
-            state.characters = chars;
-            stateVault.content.state = state;
             stateVault.content._active_characters = pendingBlock.present.map(function(n) { return n.trim(); });
         }
         globalThis.__ne_pending_state_block = null;
@@ -714,7 +689,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
             handleQuestCompletion(stateVault.content.state, result.validated, stateVault.content.story_time);
 
             if (mergeResult.changes.length > 0) {
-                var aiMsgSendDate = latestAssistantMsg && latestAssistantMsg.send_date ? latestAssistantMsg.send_date : null;
+                var aiMsgSendDate = latestAssistantMsg && latestAssistantMsg.id ? latestAssistantMsg.id : null;
                 recordStateDelta(chatId, {
                     source: 'ai_update',
                     summary: buildStateDeltaSummary(mergeResult.changes),
@@ -724,6 +699,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     console.error('[NE] recordStateDelta failed for ' + chatId, err,
                         '\n  changes:', JSON.stringify(mergeResult.changes).substring(0, 200));
                 });
+                pruneOrphanedBranches(chatId).catch(function(e) {});
             }
         }
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {

@@ -180,7 +180,6 @@ export var DEFAULT_NPC_SCHEME = (function() {
 export const DEFAULT_GLOBAL_SCHEMA = {
     type: 'object',
     fields: {
-        main_event: { type: 'string', max_length: 120 },
         present_characters: { type: 'string', max_length: 80 },
         characters: {
             type: 'object',
@@ -740,7 +739,6 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
     parts.push('time: ' + (world.story_time || ''));
     parts.push('scene: ' + (world.story_scene || ''));
     parts.push('story_date: ' + (world.story_date || ''));
-    parts.push('main_event: ' + (state.main_event || ''));
     parts.push('');
 
     // Determine protagonist name
