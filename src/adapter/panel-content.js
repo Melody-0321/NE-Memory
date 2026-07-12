@@ -134,11 +134,27 @@ export async function updateVaultViewerPopout(getChatId) {
                 }
                 var lockBtns = block.querySelectorAll('.ne-card-lock-btn');
                 for (var j = 0; j < lockBtns.length; j++) {
-                    lockBtns[j].addEventListener('click', function(e) {
+                    lockBtns[j].addEventListener('click', async function(e) {
                         e.stopPropagation();
                         var name = this.getAttribute('data-char');
-                        showToast((this.classList.contains('locked') ? t('unlock') : t('locked')) + ': ' + name, 'info', 2000);
-                        this.classList.toggle('locked');
+                        var chatId = _currentGetChatId ? _currentGetChatId() : null;
+                        if (!chatId) { showToast('No active chat', 'warn', 2000); return; }
+                        var vault = await readVault(chatId);
+                        if (!vault || !vault.content || !vault.content.state) { showToast('No state data', 'warn', 2000); return; }
+                        var state = vault.content.state;
+                        if (!state.characters) state.characters = {};
+                        if (!state.characters[name]) state.characters[name] = {};
+                        var isLocked = !state.characters[name]._templateLocked;
+                        state.characters[name]._templateLocked = isLocked;
+                        await write(chatId, vault);
+                        if (isLocked) {
+                            this.classList.add('locked');
+                            this.textContent = '\u{1F512}';
+                        } else {
+                            this.classList.remove('locked');
+                            this.textContent = '\u{1F513}';
+                        }
+                        showToast((isLocked ? t('locked') : t('unlock')) + ': ' + name, 'info', 2000);
                     });
                 }
             }, 50);

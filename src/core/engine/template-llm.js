@@ -276,7 +276,8 @@ export function resolveNpcScheme(args, state, charName) {
     var templateKey = null;
 
     if (cardConfig && cardConfig._templateConfig) {
-        mode = cardConfig._templateConfig._npcTemplateMode || 'exact';
+        var rawMode = cardConfig._templateConfig._npcTemplateMode || 'smart';
+        mode = (rawMode === 'fast') ? 'exact' : rawMode;
     }
 
     // 模板锁检查
@@ -401,7 +402,8 @@ export function resolveFieldProposal(args, state, charName) {
     }
 
     var cardConfig = loadCardConfigSync(charName);
-    var mode = (cardConfig && cardConfig._templateConfig) ? (cardConfig._templateConfig._npcTemplateMode || 'exact') : 'exact';
+    var rawMode = (cardConfig && cardConfig._templateConfig) ? (cardConfig._templateConfig._npcTemplateMode || 'smart') : 'smart';
+    var mode = (rawMode === 'fast') ? 'exact' : rawMode;
 
     // 角色锁 → 拒绝
     var characterName = args.character_name || '';

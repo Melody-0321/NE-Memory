@@ -332,7 +332,7 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<label>' + escapeHtml(t('Role')) + '</label>';
     html += '<select id="ne-editor-role" class="ne-config-select">';
     html += '<option value="npc"' + (tpl.role === 'npc' || !tpl.role ? ' selected' : '') + '>NPC</option>';
-    html += '<option value="protagonist"' + (tpl.role === 'protagonist' ? ' selected' : '') + '>PC</option>';
+    html += '<option value="pc"' + (tpl.role === 'pc' ? ' selected' : '') + '>PC</option>';
     html += '</select>';
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
     html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2">' + escapeHtml(tpl.description || '') + '</textarea>';

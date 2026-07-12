@@ -81,7 +81,8 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<b>' + escapeHtml(displayName) + '</b> ';
     html += '<span class="ne-char-type ' + (cardType === 'protagonist' ? 'ne-char-type-pc' : 'ne-char-type-npc') + '">' + (cardType === 'protagonist' ? 'PC' : 'NPC') + '</span>';
     html += '<button class="ne-card-scheme-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" title="' + escapeHtml(t('edit_scheme')) + '" aria-label="' + escapeHtml(t('edit_scheme')) + '" onclick="event.stopPropagation()">\u2699</button>';
-    html += '<button class="ne-card-lock-btn" data-char="' + escapeHtml(name) + '" title="' + escapeHtml(t('lock_character')) + '" aria-label="' + escapeHtml(t('lock_character')) + '" onclick="event.stopPropagation()">\u{1F513}</button>';
+    var isTemplateLocked = card && card._templateLocked;
+    html += '<button class="ne-card-lock-btn' + (isTemplateLocked ? ' locked' : '') + '" data-char="' + escapeHtml(name) + '" title="' + escapeHtml(t('lock_character')) + '" aria-label="' + escapeHtml(t('lock_character')) + '" onclick="event.stopPropagation()">' + (isTemplateLocked ? '\u{1F512}' : '\u{1F513}') + '</button>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
     html += '</div>';
     html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
@@ -511,6 +512,19 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     // Build scheme editor HTML
     var html = '<div class="ne-scheme-editor">';
 
+    // Template library selector
+    var tplOptionsHtml = '<option value="">— ' + escapeHtml(t('create_template')) + ' —</option>';
+    Object.keys(templates).forEach(function(tid) {
+        var tt = templates[tid];
+        var label = (tt && tt.name) ? tt.name : tid;
+        var sel = (tplId === tid) ? ' selected' : '';
+        tplOptionsHtml += '<option value="' + escapeHtml(tid) + '"' + sel + '>' + escapeHtml(label) + '</option>';
+    });
+    html += '<div class="ne-scheme-section">';
+    html += '<label>' + escapeHtml('Template') + '</label>';
+    html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;margin-bottom:8px;">' + tplOptionsHtml + '</select>';
+    html += '</div>';
+
     // Required fields section
     html += '<div class="ne-scheme-section ne-scheme-required">';
     html += '<div class="ne-scheme-section-title">' + escapeHtml(t('required_section')) + '</div>';
@@ -601,6 +615,41 @@ function _exitSchemeEditMode(cardEl) {
 }
 
 function _bindSchemeEditorEvents(cardEl, charName, charCardType, tpl, templates) {
+    // Template selector
+    var tplSelect = cardEl.querySelector('#ne-scheme-template-select');
+    if (tplSelect) {
+        tplSelect.addEventListener('change', function() {
+            var selectedId = this.value;
+            if (selectedId) {
+                var newTpl = templates[selectedId];
+                if (newTpl) {
+                    // Update checkboxes
+                    var checkboxes = cardEl.querySelectorAll('.ne-scheme-checkbox');
+                    var newPresets = newTpl.presetFields || [];
+                    for (var ci = 0; ci < checkboxes.length; ci++) {
+                        checkboxes[ci].checked = newPresets.indexOf(checkboxes[ci].value) !== -1;
+                    }
+                    // Update custom fields
+                    var customContainer = cardEl.querySelector('#ne-scheme-custom-fields');
+                    if (customContainer) {
+                        customContainer.innerHTML = '';
+                        var newCustoms = newTpl.customFieldRefs || [];
+                        newCustoms.forEach(function(fn) {
+                            var div = document.createElement('div');
+                            div.className = 'ne-scheme-field ne-scheme-custom-item';
+                            div.innerHTML = '<span>' + escapeHtml(fn) + '</span><button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fn) + '">\u2715</button>';
+                            customContainer.appendChild(div);
+                            div.querySelector('.ne-scheme-remove-custom').addEventListener('click', function() {
+                                div.remove();
+                            });
+                        });
+                    }
+                    // Update tpl reference for save
+                    tpl = newTpl;
+                }
+            }
+        });
+    }
     // Save
     var saveBtn = cardEl.querySelector('#ne-scheme-save');
     if (saveBtn) {
@@ -642,28 +691,39 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, tpl, templates)
 }
 
 function _saveSchemeChanges(cardEl, charName, tpl, templates) {
-    if (!tpl) return;
-    // Collect preset fields
     var presetFields = [];
     var checkboxes = cardEl.querySelectorAll('.ne-scheme-checkbox:checked');
     for (var i = 0; i < checkboxes.length; i++) {
         presetFields.push(checkboxes[i].value);
     }
-    // Collect custom fields
     var customFieldRefs = [];
     var customItems = cardEl.querySelectorAll('.ne-scheme-custom-item span');
     for (var j = 0; j < customItems.length; j++) {
         customFieldRefs.push(customItems[j].textContent);
     }
 
-    // Update template
-    tpl.presetFields = presetFields;
-    tpl.customFieldRefs = customFieldRefs;
-    tpl.updatedAt = new Date().toISOString();
-    saveTemplate(tpl);
+    if (tpl) {
+        tpl.presetFields = presetFields;
+        tpl.customFieldRefs = customFieldRefs;
+        tpl.updatedAt = new Date().toISOString();
+        saveTemplate(tpl);
+    } else {
+        var newTpl = {
+            id: 'tpl_' + Date.now(),
+            name: charName,
+            role: 'npc',
+            presetFields: presetFields,
+            customFieldRefs: customFieldRefs,
+            tags: [],
+            _locked: false,
+            source: 'user_created',
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+        saveTemplate(newTpl);
+    }
     showToast(t('template_saved'), 'success', 3000);
     _exitSchemeEditMode(cardEl);
-    // Trigger vault refresh
     busEmit('vault:updated', {});
 }
 
