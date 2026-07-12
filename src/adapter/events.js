@@ -9,7 +9,7 @@ import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters } fr
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
-import { showToast, PD } from './panel-shared.js';
+import { showToast, PD, busEmit } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
@@ -745,6 +745,7 @@ function triggerPerRoundExtraction(assistantMsg) {
                 }
                 delete stateResult.vault.content._templateInitSignal;
             }
+            busEmit('vault:updated', { getChatId: getChatIdFn });
         } catch (e) {
             console.warn('[NE] Per-round state pipeline failed:', e);
         }
