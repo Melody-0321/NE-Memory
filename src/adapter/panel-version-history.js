@@ -425,8 +425,6 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             headStateSeq = _chain.state_head_seq;
             headMemSeq = _chain.mem_head_seq;
         }
-        if (_stateCursor === 0 || _stateCursor === -1) _stateCursor = headStateSeq;
-        if (_memCursor === 0 || _memCursor === -1) _memCursor = headMemSeq;
         return true;
     }
 
@@ -493,6 +491,8 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
 
     // Initial load
     if (!await _reloadChains()) return;
+    _stateCursor = headStateSeq;
+    _memCursor = headMemSeq;
     _refreshUI('state', stateEls);
     _refreshUI('memory', memEls);
 
