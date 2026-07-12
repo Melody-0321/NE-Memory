@@ -5,6 +5,7 @@ import { resolveAmbiguousReferences } from './ambiguity.js';
 import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
 import { findMessageInChat, buildMsgId } from './msg-id.js';
+import { calRelativeTime } from './time-utils.js';
 
 var getChatId = null;
 var getChatMessages = null;
@@ -286,16 +287,17 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
 
     if (entityGrouped && (Object.keys(entityGrouped.groups).length > 0 || entityGrouped.unassigned.length > 0)) {
         var activeChars = getActiveCharacters(state);
+        var storyTime = (content && content.story_time) ? content.story_time : null;
 
-        var highlights = buildKeyHighlights(pipelineMerged.map, entityGrouped, 5);
+        var highlights = buildKeyHighlights(pipelineMerged.map, entityGrouped, 5, storyTime);
         if (highlights) {
-            if (parts.length > 0) parts.push('---');
+            if (parts.length > 0) parts.push('<hr>');
             parts.push(highlights);
         }
 
-        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, entityChains);
+        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, entityChains, storyTime);
         if (entityBlock) {
-            if (parts.length > 0) parts.push('---');
+            if (parts.length > 0) parts.push('<hr>');
             parts.push(entityBlock);
         }
 
@@ -317,7 +319,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
                 unreachedChains.push(name + ' (' + chain.length + '条链事件，均未在本次检索中命中，跨度' + span + ')');
             });
             if (unreachedChains.length > 0) {
-                if (parts.length > 0) parts.push('---');
+                if (parts.length > 0) parts.push('<hr>');
                 parts.push('场景外链: ' + unreachedChains.join('; '));
             }
         }
@@ -326,7 +328,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     if (neSettings.retrievalBudgetEnabled) {
         var budgetText = compileRetrievalBudget(content, query, entityNames, entityChains, neSettings.retrievalBudgetTokens || 300);
         if (budgetText) {
-            if (parts.length > 0) parts.push('---');
+            if (parts.length > 0) parts.push('<hr>');
             parts.push(budgetText);
         }
     }
@@ -334,10 +336,8 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     return parts.join('\n\n');
 }
 
-export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityChains) {
+export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityChains, storyTime) {
     var lines = [];
-    lines.push('## 实体记忆链');
-    lines.push('');
 
     var allGroups = entityGrouped.groups || {};
     var activeSet = {};
@@ -354,9 +354,10 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
 
     function formatEntry(e) {
         var timePart = e.entry.period || '';
+        var relative = calRelativeTime(e.entry.timestamp, storyTime);
         var scene = e.entry.scene || '';
         var event = e.entry.event || e.entry.summary || '';
-        var line = ' [' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
+        var line = (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
         if (e._originalText) {
             line += '\n   > ' + e._originalText.replace(/\n/g, '\n   > ');
         }
@@ -370,11 +371,11 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
             if (missRun.length === 0) return;
             if (missRun.length === 1) {
                 var p = missRun[0].entry.period || '';
-                folded.push(' [' + p + '] （' + p + ' 未展开）');
+                folded.push('[' + p + '] （' + p + ' 未展开）');
             } else {
                 var first = missRun[0].entry.period;
                 var last = missRun[missRun.length - 1].entry.period;
-                folded.push(' [' + first + '] ' + first + '-' + last + '（' + missRun.length + '条事件未展开）');
+                folded.push('[' + first + '] ' + first + '-' + last + '（' + missRun.length + '条事件未展开）');
             }
             missRun = [];
         }
@@ -409,15 +410,15 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
         var refCount = group.refs ? group.refs.length : 0;
         var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
 
-        lines.push('### ' + name + ' (' + totalCount + ' events in chain, ' + hitCount + ' hits' + refPart + ')' + kbLine);
+        lines.push('<h3><b>' + name + '</b> <small>(' + totalCount + ' events in chain, ' + hitCount + ' hits' + refPart + ')' + kbLine + '</small></h3>');
 
         var idx = 0;
         folded.forEach(function(item) {
             idx++;
             if (typeof item === 'string') {
-                lines.push(idx + '.' + item);
+                lines.push(idx + '. ' + item);
             } else {
-                lines.push(idx + '.' + formatEntry(item));
+                lines.push(idx + '. ' + formatEntry(item));
             }
         });
 
@@ -429,7 +430,7 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
                 refMap[r.primaryName].push(r.entryId);
             });
             Object.keys(refMap).forEach(function(primary) {
-                lines.push('   关联: 见「' + primary + '」' + refMap[primary].join(', '));
+                lines.push('   关联: 见「<b>' + primary + '</b>」' + refMap[primary].join(', '));
             });
         }
 
@@ -441,19 +442,20 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
     });
 
     if (entityGrouped.unassigned && entityGrouped.unassigned.length > 0) {
-        lines.push('### 未标注条目 (' + entityGrouped.unassigned.length + ' entries)');
+        lines.push('<h3>未标注条目 <small>(' + entityGrouped.unassigned.length + ' entries)</small></h3>');
         entityGrouped.unassigned.forEach(function(e, idx) {
             var score = e.relevance > 0 ? ' [score:' + e.relevance.toFixed(3) + ']' : '';
+            var relative = calRelativeTime(e.entry.timestamp, storyTime);
             var timePart = e.entry.period || '';
             var scene = e.entry.scene || '';
             var event = e.entry.event || e.entry.summary || '';
-            lines.push((idx + 1) + '. [' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score);
+            lines.push((idx + 1) + '. ' + (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score);
         });
         lines.push('');
     }
 
     if (externalNames.length > 0) {
-        lines.push('### 场景外角色');
+        lines.push('<h3>场景外角色</h3>');
         lines.push('');
         externalNames.forEach(function(name) {
             renderGroup(name, allGroups[name], entityAnnotations[name] || []);
@@ -529,7 +531,7 @@ export function buildStateOnlyInjection(vault) {
     return '[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]';
 }
 
-export function buildKeyHighlights(pipelineMap, entityGrouped, topK) {
+export function buildKeyHighlights(pipelineMap, entityGrouped, topK, storyTime) {
     topK = topK || 5;
     var entries = [];
     pipelineMap.forEach(function(v) {
@@ -553,15 +555,16 @@ export function buildKeyHighlights(pipelineMap, entityGrouped, topK) {
         });
     });
 
-    var lines = ['## 关键记忆', ''];
+    var lines = ['<h2>关键记忆</h2>', ''];
     entries.forEach(function(e, i) {
+        var relative = calRelativeTime(e.entry.timestamp, storyTime);
         var period = e.entry.period || '';
         var scene = e.entry.scene || '';
         var summary = e.entry.event || e.entry.summary || '';
         if (summary.length > 80) summary = summary.substring(0, 80) + '...';
         var groupName = entryToGroup[e.entry.id] || '';
-        var ref = groupName ? ' \u2192 \u300c' + groupName + '\u300d' : '';
-        lines.push((i + 1) + '. [' + period + '] ' + (scene ? scene + ': ' : '') + summary + ref);
+        var ref = groupName ? ' \u2192 \u300c<b>' + groupName + '</b>\u300d' : '';
+        lines.push((i + 1) + '. ' + (relative ? relative + ' ' : '') + '[' + period + '] ' + (scene ? scene + ': ' : '') + summary + ref);
     });
     lines.push('');
 

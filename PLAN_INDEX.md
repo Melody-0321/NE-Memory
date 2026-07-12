@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-12 | 22 个文档 | 41% 完成
+> 自动生成 | 2026-07-12 | 24 个文档 | 38% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -8,6 +8,7 @@
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
 | `doc-management-optimization-plan.md` | ✅ 已完成 | 2026-07-09 | 2026-07-09 | NE-Memory 文档管理优化计划 |
+| `extend-templates-to-faction-quest.md` | ❓ 未知 | — | — | 模板系统扩展：势力 + 任务/事件 + NE-CHAR 动态字段 |
 | `fix-dialog-round-control.md` | ✅ 已完成 | 2026-06-18 | 2026-06-22 | 修复计划：对话轮数注入控制不生效 |
 | `fix-panel-chat-switch-sync.md` | ✅ 已完成 | 2026-06-20 | 2026-06-28 | 修复面板聊天切换不同步问题 |
 | `fix-template-llm-and-world-context.md` | ❓ 未知 | — | — | 修复：Template LLM 触发 + World Context 填充 |
@@ -16,6 +17,7 @@
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-ui-plan.md` | 🔄 进行中 | 2026-07-05 | 2026-07-07 | Open Character Schema UI 实施计划 |
 | `open-character-schema-ux-engineering.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
+| `p0-layer1-three-features.md` | ❓ 未知 | — | — | P0 三合一计划：相对时间前缀 + HTML 格式化注入 + 多样性过滤 |
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
@@ -35,4 +37,4 @@
 - ✅ 已完成：9
 - 🔄 进行中：5
 - ⏳ 未开始：1
-- ❓ 未标记：7
+- ❓ 未标记：9
