@@ -1,5 +1,5 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
+import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
 import { readVault, write } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, closeSlidePanel, emptyStateHtml, busEmit } from './panel-shared.js';
 
@@ -204,6 +204,7 @@ async function _navigateToVersion(targetSeq, type, container) {
     try {
         if (targetSeq === headSeq && _origVault) {
             if (type === 'state') {
+                globalThis.__ne_pending_state_rollback = null;
                 var restoredHeadState = _origVault.content ? _origVault.content.state : null;
                 _origVault.content.state = await foldState(_chatId, headSeq, restoredHeadState);
             }
@@ -212,9 +213,9 @@ async function _navigateToVersion(targetSeq, type, container) {
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
             if (type === 'state' && targetSeq < headSeq) {
-                await rollbackState(_chatId, targetSeq);
+                globalThis.__ne_pending_state_rollback = { chatId: _chatId, targetSeq: targetSeq };
             } else if (type === 'memory' && targetSeq < headSeq) {
-                await rollbackMemory(_chatId, targetSeq);
+                globalThis.__ne_pending_mem_rollback = { chatId: _chatId, targetSeq: targetSeq };
             }
             var vault = _origVault ? JSON.parse(JSON.stringify(_origVault)) : await readVault(_chatId);
             if (type === 'state') {

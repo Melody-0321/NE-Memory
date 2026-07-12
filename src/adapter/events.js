@@ -40,7 +40,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rebuildStateVault, recordStateDelta } from '../core/vault/state-versions.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rebuildStateVault, recordStateDelta, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction, sendNePopup } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -461,9 +461,19 @@ export async function onMessageReceived(messageIndex) {
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
             if (isStateSchemaEnabled() && pendingMessages.length > 2) {
+                var pendingStateRb = globalThis.__ne_pending_state_rollback;
+                if (pendingStateRb && pendingStateRb.chatId === chatId) {
+                    try { await rollbackState(chatId, pendingStateRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
+                    globalThis.__ne_pending_state_rollback = null;
+                }
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
+                var pendingMemRb = globalThis.__ne_pending_mem_rollback;
+                if (pendingMemRb && pendingMemRb.chatId === chatId) {
+                    try { await rollbackMemory(chatId, pendingMemRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
+                    globalThis.__ne_pending_mem_rollback = null;
+                }
                 flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
             }
 
