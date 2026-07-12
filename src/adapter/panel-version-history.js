@@ -38,6 +38,7 @@ var _extStateEls = null;
 var _extMemEls = null;
 var _extNavHandler = null;
 var _extNavTimer = null;
+var _cursorNeedsReset = false;
 
 function _versionDotClass(isHead, isCursor) {
     if (isHead) return 'ne-version-dot active';
@@ -499,8 +500,16 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             _extNavTimer = null;
             var cid = (payload && typeof payload.getChatId === 'function') ? payload.getChatId() : _chatId;
             if (!cid) return;
-            if (cid !== _chatId) _chatId = cid;
+            if (cid !== _chatId) {
+                _chatId = cid;
+                _cursorNeedsReset = true;
+            }
             if (!await _reloadChains(cid)) return;
+            if (_cursorNeedsReset) {
+                _stateCursor = headStateSeq;
+                _memCursor = headMemSeq;
+                _cursorNeedsReset = false;
+            }
             _refreshUI('state', _extStateEls);
             _refreshUI('memory', _extMemEls);
         }, 300);
