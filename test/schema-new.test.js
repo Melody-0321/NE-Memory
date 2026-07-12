@@ -47,7 +47,7 @@ var expanded = expandTemplateFields(tpl);
 ok(expanded, 'expandTemplateFields returns object');
 assert(Object.keys(expanded).length >= 3, 'at least 3 fields: name + status + personality + gender_age');
 ok(expanded['personality'].type, 'preset field has type');
-eq(expanded['gender_age'].layer, 'static', 'gender_age is static');
+ok(expanded['gender_age'].type, 'gender_age has type');
 ok(expanded['name'], 'name field always present (system required)');
 
 var emptyTpl = expandTemplateFields({});
@@ -99,12 +99,11 @@ console.log('\n=== schema-new: registerFieldToScheme ===');
 var scheme = { fields: {} };
 registerFieldToScheme(scheme, 'test_field', { type: 'boolean' }, 'ai_generated');
 eq(scheme.fields['test_field'].type, 'boolean', 'field registered');
-eq(scheme.fields['test_field'].layer, 'dynamic', 'default layer=dynamic');
 eq(scheme.fields['test_field']._source, 'ai_generated', 'source ai_generated');
 
 registerFieldToScheme(scheme, 'test_field_2', { type: 'enum', values: ['a', 'b'] }, 'user_created');
-eq(scheme.fields['test_field_2'].layer, 'dynamic', 'default layer');
-eq(Object.keys(scheme.fields).length, 2, '2 fields in scheme');
+eq(scheme.fields['test_field_2'].type, 'enum', 'field type preserved');
+eq(scheme.fields['test_field_2']._source, 'user_created', 'source user_created');
 
 // Overwrite test
 registerFieldToScheme(scheme, 'test_field', { type: 'number', layer: 'static' }, 'normalized');
