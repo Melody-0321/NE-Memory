@@ -499,6 +499,7 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             _extNavTimer = null;
             var cid = (payload && typeof payload.getChatId === 'function') ? payload.getChatId() : _chatId;
             if (!cid) return;
+            if (cid !== _chatId) _chatId = cid;
             if (!await _reloadChains(cid)) return;
             _refreshUI('state', _extStateEls);
             _refreshUI('memory', _extMemEls);
