@@ -32,13 +32,17 @@ export function createVaultPopout(getChatId) {
         stopOverlayResizeWatcher();
         overlay.classList.remove('open');
         overlay.style.pointerEvents = '';
-        var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
+        overlay.style.transform = 'translateY(100%)';
+        var tid = setTimeout(function() {
+            overlay.style.display = 'none';
+            if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+        }, 600);
         overlay.addEventListener('transitionend', function handler() {
             overlay.removeEventListener('transitionend', handler);
             clearTimeout(tid);
             overlay.style.display = 'none';
+            if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
         });
-        if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
     }
 }
 
