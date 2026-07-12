@@ -218,6 +218,7 @@ export function onMessageSent(messageIndex) {
                     if (i === messageIndex) break;
                     pendingMessages.push({
                         role: earlyMsg.is_user ? 'user' : 'assistant',
+                        name: earlyMsg.name || '',
                         content: earlyMsg.mes || '',
                         id: earlyMsg._ne_id,
                         timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
@@ -235,7 +236,7 @@ export function onMessageSent(messageIndex) {
         if (message) {
             _neCheckChatIntegrity('onMessageReceived:beforeNeCharStrip');
             message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
-            pendingMessages.push({ role: 'user', content: message.mes || '', id: message._ne_id, timestamp: Date.now() });
+            pendingMessages.push({ role: 'user', name: message.name || '', content: message.mes || '', id: message._ne_id, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
