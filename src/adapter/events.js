@@ -40,7 +40,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rebuildStateVault } from '../core/vault/state-versions.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction, sendNePopup } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -1177,11 +1177,8 @@ function _handleMessageRollback(chatId) {
 
             if (result.degraded) {
                 await saveMemoryVault(chatId, vault);
-            } else if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
+            } else if (result.rolledBackMem > 0) {
                 await saveMemoryVault(chatId, vault);
-                try { await rebuildStateVault(chatId, result._targetStateSeq || 0); } catch (e) {
-                    console.warn('[NE] State vault rebuild failed:', e);
-                }
             }
 
             if (result.rolledBackState > 0 || result.rolledBackMem > 0) {

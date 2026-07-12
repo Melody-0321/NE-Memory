@@ -556,6 +556,8 @@ export async function rollbackState(chatId, targetSeq) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
         tx.objectStore('orphaned_branches').put(branch);
     });
+
+    await rebuildStateVault(chatId, targetSeq);
 }
 
 /**

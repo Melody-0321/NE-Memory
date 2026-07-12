@@ -1,5 +1,5 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
-import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
+import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
 import { readVault, write } from '../core/vault/store.js';
 import { qs, qsa, byId, pdCreate, t, PD, closeSlidePanel, emptyStateHtml, busEmit } from './panel-shared.js';
 
@@ -200,6 +200,7 @@ async function _saveOrigIfAtHead(type) {
 async function _navigateToVersion(targetSeq, type, container) {
     if (!_chatId || !_chain) return;
     var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
+    var wasAtHead = (_origVault === null);
 
     try {
         if (targetSeq === headSeq && _origVault) {
@@ -212,6 +213,7 @@ async function _navigateToVersion(targetSeq, type, container) {
         } else if (targetSeq !== headSeq) {
             await _saveOrigIfAtHead(type);
             var vault = _origVault ? JSON.parse(JSON.stringify(_origVault)) : await readVault(_chatId);
+
             if (type === 'state') {
                 var headState = _origVault && _origVault.content ? _origVault.content.state : null;
                 vault.content.state = await foldState(_chatId, targetSeq, headState);
@@ -222,6 +224,12 @@ async function _navigateToVersion(targetSeq, type, container) {
                 vault.content.ltm_entries = foldedMem.ltm_entries;
             }
             await write(_chatId, vault);
+
+            if (wasAtHead && targetSeq < headSeq) {
+                if (type === 'state') await rollbackState(_chatId, targetSeq);
+                else await rollbackMemory(_chatId, targetSeq);
+                _chain = await getActiveChain(_chatId);
+            }
         }
     } catch (e) {
         console.error('[NE] _navigateToVersion failed:', e);
