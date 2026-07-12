@@ -21,6 +21,7 @@ export function createVaultPopout(getChatId) {
         if (chat) { chat.style.opacity = '0'; chat.style.pointerEvents = 'none'; chat.style.transition = 'opacity var(--ne-transition-normal)'; }
         overlay.style.display = 'flex';
         overlay.style.transform = 'translateY(0)';
+        overlay.style.pointerEvents = 'auto';
         overlay.scrollTop = 0;
         requestAnimationFrame(function() {
             overlay.classList.add('open');
@@ -30,6 +31,7 @@ export function createVaultPopout(getChatId) {
     } else {
         stopOverlayResizeWatcher();
         overlay.classList.remove('open');
+        overlay.style.pointerEvents = '';
         var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
         overlay.addEventListener('transitionend', function handler() {
             overlay.removeEventListener('transitionend', handler);
