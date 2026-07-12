@@ -403,33 +403,46 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     _chatId = chatId;
     if (!_chatId) return;
 
-    try {
-        _chain = await getActiveChain(_chatId);
-        _stateDeltas = _chain ? await listStateDeltas(_chatId, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
-        _memVersions = _chain ? await listMemoryVersions(_chatId, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
-    } catch (e) {
-        console.warn('[NE] initVersionNavButtons: failed to load chains', e);
-        return;
+    var headStateSeq = 0, headMemSeq = 0;
+
+    async function _reloadChains() {
+        if (!_chatId) return false;
+        try {
+            _chain = await getActiveChain(_chatId);
+            _stateDeltas = _chain ? await listStateDeltas(_chatId, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
+            _memVersions = _chain ? await listMemoryVersions(_chatId, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
+        } catch (e) {
+            console.warn('[NE] initVersionNavButtons: failed to reload chains', e);
+            return false;
+        }
+        if (_chain) {
+            headStateSeq = _chain.state_head_seq;
+            headMemSeq = _chain.mem_head_seq;
+        }
+        if (_stateCursor === 0 || _stateCursor === -1) _stateCursor = headStateSeq;
+        if (_memCursor === 0 || _memCursor === -1) _memCursor = headMemSeq;
+        return true;
     }
 
-    var headStateSeq = _chain ? _chain.state_head_seq : 0;
-    var headMemSeq = _chain ? _chain.mem_head_seq : 0;
-    _stateCursor = headStateSeq;
-    _memCursor = headMemSeq;
-    _origVault = null;
-
-    function refreshUI(type, els) {
+    function _refreshUI(type, els) {
         var deltas = type === 'state' ? _stateDeltas : _memVersions;
         var cursor = type === 'state' ? _stateCursor : _memCursor;
         var headSeq = type === 'state' ? headStateSeq : headMemSeq;
         var seqs = deltas.map(function(d) { return d.seq; });
         var idx = seqs.indexOf(cursor);
-        if (els.rollbackBtn) _updateNavButtonState(els.rollbackBtn, idx >= seqs.length - 1);
-        if (els.restoreBtn) _updateNavButtonState(els.restoreBtn, idx <= 0);
+        var hasVersions = seqs.length > 0;
+        if (els.rollbackBtn) {
+            if (!hasVersions) { els.rollbackBtn.disabled = true; }
+            else { _updateNavButtonState(els.rollbackBtn, idx >= seqs.length - 1); }
+        }
+        if (els.restoreBtn) {
+            if (!hasVersions) { els.restoreBtn.disabled = true; }
+            else { _updateNavButtonState(els.restoreBtn, idx <= 0); }
+        }
         if (els.cursorInfo) _setCursorText(els.cursorInfo, cursor, headSeq);
     }
 
-    async function doNavigate(type, targetSeq, els) {
+    async function _doNavigate(type, targetSeq, els) {
         if (!_chatId || !_chain) return;
         var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
         try {
@@ -463,34 +476,44 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             console.error('[NE] version nav failed:', type, e);
             return;
         }
-        refreshUI(type, els);
+        _refreshUI(type, els);
         busEmit('vault:updated', {});
     }
 
-    refreshUI('state', stateEls);
-    refreshUI('memory', memEls);
+    // Initial load
+    if (!await _reloadChains()) return;
+    _refreshUI('state', stateEls);
+    _refreshUI('memory', memEls);
 
-    // State
-    if (stateEls.rollbackBtn) stateEls.rollbackBtn.onclick = function() {
+    // State — reload chain on every click so button state reflects latest versions
+    if (stateEls.rollbackBtn) stateEls.rollbackBtn.onclick = async function() {
+        if (!await _reloadChains()) return;
+        _refreshUI('state', stateEls);
         var seqs = _stateDeltas.map(function(d) { return d.seq; });
         var idx = seqs.indexOf(_stateCursor);
-        if (idx < seqs.length - 1) doNavigate('state', seqs[idx + 1], stateEls);
+        if (idx < seqs.length - 1) await _doNavigate('state', seqs[idx + 1], stateEls);
     };
-    if (stateEls.restoreBtn) stateEls.restoreBtn.onclick = function() {
+    if (stateEls.restoreBtn) stateEls.restoreBtn.onclick = async function() {
+        if (!await _reloadChains()) return;
+        _refreshUI('state', stateEls);
         var seqs = _stateDeltas.map(function(d) { return d.seq; });
         var idx = seqs.indexOf(_stateCursor);
-        if (idx > 0) doNavigate('state', seqs[idx - 1], stateEls);
+        if (idx > 0) await _doNavigate('state', seqs[idx - 1], stateEls);
     };
 
-    // Memory
-    if (memEls.rollbackBtn) memEls.rollbackBtn.onclick = function() {
+    // Memory — same pattern
+    if (memEls.rollbackBtn) memEls.rollbackBtn.onclick = async function() {
+        if (!await _reloadChains()) return;
+        _refreshUI('memory', memEls);
         var seqs = _memVersions.map(function(d) { return d.seq; });
         var idx = seqs.indexOf(_memCursor);
-        if (idx < seqs.length - 1) doNavigate('memory', seqs[idx + 1], memEls);
+        if (idx < seqs.length - 1) await _doNavigate('memory', seqs[idx + 1], memEls);
     };
-    if (memEls.restoreBtn) memEls.restoreBtn.onclick = function() {
+    if (memEls.restoreBtn) memEls.restoreBtn.onclick = async function() {
+        if (!await _reloadChains()) return;
+        _refreshUI('memory', memEls);
         var seqs = _memVersions.map(function(d) { return d.seq; });
         var idx = seqs.indexOf(_memCursor);
-        if (idx > 0) doNavigate('memory', seqs[idx - 1], memEls);
+        if (idx > 0) await _doNavigate('memory', seqs[idx - 1], memEls);
     };
 }
