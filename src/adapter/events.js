@@ -745,6 +745,7 @@ function triggerPerRoundExtraction(assistantMsg) {
                 }
                 delete stateResult.vault.content._templateInitSignal;
             }
+            console.log('[NE-EVT] pipeline done, emitting vault:updated for', chatId);
             busEmit('vault:updated', { getChatId: getChatIdFn });
         } catch (e) {
             console.warn('[NE] Per-round state pipeline failed:', e);

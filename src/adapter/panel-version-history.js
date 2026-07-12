@@ -493,13 +493,20 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     _extMemEls = memEls;
     if (_extNavHandler) busOff('vault:updated', _extNavHandler);
     _extNavHandler = function() {
+        console.log('[NE-VNAV-BUS] handler triggered (debounce timer)');
         if (_extNavTimer !== null) clearTimeout(_extNavTimer);
         _extNavTimer = setTimeout(async function() {
             _extNavTimer = null;
             if (!_chatId) return;
+            console.log('[NE-VNAV-BUS] about to _reloadChains for chatId=', _chatId);
             if (!await _reloadChains()) return;
+            console.log('[NE-VNAV-BUS] reloaded: headState=', headStateSeq, 'headMem=', headMemSeq,
+                'stateDeltas=', _stateDeltas.length, 'memVersions=', _memVersions.length,
+                'stateCursor=', _stateCursor, 'memCursor=', _memCursor);
             _refreshUI('state', _extStateEls);
             _refreshUI('memory', _extMemEls);
+            console.log('[NE-VNAV-BUS] _refreshUI done. rollback.disabled=', _extStateEls.rollbackBtn ? _extStateEls.rollbackBtn.disabled : 'N/A',
+                'restore.disabled=', _extStateEls.restoreBtn ? _extStateEls.restoreBtn.disabled : 'N/A');
         }, 300);
     };
     busOn('vault:updated', _extNavHandler);
