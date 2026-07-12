@@ -275,6 +275,14 @@ export function resolveNpcScheme(args, state, charName) {
     var mode = 'exact';
     var templateKey = null;
 
+    function _recordMapping(tplId) {
+        if (state && characterName) {
+            state._character_schemes = state._character_schemes || {};
+            state._character_schemes[characterName] = state._character_schemes[characterName] || {};
+            state._character_schemes[characterName]._templateId = tplId;
+        }
+    }
+
     if (cardConfig && cardConfig._templateConfig) {
         var rawMode = cardConfig._templateConfig._npcTemplateMode || 'smart';
         mode = (rawMode === 'fast') ? 'exact' : rawMode;
@@ -288,6 +296,7 @@ export function resolveNpcScheme(args, state, charName) {
             for (var li = 0; li < lockedDtKeys.length; li++) {
                 var ldt = cardConfig._dialogueTemplates[lockedDtKeys[li]];
                 if (ldt && ldt._locked) {
+                    _recordMapping(ldt._templateId || lockedDtKeys[li]);
                     return Promise.resolve({
                         fields: expandTemplateFields(ldt),
                         source: 'exact',
@@ -296,6 +305,7 @@ export function resolveNpcScheme(args, state, charName) {
                 }
             }
         }
+        _recordMapping('_default_npc');
         var dFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
         return Promise.resolve({ fields: dFields, source: 'exact', _templateKey: '_default_npc' });
     }
@@ -314,12 +324,14 @@ export function resolveNpcScheme(args, state, charName) {
         if (templateKey && cardConfig._dialogueTemplates[templateKey]) {
             var exactTemplate = cardConfig._dialogueTemplates[templateKey];
             var exactFields = expandTemplateFields(exactTemplate);
+            _recordMapping(exactTemplate._templateId || templateKey);
             return Promise.resolve({
                 fields: exactFields,
                 source: 'exact',
                 _templateKey: templateKey
             });
         }
+        _recordMapping('_default_npc');
         var defaultFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
         return Promise.resolve({
             fields: defaultFields,
@@ -347,6 +359,7 @@ export function resolveNpcScheme(args, state, charName) {
 
         if (validated.valid && parsed.confidence !== undefined && parsed.confidence < 0.3) {
             console.log('[NE-FC] scheme confidence too low (' + parsed.confidence + '), using defaults');
+            _recordMapping('_default_npc');
             var fallbackFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
             return { fields: fallbackFields, source: 'exact', _templateKey: '_default_npc' };
         }
@@ -356,6 +369,7 @@ export function resolveNpcScheme(args, state, charName) {
 
         if (!validated.valid) {
             console.warn('[NE-FC] scheme validation failed:', validated.errors);
+            _recordMapping('_default_npc');
             var fbFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
             return { fields: fbFields, source: 'exact', _templateKey: '_default_npc' };
         }
@@ -385,6 +399,7 @@ export function resolveNpcScheme(args, state, charName) {
             updatedAt: new Date().toISOString()
         };
         saveTemplate(newTemplate);
+        _recordMapping(newTemplate.id);
 
         _notify('info', characterName + ' scheme auto-generated (' + (presetFields.length + customRefs.length) + ' fields)', { _dedupKey: 'scheme_' + characterName });
 
@@ -403,6 +418,7 @@ export function resolveNpcScheme(args, state, charName) {
         };
     }).catch(function(e) {
         console.warn('[NE-FC] scheme construction failed:', e);
+        _recordMapping('_default_npc');
         var dFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
         return { fields: dFields, source: 'exact', _templateKey: '_default_npc' };
     });

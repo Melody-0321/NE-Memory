@@ -877,6 +877,29 @@ export function isDialogueTemplateLocked(charName, globalTemplateId) {
     return false;
 }
 
+export function getLockedTemplateCharacters(cardConfig, state) {
+    if (!cardConfig || !cardConfig._dialogueTemplates || !state || !state._character_schemes) return [];
+    var lockedTemplateIds = {};
+    Object.keys(cardConfig._dialogueTemplates).forEach(function(key) {
+        var dt = cardConfig._dialogueTemplates[key];
+        if (dt && dt._locked && dt._templateId) {
+            lockedTemplateIds[dt._templateId] = true;
+        }
+    });
+    if (Object.keys(lockedTemplateIds).length === 0) return [];
+
+    var lockedChars = [];
+    var schemes = state._character_schemes;
+    Object.keys(schemes).forEach(function(name) {
+        var scheme = schemes[name];
+        var tid = scheme && scheme._templateId;
+        if (tid && lockedTemplateIds[tid]) {
+            lockedChars.push(name);
+        }
+    });
+    return lockedChars;
+}
+
 export function getActiveVersion(dialogueTemplates, templateId) {
     var matches = [];
     Object.keys(dialogueTemplates).forEach(function (k) {

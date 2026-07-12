@@ -5,7 +5,7 @@ import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engin
 import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { readVault, remove } from '../core/vault/store.js';
+import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
@@ -272,8 +272,25 @@ async function consumeNeCharBlocks(messageIndex) {
             ' | charState keys=' + affectedKeys.join(',') +
             ' | before=' + JSON.stringify(summaryBefore));
 
+        // 后处理兜底：查被锁模板的角色，跳过其 NE-CHAR 变更
+        var lockedChars = [];
+        var cardName = charState.protagonist_name || '';
+        if (cardName) {
+            try {
+                var cardCfg = loadCardConfigSync(cardName);
+                lockedChars = getLockedTemplateCharacters(cardCfg, charState);
+            } catch (e) { /* silent */ }
+        }
+        if (lockedChars.length > 0) {
+            console.log('[NE-CHAR] post-process guard: locked template chars = ' + lockedChars.join(', '));
+        }
+
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
+            if (lockedChars.indexOf(cb.name) !== -1) {
+                console.log('[NE-CHAR] post-process: skip locked-template character ' + cb.name);
+                return;
+            }
             var chars = charState.characters || {};
             if (!chars[cb.name]) {
                 var schemeLookup = charState._character_schemes && charState._character_schemes[cb.name];

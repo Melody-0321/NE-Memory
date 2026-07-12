@@ -1,4 +1,4 @@
-import { readState } from '../vault/store.js';
+import { readState, loadCardConfigSync, getLockedTemplateCharacters } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
@@ -681,6 +681,37 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         var schema = stateVault.content.state_schema || null;
         var result = validateStateChanges(schema, stateChanges);
         if (result.warnings.length > 0) console.warn('[NE] State change warnings:', result.warnings);
+
+        // 后处理兜底：过滤掉被锁模板角色的变更
+        var lockedCharNames = [];
+        var cardName = stateVault.content.state && stateVault.content.state.protagonist_name;
+        if (cardName) {
+            try {
+                var cardCfg = loadCardConfigSync(cardName);
+                lockedCharNames = getLockedTemplateCharacters(cardCfg, stateVault.content.state);
+            } catch (e) { /* silent */ }
+        }
+        if (lockedCharNames.length > 0) {
+            var filteredValidated = {};
+            var skippedKeys = [];
+            Object.keys(result.validated).forEach(function(k) {
+                var isLockedChange = false;
+                for (var l = 0; l < lockedCharNames.length; l++) {
+                    if (k.indexOf('characters.' + lockedCharNames[l] + '.') === 0) { isLockedChange = true; break; }
+                }
+                if (!isLockedChange) {
+                    filteredValidated[k] = result.validated[k];
+                } else {
+                    skippedKeys.push(k);
+                }
+            });
+            if (skippedKeys.length > 0) {
+                console.warn('[NE] post-process guard: skipped state_changes for locked-template chars ' +
+                    lockedCharNames.join(',') + ' | keys: ' + skippedKeys.join(', '));
+            }
+            result.validated = filteredValidated;
+        }
+
         var mergeResult = mergeStateChanges(stateVault.content.state || {}, result.validated);
         if (JSON.stringify(mergeResult.state) === JSON.stringify(stateVault.content.state || {})) {
             console.log('[NE] State unchanged, skipping write');
