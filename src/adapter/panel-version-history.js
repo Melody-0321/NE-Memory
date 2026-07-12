@@ -411,12 +411,13 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
 
     var headStateSeq = 0, headMemSeq = 0;
 
-    async function _reloadChains() {
-        if (!_chatId) return false;
+    async function _reloadChains(overrideChatId) {
+        var cid = overrideChatId || _chatId;
+        if (!cid) return false;
         try {
-            _chain = await getActiveChain(_chatId);
-            _stateDeltas = _chain ? await listStateDeltas(_chatId, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
-            _memVersions = _chain ? await listMemoryVersions(_chatId, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
+            _chain = await getActiveChain(cid);
+            _stateDeltas = _chain ? await listStateDeltas(cid, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
+            _memVersions = _chain ? await listMemoryVersions(cid, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
         } catch (e) {
             console.warn('[NE] initVersionNavButtons: failed to reload chains', e);
             return false;
@@ -492,14 +493,15 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     _extStateEls = stateEls;
     _extMemEls = memEls;
     if (_extNavHandler) busOff('vault:updated', _extNavHandler);
-    _extNavHandler = function() {
+    _extNavHandler = function(payload) {
         console.log('[NE-VNAV-BUS] handler triggered (debounce timer)');
         if (_extNavTimer !== null) clearTimeout(_extNavTimer);
         _extNavTimer = setTimeout(async function() {
             _extNavTimer = null;
-            if (!_chatId) return;
-            console.log('[NE-VNAV-BUS] about to _reloadChains for chatId=', _chatId);
-            if (!await _reloadChains()) return;
+            var cid = (payload && typeof payload.getChatId === 'function') ? payload.getChatId() : _chatId;
+            if (!cid) return;
+            console.log('[NE-VNAV-BUS] about to _reloadChains for chatId=', cid);
+            if (!await _reloadChains(cid)) return;
             console.log('[NE-VNAV-BUS] reloaded: headState=', headStateSeq, 'headMem=', headMemSeq,
                 'stateDeltas=', _stateDeltas.length, 'memVersions=', _memVersions.length,
                 'stateCursor=', _stateCursor, 'memCursor=', _memCursor);
