@@ -69,11 +69,11 @@ export function checkFunctionCallingSupport() {
         }
         if (secondaryConfig.url && secondaryConfig.model) {
             _functionCallingSupported = true;
-            console.log('[NE-FC] Function calling assumed supported (secondary API configured)');
+            console.log('[NE-FC] assumed supported (secondary API: ' + secondaryConfig.model + ' @ ' + secondaryConfig.url.substring(0, 40) + '...)');
             return Promise.resolve(true);
         }
         _functionCallingSupported = false;
-        console.log('[NE-FC] Function calling not available (no secondary API)');
+        console.log('[NE-FC] not available — no secondary API configured (url=' + !!secondaryConfig.url + ', model=' + !!secondaryConfig.model + ', disabled=' + disabled + ')');
         return Promise.resolve(false);
     } catch (e) {
         _functionCallingSupported = false;
@@ -83,6 +83,10 @@ export function checkFunctionCallingSupport() {
 
 /** @returns {boolean} */
 export function isFunctionCallingSupported() {
+    if (_functionCallingSupported === null) {
+        checkFunctionCallingSupport();
+        console.log('[NE-FC] lazy init: supported =', _functionCallingSupported);
+    }
     return _functionCallingSupported === true;
 }
 

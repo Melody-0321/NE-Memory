@@ -218,7 +218,14 @@ function buildTemplateLibrarySection() {
         if (npcKeys.length === 0) return '';
         var lines = ['\n## NPC Templates Available'];
         lines.push('When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<template_key>".');
-        lines.push('Only call get_character_scheme when no template matches or existing templates are insufficient (e.g. need new fields).');
+        lines.push('');
+        lines.push('## Tool Calling Rules');
+        lines.push('- NEW characters (any role) — MUST call get_character_scheme to build tracking scheme');
+        lines.push('  Receive field list, then output state_changes filling those fields');
+        lines.push('- Existing characters WITH _scheme — do NOT change _scheme, do NOT call get_character_scheme');
+        lines.push('- Existing characters WITHOUT _scheme — may call get_character_scheme if default is insufficient');
+        lines.push('- Need a new tracking field — call propose_field');
+        lines.push('');
         npcKeys.forEach(function(k) {
             var t = templates[k];
             var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
@@ -469,9 +476,9 @@ function buildWorldBookSystemBlock(worldBookEntries) {
 
 function buildFactionExtractionPrompt() {
     return '## Task\n' +
-        'Extract only organizations, factions, guilds, clans, families, or groups\n' +
-        'that are EXPLICITLY described in the World Setting (system message above).\n' +
-        'If none are described, return an empty object: {}\n' +
+        'Extract TWO things from the World Setting above:\n' +
+        '1. Organizations / factions / guilds / clans / families / groups\n' +
+        '2. World context — genre, tropes, summary\n' +
         '\nOutput ONLY valid JSON:\n' +
         '{\n' +
         '  "factions": {\n' +
@@ -482,10 +489,15 @@ function buildFactionExtractionPrompt() {
         '      "attitude_toward_player": "\u53cb\u597d/\u4e2d\u7acb/\u51b7\u6de1/\u654c\u5bf9/\u672a\u77e5",\n' +
         '      "aliases": ["<alias>"]\n' +
         '    }\n' +
+        '  },\n' +
+        '  "world_context": {\n' +
+        '    "genre": "\u4e16\u754c\u89c2\u7c7b\u578b\uff08\u7b80\u4f53\u4e2d\u6587\uff0c\u5982 \u90fd\u5e02\u5947\u5e7b\u3001\u8d5b\u535a\u670b\u514b\u3001\u53e4\u4ee3\u4ed9\u4fa0\u2026\uff09",\n' +
+        '    "tropes": ["\u5957\u8def1", "\u5957\u8def2"],\n' +
+        '    "summary": "\u7528 2-3 \u53e5\u4e2d\u6587\u7b80\u8ff0\u8fd9\u4e2a\u4e16\u754c\u7684\u57fa\u7840\u8bbe\u5b9a\u3002\u6ca1\u6709\u660e\u786e\u4e16\u754c\u89c2\u65f6\uff0c\u4e5f\u6839\u636e\u89d2\u8272\u5361\u63cf\u8ff0\u63a8\u65ad\u3002"\n' +
         '  }\n' +
         '}\n' +
-        '\nIf no factions exist:\n' +
-        '{"factions":{}}';
+        '\nIf no factions exist, factions is {}.\n' +
+        'world_context is always required.';
 }
 
 /**
@@ -544,7 +556,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                 var wbSysBlock = buildWorldBookSystemBlock(wbContent);
                 var factionResp = await callMemoryPipeline([
                     wbSysBlock,
-                    { role: 'system', content: 'You extract organizations and factions from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}.' },
+                    { role: 'system', content: 'You extract organizations, factions, and world context from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}. world_context is always required.' },
                     { role: 'user', content: buildFactionExtractionPrompt() }
                 ], { operation: 'faction_discovery' }, chatId);
 
@@ -569,6 +581,17 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                         });
                         stateVault.content.faction_keywords = buildFactionKeywords(state.factions);
                     }
+                }
+
+                if (fp && fp.world_context && typeof fp.world_context === 'object' && fp.world_context.genre) {
+                    state._world_context_cache = {
+                        genre: fp.world_context.genre || '',
+                        tropes: fp.world_context.tropes || [],
+                        summary: fp.world_context.summary || '',
+                        source: 'faction_discovery',
+                        _extractedAt: new Date().toISOString()
+                    };
+                    console.log('[NE] world_context extracted via faction_discovery: ' + fp.world_context.genre);
                 }
             } catch (e) {
                 console.warn('[NE] faction_discovery failed:', e && e.message);
@@ -608,6 +631,8 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         _checkChatIntegrity('extractStateChangesOnly:beforeLLM');
 
         var tools = isFunctionCallingSupported() ? buildTools() : null;
+        console.log('[NE-FC] extractStateChangesOnly: FC supported =', isFunctionCallingSupported(),
+            '| tools =', tools ? tools.length : 0, '| chatId =', chatId);
         var llmMessages = sysMsgs.concat([{ role: 'user', content: statePrompt.user }]);
         var stateResp;
 
@@ -642,20 +667,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var stateChanges = parseSTMResponse(stateResponseText).stateChanges;
 
     _checkChatIntegrity('extractStateChangesOnly:afterParse');
-    // 提取 world_context（含在下层 JSON block 的 state_changes 外）
-    var rawParsed = safeJsonParse(String(stateResponseText || '').trim());
-    if (rawParsed && rawParsed.world_context && typeof rawParsed.world_context === 'object' && rawParsed.world_context.genre) {
-        var stateRef = stateVault.content.state || {};
-        stateRef._world_context_cache = {
-            genre: rawParsed.world_context.genre || '',
-            tropes: rawParsed.world_context.tropes || [],
-            summary: rawParsed.world_context.summary || '',
-            source: 'ai',
-            _extractedAt: new Date().toISOString()
-        };
-        stateVault.content.state = stateRef;
-        console.log('[NE] world_context extracted:', JSON.stringify(rawParsed.world_context));
-    }
 
     // 优先：Main LLM 状态块 — 解析后直接写入 vault 全局数据 + 更新 status
     var pendingBlock = globalThis.__ne_pending_state_block;
