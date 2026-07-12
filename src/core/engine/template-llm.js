@@ -280,6 +280,26 @@ export function resolveNpcScheme(args, state, charName) {
         mode = (rawMode === 'fast') ? 'exact' : rawMode;
     }
 
+    // 角色锁 → 拒绝/强制exact
+    if (state && state.characters && state.characters[characterName] && state.characters[characterName]._templateLocked) {
+        console.log('[NE-FC] scheme locked for character ' + characterName + ', using existing template');
+        if (cardConfig && cardConfig._dialogueTemplates) {
+            var lockedDtKeys = Object.keys(cardConfig._dialogueTemplates);
+            for (var li = 0; li < lockedDtKeys.length; li++) {
+                var ldt = cardConfig._dialogueTemplates[lockedDtKeys[li]];
+                if (ldt && ldt._locked) {
+                    return Promise.resolve({
+                        fields: expandTemplateFields(ldt),
+                        source: 'exact',
+                        _templateKey: lockedDtKeys[li]
+                    });
+                }
+            }
+        }
+        var dFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
+        return Promise.resolve({ fields: dFields, source: 'exact', _templateKey: '_default_npc' });
+    }
+
     // 模板锁检查
     if (cardConfig && cardConfig._dialogueTemplates) {
         var dtKeys = Object.keys(cardConfig._dialogueTemplates);

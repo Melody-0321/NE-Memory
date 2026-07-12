@@ -10,7 +10,7 @@
  */
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
-  loadCardConfig, saveCardConfig, loadCardConfigSync } from '../core/vault/store.js';
+  loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
@@ -116,8 +116,10 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
         npcPool.forEach(function (entry) {
             var tpl = templates[entry._templateId];
             var label = (tpl && tpl.name) ? tpl.name : (entry._templateId || '?');
+            var dtLocked = isDialogueTemplateLocked(_getCurrentCharName(), entry._templateId);
             html += '<div class="ne-config-npc-item">' +
                 '<span>' + escapeHtml(label) + '</span>' +
+                '<span class="ne-npc-lock-btn' + (dtLocked ? ' locked' : '') + '" data-lock-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('lock_template')) + '">' + (dtLocked ? '\u{1F512}' : '\u{1F513}') + '</span>' +
                 '<button class="ne-btn-small ne-btn-danger" data-remove-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('remove')) + '">\u2715</button>' +
                 '</div>';
         });
@@ -262,6 +264,27 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
         removeButtons[i].addEventListener('click', function () {
             var tplId = this.getAttribute('data-remove-npc');
             _removeNpcFromPool(tplId, cardConfig);
+        });
+    }
+
+    // Lock/unlock NPC template
+    var lockBtns = container.querySelectorAll('.ne-npc-lock-btn');
+    for (var k = 0; k < lockBtns.length; k++) {
+        lockBtns[k].addEventListener('click', function () {
+            var tplId = this.getAttribute('data-lock-npc');
+            var charName = _getCurrentCharName();
+            if (!charName) return;
+            var wasLocked = this.classList.contains('locked');
+            var newLocked = !wasLocked;
+            setDialogueTemplateLock(charName, tplId, newLocked);
+            if (newLocked) {
+                this.classList.add('locked');
+                this.textContent = '\u{1F512}';
+            } else {
+                this.classList.remove('locked');
+                this.textContent = '\u{1F513}';
+            }
+            showToast((newLocked ? t('locked') : t('unlock')) + ': ' + tplId, 'info', 2000);
         });
     }
 

@@ -832,6 +832,51 @@ export function cloneTemplateToCard(charName, template) {
     return key;
 }
 
+export function setDialogueTemplateLock(charName, globalTemplateId, locked) {
+    var config = loadCardConfigSync(charName) || { _dialogueTemplates: {}, _templateConfig: {}, _version: 0 };
+    if (!config._dialogueTemplates) config._dialogueTemplates = {};
+    var dtKeys = Object.keys(config._dialogueTemplates);
+    var foundKey = null;
+    for (var i = 0; i < dtKeys.length; i++) {
+        if (config._dialogueTemplates[dtKeys[i]]._templateId === globalTemplateId) {
+            foundKey = dtKeys[i];
+            break;
+        }
+    }
+    if (!foundKey) {
+        var lib = loadTemplateLibrary();
+        var tpl = lib.templates[globalTemplateId];
+        if (!tpl) return false;
+        cloneTemplateToCard(charName, tpl);
+        config = loadCardConfigSync(charName) || {};
+        if (!config._dialogueTemplates) config._dialogueTemplates = {};
+        var dtKeys2 = Object.keys(config._dialogueTemplates);
+        for (var j = 0; j < dtKeys2.length; j++) {
+            if (config._dialogueTemplates[dtKeys2[j]]._templateId === globalTemplateId) {
+                foundKey = dtKeys2[j];
+                break;
+            }
+        }
+    }
+    if (foundKey && config._dialogueTemplates[foundKey]) {
+        config._dialogueTemplates[foundKey]._locked = locked;
+        saveCardConfig(charName, config);
+        return true;
+    }
+    return false;
+}
+
+export function isDialogueTemplateLocked(charName, globalTemplateId) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return false;
+    var dtKeys = Object.keys(config._dialogueTemplates);
+    for (var i = 0; i < dtKeys.length; i++) {
+        var dt = config._dialogueTemplates[dtKeys[i]];
+        if (dt._templateId === globalTemplateId && dt._locked) return true;
+    }
+    return false;
+}
+
 export function getActiveVersion(dialogueTemplates, templateId) {
     var matches = [];
     Object.keys(dialogueTemplates).forEach(function (k) {

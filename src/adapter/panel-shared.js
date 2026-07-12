@@ -410,6 +410,9 @@ export function injectBottomDrawerCSS() {
         '.ne-config-select{width:100%;padding:5px 8px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;}' +
         '.ne-config-empty{font-size:0.82em;color:var(--grey-50);padding:4px 0;}' +
         '.ne-config-npc-item{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:3px 0;background:var(--black30a);border-radius:4px;font-size:0.85em;}' +
+        '.ne-npc-lock-btn{cursor:pointer;padding:0 4px;font-size:0.95em;opacity:0.7;transition:opacity 0.15s;}' +
+        '.ne-npc-lock-btn:hover{opacity:1;}' +
+        '.ne-npc-lock-btn.locked{opacity:1;color:var(--golden-brown);}' +
         '.ne-radio-label{display:block;font-size:0.85em;margin:3px 0;cursor:pointer;}' +
         '.ne-config-world{font-size:0.82em;color:var(--grey-60);}' +
         '.ne-world-ctx-text{padding:6px 8px;background:var(--black30a);border-radius:4px;margin-bottom:4px;line-height:1.5;}' +
