@@ -26,7 +26,7 @@ import { updateVaultViewerPopout } from './panel-content.js';
 import { renderUsageIntoContainer } from './panel-usage.js';
 import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
-import { renderVersionHistoryPanel } from './panel-version-history.js';
+import { renderVersionHistoryPanel, initVersionNavButtons } from './panel-version-history.js';
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -91,8 +91,11 @@ export async function renderVaultPanel(getChatId) {
             '<input type="text" id="ne-state-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '</div>' +
             '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
-            '<div style="padding:0 12px 4px;display:flex;gap:6px;">' +
-            '<button id="ne-state-history-btn" class="menu_button" style="font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
+            '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
+            '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-state-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
             '</div>' +
             // State accordion: Characters / Quests / Factions
             '<div class="ne-accordion open" id="ne-acc-characters">' +
@@ -121,6 +124,11 @@ export async function renderVaultPanel(getChatId) {
             '<button id="ne-memory-history-btn" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
             '</div>' +
             '<div id="ne-memory-version" style="padding:2px 12px 4px;font-size:0.75em;color:var(--grey-50);"></div>' +
+            '<div style="padding:2px 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
+            '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
+            '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '</div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
@@ -463,6 +471,13 @@ export async function renderVaultPanel(getChatId) {
         if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openSlidePanel('versions'); };
         var memHistoryBtn = panelById('ne-memory-history-btn');
         if (memHistoryBtn) memHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+
+        var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
+        if (chatId) {
+            var vStateEls = { rollbackBtn: panelById('ne-state-rollback-btn'), restoreBtn: panelById('ne-state-restore-btn'), cursorInfo: panelById('ne-state-cursor-info') };
+            var vMemEls = { rollbackBtn: panelById('ne-mem-rollback-btn'), restoreBtn: panelById('ne-mem-restore-btn'), cursorInfo: panelById('ne-mem-cursor-info') };
+            initVersionNavButtons(chatId, vStateEls, vMemEls);
+        }
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }

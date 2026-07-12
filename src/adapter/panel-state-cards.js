@@ -509,6 +509,32 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     var currentPresets = (tpl && tpl.presetFields) ? tpl.presetFields : [];
     var currentCustoms = (tpl && tpl.customFieldRefs) ? tpl.customFieldRefs : [];
 
+    if (currentPresets.length === 0 && charData) {
+        var usedPresets = [];
+        Object.keys(PRESET_FIELDS).forEach(function(cat) {
+            Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+                if (charData.hasOwnProperty(fn) && charData[fn] !== '' && charData[fn] !== null && charData[fn] !== false) {
+                    usedPresets.push(fn);
+                }
+            });
+        });
+        if (usedPresets.length > 0) currentPresets = usedPresets;
+    }
+    if (currentCustoms.length === 0 && charData) {
+        var allPresetNames = [];
+        Object.keys(PRESET_FIELDS).forEach(function(cat) {
+            Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) { allPresetNames.push(fn); });
+        });
+        var usedCustoms = [];
+        Object.keys(charData).forEach(function(k) {
+            if (k === 'name' || k === 'status') return;
+            if (k.startsWith('_')) return;
+            if (allPresetNames.indexOf(k) !== -1) return;
+            if (charData[k] !== '' && charData[k] !== null) usedCustoms.push(k);
+        });
+        if (usedCustoms.length > 0) currentCustoms = usedCustoms;
+    }
+
     // Build scheme editor HTML
     var html = '<div class="ne-scheme-editor">';
 

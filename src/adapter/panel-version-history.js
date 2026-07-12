@@ -384,9 +384,113 @@ function _updateCursorInfo(container, type) {
     var info = container.querySelector('#ne-' + type + '-cursor-info');
     if (!info) return;
     var cursor = type === 'state' ? _stateCursor : _memCursor;
+    _setCursorText(info, cursor, headSeq);
+}
+
+function _setCursorText(el, cursor, headSeq) {
     if (cursor === headSeq || cursor === 0) {
-        info.textContent = '\u5F53\u524D: \u6700\u65B0';
+        el.textContent = '\u5F53\u524D: \u6700\u65B0';
     } else {
-        info.textContent = '\u5F53\u524D: #' + cursor;
+        el.textContent = '\u5F53\u524D: #' + cursor;
     }
+}
+
+function _updateNavButtonState(el, disabled) {
+    if (el) el.disabled = !!disabled;
+}
+
+export async function initVersionNavButtons(chatId, stateEls, memEls) {
+    _chatId = chatId;
+    if (!_chatId) return;
+
+    try {
+        _chain = await getActiveChain(_chatId);
+        _stateDeltas = _chain ? await listStateDeltas(_chatId, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
+        _memVersions = _chain ? await listMemoryVersions(_chatId, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
+    } catch (e) {
+        console.warn('[NE] initVersionNavButtons: failed to load chains', e);
+        return;
+    }
+
+    var headStateSeq = _chain ? _chain.state_head_seq : 0;
+    var headMemSeq = _chain ? _chain.mem_head_seq : 0;
+    _stateCursor = headStateSeq;
+    _memCursor = headMemSeq;
+    _origVault = null;
+
+    function refreshUI(type, els) {
+        var deltas = type === 'state' ? _stateDeltas : _memVersions;
+        var cursor = type === 'state' ? _stateCursor : _memCursor;
+        var headSeq = type === 'state' ? headStateSeq : headMemSeq;
+        var seqs = deltas.map(function(d) { return d.seq; });
+        var idx = seqs.indexOf(cursor);
+        if (els.rollbackBtn) _updateNavButtonState(els.rollbackBtn, idx >= seqs.length - 1);
+        if (els.restoreBtn) _updateNavButtonState(els.restoreBtn, idx <= 0);
+        if (els.cursorInfo) _setCursorText(els.cursorInfo, cursor, headSeq);
+    }
+
+    async function doNavigate(type, targetSeq, els) {
+        if (!_chatId || !_chain) return;
+        var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
+        try {
+            if (targetSeq === headSeq && _origVault) {
+                if (type === 'state') globalThis.__ne_pending_state_rollback = null;
+                else globalThis.__ne_pending_mem_rollback = null;
+                await write(_chatId, _origVault);
+                _origVault = null;
+            } else if (targetSeq !== headSeq) {
+                await _saveOrigIfAtHead(type);
+                if (type === 'state' && targetSeq < headSeq) {
+                    globalThis.__ne_pending_state_rollback = { chatId: _chatId, targetSeq: targetSeq };
+                } else if (type === 'memory' && targetSeq < headSeq) {
+                    globalThis.__ne_pending_mem_rollback = { chatId: _chatId, targetSeq: targetSeq };
+                }
+                var vault = _origVault ? JSON.parse(JSON.stringify(_origVault)) : await readVault(_chatId);
+                if (type === 'state') {
+                    var headState = _origVault && _origVault.content ? _origVault.content.state : null;
+                    vault.content.state = await foldState(_chatId, targetSeq, headState);
+                } else {
+                    var foldedMem = await foldMemory(_chatId, targetSeq);
+                    vault.content.stm_entries = foldedMem.stm_entries;
+                    vault.content.unconsolidated_stm = foldedMem.unconsolidated_stm;
+                    vault.content.ltm_entries = foldedMem.ltm_entries;
+                }
+                await write(_chatId, vault);
+            }
+            if (type === 'state') _stateCursor = targetSeq;
+            else _memCursor = targetSeq;
+        } catch (e) {
+            console.error('[NE] version nav failed:', type, e);
+            return;
+        }
+        refreshUI(type, els);
+        busEmit('vault:updated', {});
+    }
+
+    refreshUI('state', stateEls);
+    refreshUI('memory', memEls);
+
+    // State
+    if (stateEls.rollbackBtn) stateEls.rollbackBtn.onclick = function() {
+        var seqs = _stateDeltas.map(function(d) { return d.seq; });
+        var idx = seqs.indexOf(_stateCursor);
+        if (idx < seqs.length - 1) doNavigate('state', seqs[idx + 1], stateEls);
+    };
+    if (stateEls.restoreBtn) stateEls.restoreBtn.onclick = function() {
+        var seqs = _stateDeltas.map(function(d) { return d.seq; });
+        var idx = seqs.indexOf(_stateCursor);
+        if (idx > 0) doNavigate('state', seqs[idx - 1], stateEls);
+    };
+
+    // Memory
+    if (memEls.rollbackBtn) memEls.rollbackBtn.onclick = function() {
+        var seqs = _memVersions.map(function(d) { return d.seq; });
+        var idx = seqs.indexOf(_memCursor);
+        if (idx < seqs.length - 1) doNavigate('memory', seqs[idx + 1], memEls);
+    };
+    if (memEls.restoreBtn) memEls.restoreBtn.onclick = function() {
+        var seqs = _memVersions.map(function(d) { return d.seq; });
+        var idx = seqs.indexOf(_memCursor);
+        if (idx > 0) doNavigate('memory', seqs[idx - 1], memEls);
+    };
 }
