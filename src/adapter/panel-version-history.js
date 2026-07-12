@@ -453,8 +453,13 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         var headSeq = type === 'state' ? _chain.state_head_seq : _chain.mem_head_seq;
         try {
             if (targetSeq === headSeq && _origVault) {
-                if (type === 'state') globalThis.__ne_pending_state_rollback = null;
-                else globalThis.__ne_pending_mem_rollback = null;
+                if (type === 'state') {
+                    globalThis.__ne_pending_state_rollback = null;
+                    var restoredHeadState = _origVault.content ? _origVault.content.state : null;
+                    _origVault.content.state = await foldState(_chatId, headSeq, restoredHeadState);
+                } else {
+                    globalThis.__ne_pending_mem_rollback = null;
+                }
                 await write(_chatId, _origVault);
                 _origVault = null;
             } else if (targetSeq !== headSeq) {
