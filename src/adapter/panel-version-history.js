@@ -526,7 +526,7 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     // 保存引用供 bus 监听使用
     _extStateEls = stateEls;
     _extMemEls = memEls;
-    busOff('vault:updated', _extNavHandler);
+    if (_extNavHandler) busOff('vault:updated', _extNavHandler);
     _extNavHandler = function() {
         if (_extNavTimer !== null) clearTimeout(_extNavTimer);
         _extNavTimer = setTimeout(async function() {
