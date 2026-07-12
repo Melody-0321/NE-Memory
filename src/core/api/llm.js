@@ -86,8 +86,7 @@ export async function callMemoryLLM(messages, options = {}) {
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
             console.log('[NE] LLM call via secondary API:', secondaryConfig.model);
-            var hasTools = options.tools && options.tools.length > 0;
-            var defaultResponseFormat = options.hasOwnProperty('responseFormat') ? options.responseFormat : (hasTools ? null : { type: "json_object" });
+            var defaultResponseFormat = options.hasOwnProperty('responseFormat') ? options.responseFormat : { type: "json_object" };
             var callOpts = Object.assign({}, options, { responseFormat: defaultResponseFormat });
             var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
@@ -228,6 +227,7 @@ export async function callMemoryPipelineWithTools(messages, options, chatId) {
     var result = await callMemoryLLM(messages, Object.assign({}, options, {
         _forcePipelineApi: true,
         _returnRaw: true,
+        tool_choice: 'auto',
         temperature: mc.extraction_temperature || mc.temperature || 0.2,
         max_tokens: mc.stm_max_tokens,
         chatId: chatId

@@ -5,7 +5,7 @@ import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from
 import { safeJsonParse } from './json-fallback.js';
 import { runtime } from '../runtime.js';
 import { recordStateDelta, buildStateDeltaSummary, initializeStateChain, pruneOrphanedBranches } from '../vault/state-versions.js';
-import { buildTools, processToolCalls, isFunctionCallingSupported, resolveNpcScheme } from './template-llm.js';
+import { buildTools, processToolCalls, isFunctionCallingSupported } from './template-llm.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -622,32 +622,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var neCharFallback = !!globalThis.__ne_char_fallback_needed;
     globalThis.__ne_char_fallback_needed = false;
     var statePrompt = buildStatePrompt_Preset(messages, stateVault, worldBookText, newNames, neCharFallback);
-
-    var schemeHints = '';
-    if (newNames.length > 0) {
-        var protagonistName = state.protagonist_name || '';
-        var hints = [];
-        for (var ni = 0; ni < newNames.length; ni++) {
-            try {
-                var scheme = await resolveNpcScheme({ character_name: newNames[ni] }, state, protagonistName);
-                if (scheme && scheme.fields) {
-                    var fieldKeys = Object.keys(scheme.fields);
-                    var skipped = ['name', 'status'];
-                    var displayKeys = fieldKeys.filter(function(k) { return skipped.indexOf(k) === -1; });
-                    hints.push(newNames[ni] + ' (' + scheme.source + ', ' + (scheme._templateKey || '') + '): ' + displayKeys.join(', '));
-                }
-            } catch (e) {
-                console.warn('[NE-HARNESS] resolveNpcScheme failed for ' + newNames[ni] + ':', e && e.message);
-            }
-        }
-        if (hints.length > 0) {
-            schemeHints = '\n## Auto-Resolved Schemes\n' +
-                'Schemes already resolved for new characters. Output state_changes fencing exactly these fields:\n' +
-                hints.join('\n') + '\n';
-            statePrompt.system[1] = statePrompt.system[1] + schemeHints;
-            console.log('[NE-HARNESS] pre-resolved schemes for new characters:', JSON.stringify(newNames));
-        }
-    }
 
     var stateResponseText;
     try {
