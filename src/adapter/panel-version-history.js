@@ -489,7 +489,36 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         busEmit('vault:updated', {});
     }
 
-    // Initial load
+    // ── Register bus listener BEFORE any await — so pipeline vault:updated events
+    // during initial load don't get lost while we're in the async gap ──
+    _extStateEls = stateEls;
+    _extMemEls = memEls;
+    if (_extNavHandler) busOff('vault:updated', _extNavHandler);
+    _extNavHandler = function() {
+        if (_extNavTimer !== null) clearTimeout(_extNavTimer);
+        _extNavTimer = setTimeout(async function() {
+            _extNavTimer = null;
+            if (!_chatId) return;
+            if (!await _reloadChains()) return;
+            if (_extStateEls) {
+                var ss = _stateDeltas.map(function(d) { return d.seq; });
+                var si = ss.indexOf(_stateCursor);
+                _extStateEls.rollbackBtn && (_extStateEls.rollbackBtn.disabled = ss.length === 0 || si >= ss.length - 1);
+                _extStateEls.restoreBtn && (_extStateEls.restoreBtn.disabled = ss.length === 0 || si <= 0);
+                _extStateEls.cursorInfo && _setCursorText(_extStateEls.cursorInfo, _stateCursor, headStateSeq);
+            }
+            if (_extMemEls) {
+                var ms = _memVersions.map(function(d) { return d.seq; });
+                var mi = ms.indexOf(_memCursor);
+                _extMemEls.rollbackBtn && (_extMemEls.rollbackBtn.disabled = ms.length === 0 || mi >= ms.length - 1);
+                _extMemEls.restoreBtn && (_extMemEls.restoreBtn.disabled = ms.length === 0 || mi <= 0);
+                _extMemEls.cursorInfo && _setCursorText(_extMemEls.cursorInfo, _memCursor, headMemSeq);
+            }
+        }, 300);
+    };
+    busOn('vault:updated', _extNavHandler);
+
+    // Initial load (after listener is registered)
     if (!await _reloadChains()) return;
     _stateCursor = headStateSeq;
     _memCursor = headMemSeq;
@@ -527,38 +556,4 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         var idx = seqs.indexOf(_memCursor);
         if (idx > 0) await _doNavigate('memory', seqs[idx - 1], memEls);
     };
-
-    // 保存引用供 bus 监听使用
-    _extStateEls = stateEls;
-    _extMemEls = memEls;
-    if (_extNavHandler) busOff('vault:updated', _extNavHandler);
-    _extNavHandler = function() {
-        if (_extNavTimer !== null) clearTimeout(_extNavTimer);
-        _extNavTimer = setTimeout(async function() {
-            _extNavTimer = null;
-            if (!_chatId) return;
-            try {
-                _chain = await getActiveChain(_chatId);
-                _stateDeltas = _chain ? await listStateDeltas(_chatId, getLimit(STATE_VERSION_LIMIT_KEY)) : [];
-                _memVersions = _chain ? await listMemoryVersions(_chatId, getLimit(MEM_VERSION_LIMIT_KEY)) : [];
-            } catch (e) { return; }
-            var hs = _chain ? _chain.state_head_seq : 0;
-            var hm = _chain ? _chain.mem_head_seq : 0;
-            if (_extStateEls) {
-                var ss = _stateDeltas.map(function(d) { return d.seq; });
-                var si = ss.indexOf(_stateCursor);
-                _extStateEls.rollbackBtn && (_extStateEls.rollbackBtn.disabled = ss.length === 0 || si >= ss.length - 1);
-                _extStateEls.restoreBtn && (_extStateEls.restoreBtn.disabled = ss.length === 0 || si <= 0);
-                _extStateEls.cursorInfo && _setCursorText(_extStateEls.cursorInfo, _stateCursor, hs);
-            }
-            if (_extMemEls) {
-                var ms = _memVersions.map(function(d) { return d.seq; });
-                var mi = ms.indexOf(_memCursor);
-                _extMemEls.rollbackBtn && (_extMemEls.rollbackBtn.disabled = ms.length === 0 || mi >= ms.length - 1);
-                _extMemEls.restoreBtn && (_extMemEls.restoreBtn.disabled = ms.length === 0 || mi <= 0);
-                _extMemEls.cursorInfo && _setCursorText(_extMemEls.cursorInfo, _memCursor, hm);
-            }
-        }, 300);
-    };
-    busOn('vault:updated', _extNavHandler);
 }
