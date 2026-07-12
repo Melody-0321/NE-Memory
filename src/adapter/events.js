@@ -5,7 +5,7 @@ import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engin
 import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { readVault, rollbackByMsgIds, remove } from '../core/vault/store.js';
+import { readVault, remove } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
@@ -40,7 +40,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain } from '../core/vault/state-versions.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction, sendNePopup } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
