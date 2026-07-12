@@ -3,7 +3,6 @@ var SYNCED_KEYS = [
     'ne_secondary_api', 'ne_embedding_api', 'ne_stm_api', 'ne_ltm_api', 'ne_state_api',
     'ne_template_library', 'ne_field_library',
     'ne_power_slots_templates',
-    'ne_use_legacy_schema',
     'ne_params_auto', 'ne_version_config',
     'ne_chat_stats', 'ne_token_daily', 'ne_stm_telemetry', 'ne_anomalies'
 ];

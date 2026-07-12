@@ -228,13 +228,7 @@ export function renderSettingsTab() {
             '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
             '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
             '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
-            '</div></div></div>' +
-            '<div class="ne-accordion" id="ne-set-schema">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Schema Editors') + '</div>' +
-            '<div class="ne-accordion-body">' +
-            '<label>' + t('State Schema') + ' (Global)</label><textarea id="nes_state_schema" rows="6">' + escapeHtml(settings.stateSchema ? JSON.stringify(settings.stateSchema, null, 2) : '') + '</textarea>' +
-            '<label>' + t('Character Schema') + '</label><textarea id="nes_character_schema" rows="6">' + escapeHtml(settings.characterSchema ? JSON.stringify(settings.characterSchema, null, 2) : '') + '</textarea>' +
-            '</div></div>';
+            '</div></div></div>';
         advContainer.innerHTML = advHtml;
     }
 
@@ -276,10 +270,6 @@ export function renderSettingsTab() {
         };
     }
     // Textareas — save on blur (not every keystroke to avoid perf issues)
-    var ta1 = panelById('nes_state_schema');
-    if (ta1) ta1.onblur = function () { saveSettingsTab(); };
-    var ta2 = panelById('nes_character_schema');
-    if (ta2) ta2.onblur = function () { saveSettingsTab(); };
     // Secondary API inputs — save on blur
     var urlEl = panelById('nes_secondary_url');
     if (urlEl) urlEl.onchange = function () { saveSecApiOnly(); };
@@ -659,20 +649,6 @@ function saveSettingsTab() {
         settings.memoryConfig.model = getModelValue('nes_secondary');
     }
 
-    var schemaEl = panelById('nes_state_schema');
-    if (schemaEl) {
-        var schemaText = schemaEl.value.trim();
-        if (schemaText) {
-            try { var parsed = JSON.parse(schemaText); if (typeof parsed === 'object' && parsed !== null) settings.stateSchema = parsed; } catch (e) {}
-        }
-    }
-    var charSchemaEl = panelById('nes_character_schema');
-    if (charSchemaEl) {
-        var charSchemaText = charSchemaEl.value.trim();
-        if (charSchemaText) {
-            try { var charParsed = JSON.parse(charSchemaText); if (typeof charParsed === 'object' && charParsed !== null) settings.characterSchema = charParsed; } catch (e) {}
-        }
-    }
     localStorage.setItem('ne_settings', JSON.stringify(settings));
     setRetrievalEnabled(settings.retrievalEnabled || false);
     var secApi = {
@@ -777,10 +753,7 @@ export function renderSettingsIntoSlide(container) {
     // ── Troubleshoot ──
     var tsTitle = pdCreate('div');
     tsTitle.className = 'ne-tool-card';
-    tsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Troubleshoot') + '</div>' +
-        '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;padding:4px 0;">' +
-        '<input type="checkbox" id="nes_legacy_schema" ' + (localStorage.getItem('ne_use_legacy_schema') === 'true' ? 'checked' : '') + '> ' +
-        t('Use legacy schema (OSD compat)') + '</label>';
+    tsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Troubleshoot') + '</div>';
     container.appendChild(tsTitle);
 
     // Render settings content
@@ -974,15 +947,6 @@ export function renderSettingsIntoSlide(container) {
                 orphans.forEach(function(o) { purgeOrphanChatData(o.chat_id); count++; });
                 alert(t('Cleaned') + ' ' + count + ' ' + t('orphan entries') + '.');
             } catch (e) { alert(t('Clean Orphan Data') + ' failed: ' + e.message); cleanBtn.disabled = false; cleanBtn.textContent = t('Clean Orphan Data'); }
-        };
-    }
-
-    // Legacy schema checkbox
-    var legacyCb = container.querySelector('#nes_legacy_schema');
-    if (legacyCb) {
-        legacyCb.onchange = function() {
-            if (this.checked) localStorage.setItem('ne_use_legacy_schema', 'true');
-            else localStorage.removeItem('ne_use_legacy_schema');
         };
     }
 

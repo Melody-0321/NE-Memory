@@ -1,6 +1,6 @@
 import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
-    rebuildPresentCharacters, ensureCharacterTemplate, getEffectiveSchema,
+    rebuildPresentCharacters, ensureCharacterTemplate,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
     DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA,
     buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE
@@ -131,14 +131,6 @@ var stateAllActive = {
 };
 var rebuilt2 = rebuildPresentCharacters(stateAllActive);
 assert(rebuilt2.present_characters.indexOf('A, B') !== -1 || rebuilt2.present_characters === 'A, B', 'multiple active characters joined');
-
-console.log('\n=== schema: getEffectiveSchema ===');
-
-eq(getEffectiveSchema({ content: {} }), DEFAULT_GLOBAL_SCHEMA, 'no schema => default');
-eq(getEffectiveSchema({ content: { state_schema: null } }), DEFAULT_GLOBAL_SCHEMA, 'null schema => default');
-
-var customSchema = { type: 'object', fields: { custom: { type: 'string' } } };
-eq(getEffectiveSchema({ content: { state_schema: customSchema } }), customSchema, 'custom schema returned');
 
 console.log('\n=== schema: ensureCharacterTemplate ===');
 

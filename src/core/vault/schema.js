@@ -677,14 +677,6 @@ export function mergeStateChanges(state, validatedChanges) {
     return { state: newState, changes: capturedChanges };
 }
 
-/**
- * @param {import('../../types.js').Vault} vault
- * @returns {Object}
- */
-export function getEffectiveSchema(vault) {
-    return vault.content.state_schema || DEFAULT_GLOBAL_SCHEMA;
-}
-
 // Fields injected for NPC — derived from character schema
 
 /**
