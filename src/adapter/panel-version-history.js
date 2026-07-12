@@ -425,6 +425,9 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             headStateSeq = _chain.state_head_seq;
             headMemSeq = _chain.mem_head_seq;
         }
+        console.log('[NE-VNAV] _reloadChains OK | state_head=', headStateSeq,
+            'mem_head=', headMemSeq, 'stateDeltas=', _stateDeltas.length,
+            'memVersions=', _memVersions.length);
         return true;
     }
 
@@ -433,6 +436,8 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         var cursor = type === 'state' ? _stateCursor : _memCursor;
         var headSeq = type === 'state' ? headStateSeq : headMemSeq;
         var hasVersions = deltas.length > 0;
+        console.log('[NE-VNAV] _refreshUI', type, 'cursor=', cursor, 'headSeq=', headSeq,
+            'deltas=', deltas.length, 'els=', !!els.rollbackBtn, !!els.restoreBtn, !!els.cursorInfo);
         if (els.rollbackBtn) {
             if (!hasVersions && cursor <= 0) { els.rollbackBtn.disabled = true; }
             else { _updateNavButtonState(els.rollbackBtn, cursor <= 0); }
@@ -487,7 +492,11 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         busEmit('vault:updated', {});
     }
 
-    // ── Register bus listener BEFORE any await — so pipeline vault:updated events
+    console.log('[NE-VNAV] initVersionNavButtons start | chatId=', _chatId,
+        'stateEls=', !!stateEls.rollbackBtn, !!stateEls.restoreBtn,
+        'memEls=', !!memEls.rollbackBtn, !!memEls.restoreBtn);
+
+    // ── Register bus listener BEFORE any await ── so pipeline vault:updated events
     // during initial load don't get lost while we're in the async gap ──
     _extStateEls = stateEls;
     _extMemEls = memEls;
@@ -505,11 +514,14 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     busOn('vault:updated', _extNavHandler);
 
     // Initial load (after listener is registered)
+    console.log('[NE-VNAV] initial load — about to reload');
     if (!await _reloadChains()) return;
     _stateCursor = headStateSeq;
     _memCursor = headMemSeq;
+    console.log('[NE-VNAV] initial load — cursor set | stateCursor=', _stateCursor, 'memCursor=', _memCursor);
     _refreshUI('state', stateEls);
     _refreshUI('memory', memEls);
+    console.log('[NE-VNAV] initial load done');
 
     // State — reload chain on every click so button state reflects latest versions
     if (stateEls.rollbackBtn) stateEls.rollbackBtn.onclick = async function() {
