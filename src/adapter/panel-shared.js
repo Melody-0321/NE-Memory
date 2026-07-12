@@ -525,17 +525,24 @@ export function setLastVaultStateJson(v) { lastVaultStateJson = v; }
 export function closeVaultOverlay() {
     stopOverlayResizeWatcher();
     var overlay = byId('ne_vault_bottom_overlay');
+    var chat = byId('chat');
     if (overlay) {
         overlay.classList.remove('open');
-        var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
+        overlay.style.pointerEvents = '';
+        overlay.style.transform = 'translateY(100%)';
+        var tid = setTimeout(function() {
+            overlay.style.display = 'none';
+            overlay.style.transition = '';
+            if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+        }, 600);
         overlay.addEventListener('transitionend', function handler() {
             overlay.removeEventListener('transitionend', handler);
             clearTimeout(tid);
             overlay.style.display = 'none';
+            overlay.style.transition = '';
+            if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
         });
     }
-    var chat = byId('chat');
-    if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
 }
 
 // ── Overlay bounds syncing ──
