@@ -13,10 +13,8 @@ import { renderSettingsTab } from './panel-settings.js';
 export function createVaultPopout(getChatId) {
     var overlay = byId('ne_vault_bottom_overlay');
     if (!overlay || overlay.classList.contains('open')) return;
-    var chat = byId('chat');
     syncOverlayBounds();
     startOverlayResizeWatcher();
-    if (chat) { chat.style.opacity = '0'; chat.style.pointerEvents = 'none'; chat.style.transition = 'opacity var(--ne-transition-normal)'; }
     overlay.style.display = 'flex';
     overlay.style.transform = 'translateY(0)';
     overlay.style.pointerEvents = 'auto';
