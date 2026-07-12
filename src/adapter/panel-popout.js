@@ -22,7 +22,7 @@ export function createVaultPopout(getChatId) {
         overlay.style.display = 'flex';
         overlay.style.transform = 'translateY(0)';
         overlay.style.pointerEvents = 'auto';
-        overlay.style.transition = 'transform var(--ne-transition-normal) var(--ne-easing-decelerate)';
+        overlay.style.transition = 'transform 0.2s cubic-bezier(0, 0, 0.2, 1)';
         overlay.scrollTop = 0;
         requestAnimationFrame(function() {
             overlay.classList.add('open');
