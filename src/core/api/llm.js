@@ -8,6 +8,7 @@ import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { runtime } from '../runtime.js';
 import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
 import { recordDailyToken } from '../engine/token-stats.js';
+import { neSync } from '../settings-adapter.js';
 
 function getConfiguredTimeoutSec(fallbackSec) {
     fallbackSec = fallbackSec || 120;
@@ -290,6 +291,7 @@ export function loadSecondaryApiConfig() {
 export function saveSecondaryApiConfig(config) {
     if (config && config.url) config.url = normalizeApiUrl(config.url);
     localStorage.setItem('ne_secondary_api', JSON.stringify(config));
+    try { neSync('ne_secondary_api'); } catch (e) {}
 }
 
 

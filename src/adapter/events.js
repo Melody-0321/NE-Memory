@@ -23,6 +23,7 @@ import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
+import { neSync } from '../core/settings-adapter.js';
 
 var _neCheckTag = '';
 
@@ -1323,6 +1324,7 @@ export async function onChatDeleted(chatId) {
                 if (stats && stats[chatId]) {
                     delete stats[chatId];
                     localStorage.setItem(statsKey, JSON.stringify(stats));
+                    try { neSync(statsKey); } catch (e) {}
                 }
             }
         } catch (e) {}

@@ -5,6 +5,7 @@
  * 做差集对比，找出并清理已删除聊天遗留的 vault 数据。
  */
 import { readVault, remove, openDB } from './store.js';
+import { neSync } from '../settings-adapter.js';
 
 var _gcImportsReady = true;
 
@@ -131,6 +132,7 @@ export async function purgeOrphanChatData(chatId) {
             if (stats && stats[chatId]) {
                 delete stats[chatId];
                 localStorage.setItem(statsKey, JSON.stringify(stats));
+                try { neSync(statsKey); } catch (e) {}
                 purgeLog.push('ne_chat_stats');
             }
         }

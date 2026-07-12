@@ -1,3 +1,5 @@
+import { neSync } from '../settings-adapter.js';
+
 var DAILY_KEY = 'ne_token_daily';
 var MAX_DAILY_DAYS = 90;
 
@@ -9,6 +11,7 @@ function loadDaily() {
 
 function saveDaily(data) {
     try { localStorage.setItem(DAILY_KEY, JSON.stringify(data)); } catch (e) {}
+    try { neSync(DAILY_KEY); } catch (e) {}
 }
 
 export function recordDailyToken(operation, value) {

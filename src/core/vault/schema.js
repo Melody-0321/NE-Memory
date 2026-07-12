@@ -4,6 +4,7 @@
 // 所有路径回退到旧自由 JSON 行为。
 //
 import { t_field } from '../i18n.js';
+import { neSync } from '../settings-adapter.js';
 // 功能：
 //   - 字段级别类型校验 + max_length 截断 + enum 校验
 //   - dot-path 递归解析
@@ -33,6 +34,7 @@ export function setDynamicStateMode(val) {
     } catch (e) {}
     settings.useDynamicState = !!val;
     try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
+    try { neSync('ne_settings'); } catch (e) {}
 }
 
 export const POWER_SLOTS_TEMPLATES = {

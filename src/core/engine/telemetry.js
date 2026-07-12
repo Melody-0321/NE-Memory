@@ -4,6 +4,7 @@
  * 存储到 localStorage，受 ne_telemetry_enabled 开关控制。
  */
 import { recordChatStat } from './chat-telemetry.js';
+import { neSync } from '../settings-adapter.js';
 
 var STORAGE_ANOMALIES = 'ne_anomalies';
 var MAX_ANOMALIES = 50;
@@ -17,6 +18,7 @@ export function addAnomaly(type, context, chatId) {
     anomalies.push(anomEntry);
     if (anomalies.length > MAX_ANOMALIES) anomalies.shift();
     localStorage.setItem(STORAGE_ANOMALIES, JSON.stringify(anomalies));
+    try { neSync(STORAGE_ANOMALIES); } catch (e) {}
     if (chatId) recordChatStat(chatId, 'err', 1);
 }
 

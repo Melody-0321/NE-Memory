@@ -4,6 +4,7 @@
  * v8: force-reset empty stores from v7 botched upgrade, recover from chat metadata.
  */
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from './schema.js';
+import { neSync } from '../settings-adapter.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
@@ -622,6 +623,7 @@ export function saveTemplateLibrary(lib) {
             toStore.templates = userOnly;
         }
         localStorage.setItem('ne_template_library', JSON.stringify(toStore));
+        try { neSync('ne_template_library'); } catch (e) {}
     } catch (e) {}
 }
 
@@ -667,6 +669,7 @@ export function loadCardConfig(charName) {
                         var config = getReq.result;
                         delete config.id;
                         try { localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config)); } catch (e) {}
+                        try { neSync('ne_card_templates_' + charName); } catch (e) {}
                         resolve(config);
                     } else {
                         resolve(null);
@@ -708,6 +711,7 @@ export function saveCardConfig(charName, config) {
     }
     try {
         localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
+        try { neSync('ne_card_templates_' + charName); } catch (e) {}
     } catch (e) {
         console.warn('[NE] localStorage write failed for', charName, e.message);
         return false;
@@ -757,6 +761,7 @@ export function saveFieldLibrary(lib) {
     try {
         lib.updatedAt = new Date().toISOString();
         localStorage.setItem('ne_field_library', JSON.stringify(lib));
+        try { neSync('ne_field_library'); } catch (e) {}
     } catch (e) {}
 }
 
@@ -1054,6 +1059,7 @@ export function addLocalCustomField(charName, fieldName, meta) {
     fields[fieldName] = meta;
     try {
         localStorage.setItem('ne_local_fields_' + charName, JSON.stringify(fields));
+        try { neSync('ne_local_fields_' + charName); } catch (e) {}
     } catch (e) {}
 }
 
@@ -1062,5 +1068,6 @@ export function removeLocalCustomField(charName, fieldName) {
     delete fields[fieldName];
     try {
         localStorage.setItem('ne_local_fields_' + charName, JSON.stringify(fields));
+        try { neSync('ne_local_fields_' + charName); } catch (e) {}
     } catch (e) {}
 }

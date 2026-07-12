@@ -3,6 +3,7 @@ import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCh
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
+import { neSync } from '../settings-adapter.js';
 import { runtime } from '../runtime.js';
 import { recordStateDelta, buildStateDeltaSummary, initializeStateChain, pruneOrphanedBranches } from '../vault/state-versions.js';
 import { buildTools, processToolCalls, isFunctionCallingSupported } from './template-llm.js';
@@ -519,6 +520,7 @@ function _persistCardConfig(charName, state) {
             _updatedAt: now
         };
         localStorage.setItem('ne_card_templates_' + charName, JSON.stringify(config));
+        try { neSync('ne_card_templates_' + charName); } catch (e) {}
         console.log('[NE] Card config initialized for ' + charName);
     } catch (e) {
         console.warn('[NE] Failed to persist card config for ' + charName, e.message);

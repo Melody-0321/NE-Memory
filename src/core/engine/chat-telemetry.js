@@ -28,6 +28,8 @@
  * }
  */
 
+import { neSync } from '../settings-adapter.js';
+
 const MAX_TURNS = 200;
 const STORAGE_KEY = 'ne_chat_stats';
 
@@ -39,6 +41,7 @@ function load() {
 
 function save(data) {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); } catch (e) {}
+    try { neSync(STORAGE_KEY); } catch (e) {}
 }
 
 /**

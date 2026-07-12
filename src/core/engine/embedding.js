@@ -1,3 +1,4 @@
+import { neSync } from '../settings-adapter.js';
 
 var EMBEDDING_DIM = 1536;
 
@@ -46,6 +47,7 @@ export function loadEmbeddingApiConfig() {
 export function saveEmbeddingApiConfig(config) {
     if (config && config.url) config.url = config.url.replace(/\/+$/, '');
     localStorage.setItem('ne_embedding_api', JSON.stringify(config));
+    try { neSync('ne_embedding_api'); } catch (e) {}
 }
 
 export function isVectorSearchEnabled() {

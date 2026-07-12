@@ -3,6 +3,7 @@ import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast, closeSlidePanel } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
+import { neSync } from '../core/settings-adapter.js';
 import { renderUsageTab } from './panel-usage.js';
 
 export var _currentCollapseState = {};
@@ -16,6 +17,7 @@ export function saveCollapseState(chatId) {
     });
     try { var k = 'ne_collapse_' + (chatId || _currentChatIdForCollapse || 'global');
         if (chatId || _currentChatIdForCollapse) localStorage.setItem(k, JSON.stringify(state)); 
+        try { neSync(k); } catch (e) {}
     } catch(e) {}
 }
 

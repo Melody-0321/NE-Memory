@@ -4,6 +4,7 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableMod
   saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
+import { neSyncAll } from '../core/settings-adapter.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory, collectAllMsgIds } from '../core/vault/store.js';
@@ -707,6 +708,7 @@ function saveSettingsTab() {
         saveEmbeddingApiConfig(chEmbApi);
     }
     console.log('[NE] Settings saved from Settings tab');
+    neSyncAll();
 }
 
 function saveSecApiOnly() {
