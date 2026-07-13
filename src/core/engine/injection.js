@@ -1,6 +1,6 @@
 import { sortStmByMsgOrder } from '../vault/store.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
-import { extractEntityNames, lookupEntityChains, mergePipelines, groupCandidatesByEntity } from './retrieval.js';
+import { extractEntityNames, mergePipelines, groupCandidatesByEntity } from './retrieval.js';
 import { resolveAmbiguousReferences } from './ambiguity.js';
 import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
@@ -177,11 +177,6 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
 
     var entityNames = extractEntityNames(query, content);
     var entityChains = {};
-    if (entityNames && entityNames.length > 0) {
-        try {
-            entityChains = await lookupEntityChains(content, entityNames);
-        } catch (e) {}
-    }
 
     var smartPushStart = Date.now();
     var bm25Start = Date.now();
@@ -295,7 +290,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
             parts.push(highlights);
         }
 
-        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, entityChains, storyTime);
+        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, storyTime);
         if (entityBlock) {
             if (parts.length > 0) parts.push('<hr>');
             parts.push(entityBlock);
@@ -336,7 +331,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     return parts.join('\n\n');
 }
 
-export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, entityChains, storyTime) {
+export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, storyTime) {
     var lines = [];
 
     var allGroups = entityGrouped.groups || {};
