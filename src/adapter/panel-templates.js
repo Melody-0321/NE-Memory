@@ -826,16 +826,20 @@ function _showTemplateSelectorModal(opts) {
         setTimeout(function () { if (modalEl.parentNode) modalEl.parentNode.removeChild(modalEl); }, 200);
     }
 
-    modalEl.querySelector('#ne-template-select-cancel').addEventListener('click', closeModal);
+    var cancelBtn = modalEl.querySelector('#ne-template-select-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', closeModal);
     modalEl.addEventListener('click', function (e) { if (e.target === modalEl) closeModal(); });
 
-    modalEl.querySelector('#ne-template-select-save').addEventListener('click', function () {
-        var selected = modalEl.querySelector('input[name="ne-template-select"]:checked');
-        if (selected && onPick) {
-            onPick(selected.value);
-        }
-        closeModal();
-    });
+    var saveBtn = modalEl.querySelector('#ne-template-select-save');
+    if (saveBtn) {
+        saveBtn.addEventListener('click', function () {
+            var selected = modalEl.querySelector('input[name="ne-template-select"]:checked');
+            if (selected && onPick) {
+                onPick(selected.value);
+            }
+            closeModal();
+        });
+    }
 }
 
 // ─────────────────────────────────────

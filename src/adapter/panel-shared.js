@@ -561,6 +561,27 @@ export function injectBottomDrawerCSS() {
         '.ne-template-role-content.active{display:block;}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
+
+    // Modal CSS must also be in PD.head (main document) since modals are appended to PD.body
+    if (_panelRoot) {
+        var modalStyleExists = PD.getElementById('ne_modal_style');
+        if (!modalStyleExists) {
+            var modalStyle = pdCreate('style');
+            modalStyle.id = 'ne_modal_style';
+            modalStyle.textContent =
+                '.ne-modal-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;' +
+                'background:rgba(0,0,0,.5);opacity:0;transition:opacity .15s;}' +
+                '.ne-modal-overlay.show{opacity:1;}' +
+                '.ne-modal{background:var(--SmartThemeBlurTintColor,#1e1e1e);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
+                'border:1px solid var(--SmartThemeBorderColor,#444);border-radius:12px;padding:16px 20px;min-width:300px;max-width:90vw;max-height:70vh;' +
+                'display:flex;flex-direction:column;transform:scale(.9);transition:transform .2s cubic-bezier(0,0,0.2,1);}' +
+                '.ne-modal-overlay.show .ne-modal{transform:scale(1);}' +
+                '.ne-modal h3{font-size:1em;font-weight:bold;margin:0 0 10px;}' +
+                '.ne-modal-body{flex:1;overflow-y:auto;margin-bottom:12px;}' +
+                '.ne-modal-footer{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;}';
+            pdHead().appendChild(modalStyle);
+        }
+    }
 }
 
 export var vaultLLMLog = [];
