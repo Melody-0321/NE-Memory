@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-13 | 26 个文档 | 38% 完成
+> 自动生成 | 2026-07-13 | 30 个文档 | 37% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -18,8 +18,12 @@
 | `open-character-schema-ui-plan.md` | 🔄 进行中 | 2026-07-05 | 2026-07-07 | Open Character Schema UI 实施计划 |
 | `open-character-schema-ux-engineering.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `p0-layer1-three-features.md` | ❓ 未知 | — | — | P0 三合一计划：相对时间前缀 + HTML 格式化注入 + 多样性过滤 |
+| `p1-1-retrieval-cache.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-1: 检索分词 + BM25 索引缓存 |
+| `p1-2-shallow-copy.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-2: 检索结果深拷贝改浅拷贝 |
+| `performance-optimization-overview.md` | 🔄 进行中 | 2026-07-14 | 2026-07-14 | NE-Memory 性能优化总览 |
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
+| `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
 | `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `rollback-buttons-and-scheme-editor.md` | ❓ 未知 | — | — | 计划：版本回退按钮外移 + 方案编辑器从当前状态开始 |
@@ -36,7 +40,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：10
-- 🔄 进行中：6
-- ⏳ 未开始：1
+- ✅ 已完成：11
+- 🔄 进行中：7
+- ⏳ 未开始：3
 - ❓ 未标记：9

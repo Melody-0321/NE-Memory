@@ -1233,6 +1233,9 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     if (!tbody) return;
     tbody.innerHTML = '';
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
+    var entryMap = {};
+    entries.forEach(function(e) { if (e && e.id) entryMap[e.id] = e; });
+
     var rows = [];
     entries.forEach(function (entry, i) {
         var entryId = entry.id || (type + '_' + i);
@@ -1286,15 +1289,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
         rows.push('<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>');
 
-        var detailRows = '';
-        refs.forEach(function (stmId, si) {
-            var stm = stmIndexMap && stmIndexMap[stmId];
-            if (stm) {
-                var subNo = parseInt(stmId.replace('stm_', ''), 10) || (si + 1);
-                detailRows += renderStmRow(stm, { showEdit: true, fontSize: '0.8em', no: subNo });
-            }
-        });
-        if (detailRows) { rows.push('<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '"><td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + detailRows + '</tbody></table></div></td></tr>'); }
+        rows.push('<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" data-lazy="1"><td colspan="5"></td></tr>');
     });
     tbody.innerHTML = rows.join('');
     if (type === 'ltm') {
@@ -1309,6 +1304,29 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
                     detailRow.classList.remove('expanded');
                     el.classList.remove('expanded');
                 } else {
+                    if (detailRow.getAttribute('data-lazy') === '1') {
+                        var ltmId = detailRow.getAttribute('data-ltm-parent');
+                        var ltmEntry = entryMap[ltmId];
+                        var refs = (ltmEntry && ltmEntry.stm_refs) ? ltmEntry.stm_refs : [];
+                        var lazyRows = '';
+                        refs.forEach(function (stmId, si) {
+                            var stm = stmIndexMap && stmIndexMap[stmId];
+                            if (stm) {
+                                var subNo = parseInt(stmId.replace('stm_', ''), 10) || (si + 1);
+                                lazyRows += renderStmRow(stm, { showEdit: true, fontSize: '0.8em', no: subNo });
+                            }
+                        });
+                        detailRow.innerHTML = '<td colspan="5"><div class="narrative_ltm_detail_container"><table class="narrative_ltm_sub_table"><tbody>' + lazyRows + '</tbody></table></div></td>';
+                        detailRow.removeAttribute('data-lazy');
+                        detailRow.querySelectorAll('.ne-inline-edit-btn').forEach(function(btn) {
+                            btn.onclick = function() {
+                                var row = this.closest('tr');
+                                if (!row || row.classList.contains('ne-inline-row')) return;
+                                var sid = this.getAttribute('data-entry-id');
+                                toggleInlineEdit(row, sid, 'stm');
+                            };
+                        });
+                    }
                     detailRow.classList.add('expanded');
                     el.classList.add('expanded');
                 }

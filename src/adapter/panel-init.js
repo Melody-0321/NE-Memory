@@ -28,6 +28,44 @@ import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
 import { renderVersionHistoryPanel, initVersionNavButtons } from './panel-version-history.js';
 
+function _onVaultUpdated(payload) {
+    var gc = payload && payload.getChatId;
+    if (typeof gc === 'function') {
+        updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
+    } else if (typeof gc === 'string' && _currentGetChatId) {
+        updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
+    } else if (_currentGetChatId) {
+        updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
+    }
+}
+
+function _onVaultUpdatedVersionHistory() {
+    // Version history is now handled by panel-version-history.js (~state-versions)
+}
+
+var _pipelineUIHandler = null;
+function _updatePipelineUI(status) {
+    var el = panelById('ne_pipeline_status');
+    if (!el) return;
+    var dots = [
+        { key: 'state', label: t('State') },
+        { key: 'stm',   label: t('STM') },
+        { key: 'ltm',   label: t('LTM') }
+    ];
+    var activeCount = dots.filter(function(d) { return status[d.key] === 'active'; }).length;
+    if (activeCount === 0) {
+        el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
+        el.style.color = 'var(--grey-50)';
+    } else {
+        var parts = dots.map(function(d) {
+            var color = status[d.key] === 'active' ? 'var(--ne-success)' : 'var(--grey-50)';
+            return '<span style="color:' + color + ';" title="' + d.label + '">\u25CF</span>';
+        });
+        el.innerHTML = parts.join(' ') + ' <span style="font-size:0.85em;">' + activeCount + ' ' + t('active') + '</span>';
+        el.style.color = 'var(--grey-60)';
+    }
+}
+
 export async function renderVaultPanel(getChatId) {
     try {
         if (byId('ne_vault_bottom_overlay')) return;
@@ -45,19 +83,8 @@ export async function renderVaultPanel(getChatId) {
         }
 
         // ── StateBus subscribers: vault:updated triggers full UI refresh ──
-        busOn('vault:updated', function(payload) {
-            var gc = payload && payload.getChatId;
-            if (typeof gc === 'function') {
-                updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
-            } else if (typeof gc === 'string' && _currentGetChatId) {
-                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
-            } else if (_currentGetChatId) {
-                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
-            }
-        });
-        busOn('vault:updated', function() {
-            // Version history is now handled by panel-version-history.js (~state-versions)
-        });
+        busOn('vault:updated', _onVaultUpdated);
+        busOn('vault:updated', _onVaultUpdatedVersionHistory);
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
         var vault = await readVault(getChatId());
         var c = vault.content || {};
@@ -401,6 +428,7 @@ export async function renderVaultPanel(getChatId) {
             if (!overlay) return;
             try {
                 var ro = new ResizeObserver(function(entries) {
+                    if (!overlay.classList.contains('open')) return;
                     var width = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
                     if (width <= 600) {
                         overlay.classList.add('ne-mobile');
@@ -433,27 +461,8 @@ export async function renderVaultPanel(getChatId) {
         });
 
         // ── Pipeline status callback (push from pipeline-guard) ──
-        var _updatePipelineUI = function(status) {
-            var el = panelById('ne_pipeline_status');
-            if (!el) return;
-            var dots = [
-                { key: 'state', label: t('State') },
-                { key: 'stm',   label: t('STM') },
-                { key: 'ltm',   label: t('LTM') }
-            ];
-            var activeCount = dots.filter(function(d) { return status[d.key] === 'active'; }).length;
-            if (activeCount === 0) {
-                el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
-                el.style.color = 'var(--grey-50)';
-            } else {
-                var parts = dots.map(function(d) {
-                    var color = status[d.key] === 'active' ? 'var(--ne-success)' : 'var(--grey-50)';
-                    return '<span style="color:' + color + ';" title="' + d.label + '">\u25CF</span>';
-                });
-                el.innerHTML = parts.join(' ') + ' <span style="font-size:0.85em;">' + activeCount + ' ' + t('active') + '</span>';
-                el.style.color = 'var(--grey-60)';
-            }
-        };
+        if (_pipelineUIHandler) offPipelineChange(_pipelineUIHandler);
+        _pipelineUIHandler = _updatePipelineUI;
         onPipelineChange(_updatePipelineUI);
         _updatePipelineUI(getState());
 

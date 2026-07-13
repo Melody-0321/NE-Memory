@@ -3,7 +3,7 @@ import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, panelById, panelQS, panelQSA } from './panel-shared.js';
 
 export function initTestRunner() {
-    if (!window.__NE_DEV_MODE) return;
+    if (!__NE_DEV_MODE) return;
     var container = panelById('ne-tr-container');
     if (!container) return;
 

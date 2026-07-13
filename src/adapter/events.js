@@ -256,7 +256,7 @@ async function consumeNeCharBlocks(messageIndex) {
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
         var vault = await readVault(chatId);
         if (!vault || !vault.content) {
-            console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
             return;
         }
         var charState = vault.content.state || {};
@@ -269,9 +269,11 @@ async function consumeNeCharBlocks(messageIndex) {
             var c = charBefore[cb.name];
             summaryBefore[cb.name] = c ? JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts }) : 'NEW';
         });
-        console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
-            ' | charState keys=' + affectedKeys.join(',') +
-            ' | before=' + JSON.stringify(summaryBefore));
+        if (__NE_DEV_MODE) {
+            console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
+                ' | charState keys=' + affectedKeys.join(',') +
+                ' | before=' + JSON.stringify(summaryBefore));
+        }
 
         // 后处理兜底：查被锁模板的角色，跳过其 NE-CHAR 变更
         var lockedChars = [];
@@ -324,7 +326,7 @@ async function consumeNeCharBlocks(messageIndex) {
             }
 
             chars[cb.name].status = chars[cb.name].status || '活跃';
-            console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
         });
 
         if (messageIndex !== undefined) {
@@ -353,7 +355,7 @@ async function consumeNeCharBlocks(messageIndex) {
             var c = charState.characters[n];
             summaryAfter[n] = JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts });
         });
-        console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
     } catch (e) {
         console.warn('[NE-CHAR] consumeNeCharBlocks failed:', e && e.message);
     }
@@ -373,11 +375,13 @@ export async function onMessageReceived(messageIndex) {
             var rawMes = message.mes || '';
             var hasNeChar = rawMes.indexOf('<!--NE-CHAR') !== -1;
             var hasNeBanner = rawMes.indexOf('<!--NE-BANNER') !== -1;
-            console.log('[NE-DEBUG] onMessageReceived msgId=' + message._ne_id +
-                ' | len=' + rawMes.length +
-                ' | hasNE-CHAR=' + hasNeChar +
-                ' | hasNE-BANNER=' + hasNeBanner +
-                ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
+            if (__NE_DEV_MODE) {
+                console.log('[NE-DEBUG] onMessageReceived msgId=' + message._ne_id +
+                    ' | len=' + rawMes.length +
+                    ' | hasNE-CHAR=' + hasNeChar +
+                    ' | hasNE-BANNER=' + hasNeBanner +
+                    ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
+            }
 
             var assistantMsg = { role: 'assistant', content: rawMes, id: message._ne_id, timestamp: Date.now() };
 
@@ -394,11 +398,13 @@ export async function onMessageReceived(messageIndex) {
                     event: (stateBlockMatch[4] || '').trim(),
                     present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
-                console.log('[NE-DEBUG] stateBlock EXTRACTED: scene=' + stateBlockMatch[1] +
-                    ' time=' + stateBlockMatch[2] + ' day=' + stateBlockMatch[3] +
-                    ' event=' + stateBlockMatch[4] + ' present=' + stateBlockMatch[5]);
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] stateBlock EXTRACTED: scene=' + stateBlockMatch[1] +
+                        ' time=' + stateBlockMatch[2] + ' day=' + stateBlockMatch[3] +
+                        ' event=' + stateBlockMatch[4] + ' present=' + stateBlockMatch[5]);
+                }
             } else {
-                console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
             }
 
             var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>([\s\S]*?)<!--\/NE-CHAR-->/g;
@@ -417,17 +423,19 @@ export async function onMessageReceived(messageIndex) {
                 }
                 if (charData) {
                     newCharBlocks.push({ name: charName, fields: charData });
-                    console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
+                    if (__NE_DEV_MODE) console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
                 } else {
-                    console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' content=' + charContent.substring(0, 200));
+                    if (__NE_DEV_MODE) console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' content=' + charContent.substring(0, 200));
                 }
             }
-            console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
-                ' | extracted=' + newCharBlocks.length +
-                ' | regex_matches=' + ((rawMes.match(/<!--NE-CHAR/g) || []).length) +
-                ' | raw block preview=' + JSON.stringify(rawMes.substring(
-                    Math.max(0, rawMes.indexOf('<!--NE-CHAR') - 10),
-                    Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
+            if (__NE_DEV_MODE) {
+                console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
+                    ' | extracted=' + newCharBlocks.length +
+                    ' | regex_matches=' + ((rawMes.match(/<!--NE-CHAR/g) || []).length) +
+                    ' | raw block preview=' + JSON.stringify(rawMes.substring(
+                        Math.max(0, rawMes.indexOf('<!--NE-CHAR') - 10),
+                        Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
+            }
             if (newCharBlocks.length > 0) {
                 globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
                 globalThis.__ne_char_fallback_needed = false;
@@ -467,8 +475,10 @@ export async function onMessageReceived(messageIndex) {
                 }
                 assistantMsg.content = strippedMes;
                 _neCheckChatIntegrity('onMessageReceived:afterNeCharStrip');
-                console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
-                    ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
+                        ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
+                }
             }
 
             await consumeNeCharBlocks(messageIndex);
@@ -569,16 +579,26 @@ export async function runLtmConsolidation(chatId) {
                 var beforeStmEntryIds = new Set(snapBefore.stm_entries.map(function(e) { return e.id; }));
                 var stmMoved = (content.stm_entries || []).filter(function(e) { return !beforeStmEntryIds.has(e.id); });
                 var ltmModified = [];
+                var snapLtmMap = {};
+                for (var si = 0; si < snapBefore.ltm_entries.length; si++) {
+                    snapLtmMap[snapBefore.ltm_entries[si].id] = snapBefore.ltm_entries[si];
+                }
                 (content.ltm_entries || []).forEach(function(curr) {
-                    var prev = snapBefore.ltm_entries.find(function(e) { return e.id === curr.id; });
-                    if (prev && JSON.stringify(prev) !== JSON.stringify(curr)) {
-                        var changes = {};
-                        for (var k in curr) {
-                            if (JSON.stringify(curr[k]) !== JSON.stringify(prev[k])) {
-                                changes[k] = { old: prev[k], new: curr[k] };
+                    var prev = snapLtmMap[curr.id];
+                    if (prev) {
+                        var prevStr = JSON.stringify(prev);
+                        var currStr = JSON.stringify(curr);
+                        if (prevStr !== currStr) {
+                            var changes = {};
+                            for (var k in curr) {
+                                var cv = JSON.stringify(curr[k]);
+                                var pv = JSON.stringify(prev[k]);
+                                if (cv !== pv) {
+                                    changes[k] = { old: prev[k], new: curr[k] };
+                                }
                             }
+                            ltmModified.push({ ltm_id: curr.id, changes: changes });
                         }
-                        ltmModified.push({ ltm_id: curr.id, changes: changes });
                     }
                 });
 
@@ -946,34 +966,36 @@ export { registerGlobalBannerRegex };
 
 export async function onBeforeGenerate(type, _options, dryRun) {
     var entryNow = Date.now();
-    console.log('[NE-DEBUG] onBeforeGenerate ENTRY type=' + type + ' dryRun=' + dryRun + ' _isInjecting=' + _isInjecting +
-        ' lastKnownChatId=' + lastKnownChatId + ' lastGenerationTime=' + lastGenerationTime +
-        ' elapsed=' + (entryNow - lastGenerationTime) + 'ms');
+    if (__NE_DEV_MODE) {
+        console.log('[NE-DEBUG] onBeforeGenerate ENTRY type=' + type + ' dryRun=' + dryRun + ' _isInjecting=' + _isInjecting +
+            ' lastKnownChatId=' + lastKnownChatId + ' lastGenerationTime=' + lastGenerationTime +
+            ' elapsed=' + (entryNow - lastGenerationTime) + 'ms');
+    }
     // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)
     // 做 dry run 以获取 token 计数。dry run 走完整 prompt 组装但不调 API，
     // 但会触发 GENERATION_AFTER_COMMANDS 事件。各扩展应检测并跳过，避免副作用。
     if (dryRun) {
-        console.log('[NE-DEBUG] onBeforeGenerate EXIT: dry run');
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: dry run');
         return;
     }
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
     if (_isInjecting) {
-        console.log('[NE-DEBUG] onBeforeGenerate EXIT: re-entrant blocked (_isInjecting=true)');
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: re-entrant blocked (_isInjecting=true)');
         return;
     }
     _isInjecting = true;
     try {
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
-            console.log('[NE-DEBUG] onBeforeGenerate EXIT: type=' + type);
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: type=' + type);
             return;
         }
-        if (!lastKnownChatId) { console.log('[NE-DEBUG] onBeforeGenerate EXIT: no lastKnownChatId'); return; }
+        if (!lastKnownChatId) { if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: no lastKnownChatId'); return; }
         var now = Date.now();
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) {
-            console.log('[NE-DEBUG] onBeforeGenerate EXIT: debounce — elapsed=' + (now - lastGenerationTime) + 'ms < ' + MIN_GENERATION_INTERVAL_MS + 'ms');
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: debounce - elapsed=' + (now - lastGenerationTime) + 'ms < ' + MIN_GENERATION_INTERVAL_MS + 'ms');
             return;
         }
         lastGenerationTime = now;
@@ -986,7 +1008,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         const vault = await readVault(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         incrementChatTurn(chatId);
-        console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection - ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         adjustDialogWindow();
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
@@ -1061,7 +1083,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- 仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
                 globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
-                console.log('[NE-DEBUG] onBeforeGenerate: ne_state_block injected, dayInfo=' + dayInfo + ' scene=' + (sceneInfo || '(none)') + ' time=' + (timePreview || '') + ' isSchemaEnabled=true');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_state_block injected, dayInfo=' + dayInfo + ' scene=' + (sceneInfo || '(none)') + ' time=' + (timePreview || '') + ' isSchemaEnabled=true');
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
 
@@ -1095,7 +1117,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
     '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
-                console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? countTokens(formatted) : 0;

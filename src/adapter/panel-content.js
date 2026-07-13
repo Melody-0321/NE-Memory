@@ -12,6 +12,8 @@ import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
+    var _overlay = byId('ne_vault_bottom_overlay');
+    if (_overlay && !_overlay.classList.contains('open')) return;
     if (typeof getChatId !== 'function') {
         console.error('[NE-VAULT] updateVaultViewerPopout called with non-function getChatId (type=' + typeof getChatId + ')', getChatId);
         return;

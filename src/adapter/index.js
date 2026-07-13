@@ -21,7 +21,6 @@ import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, 
 import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
 import { neRestoreAll } from '../core/settings-adapter.js';
-window.__NE_DEV_MODE = window.__NE_DEV_MODE !== undefined ? window.__NE_DEV_MODE : true;
 
 var _retryTimer = null;
 
@@ -417,7 +416,7 @@ function bootNE(retries) {
 
 function _buildDebugApi() {
     var hostDoc = window.__NE_EXTENSION_MODE ? document : (window.parent && window.parent !== window ? window.parent.document : document);
-    return {
+    var api = {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
             try { var v = await readVault(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
@@ -492,10 +491,6 @@ function _buildDebugApi() {
             await this._waitUntilReply(120000);
         },
         getLastReport: function() { return globalThis.__ne_debug._lastTestReport; },
-        runTest: async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } },
-        runTestByName: async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } },
-        listTests: function() { return listTests(); },
-        getTestCaseMetadata: function(name) { return getTestCaseMetadata(name); },
         getUsageOverview: function() { return getUsageOverview(getAllChatStats); },
         getDailyStats: function(days) { return getDailyStats(days || 30); },
         getAllChatUsage: function() { return getAllChatUsage(getAllChatStats); },
@@ -504,7 +499,6 @@ function _buildDebugApi() {
         getAvailableMonths: function() { return getAvailableMonths(); },
         getMonthlyStats: function(month) { return getMonthlyStats(month); },
         getCurrentChatId: function() { return getChatId(); },
-        setReportsDir: async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } },
         waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); },
         dumpVaultKeys: async function() {
             try { return await _dumpVaultKeys(); } catch (e) { return 'Error: ' + e.message; }
@@ -514,9 +508,11 @@ function _buildDebugApi() {
                 var data = await _dumpVaultKeys();
                 var keys = data.vaults || data;
                 var currentId = getChatId();
-                console.log('[NE-DEBUG] Current chatId:', currentId);
-                console.log('[NE-DEBUG] Vaults:');
-                console.table(keys);
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] Current chatId:', currentId);
+                    console.log('[NE-DEBUG] Vaults:');
+                    console.table(keys);
+                }
                 return { currentChatId: currentId, allKeys: keys };
             } catch (e) { return 'Error: ' + e.message; }
         },
@@ -525,6 +521,14 @@ function _buildDebugApi() {
         gc: async function() { try { return await scanOrphans(); } catch (e) { return 'Error: ' + e.message; } },
         purgeChat: async function(chatId) { try { return await purgeOrphanChatData(chatId); } catch (e) { return 'Error: ' + e.message; } },
     };
+    if (__NE_DEV_MODE) {
+        api.runTest = async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } };
+        api.runTestByName = async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } };
+        api.listTests = function() { return listTests(); };
+        api.getTestCaseMetadata = function(name) { return getTestCaseMetadata(name); };
+        api.setReportsDir = async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } };
+    }
+    return api;
 }
 
 function _dumpVaultKeys() {

@@ -145,16 +145,18 @@ function _fetchWorldBookText(newNames) {
         if (resultPromise && typeof resultPromise.then === 'function') {
             return resultPromise.then(function(result) {
                 var text = (result && result.worldInfoString) ? result.worldInfoString : '';
-                console.log('[NE-DEBUG] _fetchWorldBookText: newNames=' + JSON.stringify(newNames) +
-                    ' | worldBookText_len=' + text.length);
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] _fetchWorldBookText: newNames=' + JSON.stringify(newNames) +
+                        ' | worldBookText_len=' + text.length);
+                }
                 return text;
             }).catch(function(e) {
-                console.warn('[NE-DEBUG] _fetchWorldBookText failed:', e && e.message);
+                if (__NE_DEV_MODE) console.warn('[NE-DEBUG] _fetchWorldBookText failed:', e && e.message);
                 return '';
             });
         }
     } catch (e) {
-        console.warn('[NE-DEBUG] _fetchWorldBookText error:', e && e.message);
+        if (__NE_DEV_MODE) console.warn('[NE-DEBUG] _fetchWorldBookText error:', e && e.message);
     }
     return Promise.resolve('');
 }
@@ -322,10 +324,12 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     }
 
     var worldBook = newNames.length > 0 ? buildWorldBookSection(vault, newNames, worldBookText) : '';
-    console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
-        ' | worldBook_len=' + (worldBook ? worldBook.length : 0) +
-        ' | worldBook_preview=' + JSON.stringify(worldBook ? worldBook.substring(0, 300) : '(empty)') +
-        ' | neCharFallback=' + neCharFallback);
+    if (__NE_DEV_MODE) {
+        console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
+            ' | worldBook_len=' + (worldBook ? worldBook.length : 0) +
+            ' | worldBook_preview=' + JSON.stringify(worldBook ? worldBook.substring(0, 300) : '(empty)') +
+            ' | neCharFallback=' + neCharFallback);
+    }
 
     if (lang === 'en') {
         var newCharHintEn = '';

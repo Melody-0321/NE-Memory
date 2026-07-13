@@ -772,7 +772,7 @@ export function renderSettingsIntoSlide(container) {
     var diagTitle = pdCreate('div');
     diagTitle.className = 'ne-tool-card';
     diagTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
-        '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '">' +
+        '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (__NE_DEV_MODE ? '' : 'display:none;') + '">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
         '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>';
     container.appendChild(diagTitle);
@@ -988,7 +988,7 @@ export function renderSettingsIntoSlide(container) {
     });
 
     // Init test runner
-    if (window.__NE_DEV_MODE) {
+    if (__NE_DEV_MODE) {
         try { initTestRunner(); } catch (e) {}
     }
 }

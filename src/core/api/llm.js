@@ -168,7 +168,7 @@ export async function callMemoryLLM(messages, options = {}) {
         roundTag: callRoundTag
     });
 
-    if (globalThis.__NE_DEV_MODE) {
+    if (__NE_DEV_MODE) {
         globalThis.__ne_debug_all_pipeline_responses = (globalThis.__ne_debug_all_pipeline_responses || '') + (response || '') + '\n---\n';
     }
 
