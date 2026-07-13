@@ -86,12 +86,12 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:var(--ne-warning);font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
             // ── State tab ──
             '<div id="tab-state" class="ne-vault-tab-content active">' +
-            '<div id="ne-state-scene" style="padding:4px 12px;font-size:0.82em;color:var(--grey-60);margin-bottom:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;"></div>' +
             '<div id="ne-state-search-bar" style="padding:4px 12px 6px;">' +
             '<input type="text" id="ne-state-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '</div>' +
             '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
             '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<span id="ne-state-scene" style="font-size:0.82em;color:var(--grey-60);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"></span>' +
             '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
@@ -118,18 +118,19 @@ export async function renderVaultPanel(getChatId) {
             // ── Memory tab ──
             '<div id="tab-memory" class="ne-vault-tab-content">' +
             '<div style="display:flex;align-items:center;padding:4px 12px 6px;gap:6px;">' +
-            '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="flex:1;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Refresh') + '</button>' +
             '<button class="narrative_btn_consolidate ne-btn-warning menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Consolidate') + '</button>' +
-            '<button id="ne-memory-history-btn" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
             '</div>' +
-            '<div id="ne-memory-version" style="padding:2px 12px 4px;font-size:0.75em;color:var(--grey-50);"></div>' +
-            '<div style="padding:2px 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<div style="padding:4px 12px 6px;">' +
+            '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
+            '</div>' +
+            '<div id="ne_quick_index" class="ne-quick-index"></div>' +
+            '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
             '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-memory-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">' + '\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
             '</div>' +
-            '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
             '<div class="ne-accordion-body">' +

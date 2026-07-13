@@ -1,7 +1,5 @@
 import { readVault, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
-import { getActiveChain } from '../core/vault/state-versions.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
-import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
@@ -73,18 +71,8 @@ export async function updateVaultViewerPopout(getChatId) {
         return;
     }
 
-    // ── Section A: Header (version + scene state) ──
+    // ── Section A: Scene info (State tab) ──
     try {
-        var verEl = panelById('ne-memory-version');
-        if (verEl) {
-            var chain = await getActiveChain(getChatId());
-            var memVer = chain && chain.mem_active ? chain.mem_active[chain.mem_active.length - 1] : null;
-            var verText = t('Memory v') + ' ' + (memVer || '-');
-            var ts = formatLocalTime(vault.updated_at);
-            if (ts) verText += ' \u00b7 ' + ts;
-            verEl.textContent = verText;
-        }
-        // Scene info now in State tab (moved from pin row)
         var sceneEl = panelById('ne-state-scene');
         if (sceneEl) {
             var sceneParts = [];
@@ -95,8 +83,7 @@ export async function updateVaultViewerPopout(getChatId) {
         }
     } catch (e) { _logSection('header', e); }
 
-    var panelBody = verEl ? verEl.parentElement : null;
-    if (!panelBody) { setUpdatingPopout(false); return; }
+    if (!panelById('tab-memory')) { setUpdatingPopout(false); return; }
 
     // 修复区域中嵌套 Accordion 面板的显示状态，将所有子 accordion-content 统一标记
     panelQSA('.narrative_state_block').forEach(function (el) { el.remove(); });
