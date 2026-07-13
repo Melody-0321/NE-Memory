@@ -219,9 +219,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
             '</div>';
     });
     html += '</div>';
-    if (questOptions.length > 0) {
-        html += '<button id="ne-config-add-quest" class="ne-btn-small">' + escapeHtml(t('add_quest_template')) + '</button>';
-    }
+    html += '<button id="ne-config-add-quest" class="ne-btn-small" data-role="quest">' + escapeHtml(t('add_from_library')) + '</button>';
     html += '</div>';
 
     // World Context (P7: editable)
@@ -773,26 +771,31 @@ function _showTemplateSelectorModal(opts) {
         return templates[id] && templates[id].role === role && excludeIds.indexOf(id) === -1;
     });
 
-    if (available.length === 0) {
-        showToast(t('none_available'), 'info');
-        return;
-    }
-
     var html = '<div class="ne-modal-overlay" id="ne-template-selector-modal">';
     html += '<div class="ne-modal">';
     html += '<h3>' + escapeHtml(title) + '</h3>';
     html += '<div class="ne-modal-body">';
-    available.forEach(function (id) {
-        var tpl = templates[id];
-        html += '<label class="ne-preset-field">' +
-            '<input type="radio" name="ne-template-select" value="' + escapeHtml(id) + '"> ' +
-            escapeHtml(tpl.name || id) +
-            (tpl.description ? ' <span style="color:var(--grey-50);font-size:0.85em;">' + escapeHtml(tpl.description.substring(0, 60)) + '</span>' : '') +
-            '</label>';
-    });
+    if (available.length === 0) {
+        // Show empty state with guidance instead of silent toast
+        html += '<div class="ne-empty-state"><div class="ne-empty-state-icon">\u{1F4CB}</div>';
+        html += '<div class="ne-empty-state-text">' + escapeHtml(t('none_available')) + '</div>';
+        html += '<div style="margin-top:8px;font-size:0.85em;color:var(--grey-50);">' + escapeHtml(t('create_first_hint') || 'Create a template in the Template Library first.') + '</div>';
+        html += '</div>';
+    } else {
+        available.forEach(function (id) {
+            var tpl = templates[id];
+            html += '<label class="ne-preset-field">' +
+                '<input type="radio" name="ne-template-select" value="' + escapeHtml(id) + '"> ' +
+                escapeHtml(tpl.name || id) +
+                (tpl.description ? ' <span style="color:var(--grey-50);font-size:0.85em;">' + escapeHtml(tpl.description.substring(0, 60)) + '</span>' : '') +
+                '</label>';
+        });
+    }
     html += '</div>';
     html += '<div class="ne-modal-footer">';
-    html += '<button id="ne-template-select-save" class="menu_button">' + escapeHtml(t('add')) + '</button>';
+    if (available.length > 0) {
+        html += '<button id="ne-template-select-save" class="menu_button">' + escapeHtml(t('add')) + '</button>';
+    }
     html += '<button id="ne-template-select-cancel" class="menu_button">' + escapeHtml(t('Cancel')) + '</button>';
     html += '</div></div></div>';
 
