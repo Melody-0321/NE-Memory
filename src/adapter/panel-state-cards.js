@@ -1,7 +1,7 @@
 import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
+import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 import { recordStateDelta } from '../core/vault/state-versions.js';
@@ -517,7 +517,19 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     var tplId = dt ? dt._templateId : null;
     var tpl = tplId ? templates[tplId] : null;
 
-    // Get current field values from card-level template
+    // Fallback: if _scheme is a default sentinel (_default_npc etc), use DEFAULT template
+    var isDefaultScheme = dtKey && dtKey.indexOf('_default_') === 0;
+    if (!dt && isDefaultScheme) {
+        var defaultMap = {
+            '_default_pc': DEFAULT_PC_TEMPLATE,
+            '_default_npc': DEFAULT_NPC_TEMPLATE,
+            '_default_faction': DEFAULT_FACTION_TEMPLATE,
+            '_default_quest': DEFAULT_QUEST_TEMPLATE
+        };
+        dt = defaultMap[dtKey] || null;
+    }
+
+    // Get current field values from card-level template (or default template)
     var currentPresets = (dt && dt.presetFields) ? dt.presetFields.slice() : [];
     var currentCustoms = (dt && dt.customFieldRefs) ? dt.customFieldRefs.slice() : [];
 
@@ -561,7 +573,8 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     var html = '<div class="ne-scheme-editor">';
 
     // P9: Mode-driven tab selector - three actionable paths
-    var hasCurrentDt = !!(dtKey && dialogueTemplates[dtKey]);
+    // edit_current is enabled when character has any _scheme (including default sentinels)
+    var hasCurrentDt = !!(dtKey && (dialogueTemplates[dtKey] || (dtKey.indexOf('_default_') === 0)));
     var defaultMode = hasCurrentDt ? 'edit_current' : 'switch_template';
     html += '<div class="ne-scheme-mode-bar" style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--grey-20);">';
     var modes = [
@@ -783,8 +796,12 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
 
             // Mode-specific field loading
             if (mode === 'edit_current') {
-                // Restore current dt's fields
+                // Restore current fields (from card-level dt or default template)
                 var curDt = dtKey ? dialogueTemplates[dtKey] : null;
+                if (!curDt && dtKey && dtKey.indexOf('_default_') === 0) {
+                    var defMap = { '_default_pc': DEFAULT_PC_TEMPLATE, '_default_npc': DEFAULT_NPC_TEMPLATE, '_default_faction': DEFAULT_FACTION_TEMPLATE, '_default_quest': DEFAULT_QUEST_TEMPLATE };
+                    curDt = defMap[dtKey] || null;
+                }
                 _refreshSchemeCheckboxes(cardEl, (curDt && curDt.presetFields) || []);
                 _refreshSchemeCustomFields(cardEl, (curDt && curDt.customFieldRefs) || []);
             } else if (mode === 'from_scratch') {
