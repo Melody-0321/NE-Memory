@@ -3,7 +3,7 @@
  *
  * v8: force-reset empty stores from v7 botched upgrade, recover from chat metadata.
  */
-import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from './schema.js';
+import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from './schema.js';
 import { neSync } from '../settings-adapter.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
@@ -594,6 +594,8 @@ function _getDefaultTemplates() {
     _DEFAULT_TEMPLATES = {};
     _DEFAULT_TEMPLATES[DEFAULT_PC_TEMPLATE.id] = DEFAULT_PC_TEMPLATE;
     _DEFAULT_TEMPLATES[DEFAULT_NPC_TEMPLATE.id] = DEFAULT_NPC_TEMPLATE;
+    _DEFAULT_TEMPLATES[DEFAULT_FACTION_TEMPLATE.id] = DEFAULT_FACTION_TEMPLATE;
+    _DEFAULT_TEMPLATES[DEFAULT_QUEST_TEMPLATE.id] = DEFAULT_QUEST_TEMPLATE;
     return _DEFAULT_TEMPLATES;
 }
 
@@ -608,6 +610,12 @@ export function loadTemplateLibrary() {
 export function getEffectiveTemplates() {
     var lib = loadTemplateLibrary();
     var merged = Object.assign({}, _getDefaultTemplates(), lib.templates || {});
+    Object.keys(merged).forEach(function(k) {
+        var tpl = merged[k];
+        if ((tpl.role === 'pc' || tpl.role === 'npc') && !tpl.perRoundFields) {
+            tpl.perRoundFields = ['current_mood', 'inner_thoughts'];
+        }
+    });
     return { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id], updatedAt: lib.updatedAt };
 }
 

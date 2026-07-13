@@ -11,7 +11,7 @@
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked } from '../core/vault/store.js';
-import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE } from '../core/vault/schema.js';
+import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';
@@ -135,6 +135,43 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     html += '<label class="ne-radio-label"><input type="radio" name="ne-npc-mode" value="smart"' + (npcMode === 'smart' ? ' checked' : '') + '> ' + escapeHtml(t('smart_adjust')) + '</label>';
     html += '</div>';
 
+    // Faction Template selector
+    var factionOptions = Object.keys(templates).filter(function (id) {
+        return templates[id] && templates[id].role === 'faction';
+    });
+    var selectedFaction = cfg.faction || '_default_faction';
+    html += '<div class="ne-config-field">';
+    html += '<label>Faction Template</label>';
+    html += '<select id="ne-config-faction-template" class="ne-config-select">';
+    factionOptions.forEach(function (id) {
+        var tpl = templates[id];
+        var selected = (selectedFaction === id) ? ' selected' : '';
+        html += '<option value="' + escapeHtml(id) + '"' + selected + '>' + escapeHtml(tpl.name || id) + '</option>';
+    });
+    html += '</select></div>';
+
+    // Quest Template pool
+    var questOptions = Object.keys(templates).filter(function (id) {
+        return templates[id] && templates[id].role === 'quest';
+    });
+    var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_quest'];
+    html += '<div class="ne-config-field">';
+    html += '<label>Quest Templates</label>';
+    html += '<div id="ne-config-quest-pool">';
+    questPool.forEach(function (qid) {
+        var qTpl = templates[qid];
+        var qLabel = (qTpl && qTpl.name) ? qTpl.name : (qid || '?');
+        html += '<div class="ne-config-npc-item">' +
+            '<span>' + escapeHtml(qLabel) + '</span>' +
+            '<button class="ne-btn-small ne-btn-danger" data-remove-quest="' + escapeHtml(qid) + '" title="' + escapeHtml(t('remove')) + '">\u2715</button>' +
+            '</div>';
+    });
+    html += '</div>';
+    if (questOptions.length > 0) {
+        html += '<button id="ne-config-add-quest" class="ne-btn-small">+ Add Quest Template</button>';
+    }
+    html += '</div>';
+
     // World Context
     html += '<div class="ne-config-field">';
     html += '<label>' + escapeHtml(t('world_context')) + '</label>';
@@ -163,13 +200,16 @@ function _renderLibraryHTML(templates, order) {
     html += '<button id="ne-btn-create-template" class="menu_button">+ ' + escapeHtml(t('create_template')) + '</button>';
     html += '</div>';
 
-    // Organize: PC templates, NPC templates by category tags
     var pcIds = [];
     var npcIds = [];
+    var factionIds = [];
+    var questIds = [];
     order.forEach(function (id) {
         var tpl = templates[id];
         if (!tpl) return;
         if (tpl.role === 'pc') { pcIds.push(id); }
+        else if (tpl.role === 'faction') { factionIds.push(id); }
+        else if (tpl.role === 'quest') { questIds.push(id); }
         else { npcIds.push(id); }
     });
 
@@ -192,7 +232,6 @@ function _renderLibraryHTML(templates, order) {
     if (npcIds.length === 0) {
         html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
     } else {
-        // Group by tags/category
         var byCategory = {};
         npcIds.forEach(function (id) {
             var tpl = templates[id];
@@ -210,6 +249,31 @@ function _renderLibraryHTML(templates, order) {
         });
     }
     html += '</div>';
+
+    // Faction Column
+    html += '<div class="ne-template-col">';
+    html += '<div class="ne-col-title">' + escapeHtml(t('faction_templates')) + '</div>';
+    if (factionIds.length === 0) {
+        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
+    } else {
+        factionIds.forEach(function (id) {
+            html += _renderTemplateCardHTML(templates[id], id);
+        });
+    }
+    html += '</div>';
+
+    // Quest Column
+    html += '<div class="ne-template-col">';
+    html += '<div class="ne-col-title">' + escapeHtml(t('quest_templates')) + '</div>';
+    if (questIds.length === 0) {
+        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
+    } else {
+        questIds.forEach(function (id) {
+            html += _renderTemplateCardHTML(templates[id], id);
+        });
+    }
+    html += '</div>';
+
     html += '</div>'; // .ne-template-grid
     html += '</div>'; // .ne-template-library
     return html;
@@ -307,6 +371,35 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
             if (charName) saveCardConfig(charName, cardConfig);
         });
     }
+
+    // Faction template select
+    var factionSelect = container.querySelector('#ne-config-faction-template');
+    if (factionSelect) {
+        factionSelect.addEventListener('change', function () {
+            if (!cardConfig) return;
+            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+            cardConfig._templateConfig.faction = this.value;
+            var charName = _getCurrentCharName();
+            if (charName) saveCardConfig(charName, cardConfig);
+        });
+    }
+
+    // Remove Quest from pool
+    var removeQuestBtns = container.querySelectorAll('[data-remove-quest]');
+    for (var q = 0; q < removeQuestBtns.length; q++) {
+        removeQuestBtns[q].addEventListener('click', function () {
+            var qid = this.getAttribute('data-remove-quest');
+            _removeQuestFromPool(qid, cardConfig);
+        });
+    }
+
+    // Add Quest from library
+    var addQuestBtn = container.querySelector('#ne-config-add-quest');
+    if (addQuestBtn) {
+        addQuestBtn.addEventListener('click', function () {
+            _showQuestSelector(templates, cardConfig);
+        });
+    }
 }
 
 function _hookLibraryEvents(container, templates, order) {
@@ -356,6 +449,8 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<select id="ne-editor-role" class="ne-config-select">';
     html += '<option value="npc"' + (tpl.role === 'npc' || !tpl.role ? ' selected' : '') + '>NPC</option>';
     html += '<option value="pc"' + (tpl.role === 'pc' ? ' selected' : '') + '>PC</option>';
+    html += '<option value="faction"' + (tpl.role === 'faction' ? ' selected' : '') + '>Faction</option>';
+    html += '<option value="quest"' + (tpl.role === 'quest' ? ' selected' : '') + '>Quest</option>';
     html += '</select>';
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
     html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2">' + escapeHtml(tpl.description || '') + '</textarea>';
@@ -395,6 +490,21 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<input type="text" id="ne-editor-add-custom" class="ne-editor-input" placeholder="' + escapeHtml(t('add_custom_field')) + '">';
     html += '</div>';
     html += '</div>';
+
+    html += '<div class="ne-editor-section" id="ne-editor-perround-section"' + ((tpl.role === 'faction' || tpl.role === 'quest') ? ' style="display:none"' : '') + '>';
+    html += '<div class="ne-section-title">' + escapeHtml(t('per_round_fields')) + '</div>';
+    html += '<div class="ne-preset-category">';
+    var roundFieldCandidates = ['current_mood', 'inner_thoughts', 'affection', 'relationship', 'injuries', 'status_effects'];
+    var existingPerRound = (tpl.perRoundFields && Array.isArray(tpl.perRoundFields)) ? tpl.perRoundFields : [];
+    var hasPerRound = existingPerRound.length > 0;
+    roundFieldCandidates.forEach(function (fn) {
+        var checked = existingPerRound.indexOf(fn) !== -1;
+        html += '<label class="ne-preset-field">' +
+            '<input type="checkbox" class="ne-perround-checkbox" value="' + escapeHtml(fn) + '"' + (checked ? ' checked' : '') + '> ' +
+            escapeHtml(t_field(fn)) +
+            '</label>';
+    });
+    html += '</div></div>';
 
     // Tags
     html += '<div class="ne-editor-section">';
@@ -468,6 +578,21 @@ function _showEditor(container, templateId, isNew, templates, order) {
             _removeCustomFieldFromEditor(container, fn);
         });
     }
+
+    // Role change: toggle perRoundFields section
+    var roleSelect = container.querySelector('#ne-editor-role');
+    if (roleSelect) {
+        roleSelect.addEventListener('change', function() {
+            var perRoundSection = container.querySelector('#ne-editor-perround-section');
+            if (perRoundSection) {
+                if (this.value === 'faction' || this.value === 'quest') {
+                    perRoundSection.style.display = 'none';
+                } else {
+                    perRoundSection.style.display = '';
+                }
+            }
+        });
+    }
 }
 
 function _renderVersionHistoryHTML(tpl) {
@@ -524,13 +649,22 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     var tags = tagsEl ? tagsEl.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
     var isLocked = lockEl ? lockEl.checked : false;
 
+    // Collect perRoundFields
+    var perRoundFields = [];
+    var perRoundCheckboxes = container.querySelectorAll('.ne-perround-checkbox:checked');
+    for (var pr = 0; pr < perRoundCheckboxes.length; pr++) {
+        perRoundFields.push(perRoundCheckboxes[pr].value);
+    }
+    var roleVal = roleEl ? roleEl.value : 'npc';
+
     var template = {
         id: isNew ? ('tpl_' + Date.now()) : templateId,
         name: nameEl.value.trim(),
-        role: roleEl ? roleEl.value : 'npc',
+        role: roleVal,
         description: descEl ? descEl.value.trim() : '',
         presetFields: presetFields,
         customFieldRefs: customFieldRefs,
+        perRoundFields: (roleVal === 'pc' || roleVal === 'npc') ? perRoundFields : undefined,
         tags: tags,
         _locked: isLocked,
         source: 'user_created',
@@ -619,17 +753,93 @@ function _saveCardConfigChange(cardConfig, templates) {
     showToast('Settings saved.', 'success', 2000);
 }
 
-function _removeNpcFromPool(templateId, cardConfig) {
+function _removeNpcFromPool(npcId, cardConfig) {
     if (!cardConfig || !cardConfig._templateConfig) return;
-    var pool = cardConfig._templateConfig.npc;
-    if (!pool || !Array.isArray(pool)) return;
-    cardConfig._templateConfig.npc = pool.filter(function(e) {
-        return e._templateId !== templateId;
-    });
+    var pool = cardConfig._templateConfig.npc || ['_default_npc'];
+    var idx = pool.indexOf(npcId);
+    if (idx === -1) return;
+    if (pool.length <= 1) {
+        console.log('[NE-Templates] Cannot remove last NPC template from pool');
+        return;
+    }
+    pool.splice(idx, 1);
+    cardConfig._templateConfig.npc = pool;
     var charName = _getCurrentCharName();
-    if (charName) saveCardConfig(charName, cardConfig);
-    var container = panelById('ne-slide-panel-content');
-    if (container) renderTemplatesIntoSlide(container);
+    if (charName) {
+        saveCardConfig(charName, cardConfig);
+        _refreshCurrentPanel();
+    }
+}
+
+function _removeQuestFromPool(questId, cardConfig) {
+    if (!cardConfig || !cardConfig._templateConfig) return;
+    var pool = cardConfig._templateConfig.quest || ['_default_quest'];
+    var idx = pool.indexOf(questId);
+    if (idx === -1) return;
+    if (pool.length <= 1) {
+        console.log('[NE-Templates] Cannot remove last Quest template from pool');
+        return;
+    }
+    pool.splice(idx, 1);
+    cardConfig._templateConfig.quest = pool;
+    var charName = _getCurrentCharName();
+    if (charName) {
+        saveCardConfig(charName, cardConfig);
+        _refreshCurrentPanel();
+    }
+}
+
+function _showQuestSelector(templates, cardConfig) {
+    var questOptions = Object.keys(templates).filter(function (id) {
+        return templates[id] && templates[id].role === 'quest';
+    });
+    var questPool = (cardConfig._templateConfig && cardConfig._templateConfig.quest) ? cardConfig._templateConfig.quest : ['_default_quest'];
+
+    var html = '<div class="ne-modal-overlay" id="ne-quest-selector">';
+    html += '<div class="ne-modal">';
+    html += '<h3>Select Quest Template</h3>';
+    html += '<div class="ne-modal-body">';
+    questOptions.forEach(function (id) {
+        var tpl = templates[id];
+        var disabled = questPool.indexOf(id) !== -1;
+        html += '<label class="ne-preset-field"' + (disabled ? ' style="opacity:0.5"' : '') + '>' +
+            '<input type="radio" name="ne-quest-select" value="' + escapeHtml(id) + '"' + (disabled ? ' disabled' : '') + '> ' +
+            escapeHtml(tpl.name || id) + (disabled ? ' (already in pool)' : '') +
+            '</label>';
+    });
+    html += '</div>';
+    html += '<div class="ne-modal-footer">';
+    html += '<button id="ne-quest-select-save" class="menu_button">Add</button>';
+    html += '<button id="ne-quest-select-cancel" class="menu_button">Cancel</button>';
+    html += '</div></div></div>';
+
+    var panel = document.getElementById('ne-template-config-panel');
+    if (!panel) return;
+    var overlay = document.createElement('div');
+    overlay.innerHTML = html;
+    var selectorEl = overlay.firstElementChild;
+    panel.appendChild(selectorEl);
+
+    selectorEl.querySelector('#ne-quest-select-cancel').addEventListener('click', function () {
+        selectorEl.remove();
+    });
+
+    selectorEl.querySelector('#ne-quest-select-save').addEventListener('click', function () {
+        var selected = selectorEl.querySelector('input[name="ne-quest-select"]:checked');
+        if (selected) {
+            var qid = selected.value;
+            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+            var pool = cardConfig._templateConfig.quest || ['_default_quest'];
+            if (pool.indexOf(qid) === -1) {
+                pool.push(qid);
+                cardConfig._templateConfig.quest = pool;
+                var charName = _getCurrentCharName();
+                if (charName) saveCardConfig(charName, cardConfig);
+            }
+        }
+        selectorEl.remove();
+        _refreshCurrentPanel();
+    });
 }
 
 function _showNpcSelector(templates, cardConfig) {

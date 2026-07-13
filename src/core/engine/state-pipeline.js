@@ -1,5 +1,5 @@
 import { readState, loadCardConfigSync, getLockedTemplateCharacters } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -216,23 +216,53 @@ function buildTemplateLibrarySection() {
         var npcKeys = Object.keys(templates).filter(function(k) {
             return templates[k] && templates[k].role === 'npc' && !templates[k].system;
         });
-        if (npcKeys.length === 0) return '';
-        var lines = ['\n## NPC Templates Available'];
-        lines.push('When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<template_key>".');
-        lines.push('');
-        lines.push('## Tool Calling Rules');
-        lines.push('- NEW characters (any role) — MUST call get_character_scheme to build tracking scheme');
-        lines.push('  Receive field list, then output state_changes filling those fields');
-        lines.push('- Existing characters WITH _scheme — do NOT change _scheme, do NOT call get_character_scheme');
-        lines.push('- Existing characters WITHOUT _scheme — may call get_character_scheme if default is insufficient');
-        lines.push('- Need a new tracking field — call propose_field');
-        lines.push('');
-        npcKeys.forEach(function(k) {
-            var t = templates[k];
-            var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
-            lines.push('- ' + k + ' (' + (t.name || k) + '): ' + fields.join(', '));
+        var factionKeys = Object.keys(templates).filter(function(k) {
+            return templates[k] && templates[k].role === 'faction' && !templates[k].system;
         });
-        lines.push('- _default: baseline tracking, works for any NPC (status, gender_age, physique, occupation, personality, inner_thoughts, current_mood, affection)');
+        var questKeys = Object.keys(templates).filter(function(k) {
+            return templates[k] && templates[k].role === 'quest' && !templates[k].system;
+        });
+        var lines = [];
+        if (factionKeys.length > 0 || questKeys.length > 0 || npcKeys.length > 0) {
+            lines.push('');
+        }
+        if (factionKeys.length > 0) {
+            lines.push('## Faction Templates Available');
+            factionKeys.forEach(function(k) {
+                var t = templates[k];
+                var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
+                lines.push('- ' + k + ' (' + (t.name || k) + '): ' + fields.join(', '));
+            });
+        }
+        if (questKeys.length > 0) {
+            if (lines.length > 0 && !lines[lines.length-1].startsWith('##')) lines.push('');
+            lines.push('## Quest Templates Available');
+            questKeys.forEach(function(k) {
+                var t = templates[k];
+                var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
+                lines.push('- ' + k + ' (' + (t.name || k) + '): ' + fields.join(', '));
+            });
+        }
+        if (npcKeys.length > 0) {
+            if (lines.length > 0 && !lines[lines.length-1].startsWith('##')) lines.push('');
+            lines.push('## NPC Templates Available');
+            lines.push('When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<template_key>".');
+            lines.push('');
+            lines.push('## Tool Calling Rules');
+            lines.push('- NEW characters (any role) — MUST call get_character_scheme to build tracking scheme');
+            lines.push('  Receive field list, then output state_changes filling those fields');
+            lines.push('- Existing characters WITH _scheme — do NOT change _scheme, do NOT call get_character_scheme');
+            lines.push('- Existing characters WITHOUT _scheme — may call get_character_scheme if default is insufficient');
+            lines.push('- Need a new tracking field — call propose_field');
+            lines.push('');
+            npcKeys.forEach(function(k) {
+                var t = templates[k];
+                var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
+                lines.push('- ' + k + ' (' + (t.name || k) + '): ' + fields.join(', '));
+            });
+            lines.push('- _default: baseline tracking, works for any NPC (status, gender_age, physique, occupation, personality, inner_thoughts, current_mood, affection)');
+        }
+        if (factionKeys.length === 0 && questKeys.length === 0 && npcKeys.length === 0) return '';
         return lines.join('\n');
     } catch(e) { return ''; }
 }
@@ -255,27 +285,32 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var managedList = managedFields.join(', ');
     var identityNames = getIdentityFieldNames();
 
+    var factionFields = (DEFAULT_FACTION_TEMPLATE.presetFields || []).join(', ');
+    var questFields = (DEFAULT_QUEST_TEMPLATE.presetFields || []).join(', ');
+
     var rulesStaticEn = '\n## Field Rules\n' +
-        '- You manage: ' + managedList + '.\n' +
+        '- You manage characters: ' + managedList + '.\n' +
+        '- You manage factions: ' + factionFields + '.\n' +
+        '- You manage quests: ' + questFields + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Use the field key shown in parentheses in the table above (e.g. ' + (managedFields[0] || 'gender_age') + ') as the JSON path.\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
         (newNames.length > 0 ? '' : '\nZero-change example: {"state_changes":{}}\n') +
-        '- You also manage factions: name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], notes.\n' +
         '- When a faction is first mentioned or interacts with the player, update its attitude and notes.\n' +
         '\n';
 
     var rulesStaticZh = '\n## 字段规则\n' +
-        '- \u4f60\u7ba1\u7406: ' + managedList + '\u3002\n' +
+        '- 你管理角色: ' + managedList + '。\n' +
+        '- 你管理势力: ' + factionFields + '。\n' +
+        '- 你管理任务: ' + questFields + '。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- JSON 路径使用上方表格括号内的字段名（如 ' + (managedFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
         (newNames.length > 0 ? '' : '\n零变化示例: {"state_changes":{}}\n') +
-        '- 你也管理 factions（势力）：name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], notes。\n' +
         '- 势力首次被提及或与 PC 互动时，更新其 attitude 和 notes。\n' +
         '\n';
 
@@ -476,19 +511,23 @@ function buildWorldBookSystemBlock(worldBookEntries) {
 
 
 function buildFactionExtractionPrompt() {
+    var factionFieldNames = (DEFAULT_FACTION_TEMPLATE.presetFields || []).slice();
+    var fieldsDesc = factionFieldNames.filter(function(fn) { return fn !== 'name'; }).map(function(fn) {
+        if (fn === 'attitude_toward_player') return '"attitude_toward_player": "友好/中立/冷淡/敌对/未知"';
+        return '"' + fn + '": "<value>"';
+    }).join(',\n');
+
     return '## Task\n' +
         'Extract TWO things from the World Setting above:\n' +
         '1. Organizations / factions / guilds / clans / families / groups\n' +
         '2. World context — genre, tropes, summary\n' +
+        '\nFaction fields (from template): ' + factionFieldNames.join(', ') + '\n' +
         '\nOutput ONLY valid JSON:\n' +
         '{\n' +
         '  "factions": {\n' +
         '    "<Name>": {\n' +
         '      "name": "<Full name>",\n' +
-        '      "description": "<One-sentence description>",\n' +
-        '      "leader": "<Leader name, or empty if unknown>",\n' +
-        '      "attitude_toward_player": "\u53cb\u597d/\u4e2d\u7acb/\u51b7\u6de1/\u654c\u5bf9/\u672a\u77e5",\n' +
-        '      "aliases": ["<alias>"]\n' +
+        '      ' + fieldsDesc + '\n' +
         '    }\n' +
         '  },\n' +
         '  "world_context": {\n' +
@@ -514,7 +553,7 @@ function _persistCardConfig(charName, state) {
         var now = new Date().toISOString();
         var config = {
             _dialogueTemplates: {},
-            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _npcTemplateMode: 'exact' },
+            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _npcTemplateMode: 'exact', faction: '_default_faction', quest: ['_default_quest'] },
             _version: 1,
             _createdAt: now,
             _updatedAt: now

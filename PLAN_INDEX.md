@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-13 | 25 个文档 | 36% 完成
+> 自动生成 | 2026-07-13 | 25 个文档 | 40% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -8,7 +8,7 @@
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
 | `doc-management-optimization-plan.md` | ✅ 已完成 | 2026-07-09 | 2026-07-09 | NE-Memory 文档管理优化计划 |
-| `extend-templates-to-faction-quest.md` | ❓ 未知 | — | — | 模板系统扩展：势力 + 任务/事件 + NE-CHAR 动态字段 |
+| `extend-templates-to-faction-quest.md` | ✅ 已完成 | 2026-07-09 | 2026-07-13 | 模板系统扩展：势力 + 任务/事件 + NE-CHAR 动态字段 |
 | `fix-dialog-round-control.md` | ✅ 已完成 | 2026-06-18 | 2026-06-22 | 修复计划：对话轮数注入控制不生效 |
 | `fix-panel-chat-switch-sync.md` | ✅ 已完成 | 2026-06-20 | 2026-06-28 | 修复面板聊天切换不同步问题 |
 | `fix-template-llm-and-world-context.md` | ❓ 未知 | — | — | 修复：Template LLM 触发 + World Context 填充 |
@@ -35,7 +35,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：9
+- ✅ 已完成：10
 - 🔄 进行中：5
 - ⏳ 未开始：1
-- ❓ 未标记：10
+- ❓ 未标记：9

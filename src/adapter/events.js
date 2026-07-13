@@ -5,7 +5,7 @@ import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engin
 import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters } from '../core/vault/store.js';
+import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters, getEffectiveTemplates } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
@@ -286,6 +286,7 @@ async function consumeNeCharBlocks(messageIndex) {
             console.log('[NE-CHAR] post-process guard: locked template chars = ' + lockedChars.join(', '));
         }
 
+        var effectiveTemplates = getEffectiveTemplates().templates || {};
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             if (lockedChars.indexOf(cb.name) !== -1) {
@@ -303,8 +304,13 @@ async function consumeNeCharBlocks(messageIndex) {
             }
             if (!chars[cb.name]) chars[cb.name] = {};
 
+            var schemeKey = chars[cb.name]._scheme || '_default_npc';
+            if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
+            var template = effectiveTemplates[schemeKey] || {};
+            var perRoundFields = (template.perRoundFields && template.perRoundFields.length > 0) ? template.perRoundFields : ['current_mood', 'inner_thoughts'];
+
             var charChanges = [];
-            ['current_mood', 'inner_thoughts'].forEach(function(fk) {
+            perRoundFields.forEach(function(fk) {
                 if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
                     var oldVal = chars[cb.name][fk] || '';
                     chars[cb.name][fk] = cb.fields[fk];
@@ -1061,9 +1067,27 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
 
+                var cardConfig = loadCardConfigSync(getChatIdFn ? getChatIdFn() : 'default');
+                var templates = getEffectiveTemplates().templates || {};
+                var pcTemplateId = (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.pc) || '_default_pc';
+                var pcTemplate = templates[pcTemplateId] || templates['_default_pc'] || {};
+                var pcPerRoundFields = (pcTemplate.perRoundFields && pcTemplate.perRoundFields.length > 0) ? pcTemplate.perRoundFields : ['current_mood', 'inner_thoughts'];
+                var pcFieldsStr = pcPerRoundFields.join(', ');
+
+                var npcPoolIds = (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.npc) || ['_default_npc'];
+                var npcPerRoundFields = {};
+                npcPoolIds.forEach(function(id) {
+                    var t = templates[id];
+                    if (t && t.perRoundFields) {
+                        t.perRoundFields.forEach(function(f) { npcPerRoundFields[f] = true; });
+                    }
+                });
+                if (Object.keys(npcPerRoundFields).length === 0) npcPerRoundFields = { current_mood: true, inner_thoughts: true };
+                var npcFieldsStr = Object.keys(npcPerRoundFields).sort().join(', ');
+
                 var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
-    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
-    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
+    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: ' + pcFieldsStr + '\n' +
+    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: ' + npcFieldsStr + '\n' +
     '\n\u683c\u5f0f\uff1a\n' +
     '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
     '\n\u89c4\u5219\uff1a\n' +

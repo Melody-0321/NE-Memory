@@ -106,6 +106,33 @@ export var PRESET_FIELDS = {
                 properties:  { type: 'string', max_length: 200, description: '特殊属性/词条/附魔效果' }
             }
         }
+    },
+    faction: {
+        name:                { type: 'string', max_length: 20, _system: true },
+        description:         { type: 'string', max_length: 80 },
+        leader:              { type: 'string', max_length: 30 },
+        attitude_toward_player: { type: 'enum', values: ['友好','中立','冷淡','敌对'] },
+        relations:           { type: 'string', max_length: 100 },
+        notes:               { type: 'string', max_length: 200 }
+    },
+    quest: {
+        name:         { type: 'string', max_length: 40, _system: true },
+        deadline:     { type: 'string', max_length: 30 },
+        status:       { type: 'enum', values: ['正在进行','已完成','已失败','已过期'] },
+        type:         { type: 'enum', values: ['主线','支线','事件'] },
+        issuer:       { type: 'string', max_length: 30 },
+        desc:         { type: 'string', max_length: 200 },
+        progress:     { type: 'string', max_length: 60 },
+        posted_time:  { type: 'string', max_length: 30 },
+        reward:       { type: 'string', max_length: 100 },
+        penalty:      { type: 'string', max_length: 100 }
+    },
+    event: {
+        name:         { type: 'string', max_length: 40, _system: true },
+        status:       { type: 'enum', values: ['持续中','已平息','已结束'] },
+        desc:         { type: 'string', max_length: 300 },
+        started_time: { type: 'string', max_length: 30 },
+        ended_time:   { type: 'string', max_length: 30 }
     }
 };
 
@@ -129,6 +156,7 @@ export var DEFAULT_PC_TEMPLATE = {
     system: true,
     presetFields: ['gender_age','physique','occupation','personality','clothing_build','injuries','status_effects','past_experience','inventory'],
     customFieldRefs: [],
+    perRoundFields: ['current_mood', 'inner_thoughts'],
     _locked: false
 };
 
@@ -140,6 +168,31 @@ export var DEFAULT_NPC_TEMPLATE = {
     source: 'system',
     system: true,
     presetFields: ['gender_age','physique','occupation','personality','clothing_build','inner_thoughts','relationship','current_mood','past_experience','injuries','status_effects','inventory'],
+    customFieldRefs: [],
+    perRoundFields: ['current_mood', 'inner_thoughts'],
+    _locked: false
+};
+
+export var DEFAULT_FACTION_TEMPLATE = {
+    id: '_default_faction',
+    name: 'Default Faction',
+    role: 'faction',
+    description: 'Default faction scheme',
+    source: 'system',
+    system: true,
+    presetFields: ['name','description','leader','attitude_toward_player','relations','notes'],
+    customFieldRefs: [],
+    _locked: false
+};
+
+export var DEFAULT_QUEST_TEMPLATE = {
+    id: '_default_quest',
+    name: 'Default Quest',
+    role: 'quest',
+    description: 'Default quest/task scheme',
+    source: 'system',
+    system: true,
+    presetFields: ['name','deadline','status','type','issuer','desc','progress','posted_time','reward','penalty'],
     customFieldRefs: [],
     _locked: false
 };
@@ -168,6 +221,38 @@ function _characterSchema() {
     return __CACHED_CHARACTER_SCHEMA;
 }
 
+export function buildFactionSchemaFromTemplate(template) {
+    var fields = expandTemplateFields(template);
+    fields.name = { type: 'string', max_length: 20 };
+    return { type: 'object', fields: fields };
+}
+
+export function buildQuestSchemaFromTemplate(template) {
+    var fields = expandTemplateFields(template);
+    fields.name = { type: 'string', max_length: 40 };
+    return { type: 'object', fields: fields };
+}
+
+export function buildEventSchemaFromTemplate(template) {
+    var fields = expandTemplateFields(template);
+    fields.name = { type: 'string', max_length: 40 };
+    return { type: 'object', fields: fields };
+}
+
+var __CACHED_FACTION_SCHEMA = null;
+function _factionSchema() {
+    if (__CACHED_FACTION_SCHEMA) return __CACHED_FACTION_SCHEMA;
+    __CACHED_FACTION_SCHEMA = buildFactionSchemaFromTemplate(DEFAULT_FACTION_TEMPLATE);
+    return __CACHED_FACTION_SCHEMA;
+}
+
+var __CACHED_QUEST_SCHEMA = null;
+function _questSchema() {
+    if (__CACHED_QUEST_SCHEMA) return __CACHED_QUEST_SCHEMA;
+    __CACHED_QUEST_SCHEMA = buildQuestSchemaFromTemplate(DEFAULT_QUEST_TEMPLATE);
+    return __CACHED_QUEST_SCHEMA;
+}
+
 export var DEFAULT_NPC_SCHEME = (function() {
     var npcFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
     var fields = {};
@@ -179,7 +264,11 @@ export var DEFAULT_NPC_SCHEME = (function() {
 })();
 
 
-export const DEFAULT_GLOBAL_SCHEMA = {
+export var DEFAULT_GLOBAL_SCHEMA = (function() {
+    var factionFields = _factionSchema().fields;
+    var questFields = _questSchema().fields;
+
+    return {
     type: 'object',
     fields: {
         present_characters: { type: 'string', max_length: 80 },
@@ -200,15 +289,7 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                 fields: {
                     '*': {
                         type: 'object',
-                        fields: {
-                            name: { type: 'string', max_length: 20 },
-                            description: { type: 'string', max_length: 80 },
-                            leader: { type: 'string', max_length: 30 },
-                            attitude_toward_player: { type: 'enum', values: ['友好', '中立', '冷淡', '敌对'] },
-                            relations: { type: 'object' },
-                            notes: { type: 'string', max_length: 200 },
-                            _hidden: { type: 'boolean', default: true }
-                        }
+                        fields: factionFields
                     }
                 }
             }
@@ -226,18 +307,7 @@ export const DEFAULT_GLOBAL_SCHEMA = {
                             fields: {
                                 '*': {
                                     type: 'object',
-                                    fields: {
-                                        name: { type: 'string', max_length: 40 },
-                                        deadline: { type: 'string', max_length: 30 },
-                                        status: { type: 'enum', values: ['正在进行', '已完成', '已失败', '已过期'] },
-                                        type: { type: 'enum', values: ['主线', '支线', '事件'] },
-                                        issuer: { type: 'string', max_length: 30 },
-                                        desc: { type: 'string', max_length: 200 },
-                                        progress: { type: 'string', max_length: 60 },
-                                        posted_time: { type: 'string', max_length: 30 },
-                                        reward: { type: 'string', max_length: 100 },
-                                        penalty: { type: 'string', max_length: 100 }
-                                    }
+                                    fields: questFields
                                 }
                             }
                         }
@@ -283,7 +353,8 @@ export const DEFAULT_GLOBAL_SCHEMA = {
             }
         }
     }
-};
+    };
+})();
 
 export const DEFAULT_FACTION_SCHEMA = {
     type: 'object',
@@ -820,9 +891,19 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             var f = state.factions[name];
             return f && typeof f === 'object' && !f._hidden;
         });
+        var factionFieldNames = Object.keys(_factionSchema().fields).filter(function(fk) { return fk !== 'name'; });
+        var factionEnumFields = {};
+        factionFieldNames.forEach(function(fk) {
+            var def = _factionSchema().fields[fk];
+            if (def && def.type === 'enum' && def.values) factionEnumFields[fk] = def.values;
+        });
         if (visibleFactions.length === 0) {
             parts.push('=== Factions ===');
-            parts.push('(available paths: factions.<Name>.name, description, leader, attitude_toward_player[友好/中立/冷淡/敌对], relations, notes)');
+            var availPaths = factionFieldNames.map(function(fk) {
+                var enumSuffix = factionEnumFields[fk] ? '[' + factionEnumFields[fk].join('/') + ']' : '';
+                return 'factions.<Name>.' + fk + enumSuffix;
+            }).join(', ');
+            parts.push('(available paths: ' + availPaths + ')');
             parts.push('(empty — create via factions.<Name>.attitude_toward_player)');
             parts.push('');
         } else {
@@ -831,7 +912,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                 var f = state.factions[name];
                 if (!f || typeof f !== 'object') return;
                 var fields = [];
-                ['name', 'leader', 'attitude_toward_player', 'notes'].forEach(function (fk) {
+                factionFieldNames.forEach(function (fk) {
                     if (f[fk] !== undefined && f[fk] !== '') {
                         fields.push(fk + ': ' + f[fk]);
                     }
@@ -849,10 +930,20 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                 hasQuests = true;
             }
         });
+        var questFieldNames = Object.keys(_questSchema().fields).filter(function(fk) { return fk !== 'name'; });
+        var questEnumFields = {};
+        questFieldNames.forEach(function(fk) {
+            var def = _questSchema().fields[fk];
+            if (def && def.type === 'enum' && def.values) questEnumFields[fk] = def.values;
+        });
         if (!hasQuests) {
             parts.push('=== Quests ===');
             parts.push('(available paths:');
-            parts.push('  quests.tasks.<Name>.name, deadline, status[正在进行/已完成/已失败/已过期], progress');
+            var taskPaths = questFieldNames.map(function(fk) {
+                var enumSuffix = questEnumFields[fk] ? '[' + questEnumFields[fk].join('/') + ']' : '';
+                return 'quests.tasks.<Name>.' + fk + enumSuffix;
+            }).join(', ');
+            parts.push('  ' + taskPaths);
             parts.push('  quests.goals.<Name>.name, status[进行中/已达成/已放弃], progress');
             parts.push('  quests.events.<Name>.name, status[持续中/已平息/已结束], desc)');
             parts.push('(empty — create via quests.tasks.<Name>.status)');
@@ -863,11 +954,12 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
                 var catObj = state.quests[cat];
                 if (!catObj || typeof catObj !== 'object') return;
                 var names = Object.keys(catObj);
+                var displayFields = (cat === 'tasks') ? ['name'].concat(questFieldNames) : ['name', 'status', 'deadline', 'progress', 'desc'];
                 names.forEach(function (name) {
                     var q = catObj[name];
                     if (!q || typeof q !== 'object') return;
                     var fields = [];
-                    ['name', 'status', 'deadline', 'progress', 'desc'].forEach(function (fk) {
+                    displayFields.forEach(function (fk) {
                         if (q[fk] !== undefined && q[fk] !== '') {
                             fields.push(fk + ': ' + q[fk]);
                         }

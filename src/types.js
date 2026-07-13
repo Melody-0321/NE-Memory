@@ -319,7 +319,7 @@ export {};
  * @typedef {Object} Template
  * @property {string} id
  * @property {string} name
- * @property {'pc'|'npc'} role
+ * @property {'pc'|'npc'|'faction'|'quest'} role
  * @property {string} [description]
  * @property {string[]} [tags]
  * @property {string} createdAt
@@ -327,6 +327,7 @@ export {};
  * @property {'ai_generated'|'user_created'|'from_chat'} source
  * @property {string[]} presetFields
  * @property {string[]} customFieldRefs
+ * @property {string[]} [perRoundFields]
  * @property {boolean} [system]
  * @property {boolean} [_locked]
  * @property {string} [_source]
@@ -375,6 +376,8 @@ export {};
  * @typedef {Object} TemplateConfig
  * @property {string} pc
  * @property {string[]} npc
+ * @property {string[]} [quest]
+ * @property {string} [faction]
  * @property {'exact'|'adjust'} _npcTemplateMode
  */
 
