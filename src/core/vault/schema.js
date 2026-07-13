@@ -723,6 +723,18 @@ export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
     var capturedChanges = [];
 
+    // Backfill _scheme for legacy characters that predate the _scheme field
+    if (newState && newState.characters) {
+        var protoName = newState.protagonist_name || '';
+        Object.keys(newState.characters).forEach(function (cn) {
+            var cd = newState.characters[cn];
+            if (!cd || typeof cd !== 'object') return;
+            if (cd._scheme) return;
+            var isPC = (cn === protoName) || (cd._role === 'protagonist');
+            cd._scheme = isPC ? '_default_pc' : '_default_npc';
+        });
+    }
+
     var flattened = {};
     Object.keys(validatedChanges).forEach(function(path) {
         var val = validatedChanges[path];
@@ -777,8 +789,13 @@ export function mergeStateChanges(state, validatedChanges) {
             if (!existingScheme) {
                 if (isProtagonist) {
                     console.warn('[NE] _scheme protected: ' + schCharName + ' is protagonist, ignoring _scheme change');
+                    // Still ensure the character exists (with _default_pc from ensureCharacterTemplate)
+                    if (!newState.characters[schCharName]) {
+                        ensureCharacterTemplate(newState, schCharName, '_default_pc', newState.protagonist_name);
+                    }
                     return;
                 }
+                // Non-protagonist without _scheme: allow LLM to set it
             }
         }
 

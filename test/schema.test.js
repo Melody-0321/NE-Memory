@@ -462,7 +462,14 @@ try { localStorage.removeItem('ne_card_templates_' + _stChar2); } catch(e) {}
 // ====== N5: mergeStateChanges _scheme protection for non-protagonist ======
 console.log('\n=== schema: mergeStateChanges _scheme protection ===');
 
-// Non-protagonist can set _scheme if not already set
+// Legacy NPC without _scheme -> backfilled to _default_npc
+var sch0 = mergeStateChanges(
+    { characters: { 'OldNPC': { name: 'OldNPC', mood: 'happy' } } },
+    { 'characters.OldNPC.mood': 'sad' }
+);
+eq(sch0.state.characters['OldNPC']._scheme, '_default_npc', 'legacy NPC backfilled to _default_npc');
+
+// Non-protagonist can set _scheme if not already set (but backfill runs first, so LLM can override _default_npc)
 var sch1 = mergeStateChanges({ characters: {} }, { 'characters.NPC_3._scheme': 'my_scheme_key' });
 ok(sch1.state.characters && sch1.state.characters['NPC_3'], 'NPC entry created');
 eq(sch1.state.characters['NPC_3']._scheme, 'my_scheme_key', '_scheme set for non-protagonist without existing');
@@ -474,20 +481,20 @@ var sch2 = mergeStateChanges(
 );
 eq(sch2.state.characters['NPC_4']._scheme, 'existing_dt_key', 'existing _scheme NOT overwritten');
 
-// Protagonist → _scheme always rejected
+// Protagonist -> _scheme always rejected (LLM cannot change it), but backfill sets _default_pc
 var sch3 = mergeStateChanges(
     { protagonist_name: 'Hero', characters: { 'Hero': { _role: 'protagonist' } } },
     { 'characters.Hero._scheme': 'should_not_set' }
 );
-eq(sch3.state.characters['Hero']._scheme || null, null, 'protagonist _scheme rejected');
+eq(sch3.state.characters['Hero']._scheme, '_default_pc', 'protagonist _scheme backfilled to _default_pc, LLM change rejected');
 
-// Protagonist with no existing _scheme → still rejected
+// Protagonist with no existing _scheme -> backfilled to _default_pc, LLM change rejected
 var sch4 = mergeStateChanges(
     { protagonist_name: 'Hero', characters: {} },
     { 'characters.Hero._scheme': 'still_blocked' }
 );
 var heroScheme = (sch4.state.characters && sch4.state.characters['Hero']) ? sch4.state.characters['Hero']._scheme : null;
-eq(heroScheme || null, null, 'protagonist _scheme rejected (no prior _scheme)');
+eq(heroScheme, '_default_pc', 'protagonist _scheme backfilled (no prior _scheme), LLM change rejected');
 
 console.log('\n--- schema: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);
