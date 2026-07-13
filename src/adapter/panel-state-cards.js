@@ -560,15 +560,28 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     // Build scheme editor HTML
     var html = '<div class="ne-scheme-editor">';
 
-    // P9: Three-path entry — clear visual entry points
-    html += '<div class="ne-scheme-section" style="margin-bottom:12px;">';
-    html += '<div class="ne-scheme-section-title" style="margin-bottom:6px;">' + escapeHtml(t('scheme_actions')) + '</div>';
-    html += '<div style="display:flex;flex-wrap:wrap;gap:6px;">';
-    // Path 1: Edit current (modify from current state)
-    html += '<span style="font-size:0.8em;color:var(--grey-50);padding:2px 8px;background:var(--grey-10);border-radius:4px;">' + escapeHtml('1. ' + t('edit_from_current')) + '</span>';
-    html += '<span style="font-size:0.8em;color:var(--grey-50);padding:2px 8px;background:var(--grey-10);border-radius:4px;">' + escapeHtml('2. ' + t('switch_template')) + '</span>';
-    html += '<span style="font-size:0.8em;color:var(--grey-50);padding:2px 8px;background:var(--grey-10);border-radius:4px;">' + escapeHtml('3. ' + t('start_from_scratch')) + '</span>';
-    html += '</div></div>';
+    // P9: Mode-driven tab selector - three actionable paths
+    var hasCurrentDt = !!(dtKey && dialogueTemplates[dtKey]);
+    var defaultMode = hasCurrentDt ? 'edit_current' : 'switch_template';
+    html += '<div class="ne-scheme-mode-bar" style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--grey-20);">';
+    var modes = [
+        { key: 'edit_current', label: t('edit_from_current'), enabled: hasCurrentDt },
+        { key: 'switch_template', label: t('switch_template'), enabled: true },
+        { key: 'from_scratch', label: t('start_from_scratch'), enabled: true }
+    ];
+    modes.forEach(function(m) {
+        var isActive = (m.key === defaultMode);
+        var style = 'flex:1;padding:6px 8px;text-align:center;font-size:0.8em;cursor:' + (m.enabled ? 'pointer' : 'default') +
+            ';border-bottom:2px solid ' + (isActive ? 'var(--ne-accent)' : 'transparent') +
+            ';color:' + (isActive ? 'var(--ne-accent)' : (!m.enabled ? 'var(--grey-30)' : 'var(--grey-50)')) +
+            ';opacity:' + (m.enabled ? '1' : '0.4') + ';';
+        html += '<div class="ne-scheme-mode-tab' + (isActive ? ' active' : '') + '" data-scheme-mode="' + m.key + '"' + (!m.enabled ? ' data-disabled="1"' : '') + ' style="' + style + '">' + escapeHtml(m.label) + '</div>';
+    });
+    html += '</div>';
+
+    // Template selector - only visible in switch_template mode
+    var tplDisplay = (defaultMode === 'switch_template') ? '' : ' display:none;';
+    // Template selector - show both card-level active versions and global templates
 
     // Template selector — show both card-level active versions and global templates
     var tplOptionsHtml = '<option value="">— ' + escapeHtml(t('create_template')) + ' —</option>';
