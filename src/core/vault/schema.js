@@ -679,6 +679,12 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
 
     var isPC = (state.protagonist_name && name === state.protagonist_name) ||
         (state.characters[name] && state.characters[name]._role === 'protagonist');
+
+    // Infer default sentinel if schemeKey not provided
+    if (!schemeKey) {
+        schemeKey = isPC ? '_default_pc' : '_default_npc';
+    }
+
     var template;
     if (isPC) {
         template = _characterSchema().protagonist.fields;
@@ -699,8 +705,10 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
         }
     });
     state.characters[name].name = name;
-    if (!isPC && schemeKey) {
+    if (!isPC) {
         state.characters[name]._scheme = schemeKey;
+    } else {
+        state.characters[name]._scheme = '_default_pc';
     }
 }
 
