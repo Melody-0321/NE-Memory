@@ -8,7 +8,8 @@
  */
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
-  loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked } from '../core/vault/store.js';
+  loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
+  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
@@ -160,8 +161,16 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
             var tpl = templates[entry._templateId];
             var label = (tpl && tpl.name) ? tpl.name : (entry._templateId || '?');
             var dtLocked = isDialogueTemplateLocked(_getCurrentCharName(), entry._templateId);
+            // N7: Show _state badge from card-level dialogue template
+            var dtState = _getDialogueTemplateState(cardConfig, entry._templateId);
+            var stateBadge = '';
+            if (dtState && dtState !== 'synced') {
+                var stateClass = dtState === 'forked' ? 'src-ai' : (dtState === 'orphaned' ? 'src-user' : '');
+                var stateLabel = dtState === 'forked' ? t('duplicate') : (dtState === 'orphaned' ? t('orphaned') : '');
+                stateBadge = ' <span class="ne-template-source-badge ' + stateClass + '" style="font-size:0.7em;">' + escapeHtml(stateLabel) + '</span>';
+            }
             html += '<div class="ne-config-npc-item">' +
-                '<span>' + escapeHtml(label) + '</span>' +
+                '<span>' + escapeHtml(label) + stateBadge + '</span>' +
                 '<span class="ne-npc-lock-btn' + (dtLocked ? ' locked' : '') + '" data-lock-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('lock_tooltip')) + '" data-template-name="' + escapeHtml(label) + '">' + (dtLocked ? '\u{1F512}' : '\u{1F513}') + '</span>' +
                 '<button class="ne-btn-small ne-btn-danger" data-remove-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('remove')) + '">\u2715</button>' +
                 '</div>';
@@ -399,6 +408,25 @@ function _getInUseTemplateIds(cardConfig) {
         cfg.quest.forEach(function (q) { if (q) inUse[q] = 'quest'; });
     }
     return inUse;
+}
+
+/**
+ * N7: Get the _state of the active dialogue template for a given global templateId.
+ */
+function _getDialogueTemplateState(cardConfig, templateId) {
+    if (!cardConfig || !cardConfig._dialogueTemplates) return null;
+    var activeKey = getActiveVersionKey(cardConfig._dialogueTemplates, templateId);
+    if (!activeKey) return null;
+    var dt = cardConfig._dialogueTemplates[activeKey];
+    return dt ? (dt._state || 'synced') : null;
+}
+
+/**
+ * N7: Get the active dialogue template key for a given global templateId.
+ */
+function _getActiveDialogueTemplateKey(cardConfig, templateId) {
+    if (!cardConfig || !cardConfig._dialogueTemplates) return null;
+    return getActiveVersionKey(cardConfig._dialogueTemplates, templateId);
 }
 
 // P4: Template card redesign
@@ -804,6 +832,11 @@ function _showEditor(container, templateId, isNew, templates, order) {
         : (templateId ? templates[templateId] : null);
     if (!tpl && !isNew) return;
 
+    // N7: Load cardConfig for push/detach/version history
+    var cardConfig = null;
+    var charName = _getCurrentCharName();
+    try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
+
     var html = '<div class="ne-template-editor" id="ne-template-editor">';
     html += '<button class="ne-btn-small" id="ne-editor-back">\u2190 ' + escapeHtml(t('back')) + '</button>';
 
@@ -892,6 +925,22 @@ function _showEditor(container, templateId, isNew, templates, order) {
         '</label>';
     html += '</div>';
 
+    // N7: Push to global / Detach buttons (only when editing existing, not new)
+    if (!isNew && cardConfig && cardConfig._dialogueTemplates) {
+        var activeDtKey = _getActiveDialogueTemplateKey(cardConfig, templateId);
+        if (activeDtKey) {
+            var dtState = _getDialogueTemplateState(cardConfig, templateId);
+            if (dtState === 'forked' || dtState === 'orphaned') {
+                html += '<div class="ne-editor-section">';
+                html += '<button id="ne-editor-push-global" class="ne-btn-small" data-dt-key="' + escapeHtml(activeDtKey) + '">' + escapeHtml(t('push_to_global')) + '</button>';
+                if (dtState !== 'orphaned') {
+                    html += ' <button id="ne-editor-detach" class="ne-btn-small ne-btn-danger" data-dt-key="' + escapeHtml(activeDtKey) + '">' + escapeHtml(t('detach_template')) + '</button>';
+                }
+                html += '</div>';
+            }
+        }
+    }
+
     // Actions
     html += '<div class="ne-editor-actions">';
     html += '<button id="ne-editor-save" class="menu_button">' + escapeHtml(t('Save')) + '</button>';
@@ -960,30 +1009,114 @@ function _showEditor(container, templateId, isNew, templates, order) {
             }
         });
     }
+
+    // N3: Rollback button binding
+    var rollbackBtns = container.querySelectorAll('[data-rollback-version]');
+    for (var rb = 0; rb < rollbackBtns.length; rb++) {
+        rollbackBtns[rb].addEventListener('click', function () {
+            var versionKey = this.getAttribute('data-rollback-version');
+            var charName = _getCurrentCharName();
+            if (!charName || !versionKey) return;
+            showConfirm(t('rollback_to_version'), t('confirm_rollback'), t('rollback_to_version'), t('Cancel'), false).then(function (confirmed) {
+                if (!confirmed) return;
+                restoreTemplateVersion(charName, versionKey);
+                showToast(t('rollback_to_version') + ': OK', 'success', 3000);
+                _activeTopTab = 'library';
+                renderTemplatesIntoSlide(container);
+            });
+        });
+    }
+
+    // N7: Push to global library button
+    var pushBtn = container.querySelector('#ne-editor-push-global');
+    if (pushBtn) {
+        pushBtn.addEventListener('click', function () {
+            var dtKey = this.getAttribute('data-dt-key');
+            var charName = _getCurrentCharName();
+            if (!charName || !dtKey) return;
+            showConfirm(t('push_to_global'), t('confirm_push_to_global'), t('Save'), t('Cancel'), false).then(function (confirmed) {
+                if (!confirmed) return;
+                var newId = pushTemplateToGlobal(charName, dtKey);
+                if (newId) {
+                    showToast(t('template_saved'), 'success', 3000);
+                    _activeTopTab = 'library';
+                    renderTemplatesIntoSlide(container);
+                } else {
+                    showToast(t('Save') + ': ERROR', 'error', 3000);
+                }
+            });
+        });
+    }
+
+    // N7: Detach from global button
+    var detachBtn = container.querySelector('#ne-editor-detach');
+    if (detachBtn) {
+        detachBtn.addEventListener('click', function () {
+            var dtKey = this.getAttribute('data-dt-key');
+            var charName = _getCurrentCharName();
+            if (!charName || !dtKey) return;
+            showConfirm(t('detach_template'), t('confirm_detach'), t('Delete'), t('Cancel'), true).then(function (confirmed) {
+                if (!confirmed) return;
+                var config = loadCardConfigSync(charName);
+                if (config && config._dialogueTemplates && config._dialogueTemplates[dtKey]) {
+                    config._dialogueTemplates[dtKey]._state = 'orphaned';
+                    saveCardConfig(charName, config);
+                    showToast(t('detach_template') + ': OK', 'info', 3000);
+                    _activeTopTab = 'library';
+                    renderTemplatesIntoSlide(container);
+                }
+            });
+        });
+    }
 }
 
 function _renderVersionHistoryHTML(tpl) {
-    var versions = (tpl.versions && Array.isArray(tpl.versions)) ? tpl.versions : [];
+    // N3: Read versions from cardConfig._dialogueTemplates (card-level), not from global template
+    var cardConfig = null;
+    var charName = _getCurrentCharName();
+    try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
+    if (!cardConfig || !cardConfig._dialogueTemplates) return '';
+
+    // Find all versions for this template
+    var versions = [];
+    Object.keys(cardConfig._dialogueTemplates).forEach(function (k) {
+        var dt = cardConfig._dialogueTemplates[k];
+        if (dt._templateId === tpl.id) {
+            versions.push({ key: k, tpl: dt });
+        }
+    });
     if (versions.length === 0) return '';
-    var activeVer = tpl._activeVersion || (versions.length > 0 ? versions[versions.length - 1]._versionId : null);
+
+    // Sort by createdAt descending
+    versions.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
 
     var html = '<div class="ne-editor-section">';
     html += '<div class="ne-section-title">' + escapeHtml(t('version_history')) + '</div>';
     html += '<div class="ne-version-timeline">';
-    versions.slice().reverse().forEach(function (ver, idx) {
-        var isActive = ver._versionId === activeVer;
-        var date = ver.createdAt ? formatLocalTime(ver.createdAt) : '';
+    versions.forEach(function (ver) {
+        var isActive = !!ver.tpl._active;
+        var date = ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '';
         var dotClass = isActive ? 'ne-version-dot active' : 'ne-version-dot';
-        var verSource = ver.source || 'user_created';
-        var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('user_created') : t('user_created'));
+        var verSource = ver.tpl.source || 'user_created';
+        var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('rollback') : t('user_created'));
+        var verSourceClass = verSource === 'ai_generated' ? 'src-ai' : 'src-user';
+        var stateLabel = ver.tpl._state ? ver.tpl._state : '';
         html += '<div class="ne-version-item">';
         html += '<span class="' + dotClass + '"></span>';
         html += '<div class="ne-version-info">';
         html += '<span class="ne-version-date">' + escapeHtml(date) + '</span>';
         if (isActive) html += ' <span class="ne-version-badge">(' + escapeHtml(t('current')) + ')</span>';
-        html += ' <span class="ne-template-source-badge src-' + (verSource === 'ai_generated' ? 'ai' : 'user') + '" style="font-size:0.7em;">' + escapeHtml(verSourceLabel) + '</span>';
-        if (ver.added && ver.added.length) html += '<div class="ne-version-diff">+ ' + escapeHtml(ver.added.join(', ')) + '</div>';
-        if (ver.removed && ver.removed.length) html += '<div class="ne-version-diff ne-diff-removed">- ' + escapeHtml(ver.removed.join(', ')) + '</div>';
+        html += ' <span class="ne-template-source-badge ' + verSourceClass + '" style="font-size:0.7em;">' + escapeHtml(verSourceLabel) + '</span>';
+        if (stateLabel && stateLabel !== 'synced') {
+            html += ' <span class="ne-template-source-badge src-user" style="font-size:0.7em;">' + escapeHtml(stateLabel) + '</span>';
+        }
+        // N3: Rollback button for non-active versions
+        if (!isActive) {
+            html += ' <button class="ne-btn-small" data-rollback-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('rollback_to_version')) + '</button>';
+        }
+        var presetCount = (ver.tpl.presetFields || []).length;
+        var customCount = (ver.tpl.customFieldRefs || []).length;
+        html += '<div class="ne-version-diff">' + escapeHtml(presetCount) + ' ' + escapeHtml(t('preset_fields')) + ', ' + escapeHtml(customCount) + ' ' + escapeHtml(t('custom_fields')) + '</div>';
         html += '</div></div>';
     });
     html += '</div></div>';

@@ -648,8 +648,50 @@ export function deleteTemplate(templateId) {
     var lib = loadTemplateLibrary();
     if (!lib.templates[templateId]) return false;
     delete lib.templates[templateId];
+    // Remove from order array
+    if (lib.order) {
+        var idx = lib.order.indexOf(templateId);
+        if (idx !== -1) lib.order.splice(idx, 1);
+    }
     saveTemplateLibrary(lib);
+
+    // N7: Cascade - mark all card-level copies as orphaned
+    _cascadeOrphanTemplate(templateId);
+
     return true;
+}
+
+/**
+ * N7: Scan all card configs in localStorage and mark references to deleted template as orphaned.
+ */
+function _cascadeOrphanTemplate(templateId) {
+    try {
+        for (var i = 0; i < localStorage.length; i++) {
+            var key = localStorage.key(i);
+            if (!key || key.indexOf('ne_card_templates_') !== 0) continue;
+            var charName = key.substring('ne_card_templates_'.length);
+            try {
+                var raw = localStorage.getItem(key);
+                if (!raw) continue;
+                var config = JSON.parse(raw);
+                if (!config || !config._dialogueTemplates) continue;
+                var changed = false;
+                Object.keys(config._dialogueTemplates).forEach(function (dtKey) {
+                    var dt = config._dialogueTemplates[dtKey];
+                    if (dt._templateId === templateId && dt._state !== 'orphaned') {
+                        dt._state = 'orphaned';
+                        changed = true;
+                    }
+                });
+                if (changed) {
+                    saveCardConfig(charName, config);
+                    console.log('[NE] Cascade: marked orphaned copies in ' + charName + ' for template ' + templateId);
+                }
+            } catch (e) {}
+        }
+    } catch (e) {
+        console.warn('[NE] Cascade orphan scan failed:', e.message);
+    }
 }
 
 export function getTemplate(templateId) {
@@ -833,13 +875,23 @@ export function cloneTemplateToCard(charName, template) {
     var now = new Date().toISOString();
     var suffix = Math.random().toString(36).slice(2, 8);
     var key = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
+
+    // N3: Deactivate previous versions with the same _templateId
+    Object.keys(config._dialogueTemplates).forEach(function (k) {
+        if (config._dialogueTemplates[k]._templateId === template.id) {
+            config._dialogueTemplates[k]._active = false;
+        }
+    });
+
     config._dialogueTemplates[key] = {
         _templateId: template.id,
         createdAt: now,
         _locked: template._locked || false,
         presetFields: (template.presetFields || []).slice(),
         customFieldRefs: (template.customFieldRefs || []).slice(),
-        _state: 'synced'
+        _state: 'synced',
+        _active: true,
+        source: template.source || 'user_created'
     };
     saveCardConfig(charName, config);
     return key;
@@ -917,11 +969,93 @@ export function getActiveVersion(dialogueTemplates, templateId) {
     var matches = [];
     Object.keys(dialogueTemplates).forEach(function (k) {
         var t = dialogueTemplates[k];
-        if (t._templateId === templateId) matches.push(t);
+        if (t._templateId === templateId) matches.push({ key: k, tpl: t });
     });
     if (matches.length === 0) return null;
-    matches.sort(function (a, b) { return new Date(b.createdAt) - new Date(a.createdAt); });
-    return matches[0];
+    // N3: prefer explicit _active marker
+    for (var i = 0; i < matches.length; i++) {
+        if (matches[i].tpl._active) return matches[i].tpl;
+    }
+    // Fallback: most recent createdAt (backward compat)
+    matches.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
+    return matches[0].tpl;
+}
+
+/**
+ * N3: Get the key (not the template) of the active version for a given templateId.
+ */
+export function getActiveVersionKey(dialogueTemplates, templateId) {
+    var matches = [];
+    Object.keys(dialogueTemplates).forEach(function (k) {
+        var t = dialogueTemplates[k];
+        if (t._templateId === templateId) matches.push({ key: k, tpl: t });
+    });
+    if (matches.length === 0) return null;
+    for (var i = 0; i < matches.length; i++) {
+        if (matches[i].tpl._active) return matches[i].key;
+    }
+    matches.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
+    return matches[0].key;
+}
+
+/**
+ * N3: Set a specific version as active, deactivating all other versions with the same _templateId.
+ */
+export function setActiveTemplateVersion(charName, templateId, versionKey) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return false;
+    var changed = false;
+    Object.keys(config._dialogueTemplates).forEach(function (k) {
+        var dt = config._dialogueTemplates[k];
+        if (dt._templateId === templateId) {
+            var shouldActive = (k === versionKey);
+            if (dt._active !== shouldActive) {
+                dt._active = shouldActive;
+                changed = true;
+            }
+        }
+    });
+    if (changed) saveCardConfig(charName, config);
+    return changed;
+}
+
+/**
+ * N3: Restore a template to a specific historical version.
+ * Sets the target version as active, deactivates others. Old active is preserved as history.
+ * Also migrates character references via upgradeTemplateVersion.
+ */
+export function restoreTemplateVersion(charName, versionKey, state) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates || !config._dialogueTemplates[versionKey]) return false;
+    var targetTpl = config._dialogueTemplates[versionKey];
+    var templateId = targetTpl._templateId;
+    if (!templateId) return false;
+
+    // Find current active key
+    var oldActiveKey = null;
+    Object.keys(config._dialogueTemplates).forEach(function (k) {
+        var dt = config._dialogueTemplates[k];
+        if (dt._templateId === templateId && dt._active) oldActiveKey = k;
+    });
+
+    // Set new active
+    Object.keys(config._dialogueTemplates).forEach(function (k) {
+        var dt = config._dialogueTemplates[k];
+        if (dt._templateId === templateId) {
+            dt._active = (k === versionKey);
+        }
+    });
+
+    // Mark source
+    targetTpl.source = 'user_rollback';
+    saveCardConfig(charName, config);
+
+    // Migrate character references from old key to new key
+    if (state && oldActiveKey && oldActiveKey !== versionKey) {
+        upgradeTemplateVersion(state, oldActiveKey, versionKey);
+    }
+
+    return true;
 }
 
 export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
@@ -973,15 +1107,35 @@ export function unregisterFieldFromTemplate(templateId, fieldName) {
     }
 }
 
+/**
+ * N3: Edit a card-level template by creating a new version copy (immutable model).
+ * The old version is preserved with _active: false; the new copy gets _active: true.
+ */
 export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, customFieldRefs) {
     var config = loadCardConfigSync(charName);
     if (!config || !config._dialogueTemplates) return false;
     var dt = config._dialogueTemplates[dialogueTemplateKey];
     if (!dt) return false;
-    dt.presetFields = presetFields.slice();
-    dt.customFieldRefs = (customFieldRefs || []).slice();
-    if (dt._state === 'synced') dt._state = 'forked';
-    return saveCardConfig(charName, config);
+
+    // Create new version copy
+    var now = new Date().toISOString();
+    var suffix = Math.random().toString(36).slice(2, 8);
+    var newKey = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
+
+    // Deactivate old version
+    dt._active = false;
+
+    config._dialogueTemplates[newKey] = {
+        _templateId: dt._templateId,
+        createdAt: now,
+        _locked: dt._locked || false,
+        presetFields: presetFields.slice(),
+        customFieldRefs: (customFieldRefs || []).slice(),
+        _state: 'forked',
+        _active: true,
+        source: 'user_created'
+    };
+    return saveCardConfig(charName, config) ? newKey : false;
 }
 
 export function swapTemplateInPool(charName, poolIndex, templateId) {

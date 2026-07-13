@@ -144,6 +144,9 @@ export const NARRATIVE_I18N = {
         'custom_field_type': 'Type', 'custom_field_conflict': 'Field name conflicts with a preset field.', 'breadcrumb_library': 'Library', 'breadcrumb_edit': 'Edit', 'breadcrumb_new': 'New',
         'edit_world_context': 'Edit', 'clear_world_context': 'Clear', 'confirm_clear_world_context': 'Clear world context?', 'lock_tooltip': 'Lock: this template will not be auto-replaced during dialogue.',
         'confirm_duplicate': 'Duplicate this template?', 'duplicated_suffix': '(Copy)', 'no_current_char': 'No active character card. Config unavailable.',
+        'orphaned': 'Orphaned', 'rollback': 'Rollback', 'confirm_rollback': 'Restore this version? Current version will be kept as history.',
+        'push_to_global': 'Push to Global Library', 'confirm_push_to_global': 'Push this template to the global library as a new template?',
+        'detach_template': 'Detach from Global', 'confirm_detach': 'Detach this template from the global library? It will become independent (orphaned).',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -279,6 +282,9 @@ export const NARRATIVE_I18N = {
         'custom_field_type': '类型', 'custom_field_conflict': '字段名与预设字段冲突。', 'breadcrumb_library': '模板库', 'breadcrumb_edit': '编辑', 'breadcrumb_new': '新建',
         'edit_world_context': '编辑', 'clear_world_context': '清除', 'confirm_clear_world_context': '确定清除世界观设定？', 'lock_tooltip': '锁定：该模板在对话中不会被自动替换。',
         'confirm_duplicate': '复制此模板？', 'duplicated_suffix': '(副本)', 'no_current_char': '无当前角色卡，配置不可用。',
+        'orphaned': '已分离', 'rollback': '回滚', 'confirm_rollback': '恢复到此版本？当前版本将保留为历史记录。',
+        'push_to_global': '推回全局库', 'confirm_push_to_global': '将此模板作为新模板推回全局库？',
+        'detach_template': '分离', 'confirm_detach': '从全局库分离此模板？它将变为独立状态（已分离）。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -400,6 +406,9 @@ export const NARRATIVE_I18N = {
         'custom_field_type': '類型', 'custom_field_conflict': '欄位名與預設欄位衝突。', 'breadcrumb_library': '模板庫', 'breadcrumb_edit': '編輯', 'breadcrumb_new': '新建',
         'edit_world_context': '編輯', 'clear_world_context': '清除', 'confirm_clear_world_context': '確定清除世界觀設定？', 'lock_tooltip': '鎖定：該模板在對話中不會被自動替換。',
         'confirm_duplicate': '複製此模板？', 'duplicated_suffix': '(副本)', 'no_current_char': '無當前角色卡，設定不可用。',
+        'orphaned': '已分離', 'rollback': '回滾', 'confirm_rollback': '恢復到此版本？當前版本將保留為歷史記錄。',
+        'push_to_global': '推回全局庫', 'confirm_push_to_global': '將此模板作為新模板推回全局庫？',
+        'detach_template': '分離', 'confirm_detach': '從全局庫分離此模板？它將變為獨立狀態（已分離）。',
     }
 };
 
