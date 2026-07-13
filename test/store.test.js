@@ -17,7 +17,8 @@ import {
     addTemplateRefToField, removeTemplateRefFromField,
     registerFieldToTemplate, unregisterFieldFromTemplate,
     migrateTemplateFormat,
-    getLocalCustomFields, addLocalCustomField, removeLocalCustomField
+    getLocalCustomFields, addLocalCustomField, removeLocalCustomField,
+    getLockedTemplateCharacters
 } from '../src/core/vault/store.js';
 
 var passed = 0, failed = 0;
@@ -235,6 +236,55 @@ eq(parsedFl.fields['dual_field'].type, 'boolean', 'type correct in raw ls');
 
 deleteTemplate('dual_tmpl');
 removeFieldFromLibrary('dual_field');
+
+// ====== N5: getLockedTemplateCharacters with dialogue template keys ======
+console.log('\n=== store: getLockedTemplateCharacters ===');
+
+var testCardCfg = {
+    _dialogueTemplates: {
+        'dt_locked_1': { _active: true, _templateId: 'tpl_locked', _locked: true, presetFields: [], customFieldRefs: [] },
+        'dt_unlocked': { _active: true, _templateId: 'tpl_free', _locked: false, presetFields: [], customFieldRefs: [] },
+        'dt_locked_2': { _active: true, _templateId: 'tpl_locked', _locked: true, presetFields: [], customFieldRefs: [] }
+    },
+    _templateConfig: {},
+    _version: 0
+};
+
+// Two characters using locked template, one using unlocked, one using no template
+var testState = {
+    characters: {
+        'Ally': { _scheme: 'dt_locked_1', status: '活跃' },
+        'Vendor': { _scheme: 'dt_unlocked', status: '活跃' },
+        'Enemy': { _scheme: 'dt_locked_2', status: '活跃' },
+        'Stranger': { status: '活跃' }  // no _scheme at all
+    }
+};
+
+var locked = getLockedTemplateCharacters(testCardCfg, testState);
+eq(locked.length, 2, 'two characters use locked templates');
+assert(locked.indexOf('Ally') !== -1, 'Ally uses locked template');
+assert(locked.indexOf('Enemy') !== -1, 'Enemy uses locked template');
+assert(locked.indexOf('Vendor') === -1, 'Vendor not locked');
+assert(locked.indexOf('Stranger') === -1, 'Stranger not locked (no _scheme)');
+
+// No state → empty
+var lockedNullState = getLockedTemplateCharacters(testCardCfg, null);
+eq(lockedNullState.length, 0, 'null state returns empty array');
+
+// No cardConfig → empty
+var lockedNullCfg = getLockedTemplateCharacters(null, testState);
+eq(lockedNullCfg.length, 0, 'null cardConfig returns empty array');
+
+// No locked templates → empty
+var testCardCfg2 = {
+    _dialogueTemplates: {
+        'dt_free_1': { _active: true, _templateId: 'tpl_a', _locked: false, presetFields: [], customFieldRefs: [] }
+    },
+    _templateConfig: {},
+    _version: 0
+};
+var noLocked = getLockedTemplateCharacters(testCardCfg2, testState);
+eq(noLocked.length, 0, 'no locked templates returns empty');
 
 // Cleanup
 localStorage.removeItem('ne_template_library');

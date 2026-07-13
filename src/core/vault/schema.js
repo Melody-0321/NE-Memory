@@ -612,7 +612,7 @@ export function rebuildPresentCharacters(state) {
  * @param {string|null} schemeKey - Dialogue template key / scheme ID
  * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
  */
-function _resolveNpcTemplateFields(stCharName, schemeKey) {
+export function resolveActiveTemplateFields(stCharName, schemeKey) {
     if (stCharName) {
         var cardConfig = loadCardConfigSync(stCharName);
         if (cardConfig && cardConfig._dialogueTemplates && schemeKey) {
@@ -684,7 +684,7 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
         template = _characterSchema().protagonist.fields;
     } else {
         // NPC: resolve template via cardConfig three-layer fallback chain
-        template = _resolveNpcTemplateFields(stCharName, schemeKey);
+        template = resolveActiveTemplateFields(stCharName, schemeKey);
     }
 
     state.characters[name] = {};
@@ -846,7 +846,7 @@ export function mergeStateChanges(state, validatedChanges) {
 export function getNpcInjectionFields(state, name, stCharName) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var schemeKey = charData._scheme || '_default';
-    var template = _resolveNpcTemplateFields(stCharName, schemeKey);
+    var template = resolveActiveTemplateFields(stCharName, schemeKey);
     return Object.keys(template).filter(function(k) { return k !== 'name'; });
 }
 
@@ -941,7 +941,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world, stCha
                     fieldDefs = _characterSchema().protagonist.fields;
                 } else {
                     var npcSchemeKey = item.card._scheme || '_default';
-                    fieldDefs = _resolveNpcTemplateFields(stCharName, npcSchemeKey);
+                    fieldDefs = resolveActiveTemplateFields(stCharName, npcSchemeKey);
                 }
 
                 var label = isPC ? '[PC] ' : '[NPC] ';

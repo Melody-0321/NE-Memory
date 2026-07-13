@@ -1,7 +1,8 @@
 import {
     buildTools, validateTemplateOutput, formatFCNotification,
     buildNewSchemePrompt, buildProposeFieldPrompt,
-    checkFunctionCallingSupport, isFunctionCallingSupported
+    checkFunctionCallingSupport, isFunctionCallingSupported,
+    resolveNpcScheme
 } from '../src/core/engine/template-llm.js';
 
 var passed = 0, failed = 0;
@@ -166,5 +167,39 @@ if (!fcSupported) {
     console.log('  (FC available — check ne_settings in localStorage)');
 }
 
-console.log('\n=== template-llm: ' + passed + ' passed, ' + failed + ' failed ===');
-if (failed > 0) process.exit(1);
+// ====== N4: resolveNpcScheme 4-way role detection ======
+console.log('\n=== template-llm: resolveNpcScheme locked character ===');
+
+// Mock cardConfig with a locked template
+var _scChar = '__sc_test_char__';
+try {
+    var _scCfg = {
+        _dialogueTemplates: {
+            'locked_dt': { _active: true, _templateId: null, _locked: true, presetFields: ['status', 'personality'], customFieldRefs: [] }
+        },
+        _templateConfig: { _npcTemplateMode: 'fast' },
+        _version: 0
+    };
+    localStorage.setItem('ne_card_templates_' + _scChar, JSON.stringify(_scCfg));
+} catch(e) {}
+
+// Test: locked character returns existing locked template
+var scState1 = { characters: { 'NpcX': { _templateLocked: true } } };
+resolveNpcScheme({ character_name: 'NpcX' }, scState1, _scChar).then(function(r) {
+    ok(r, 'locked char returns result');
+    ok(r.fields, 'locked char has fields');
+    assert(r.fields && r.fields.status, 'locked char fields include status');
+    assert(r.fields && r.fields.personality, 'locked char fields include personality');
+
+    // Cleanup
+    try { localStorage.removeItem('ne_card_templates_' + _scChar); } catch(e) {}
+
+    console.log('\n=== template-llm: ' + passed + ' passed, ' + failed + ' failed ===');
+    if (failed > 0) process.exit(1);
+}).catch(function(e) {
+    console.error('  FAIL: resolveNpcScheme async test error: ' + (e && e.message ? e.message : String(e)));
+    failed++;
+    try { localStorage.removeItem('ne_card_templates_' + _scChar); } catch(e) {}
+    console.log('\n=== template-llm: ' + passed + ' passed, ' + failed + ' failed ===');
+    if (failed > 0) process.exit(1);
+});

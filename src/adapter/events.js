@@ -13,7 +13,7 @@ import { showToast, PD, busEmit } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
-import { buildStateInjectionTable } from '../core/vault/schema.js';
+import { buildStateInjectionTable, resolveActiveTemplateFields } from '../core/vault/schema.js';
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
@@ -286,7 +286,6 @@ async function consumeNeCharBlocks(messageIndex) {
             console.log('[NE-CHAR] post-process guard: locked template chars = ' + lockedChars.join(', '));
         }
 
-        var effectiveTemplates = getEffectiveTemplates().templates || {};
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             if (lockedChars.indexOf(cb.name) !== -1) {
@@ -301,10 +300,12 @@ async function consumeNeCharBlocks(messageIndex) {
             if (!chars[cb.name]) chars[cb.name] = {};
             chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : 'npc';
 
+            // N5: Resolve per-round field whitelist from cardConfig dialogue template (three-layer fallback)
             var schemeKey = chars[cb.name]._scheme || '_default_npc';
             if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
-            var template = effectiveTemplates[schemeKey] || {};
-            var perRoundFields = (template.perRoundFields && template.perRoundFields.length > 0) ? template.perRoundFields : ['current_mood', 'inner_thoughts'];
+            var resolvedFields = resolveActiveTemplateFields(cardName, schemeKey);
+            var perRoundFields = Object.keys(resolvedFields);
+            if (perRoundFields.length === 0) perRoundFields = ['current_mood', 'inner_thoughts'];
 
             var charChanges = [];
             perRoundFields.forEach(function(fk) {

@@ -3,7 +3,8 @@ import {
     rebuildPresentCharacters, ensureCharacterTemplate,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
     DEFAULT_GLOBAL_SCHEMA,
-    buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE
+    buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
+    ROLE_CATEGORY_MAP, getPresetFieldsForRole
 } from '../src/core/vault/schema.js';
 
 var passed = 0, failed = 0;
@@ -337,6 +338,156 @@ ok(builtSchema.protagonist, 'buildCharacterSchemaFromTemplates has protagonist')
 ok(builtSchema.npc, 'buildCharacterSchemaFromTemplates has npc');
 eq(typeof DEFAULT_NPC_TEMPLATE, 'object', 'DEFAULT_NPC_TEMPLATE is object');
 ok(DEFAULT_NPC_TEMPLATE.presetFields, 'DEFAULT_NPC_TEMPLATE has presetFields');
+
+// ====== N5b: ROLE_CATEGORY_MAP ======
+console.log('\n=== schema: ROLE_CATEGORY_MAP ===');
+
+eq(typeof ROLE_CATEGORY_MAP, 'object', 'ROLE_CATEGORY_MAP is object');
+ok(ROLE_CATEGORY_MAP.pc, 'pc role exists');
+ok(ROLE_CATEGORY_MAP.npc, 'npc role exists');
+ok(ROLE_CATEGORY_MAP.faction, 'faction role exists');
+ok(ROLE_CATEGORY_MAP.quest, 'quest role exists');
+ok(ROLE_CATEGORY_MAP.event, 'event role exists');
+assert(ROLE_CATEGORY_MAP.pc.indexOf('identity') !== -1, 'pc includes identity category');
+assert(ROLE_CATEGORY_MAP.pc.indexOf('psychology') !== -1, 'pc includes psychology category');
+assert(ROLE_CATEGORY_MAP.faction.indexOf('faction') !== -1, 'faction includes faction category');
+assert(ROLE_CATEGORY_MAP.faction.indexOf('identity') === -1, 'faction does NOT include identity category');
+assert(ROLE_CATEGORY_MAP.quest.indexOf('quest') !== -1, 'quest includes quest category');
+assert(ROLE_CATEGORY_MAP.quest.indexOf('social') === -1, 'quest does NOT include social category');
+
+// ====== N5b: getPresetFieldsForRole ======
+console.log('\n=== schema: getPresetFieldsForRole ===');
+
+var pcFields2 = getPresetFieldsForRole('pc');
+ok(typeof pcFields2 === 'object', 'pc returns object');
+assert(Object.keys(pcFields2).length > 5, 'pc has multiple fields');
+ok(pcFields2['personality'], 'pc includes personality');
+ok(pcFields2['affection'], 'pc includes affection');
+
+var factionFields = getPresetFieldsForRole('faction');
+ok(typeof factionFields === 'object', 'faction returns object');
+ok(factionFields['leader'], 'faction includes leader');
+
+var questFields = getPresetFieldsForRole('quest');
+ok(typeof questFields === 'object', 'quest returns object');
+ok(questFields['deadline'], 'quest includes deadline');
+
+// Unknown role → fallback to npc
+var unknownFields = getPresetFieldsForRole('unknown_role_xyz');
+ok(typeof unknownFields === 'object', 'unknown role falls back to npc');
+ok(unknownFields['personality'], 'unknown fallback includes personality');
+
+// No overlap between faction and npc
+var factionKeys = Object.keys(factionFields);
+var npcKeys = Object.keys(getPresetFieldsForRole('npc'));
+var factionOnly = factionKeys.filter(function(k) { return npcKeys.indexOf(k) === -1; });
+assert(factionOnly.length > 0, 'faction has fields not in npc');
+
+// ====== N5: getNpcInjectionFields with active dialogue template ======
+console.log('\n=== schema: getNpcInjectionFields with cardConfig active templates ===');
+
+var _stChar = '__test_proto__';
+try {
+    var _cardCfg = {
+        _dialogueTemplates: {
+            'custom_npc_dt': {
+                _active: true,
+                _templateId: null,
+                presetFields: ['status', 'personality', 'role_in_story'],
+                customFieldRefs: []
+            }
+        },
+        _templateConfig: {},
+        _version: 0
+    };
+    localStorage.setItem('ne_card_templates_' + _stChar, JSON.stringify(_cardCfg));
+} catch(e) {}
+
+var _activeState = {
+    protagonist_name: _stChar,
+    characters: { 'NPC_1': { _scheme: 'custom_npc_dt', status: '活跃' } }
+};
+var activeFields = getNpcInjectionFields(_activeState, 'NPC_1', _stChar);
+assert(activeFields.indexOf('personality') !== -1, 'active template includes personality');
+assert(activeFields.indexOf('status') !== -1, 'active template includes status');
+assert(activeFields.indexOf('name') === -1, 'name filtered out from injection fields');
+
+// No scheme → falls back to DEFAULT
+var noSchemeState = {
+    protagonist_name: _stChar,
+    characters: { 'NPC_2': {} }
+};
+var noSchemeFields = getNpcInjectionFields(noSchemeState, 'NPC_2', _stChar);
+assert(noSchemeFields.length > 0, 'no scheme falls back to default');
+assert(noSchemeFields.indexOf('gender_age') !== -1, 'default includes gender_age');
+
+try { localStorage.removeItem('ne_card_templates_' + _stChar); } catch(e) {}
+
+// ====== N5: getCharacterInjectionFields with stCharName ======
+console.log('\n=== schema: getCharacterInjectionFields with stCharName ===');
+
+var _stChar2 = '__test_proto2__';
+try {
+    var _cardCfg2 = {
+        _dialogueTemplates: {
+            'pc_active_dt': {
+                _active: true,
+                _templateId: null,
+                presetFields: ['status', 'personality', 'injuries', 'gender_age'],
+                customFieldRefs: []
+            }
+        },
+        _templateConfig: {},
+        _version: 0
+    };
+    localStorage.setItem('ne_card_templates_' + _stChar2, JSON.stringify(_cardCfg2));
+} catch(e) {}
+
+var pcState2 = {
+    protagonist_name: _stChar2,
+    characters: { 'Hero_pc': { _scheme: 'pc_active_dt', _role: 'protagonist', status: '活跃' } }
+};
+var pcInjection = getCharacterInjectionFields(pcState2, 'Hero_pc', _stChar2);
+assert(pcInjection.indexOf('injuries') !== -1, 'PC gets injuries from active template');
+assert(pcInjection.indexOf('gender_age') !== -1, 'PC gets gender_age from active template');
+assert(pcInjection.indexOf('name') === -1, 'name filtered out');
+
+// PC without stCharName → falls back to protagonist schema defaults
+var pcNoStChar = getCharacterInjectionFields(pcState2, 'Hero_pc');
+assert(Array.isArray(pcNoStChar), 'PC without stCharName still returns array');
+assert(pcNoStChar.indexOf('personality') !== -1, 'PC fallback includes personality');
+
+try { localStorage.removeItem('ne_card_templates_' + _stChar2); } catch(e) {}
+
+// ====== N5: mergeStateChanges _scheme protection for non-protagonist ======
+console.log('\n=== schema: mergeStateChanges _scheme protection ===');
+
+// Non-protagonist can set _scheme if not already set
+var sch1 = mergeStateChanges({ characters: {} }, { 'characters.NPC_3._scheme': 'my_scheme_key' });
+ok(sch1.state.characters && sch1.state.characters['NPC_3'], 'NPC entry created');
+eq(sch1.state.characters['NPC_3']._scheme, 'my_scheme_key', '_scheme set for non-protagonist without existing');
+
+// Non-protagonist with existing _scheme → should not be overwritten
+var sch2 = mergeStateChanges(
+    { characters: { 'NPC_4': { _scheme: 'existing_dt_key' } } },
+    { 'characters.NPC_4._scheme': 'new_key' }
+);
+eq(sch2.state.characters['NPC_4']._scheme, 'existing_dt_key', 'existing _scheme NOT overwritten');
+
+// Protagonist → _scheme always rejected
+var sch3 = mergeStateChanges(
+    { protagonist_name: 'Hero', characters: { 'Hero': { _role: 'protagonist' } } },
+    { 'characters.Hero._scheme': 'should_not_set' }
+);
+eq(sch3.state.characters['Hero']._scheme || null, null, 'protagonist _scheme rejected');
+
+// Protagonist with no existing _scheme → still rejected
+var sch4 = mergeStateChanges(
+    { protagonist_name: 'Hero', characters: {} },
+    { 'characters.Hero._scheme': 'still_blocked' }
+);
+var heroScheme = (sch4.state.characters && sch4.state.characters['Hero']) ? sch4.state.characters['Hero']._scheme : null;
+eq(heroScheme || null, null, 'protagonist _scheme rejected (no prior _scheme)');
 
 console.log('\n--- schema: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

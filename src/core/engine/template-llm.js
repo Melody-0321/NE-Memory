@@ -395,9 +395,9 @@ export function resolveNpcScheme(args, state, charName) {
 
         if (!validated.valid) {
             console.warn('[NE-FC] scheme validation failed:', validated.errors);
-            _recordMapping('_default_npc');
-            var fbFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
-            return { fields: fbFields, source: 'exact', _templateKey: '_default_npc' };
+            _recordMapping('_default_' + role);
+            var fbFields = expandTemplateFields(defaultFallback);
+            return { fields: fbFields, source: 'exact', _templateKey: '_default_' + role };
         }
 
         var fields = {};
