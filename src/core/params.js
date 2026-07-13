@@ -78,7 +78,7 @@ export function computeStmMaxTokens(stmBatch) {
 }
 
 export function computeTopK(totalSTM) {
-    return logScale(totalSTM, 15, 200, 15, 80);
+    return logScale(totalSTM, 15, 200, 10, 50);
 }
 
 export function computeChainDepth(chainLength) {
