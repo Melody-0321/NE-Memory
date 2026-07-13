@@ -510,9 +510,25 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     var lib = getEffectiveTemplates();
     var templates = (lib && lib.templates) ? lib.templates : {};
 
+    // Determine role FIRST (needed for default scheme inference)
+    var role = 'npc';
+    if (charCardType === 'protagonist') {
+        role = 'pc';
+    } else if (state && state.factions && state.factions.hasOwnProperty(charName)) {
+        role = 'faction';
+    } else if (state && state.quests && state.quests.tasks && state.quests.tasks.hasOwnProperty(charName)) {
+        role = 'quest';
+    }
+
     // Get character data: _scheme is now a dialogue template key in cardConfig
     var charData = (state && state.characters && state.characters[charName]) || {};
     var dtKey = charData._scheme || null;
+
+    // If no _scheme, infer default sentinel from role
+    if (!dtKey) {
+        dtKey = '_default_' + role;
+    }
+
     var dt = dtKey ? dialogueTemplates[dtKey] : null;
     var tplId = dt ? dt._templateId : null;
     var tpl = tplId ? templates[tplId] : null;
@@ -559,22 +575,12 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         if (usedCustoms.length > 0) currentCustoms = usedCustoms;
     }
 
-    // Determine role for field filtering
-    var role = 'npc';
-    if (charCardType === 'protagonist') {
-        role = 'pc';
-    } else if (state && state.factions && state.factions.hasOwnProperty(charName)) {
-        role = 'faction';
-    } else if (state && state.quests && state.quests.tasks && state.quests.tasks.hasOwnProperty(charName)) {
-        role = 'quest';
-    }
-
     // Build scheme editor HTML
     var html = '<div class="ne-scheme-editor">';
 
     // P9: Mode-driven tab selector - three actionable paths
-    // edit_current is enabled when character has any _scheme (including default sentinels)
-    var hasCurrentDt = !!(dtKey && (dialogueTemplates[dtKey] || (dtKey.indexOf('_default_') === 0)));
+    // edit_current is always enabled: every character has a scheme (explicit or inferred default)
+    var hasCurrentDt = !!(dtKey && (dialogueTemplates[dtKey] || isDefaultScheme));
     var defaultMode = hasCurrentDt ? 'edit_current' : 'switch_template';
     html += '<div class="ne-scheme-mode-bar" style="display:flex;gap:0;margin-bottom:12px;border-bottom:1px solid var(--grey-20);">';
     var modes = [
