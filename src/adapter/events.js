@@ -295,14 +295,11 @@ async function consumeNeCharBlocks(messageIndex) {
             }
             var chars = charState.characters || {};
             if (!chars[cb.name]) {
-                var schemeLookup = charState._character_schemes && charState._character_schemes[cb.name];
-                var schemeKey = schemeLookup ? schemeLookup._scheme : null;
-                ensureCharacterTemplate(charState, cb.name, schemeKey);
+                ensureCharacterTemplate(charState, cb.name, null, charState.protagonist_name);
                 chars = charState.characters;
-                chars[cb.name]._role = (cb.name === charState.protagonist_name || (schemeLookup && schemeLookup._role === 'protagonist')) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
-                if (schemeLookup && schemeLookup._scheme) chars[cb.name]._scheme = schemeLookup._scheme;
             }
             if (!chars[cb.name]) chars[cb.name] = {};
+            chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : 'npc';
 
             var schemeKey = chars[cb.name]._scheme || '_default_npc';
             if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
@@ -1008,7 +1005,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (isStateSchemaEnabled()) {
             var content = vault.content || {};
             var state = content.state || {};
-            var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content);
+            var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content, state.protagonist_name);
             if (stateTable) {
                 globalThis.__ne_debug_last_state_table = stateTable;
                 runtime.injectPrompt('ne_state_table', stateTable, 'in_chat', 2, 'system');

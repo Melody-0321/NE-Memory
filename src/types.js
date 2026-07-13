@@ -69,7 +69,6 @@ export {};
  * @property {Object<string, Faction>} [factions]
  * @property {QuestsState} [quests]
  * @property {Object<string, Object>} [npc_schemes]
- * @property {Object<string, {_role: string, _scheme: (string|null)}>} [_character_schemes]
  * @property {Object} [power_slots]
  * @property {number} [turn_index]
  */

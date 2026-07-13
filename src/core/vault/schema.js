@@ -5,6 +5,7 @@
 //
 import { t_field } from '../i18n.js';
 import { neSync } from '../settings-adapter.js';
+import { loadCardConfigSync, getActiveVersion, getEffectiveTemplates } from './store.js';
 // 功能：
 //   - 字段级别类型校验 + max_length 截断 + enum 校验
 //   - dot-path 递归解析
@@ -136,6 +137,37 @@ export var PRESET_FIELDS = {
     }
 };
 
+/**
+ * N5b: Category-to-role mapping. Determines which preset field categories
+ * are available for each template role.
+ */
+export var ROLE_CATEGORY_MAP = {
+    pc:     ['identity', 'psychology', 'social', 'battle', 'inventory'],
+    npc:    ['identity', 'psychology', 'social', 'battle', 'inventory'],
+    faction: ['faction'],
+    quest:   ['quest'],
+    event:   ['event']
+};
+
+/**
+ * N5b: Get all preset field definitions applicable to a given template role.
+ * Returns a flat map of { fieldName: fieldDef } from the relevant categories.
+ * @param {string} role - 'pc' | 'npc' | 'faction' | 'quest' | 'event'
+ * @returns {Object}
+ */
+export function getPresetFieldsForRole(role) {
+    var categories = ROLE_CATEGORY_MAP[role] || ROLE_CATEGORY_MAP.npc;
+    var result = {};
+    categories.forEach(function (cat) {
+        if (PRESET_FIELDS[cat]) {
+            Object.keys(PRESET_FIELDS[cat]).forEach(function (fn) {
+                result[fn] = PRESET_FIELDS[cat][fn];
+            });
+        }
+    });
+    return result;
+}
+
 /** @type {Object<string, import('../../types.js').SchemaFieldDef>} */
 export var ALL_PREDEFINED_FIELDS = (function() {
     var m = Object.assign({}, SYSTEM_REQUIRED_FIELDS);
@@ -252,16 +284,6 @@ function _questSchema() {
     __CACHED_QUEST_SCHEMA = buildQuestSchemaFromTemplate(DEFAULT_QUEST_TEMPLATE);
     return __CACHED_QUEST_SCHEMA;
 }
-
-export var DEFAULT_NPC_SCHEME = (function() {
-    var npcFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
-    var fields = {};
-    Object.keys(npcFields).forEach(function(k) {
-        if (k === 'name') return;
-        fields[k] = Object.assign({}, npcFields[k]);
-    });
-    return { _default: { fields: fields } };
-})();
 
 
 export var DEFAULT_GLOBAL_SCHEMA = (function() {
@@ -578,26 +600,91 @@ export function rebuildPresentCharacters(state) {
     return state;
 }
 
+// ====== Template Resolution Helpers (N5 three-layer architecture) ======
+
+/**
+ * Resolve NPC template fields using the three-layer fallback chain:
+ *   1. cardConfig._dialogueTemplates -> getActiveVersion(schemeKey)
+ *   2. Global template library (getEffectiveTemplates)
+ *   3. System default (DEFAULT_NPC_TEMPLATE)
+ *
+ * @param {string|null} stCharName - ST character card name for loading cardConfig
+ * @param {string|null} schemeKey - Dialogue template key / scheme ID
+ * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
+ */
+function _resolveNpcTemplateFields(stCharName, schemeKey) {
+    if (stCharName) {
+        var cardConfig = loadCardConfigSync(stCharName);
+        if (cardConfig && cardConfig._dialogueTemplates && schemeKey) {
+            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, schemeKey);
+            if (activeTemplate) return expandTemplateFields(activeTemplate);
+        }
+    }
+    // Fallback 2: global template library lookup by schemeKey as global template ID
+    if (schemeKey) {
+        var effectiveTpls = getEffectiveTemplates();
+        if (effectiveTpls && effectiveTpls.templates && effectiveTpls.templates[schemeKey]) {
+            return expandTemplateFields(effectiveTpls.templates[schemeKey]);
+        }
+    }
+    // Fallback 3: system default NPC template
+    return expandTemplateFields(DEFAULT_NPC_TEMPLATE);
+}
+
+/**
+ * Resolve faction template fields from cardConfig dialogue templates,
+ * falling back to DEFAULT_FACTION_TEMPLATE.
+ *
+ * @param {string|null} stCharName
+ * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
+ */
+function _resolveFactionTemplateFields(stCharName) {
+    if (stCharName) {
+        var cardConfig = loadCardConfigSync(stCharName);
+        if (cardConfig && cardConfig._dialogueTemplates) {
+            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, '_default_faction');
+            if (activeTemplate) return expandTemplateFields(activeTemplate);
+        }
+    }
+    return expandTemplateFields(DEFAULT_FACTION_TEMPLATE);
+}
+
+/**
+ * Resolve quest template fields from cardConfig dialogue templates,
+ * falling back to DEFAULT_QUEST_TEMPLATE.
+ *
+ * @param {string|null} stCharName
+ * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
+ */
+function _resolveQuestTemplateFields(stCharName) {
+    if (stCharName) {
+        var cardConfig = loadCardConfigSync(stCharName);
+        if (cardConfig && cardConfig._dialogueTemplates) {
+            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, '_default_quest');
+            if (activeTemplate) return expandTemplateFields(activeTemplate);
+        }
+    }
+    return expandTemplateFields(DEFAULT_QUEST_TEMPLATE);
+}
+
 /**
  * @param {import('../../types.js').State} state
  * @param {string} name
  * @param {string} [schemeKey]
+ * @param {string} [stCharName]
  */
-export function ensureCharacterTemplate(state, name, schemeKey) {
+export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     if (!state.characters) state.characters = {};
     if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
 
     var isPC = (state.protagonist_name && name === state.protagonist_name) ||
-        (state._character_schemes && state._character_schemes[name] && state._character_schemes[name]._role === 'protagonist');
+        (state.characters[name] && state.characters[name]._role === 'protagonist');
     var template;
     if (isPC) {
         template = _characterSchema().protagonist.fields;
-    } else if (schemeKey && state.npc_schemes && state.npc_schemes[schemeKey]) {
-        var scheme = state.npc_schemes[schemeKey];
-        var norm = normalizeScheme(scheme);
-        template = norm || _characterSchema().npc.fields;
     } else {
-        template = _characterSchema().npc.fields;
+        // NPC: resolve template via cardConfig three-layer fallback chain
+        template = _resolveNpcTemplateFields(stCharName, schemeKey);
     }
 
     state.characters[name] = {};
@@ -700,7 +787,7 @@ export function mergeStateChanges(state, validatedChanges) {
         if (parts[0] === 'characters' && parts.length >= 2) {
             var charName = parts[1];
             if (charName && charName !== '*') {
-                ensureCharacterTemplate(newState, charName);
+                ensureCharacterTemplate(newState, charName, null, newState.protagonist_name);
             }
         }
 
@@ -753,17 +840,14 @@ export function mergeStateChanges(state, validatedChanges) {
 /**
  * @param {import('../../types.js').State} state
  * @param {string} name
+ * @param {string} [stCharName]
  * @returns {string[]}
  */
-export function getNpcInjectionFields(state, name) {
+export function getNpcInjectionFields(state, name, stCharName) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var schemeKey = charData._scheme || '_default';
-    var npcSchemes = (state && state.npc_schemes) || DEFAULT_NPC_SCHEME;
-    var scheme = npcSchemes[schemeKey];
-    if (!scheme) scheme = DEFAULT_NPC_SCHEME._default;
-    var norm = normalizeScheme(scheme);
-    if (norm) return Object.keys(norm);
-    return Object.keys(_characterSchema().npc.fields).filter(function(k) { return k !== 'name'; });
+    var template = _resolveNpcTemplateFields(stCharName, schemeKey);
+    return Object.keys(template).filter(function(k) { return k !== 'name'; });
 }
 
 /**
@@ -771,15 +855,22 @@ export function getNpcInjectionFields(state, name) {
  * Replaces the static PC_INJECTION_FIELDS constant.
  * @param {import('../../types.js').State|null} state
  * @param {string} name
+ * @param {string} [stCharName]
  * @returns {string[]}
  */
-export function getCharacterInjectionFields(state, name) {
+export function getCharacterInjectionFields(state, name, stCharName) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var isPC = (state && state.protagonist_name && name === state.protagonist_name) ||
         (charData._role === 'protagonist');
-    if (!isPC) return getNpcInjectionFields(state, name);
-    if (charData._templateKey) {
-        return Object.keys(_characterSchema().protagonist.fields).filter(function(k) { return k !== 'name'; });
+    if (!isPC) return getNpcInjectionFields(state, name, stCharName);
+    // PC: try cardConfig active dialogue template first, fall back to default
+    if (stCharName) {
+        var cardConfig = loadCardConfigSync(stCharName);
+        if (cardConfig && cardConfig._dialogueTemplates) {
+            var schemeKey = charData._scheme || '_default_pc';
+            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, schemeKey);
+            if (activeTemplate) return Object.keys(expandTemplateFields(activeTemplate)).filter(function(k) { return k !== 'name'; });
+        }
     }
     return Object.keys(_characterSchema().protagonist.fields).filter(function(k) { return k !== 'name'; });
 }
@@ -789,9 +880,10 @@ export function getCharacterInjectionFields(state, name) {
  * @param {Array} messages
  * @param {Object} maxItems
  * @param {Object} world
+ * @param {string} [stCharName]
  * @returns {string}
  */
-export function buildStateInjectionTable(state, messages, maxItems, world) {
+export function buildStateInjectionTable(state, messages, maxItems, world, stCharName) {
     if (!state) return '';
     maxItems = maxItems || { characters: Infinity, factions: Infinity, quests: Infinity };
     world = world || {};
@@ -842,8 +934,15 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
             parts.push('=== Characters (Active) ===');
             activeCards.forEach(function(item) {
                 var isPC = (item.key === protagonistName) || (item.card._role === 'protagonist');
-                var fields = isPC ? getCharacterInjectionFields(state, item.key) : getNpcInjectionFields(state, item.key);
-                var fieldDefs = isPC ? _characterSchema().protagonist.fields : _characterSchema().npc.fields;
+                var fields = isPC ? getCharacterInjectionFields(state, item.key, stCharName) : getNpcInjectionFields(state, item.key, stCharName);
+
+                var fieldDefs;
+                if (isPC) {
+                    fieldDefs = _characterSchema().protagonist.fields;
+                } else {
+                    var npcSchemeKey = item.card._scheme || '_default';
+                    fieldDefs = _resolveNpcTemplateFields(stCharName, npcSchemeKey);
+                }
 
                 var label = isPC ? '[PC] ' : '[NPC] ';
                 parts.push(label + '[' + item.name + ']');
@@ -886,15 +985,16 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
     }
 
     if (state.factions && typeof state.factions === 'object') {
+        var factionTemplateFields = _resolveFactionTemplateFields(stCharName);
         var factionNames = Object.keys(state.factions);
         var visibleFactions = factionNames.filter(function (name) {
             var f = state.factions[name];
             return f && typeof f === 'object' && !f._hidden;
         });
-        var factionFieldNames = Object.keys(_factionSchema().fields).filter(function(fk) { return fk !== 'name'; });
+        var factionFieldNames = Object.keys(factionTemplateFields).filter(function(fk) { return fk !== 'name'; });
         var factionEnumFields = {};
         factionFieldNames.forEach(function(fk) {
-            var def = _factionSchema().fields[fk];
+            var def = factionTemplateFields[fk];
             if (def && def.type === 'enum' && def.values) factionEnumFields[fk] = def.values;
         });
         if (visibleFactions.length === 0) {
@@ -924,16 +1024,17 @@ export function buildStateInjectionTable(state, messages, maxItems, world) {
     }
 
     if (state.quests && typeof state.quests === 'object') {
+        var questTemplateFields = _resolveQuestTemplateFields(stCharName);
         var hasQuests = false;
         ['tasks', 'goals', 'events'].forEach(function (cat) {
             if (state.quests[cat] && typeof state.quests[cat] === 'object' && Object.keys(state.quests[cat]).length > 0) {
                 hasQuests = true;
             }
         });
-        var questFieldNames = Object.keys(_questSchema().fields).filter(function(fk) { return fk !== 'name'; });
+        var questFieldNames = Object.keys(questTemplateFields).filter(function(fk) { return fk !== 'name'; });
         var questEnumFields = {};
         questFieldNames.forEach(function(fk) {
-            var def = _questSchema().fields[fk];
+            var def = questTemplateFields[fk];
             if (def && def.type === 'enum' && def.values) questEnumFields[fk] = def.values;
         });
         if (!hasQuests) {
@@ -1093,7 +1194,7 @@ export function saveFieldLibrary(lib) {
  * definition (so it's reused across conversations), use
  * store.js `registerFieldToTemplate(templateId, fieldName)` instead.
  *
- * @param {Object} scheme - npc_schemes entry { fields: {...} }
+ * @param {Object} scheme - dialogue template copy entry { fields: {...} }
  * @param {string} fieldName
  * @param {import('../../types.js').SchemaFieldDef} fieldDef
  * @param {'ai_generated'|'user_created'} source
@@ -1103,5 +1204,3 @@ export function registerFieldToScheme(scheme, fieldName, fieldDef, source) {
     fieldDef._source = source || 'ai_generated';
     scheme.fields[fieldName] = fieldDef;
 }
-
-

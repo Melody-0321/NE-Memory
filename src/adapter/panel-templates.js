@@ -10,7 +10,7 @@
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
   editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey } from '../core/vault/store.js';
-import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../core/vault/schema.js';
+import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';
@@ -838,7 +838,16 @@ function _showEditor(container, templateId, isNew, templates, order) {
     try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
 
     var html = '<div class="ne-template-editor" id="ne-template-editor">';
-    html += '<button class="ne-btn-small" id="ne-editor-back">\u2190 ' + escapeHtml(t('back')) + '</button>';
+    // P6: Breadcrumb navigation
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:0.82em;">';
+    html += '<span class="ne-breadcrumb-link" id="ne-editor-bc-library" style="cursor:pointer;color:var(--ne-info);">' + escapeHtml(t('breadcrumb_library')) + '</span>';
+    html += '<span style="color:var(--grey-50);"> \u203a </span>';
+    html += '<span style="color:var(--grey-50);">' + (isNew ? escapeHtml(t('breadcrumb_new')) : escapeHtml(t('breadcrumb_edit'))) + '</span>';
+    if (!isNew && tpl.name) {
+        html += '<span style="color:var(--grey-50);"> \u203a </span>';
+        html += '<span>' + escapeHtml(tpl.name) + '</span>';
+    }
+    html += '</div>';
 
     // Basic info
     html += '<div class="ne-editor-section">';
@@ -859,7 +868,10 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<div class="ne-editor-section">';
     html += '<div class="ne-section-title">' + escapeHtml(t('preset_fields')) + '</div>';
     var existingPresets = (tpl.presetFields && Array.isArray(tpl.presetFields)) ? tpl.presetFields : [];
+    var role = tpl.role || _activeRoleTab || 'npc';
+    var allowedCats = ROLE_CATEGORY_MAP[role] || ROLE_CATEGORY_MAP.npc;
     Object.keys(PRESET_FIELDS).forEach(function (cat) {
+        if (allowedCats.indexOf(cat) === -1) return;
         html += '<div class="ne-preset-category">';
         html += '<div class="ne-npc-category-title">' + escapeHtml(cat) + '</div>';
         Object.keys(PRESET_FIELDS[cat]).forEach(function (fn) {
@@ -925,6 +937,27 @@ function _showEditor(container, templateId, isNew, templates, order) {
         '</label>';
     html += '</div>';
 
+    // P6: Show in-use count for non-new templates
+    if (!isNew && cardConfig && cardConfig._dialogueTemplates) {
+        var inUseCount = 0;
+        var usedNames = [];
+        Object.keys(cardConfig._dialogueTemplates).forEach(function (dtKey) {
+            var dt = cardConfig._dialogueTemplates[dtKey];
+            if (dt && dt._templateId === templateId) {
+                inUseCount++;
+                usedNames.push(dtKey);
+            }
+        });
+        if (inUseCount > 0) {
+            html += '<div class="ne-editor-section">';
+            html += '<span style="font-size:0.85em;color:var(--ne-info);">' + escapeHtml(t('in_use')) + ': ' + inUseCount + '</span>';
+            if (usedNames.length <= 3) {
+                html += ' <span style="font-size:0.78em;color:var(--grey-50);">(' + usedNames.map(escapeHtml).join(', ') + ')</span>';
+            }
+            html += '</div>';
+        }
+    }
+
     // N7: Push to global / Detach buttons (only when editing existing, not new)
     if (!isNew && cardConfig && cardConfig._dialogueTemplates) {
         var activeDtKey = _getActiveDialogueTemplateKey(cardConfig, templateId);
@@ -952,9 +985,10 @@ function _showEditor(container, templateId, isNew, templates, order) {
     container.innerHTML = html;
 
     // Bind editor events
-    var backBtn = container.querySelector('#ne-editor-back');
-    if (backBtn) {
-        backBtn.addEventListener('click', function () {
+    // P6: Breadcrumb "Library" click returns to library tab view
+    var bcLib = container.querySelector('#ne-editor-bc-library');
+    if (bcLib) {
+        bcLib.addEventListener('click', function () {
             _activeTopTab = 'library';
             renderTemplatesIntoSlide(container);
         });

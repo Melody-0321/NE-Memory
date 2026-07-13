@@ -3,7 +3,7 @@ import {
     registerFieldToScheme,
     ALL_PREDEFINED_FIELDS, SYSTEM_REQUIRED_FIELDS, PRESET_FIELDS,
     DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
-    DEFAULT_NPC_SCHEME, DEFAULT_FACTION_SCHEMA, DEFAULT_QUESTS_SCHEMA,
+    DEFAULT_FACTION_SCHEMA, DEFAULT_QUESTS_SCHEMA,
     buildCharacterSchemaFromTemplates
 } from '../src/core/vault/schema.js';
 
@@ -147,10 +147,9 @@ assert(fieldCount >= 15, 'ALL_PREDEFINED_FIELDS count >= 15 (got ' + fieldCount 
 ok(ALL_PREDEFINED_FIELDS['name'], 'name field exists in ALL_PREDEFINED_FIELDS');
 eq(ALL_PREDEFINED_FIELDS['name']._system, true, 'name is _system=true');
 
-// DEFAULT_NPC_SCHEME format
-ok(DEFAULT_NPC_SCHEME._default, 'DEFAULT_NPC_SCHEME has _default entry');
-ok(DEFAULT_NPC_SCHEME._default.fields, '_default scheme has fields');
-ok(Object.keys(DEFAULT_NPC_SCHEME._default.fields).length >= 5, '_default fields has multiple entries');
+// DEFAULT_NPC_TEMPLATE format
+ok(DEFAULT_NPC_TEMPLATE.presetFields, 'DEFAULT_NPC_TEMPLATE has presetFields');
+ok(DEFAULT_NPC_TEMPLATE.presetFields.length >= 5, 'presetFields has multiple entries');
 
 // buildCharacterSchemaFromTemplates structure
 var builtSchema = buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);

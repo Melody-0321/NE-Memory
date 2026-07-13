@@ -2,7 +2,7 @@ import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
-    DEFAULT_NPC_SCHEME, DEFAULT_GLOBAL_SCHEMA,
+    DEFAULT_GLOBAL_SCHEMA,
     buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE
 } from '../src/core/vault/schema.js';
 
@@ -227,27 +227,29 @@ eq(typeof rEmpty.state, 'object', 'empty input still returns state object');
 
 console.log('\n=== schema: getNpcInjectionFields ===');
 
-var npcState = {
-    npc_schemes: {
-        minimal: { description: 'minimal', required: ['name', 'status'], optional: [] },
-        default: { description: 'default', required: ['name', 'status', 'affection', 'relationship'], optional: ['personality'] }
-    },
-    characters: {
-        'Ally': { _scheme: 'minimal' },
-        'NoScheme': {}
-    }
-};
-var fields1 = getNpcInjectionFields(npcState, 'Ally');
-assert(fields1.indexOf('name') !== -1, 'minimal includes name');
-assert(fields1.indexOf('status') !== -1, 'minimal includes status');
-assert(fields1.indexOf('affection') === -1, 'minimal excludes affection');
+// N5: getNpcInjectionFields now requires stCharName and reads from cardConfig._dialogueTemplates.
+// Test with empty state — should fallback to DEFAULT_NPC_TEMPLATE fields.
+// create a mock cardConfig in localStorage for the tests
+var _testCharName = '__test_char__';
+try {
+    var testCardConfig = {
+        _dialogueTemplates: {},
+        _templateConfig: { npc: [] },
+        _version: 0
+    };
+    localStorage.setItem('ne_card_templates_' + _testCharName, JSON.stringify(testCardConfig));
+} catch(e) {}
 
-var fields2 = getNpcInjectionFields(npcState, 'NoScheme');
-assert(fields2.indexOf('affection') === -1, 'no scheme => default excludes affection');
-assert(fields2.indexOf('relationship') !== -1, 'default includes relationship');
+var npcState2 = { characters: { 'Ally': {}, 'NoScheme': {} }, protagonist_name: _testCharName };
+var fields1 = getNpcInjectionFields(npcState2, 'Ally', _testCharName);
+assert(fields1.length > 0, 'empty cardConfig falls back to DEFAULT_NPC_TEMPLATE');
+assert(fields1.indexOf('gender_age') !== -1, 'DEFAULT fallback includes gender_age');
 
-var fieldsDefault = getNpcInjectionFields({}, 'Anyone');
+var fieldsDefault = getNpcInjectionFields({ protagonist_name: _testCharName }, 'Anyone', _testCharName);
 assert(fieldsDefault.length > 0, 'empty state still returns default fields');
+
+// cleanup
+try { localStorage.removeItem('ne_card_templates_' + _testCharName); } catch(e) {}
 
 console.log('\n=== schema: buildStateInjectionTable ===');
 
@@ -333,8 +335,8 @@ ok(DEFAULT_GLOBAL_SCHEMA.fields, 'DEFAULT_GLOBAL_SCHEMA has fields');
 var builtSchema = buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
 ok(builtSchema.protagonist, 'buildCharacterSchemaFromTemplates has protagonist');
 ok(builtSchema.npc, 'buildCharacterSchemaFromTemplates has npc');
-eq(typeof DEFAULT_NPC_SCHEME, 'object', 'DEFAULT_NPC_SCHEME is object');
-ok(DEFAULT_NPC_SCHEME._default, 'DEFAULT_NPC_SCHEME has _default scheme');
+eq(typeof DEFAULT_NPC_TEMPLATE, 'object', 'DEFAULT_NPC_TEMPLATE is object');
+ok(DEFAULT_NPC_TEMPLATE.presetFields, 'DEFAULT_NPC_TEMPLATE has presetFields');
 
 console.log('\n--- schema: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

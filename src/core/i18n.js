@@ -147,6 +147,9 @@ export const NARRATIVE_I18N = {
         'orphaned': 'Orphaned', 'rollback': 'Rollback', 'confirm_rollback': 'Restore this version? Current version will be kept as history.',
         'push_to_global': 'Push to Global Library', 'confirm_push_to_global': 'Push this template to the global library as a new template?',
         'detach_template': 'Detach from Global', 'confirm_detach': 'Detach this template from the global library? It will become independent (orphaned).',
+        // P9: Scheme editor
+        'scheme_actions': 'Scheme Actions', 'edit_from_current': 'Edit Current', 'switch_template': 'Switch', 'start_from_scratch': 'From Scratch',
+        'card_level': 'Card', 'global': 'Global', 'active': 'Active', 'switch_to': 'Switch to', 'version_switched': 'Version switched.', 'save_scheme_first': 'Save the scheme first.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -285,6 +288,9 @@ export const NARRATIVE_I18N = {
         'orphaned': '已分离', 'rollback': '回滚', 'confirm_rollback': '恢复到此版本？当前版本将保留为历史记录。',
         'push_to_global': '推回全局库', 'confirm_push_to_global': '将此模板作为新模板推回全局库？',
         'detach_template': '分离', 'confirm_detach': '从全局库分离此模板？它将变为独立状态（已分离）。',
+        // P9: Scheme editor
+        'scheme_actions': '方案操作', 'edit_from_current': '编辑当前', 'switch_template': '切换模板', 'start_from_scratch': '从零开始',
+        'card_level': '卡片', 'global': '全局', 'active': '当前', 'switch_to': '切换', 'version_switched': '版本已切换。', 'save_scheme_first': '请先保存方案。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -409,6 +415,9 @@ export const NARRATIVE_I18N = {
         'orphaned': '已分離', 'rollback': '回滾', 'confirm_rollback': '恢復到此版本？當前版本將保留為歷史記錄。',
         'push_to_global': '推回全局庫', 'confirm_push_to_global': '將此模板作為新模板推回全局庫？',
         'detach_template': '分離', 'confirm_detach': '從全局庫分離此模板？它將變為獨立狀態（已分離）。',
+        // P9: Scheme editor
+        'scheme_actions': '方案操作', 'edit_from_current': '編輯當前', 'switch_template': '切換模板', 'start_from_scratch': '從零開始',
+        'card_level': '卡片', 'global': '全域', 'active': '當前', 'switch_to': '切換', 'version_switched': '版本已切換。', 'save_scheme_first': '請先儲存方案。',
     }
 };
 

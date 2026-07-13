@@ -1,5 +1,5 @@
 import { readState, loadCardConfigSync, saveCardConfig, getLockedTemplateCharacters } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -246,7 +246,7 @@ function buildTemplateLibrarySection() {
         if (npcKeys.length > 0) {
             if (lines.length > 0 && !lines[lines.length-1].startsWith('##')) lines.push('');
             lines.push('## NPC Templates Available');
-            lines.push('When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<template_key>".');
+            lines.push('- When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<dialogue_template_key>".');
             lines.push('');
             lines.push('## Tool Calling Rules');
             lines.push('- NEW characters (any role) — MUST call get_character_scheme to build tracking scheme');
@@ -278,7 +278,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     }).join('\n\n');
 
     var state = (content.state) || {};
-    var stateTable = buildStateInjectionTable(state, messages, undefined, content);
+    var stateTable = buildStateInjectionTable(state, messages, undefined, content, state.protagonist_name);
     var charCard = buildCharacterCardSection(vault);
 
     var managedFields = collectAllManagedFields(state);
@@ -590,7 +590,11 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     }
 
     // 首次初始化：faction_discovery + 默认兜底
-    if (!(stateVault.content.state || {}).npc_schemes) {
+    // N5: 首次初始化检查 — 如果 cardConfig 无 _templateConfig 则需初始化
+    var charName0 = stateVault.content.state && stateVault.content.state.protagonist_name;
+    var cardConfig0 = null;
+    try { if (charName0) cardConfig0 = loadCardConfigSync(charName0); } catch (e) {}
+    if (!cardConfig0 || !cardConfig0._templateConfig) {
         var wbContent = await collectWorldBookContent();
         if (wbContent && wbContent.length > 0) {
             try {
@@ -659,11 +663,9 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
             }
         }
 
-        state.npc_schemes = JSON.parse(JSON.stringify(DEFAULT_NPC_SCHEME));
-        state._character_schemes = state._character_schemes || {};
+        // N5: 不再写入 npc_schemes。方案来源改为 cardConfig._dialogueTemplates
         if (state.protagonist_name) {
-            state._character_schemes[state.protagonist_name] = { _role: 'protagonist', _scheme: null };
-            ensureCharacterTemplate(state, state.protagonist_name);
+            ensureCharacterTemplate(state, state.protagonist_name, null, state.protagonist_name);
         }
         _persistCardConfig(state.protagonist_name || '', state);
         stateVault.content.state = state;

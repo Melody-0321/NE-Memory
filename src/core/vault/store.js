@@ -943,7 +943,7 @@ export function isDialogueTemplateLocked(charName, globalTemplateId) {
 }
 
 export function getLockedTemplateCharacters(cardConfig, state) {
-    if (!cardConfig || !cardConfig._dialogueTemplates || !state || !state._character_schemes) return [];
+    if (!cardConfig || !cardConfig._dialogueTemplates || !state || !state.characters) return [];
     var lockedTemplateIds = {};
     Object.keys(cardConfig._dialogueTemplates).forEach(function(key) {
         var dt = cardConfig._dialogueTemplates[key];
@@ -954,12 +954,15 @@ export function getLockedTemplateCharacters(cardConfig, state) {
     if (Object.keys(lockedTemplateIds).length === 0) return [];
 
     var lockedChars = [];
-    var schemes = state._character_schemes;
-    Object.keys(schemes).forEach(function(name) {
-        var scheme = schemes[name];
-        var tid = scheme && scheme._templateId;
-        if (tid && lockedTemplateIds[tid]) {
-            lockedChars.push(name);
+    var chars = state.characters || {};
+    Object.keys(chars).forEach(function(name) {
+        var charData = chars[name];
+        var dtKey = charData && charData._scheme;
+        if (dtKey && cardConfig._dialogueTemplates[dtKey]) {
+            var dt = cardConfig._dialogueTemplates[dtKey];
+            if (dt._templateId && lockedTemplateIds[dt._templateId]) {
+                lockedChars.push(name);
+            }
         }
     });
     return lockedChars;

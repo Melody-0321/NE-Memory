@@ -12,6 +12,7 @@ import {
     ALL_PREDEFINED_FIELDS, expandTemplateFields, resolveFieldDef,
     DEFAULT_NPC_TEMPLATE, DEFAULT_PC_TEMPLATE
 } from '../vault/schema.js';
+import { getPresetFieldsForRole } from '../vault/schema.js';
 import {
     loadCardConfigSync, saveCardConfig, loadFieldLibrary, addFieldToLibrary,
     cloneTemplateToCard, getActiveVersion, upgradeTemplateVersion, saveTemplate
@@ -282,11 +283,11 @@ export function resolveNpcScheme(args, state, charName) {
     var mode = 'exact';
     var templateKey = null;
 
-    function _recordMapping(tplId) {
+    function _recordMapping(dialogueTemplateKey) {
         if (state && characterName) {
-            state._character_schemes = state._character_schemes || {};
-            state._character_schemes[characterName] = state._character_schemes[characterName] || {};
-            state._character_schemes[characterName]._templateId = tplId;
+            state.characters = state.characters || {};
+            state.characters[characterName] = state.characters[characterName] || {};
+            state.characters[characterName]._scheme = dialogueTemplateKey;
         }
     }
 
@@ -303,7 +304,7 @@ export function resolveNpcScheme(args, state, charName) {
             for (var li = 0; li < lockedDtKeys.length; li++) {
                 var ldt = cardConfig._dialogueTemplates[lockedDtKeys[li]];
                 if (ldt && ldt._locked) {
-                    _recordMapping(ldt._templateId || lockedDtKeys[li]);
+                    _recordMapping(lockedDtKeys[li]);
                     return Promise.resolve({
                         fields: expandTemplateFields(ldt),
                         source: 'exact',
@@ -331,33 +332,51 @@ export function resolveNpcScheme(args, state, charName) {
         if (templateKey && cardConfig._dialogueTemplates[templateKey]) {
             var exactTemplate = cardConfig._dialogueTemplates[templateKey];
             var exactFields = expandTemplateFields(exactTemplate);
-            _recordMapping(exactTemplate._templateId || templateKey);
+            _recordMapping(templateKey);
             return Promise.resolve({
                 fields: exactFields,
                 source: 'exact',
                 _templateKey: templateKey
             });
         }
-        _recordMapping('_default_npc');
-        var defaultFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
+        // N4: determine role for default fallback
+        var _isPC = (state && state.protagonist_name && characterName === state.protagonist_name);
+        var _fallbackRole = _isPC ? 'npc' : (state && state.factions && state.factions.hasOwnProperty(characterName) ? 'faction' : (state && state.quests && state.quests.tasks && state.quests.tasks.hasOwnProperty(characterName) ? 'quest' : 'npc'));
+        var _fallbackTpl = _fallbackRole === 'faction' ? DEFAULT_FACTION_TEMPLATE : (_fallbackRole === 'quest' ? DEFAULT_QUEST_TEMPLATE : DEFAULT_NPC_TEMPLATE);
+        _recordMapping('_default_' + _fallbackRole);
+        var defaultFields = expandTemplateFields(_fallbackTpl);
         return Promise.resolve({
             fields: defaultFields,
             source: 'exact',
-            _templateKey: '_default_npc'
+            _templateKey: '_default_' + _fallbackRole
         });
     }
 
     // Mode 2/3: adjust → AI-driven
     var isPC = (state && state.protagonist_name && characterName === state.protagonist_name);
-    var role = isPC ? 'protagonist' : 'npc';
+    // N4: Four-way role detection — pc/npc/faction/quest
+    var role;
+    if (isPC) {
+        role = 'pc';
+    } else if (state && state.factions && state.factions.hasOwnProperty(characterName)) {
+        role = 'faction';
+    } else if (state && state.quests && state.quests.tasks && state.quests.tasks.hasOwnProperty(characterName)) {
+        role = 'quest';
+    } else {
+        role = 'npc';
+    }
+    var roleLabel = role === 'pc' ? 'protagonist' : role;
+    var roleBaseline = Object.keys(getPresetFieldsForRole(role)).join(', ').substring(0, 120);
+    var defaultFallback = role === 'faction' ? DEFAULT_FACTION_TEMPLATE
+                        : role === 'quest' ? DEFAULT_QUEST_TEMPLATE
+                        : DEFAULT_NPC_TEMPLATE;
     return callTemplateLLM(
         buildNewSchemePrompt(
-            'You design ' + role + ' tracking schemes.',
-            'Character: ' + characterName + ', role: ' + role,
+            'You design ' + roleLabel + ' tracking schemes.',
+            'Character: ' + characterName + ', role: ' + role + (role === 'faction' ? ' (organization/faction)' : role === 'quest' ? ' (quest/task)' : ''),
             ((state && state._world_context_cache && state._world_context_cache.summary) || '') +
             ' ' + ((state && state._world_context_cache && state._world_context_cache.genre) || ''),
-            isPC ? 'PC baseline: gender_age, physique, occupation, personality, clothing_build'
-                 : 'NPC baseline: inner_thoughts, affection, relationship, current_mood'
+            roleLabel + ' baseline: ' + roleBaseline
         ),
         { operation: 'template_scheme' }
     ).then(function(response) {
@@ -366,9 +385,9 @@ export function resolveNpcScheme(args, state, charName) {
 
         if (validated.valid && parsed.confidence !== undefined && parsed.confidence < 0.3) {
             console.log('[NE-FC] scheme confidence too low (' + parsed.confidence + '), using defaults');
-            _recordMapping('_default_npc');
-            var fallbackFields = expandTemplateFields(DEFAULT_NPC_TEMPLATE);
-            return { fields: fallbackFields, source: 'exact', _templateKey: '_default_npc' };
+            _recordMapping('_default_' + role);
+            var fallbackFields = expandTemplateFields(defaultFallback);
+            return { fields: fallbackFields, source: 'exact', _templateKey: '_default_' + role };
         }
 
         var presetFields = (parsed && parsed.presetFields) || [];
@@ -406,22 +425,23 @@ export function resolveNpcScheme(args, state, charName) {
             updatedAt: new Date().toISOString()
         };
         saveTemplate(newTemplate);
-        _recordMapping(newTemplate.id);
-
-        _notify('info', characterName + ' scheme auto-generated (' + (presetFields.length + customRefs.length) + ' fields)', { _dedupKey: 'scheme_' + characterName });
 
         if (cardConfig) {
             var clonedKey = cloneTemplateToCard(charName, newTemplate);
+            _recordMapping(clonedKey);
+            toastr.success(characterName + ' scheme auto-generated (' + (presetFields.length + customRefs.length) + ' fields)');
             return {
                 fields: fields,
                 source: 'ai_generated',
                 _templateKey: clonedKey
             };
         }
+        _recordMapping('_default_npc');
+        toastr.success(characterName + ' scheme auto-generated (' + (presetFields.length + customRefs.length) + ' fields)');
         return {
             fields: fields,
             source: 'ai_generated',
-            _templateKey: newTemplate.id
+            _templateKey: '_default_npc'
         };
     }).catch(function(e) {
         console.warn('[NE-FC] scheme construction failed:', e);
