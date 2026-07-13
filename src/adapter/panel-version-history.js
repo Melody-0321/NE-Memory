@@ -500,7 +500,10 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
             _extNavTimer = null;
             var cid = (payload && typeof payload.getChatId === 'function') ? payload.getChatId() : _chatId;
             if (!cid) return;
-            if (cid !== _chatId) {
+            var sameChat = (cid === _chatId);
+            var wasAtStateHead = sameChat && (_stateCursor === headStateSeq);
+            var wasAtMemHead = sameChat && (_memCursor === headMemSeq);
+            if (!sameChat) {
                 _chatId = cid;
                 _cursorNeedsReset = true;
             }
@@ -509,6 +512,9 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
                 _stateCursor = headStateSeq;
                 _memCursor = headMemSeq;
                 _cursorNeedsReset = false;
+            } else if (sameChat) {
+                if (wasAtStateHead) _stateCursor = headStateSeq;
+                if (wasAtMemHead) _memCursor = headMemSeq;
             }
             _refreshUI('state', _extStateEls);
             _refreshUI('memory', _extMemEls);
