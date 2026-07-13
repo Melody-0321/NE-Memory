@@ -15,7 +15,7 @@ structural:
   - { op: not_contains, target: smartpush_injection, value: "→[stm:" }
 semantic:
   - "SmartPush 注入是否包含前几轮积累的记忆信息？"
-  - "注入是否以实体链分块格式呈现（## 实体记忆链 + ### 实体名 + KB 标注）？"
+  - "注入是否以 HTML 结构化格式呈现（h2 关键记忆 + h3 实体名 + 条目列表）？"
   - "注入中是否能看到具体的记忆条目，而不仅仅是 state-only 占位符？"
 minRounds: 4
 maxRounds: 10
@@ -50,7 +50,7 @@ Driver 跟随 AI 自然互动。4-5 轮自然积累 STM，然后提出与对话�
 
 ### 语义性断言
 1. SmartPush 注入是否包含前几轮积累的记忆信息？
-2. 注入是否以实体链分块格式呈现（## 实体记忆链 + ### 实体名 + KB 标注）？
+2. 注入是否以 HTML 结构化格式呈现（h2 关键记忆 + h3 实体名 + 条目列表）？
 3. 注入中是否能看到具体的记忆条目（非 state-only 占位符）？
 
 ## 运行参数

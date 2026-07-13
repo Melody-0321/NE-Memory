@@ -16,7 +16,7 @@ structural:
   - { op: not_contains, target: smartpush_injection, value: "stm_" }
 semantic:
   - "注入文本是否完全从玩家视角可读，没有任何内部 ID 或数据库标识符泄露？"
-  - "即使有多条记忆，注入是否以清晰的实体链分块格式呈现（## 实体记忆链 标题下的事件条目）？"
+  - "即使有多条记忆，注入是否以清晰的 HTML 结构化格式呈现（h2 关键记忆标题下的事件条目）？"
 minRounds: 4
 maxRounds: 10
 expectedRounds: "5-7"
@@ -52,7 +52,7 @@ timeoutPerRound: 120000
 
 ### 语义性断言
 1. 注入文本是否完全从玩家视角可读，无任何内部 ID 或标识符泄露？
-2. 注入是否以清晰的实体链分块格式呈现？
+2. 注入是否以清晰的 HTML 结构化格式呈现？
 
 ## 运行参数
 - minRounds: 4
