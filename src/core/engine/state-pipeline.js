@@ -1,4 +1,4 @@
-import { readState, loadCardConfigSync, getLockedTemplateCharacters } from '../vault/store.js';
+import { readState, loadCardConfigSync, saveCardConfig, getLockedTemplateCharacters } from '../vault/store.js';
 import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, DEFAULT_NPC_SCHEME, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
@@ -633,6 +633,26 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                         _extractedAt: new Date().toISOString()
                     };
                     console.log('[NE] world_context extracted via faction_discovery: ' + fp.world_context.genre);
+
+                    // N1: Sync world_context to cardConfig._worldContext for panel display
+                    var _wcCharName = state.protagonist_name || '';
+                    if (_wcCharName) {
+                        try {
+                            var _wcCardConfig = loadCardConfigSync(_wcCharName) || {
+                                _dialogueTemplates: {}, _templateConfig: {}, _version: 0
+                            };
+                            _wcCardConfig._worldContext = {
+                                genre: state._world_context_cache.genre,
+                                tropes: state._world_context_cache.tropes,
+                                summary: state._world_context_cache.summary,
+                                source: state._world_context_cache.source,
+                                _extractedAt: state._world_context_cache._extractedAt
+                            };
+                            saveCardConfig(_wcCharName, _wcCardConfig);
+                        } catch (e) {
+                            console.warn('[NE] Failed to sync _worldContext to cardConfig:', e.message);
+                        }
+                    }
                 }
             } catch (e) {
                 console.warn('[NE] faction_discovery failed:', e && e.message);

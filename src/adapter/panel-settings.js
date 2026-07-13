@@ -31,6 +31,8 @@ export function renderSettingsTab() {
     try { var rawLtm = localStorage.getItem('ne_ltm_api'); if (rawLtm) ltmApi = JSON.parse(rawLtm); } catch (e) {}
     var stateApi = {};
     try { var rawState = localStorage.getItem('ne_state_api'); if (rawState) stateApi = JSON.parse(rawState); } catch (e) {}
+    var templateApi = {};
+    try { var rawTemplate = localStorage.getItem('ne_template_api'); if (rawTemplate) templateApi = JSON.parse(rawTemplate); } catch (e) {}
     var enableVectorSearch = settings.enableVectorSearch || false;
     var channelsEnabled = settings.apiChannelsEnabled === true;
 
@@ -139,6 +141,18 @@ export function renderSettingsTab() {
           '<select id="nes_state_api_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
           '<input type="text" id="nes_state_api_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(stateApi.model || '') + '" style="flex:1;">' +
           '<button class="ne-api-fetch-models" id="nes_state_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
+        '</div></div>' +
+        '</div></div>' +
+        '<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
+        '<div style="font-weight:bold;margin:0 0 6px;">' + t('Template LLM') + '</div>' +
+        '<div class="ne-settings-grid">' +
+        '<div><label>' + t('API URL') + '</label><input type="text" id="nes_template_api_url" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(templateApi.url || '') + '"></div>' +
+        '<div><label>' + t('API Key') + '</label><input type="password" id="nes_template_api_key" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(templateApi.key || '') + '"></div>' +
+        '<div><label>' + t('Model') + '</label>' +
+        '<div id="nes_template_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
+          '<select id="nes_template_api_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
+          '<input type="text" id="nes_template_api_model_text" placeholder="' + t('blank = use default') + '" value="' + escapeHtml(templateApi.model || '') + '" style="flex:1;">' +
+          '<button class="ne-api-fetch-models" id="nes_template_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
         '</div></div>' +
         '</div></div>' +
         (channelsEnabled ? ('<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
@@ -402,6 +416,13 @@ export function renderSettingsTab() {
         var stateModel = panelById('nes_state_api_model_text');
         if (stateModel) stateModel.onchange = function () { saveSettingsTab(); };
         bindChannelFetch('nes_state');
+        var tplUrl = panelById('nes_template_api_url');
+        if (tplUrl) tplUrl.onchange = function () { saveSettingsTab(); };
+        var tplKey = panelById('nes_template_api_key');
+        if (tplKey) tplKey.onchange = function () { saveSettingsTab(); };
+        var tplModel = panelById('nes_template_api_model_text');
+        if (tplModel) tplModel.onchange = function () { saveSettingsTab(); };
+        bindChannelFetch('nes_template');
         var embChUrl = panelById('nes_embedding_url');
         if (embChUrl) embChUrl.onchange = function () { saveSettingsTab(); };
         var embChKey = panelById('nes_embedding_key');
@@ -676,6 +697,12 @@ function saveSettingsTab() {
             model: getModelValue('nes_state_api')
         };
         localStorage.setItem('ne_state_api', JSON.stringify(stateApi));
+        var templateApi = {
+            url: panelById('nes_template_api_url') ? panelById('nes_template_api_url').value.trim() : '',
+            key: panelById('nes_template_api_key') ? panelById('nes_template_api_key').value.trim() : '',
+            model: getModelValue('nes_template_api')
+        };
+        localStorage.setItem('ne_template_api', JSON.stringify(templateApi));
         var chEmbApi = {
             url: panelById('nes_embedding_url') ? panelById('nes_embedding_url').value.trim() : '',
             key: panelById('nes_embedding_key') ? panelById('nes_embedding_key').value.trim() : '',

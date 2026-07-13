@@ -1,12 +1,10 @@
 /**
- * panel-templates.js — Template Library Slide-in Panel
+ * panel-templates.js - Template Library Slide-in Panel
  *
  * Renders into the slide-in panel (📋 pin row icon):
- *   1. Template config panel (PC slot / NPC pool / Mode / World context)
- *   2. Template library browser (PC/NPC split)
- *   3. Template editor / detail view (with version history)
- *
- * Replaces panel-scheme.js — full implementation for Phase 6.
+ *   Tab 1: Template config panel (PC slot / NPC pool / Mode / World context)
+ *   Tab 2: Template library browser (role tabs: PC/NPC/Faction/Quest)
+ *   Sub-view: Template editor / detail view (with version history)
  */
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
@@ -19,6 +17,12 @@ import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlideP
 // ── Slide-in root state ──
 var _lastRenderTick = 0;
 var _renderTicket = 0;
+var _activeTopTab = 'config'; // 'config' | 'library'
+var _activeRoleTab = 'npc';   // 'pc' | 'npc' | 'faction' | 'quest'
+var _searchQuery = '';
+var _activeTagFilter = null;
+var _sortBy = 'default';      // 'default' | 'name' | 'date' | 'fields'
+var _worldCtxEditing = false;
 
 /** Get current SillyTavern character name for card config key */
 function _getCurrentCharName() {
@@ -28,7 +32,6 @@ function _getCurrentCharName() {
             if (ctx && ctx.name2) return ctx.name2;
         }
     } catch (e) {}
-    // Fallback: try window.__NE_CURRENT_CHAT_ID
     try {
         var fn = window.__NE_CURRENT_CHAT_ID;
         if (typeof fn === 'function') return fn();
@@ -38,43 +41,76 @@ function _getCurrentCharName() {
 
 /**
  * Main slide-in entry point. Called by registerSlideRenderer('templates', ...).
- * Renders the full template slide: config panel + library.
- * @param {HTMLElement} container — #ne-slide-panel-content
+ * @param {HTMLElement} container - #ne-slide-panel-content
  */
 export function renderTemplatesIntoSlide(container) {
     if (!container) return;
     var ticket = ++_renderTicket;
 
-    // Load data
     var lib = getEffectiveTemplates();
     var templates = (lib && lib.templates) ? lib.templates : {};
     var order = (lib && lib.order) ? lib.order : [];
-    // Try to load card config using SillyTavern context character name
     var cardConfig = null;
     try {
         var charName = _getCurrentCharName();
         cardConfig = charName ? loadCardConfigSync(charName) : null;
     } catch (e) { /* no card config yet */ }
 
-    if (ticket !== _renderTicket) return; // stale render
+    if (ticket !== _renderTicket) return;
 
     var html = '';
-    // ── Config panel ──
+    // P1: Top-level Tab bar
+    html += '<div class="ne-vault-tab-bar" style="margin-bottom:8px;">';
+    html += '<div class="ne-vault-tab' + (_activeTopTab === 'config' ? ' active' : '') + '" data-top-tab="config">' + escapeHtml(t('dialogue_config')) + '</div>';
+    html += '<div class="ne-vault-tab' + (_activeTopTab === 'library' ? ' active' : '') + '" data-top-tab="library">' + escapeHtml(t('template_library')) + '</div>';
+    html += '</div>';
+
+    // P1: Tab content containers
+    html += '<div class="ne-vault-tab-content' + (_activeTopTab === 'config' ? ' active' : '') + '" id="ne-tab-config">';
     html += _renderConfigPanelHTML(cardConfig, templates, order);
-    // ── Template library ──
-    html += _renderLibraryHTML(templates, order);
+    html += '</div>';
+
+    html += '<div class="ne-vault-tab-content' + (_activeTopTab === 'library' ? ' active' : '') + '" id="ne-tab-library">';
+    html += _renderLibraryHTML(templates, order, cardConfig);
+    html += '</div>';
 
     container.innerHTML = html;
 
-    // ── Bind events ──
-    _hookLibraryEvents(container, templates, order);
+    // Bind top-level tab events
+    _hookTopTabs(container);
+
+    // Bind events
+    _hookLibraryEvents(container, templates, order, cardConfig);
     _hookConfigEvents(container, cardConfig, templates, order);
 
     _lastRenderTick = Date.now();
 }
 
 // ─────────────────────────────────────
-// Config panel
+// Top-level tab switching (P1)
+// ─────────────────────────────────────
+
+function _hookTopTabs(container) {
+    var tabs = container.querySelectorAll('[data-top-tab]');
+    for (var i = 0; i < tabs.length; i++) {
+        tabs[i].addEventListener('click', function () {
+            var tabId = this.getAttribute('data-top-tab');
+            _activeTopTab = tabId;
+            // Toggle active classes
+            var allTabs = container.querySelectorAll('[data-top-tab]');
+            for (var j = 0; j < allTabs.length; j++) {
+                allTabs[j].classList.toggle('active', allTabs[j].getAttribute('data-top-tab') === tabId);
+            }
+            var configContent = container.querySelector('#ne-tab-config');
+            var libraryContent = container.querySelector('#ne-tab-library');
+            if (configContent) configContent.classList.toggle('active', tabId === 'config');
+            if (libraryContent) libraryContent.classList.toggle('active', tabId === 'library');
+        });
+    }
+}
+
+// ─────────────────────────────────────
+// Config panel (P7: polished)
 // ─────────────────────────────────────
 
 function _renderConfigPanelHTML(cardConfig, templates, order) {
@@ -83,6 +119,13 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     var npcPool = (cfg.npc && Array.isArray(cfg.npc)) ? cfg.npc : [];
     var npcMode = cfg._npcTemplateMode || 'smart';
     var worldCtx = (cardConfig && cardConfig._worldContext) ? cardConfig._worldContext : null;
+    var hasChar = !!_getCurrentCharName();
+
+    if (!hasChar) {
+        return '<div class="ne-template-config" id="ne-template-config">' +
+            '<div class="ne-empty-state"><div class="ne-empty-state-icon">📋</div>' +
+            '<div class="ne-empty-state-text">' + escapeHtml(t('no_current_char')) + '</div></div></div>';
+    }
 
     var pcOptions = Object.keys(templates).filter(function (id) {
         return templates[id] && templates[id].role === 'pc';
@@ -119,7 +162,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
             var dtLocked = isDialogueTemplateLocked(_getCurrentCharName(), entry._templateId);
             html += '<div class="ne-config-npc-item">' +
                 '<span>' + escapeHtml(label) + '</span>' +
-                '<span class="ne-npc-lock-btn' + (dtLocked ? ' locked' : '') + '" data-lock-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('lock_template')) + '">' + (dtLocked ? '\u{1F512}' : '\u{1F513}') + '</span>' +
+                '<span class="ne-npc-lock-btn' + (dtLocked ? ' locked' : '') + '" data-lock-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('lock_tooltip')) + '" data-template-name="' + escapeHtml(label) + '">' + (dtLocked ? '\u{1F512}' : '\u{1F513}') + '</span>' +
                 '<button class="ne-btn-small ne-btn-danger" data-remove-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('remove')) + '">\u2715</button>' +
                 '</div>';
         });
@@ -141,7 +184,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     });
     var selectedFaction = cfg.faction || '_default_faction';
     html += '<div class="ne-config-field">';
-    html += '<label>Faction Template</label>';
+    html += '<label>' + escapeHtml(t('faction_template')) + '</label>';
     html += '<select id="ne-config-faction-template" class="ne-config-select">';
     factionOptions.forEach(function (id) {
         var tpl = templates[id];
@@ -156,7 +199,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     });
     var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_quest'];
     html += '<div class="ne-config-field">';
-    html += '<label>Quest Templates</label>';
+    html += '<label>' + escapeHtml(t('quest_templates')) + '</label>';
     html += '<div id="ne-config-quest-pool">';
     questPool.forEach(function (qid) {
         var qTpl = templates[qid];
@@ -168,145 +211,237 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
     });
     html += '</div>';
     if (questOptions.length > 0) {
-        html += '<button id="ne-config-add-quest" class="ne-btn-small">+ Add Quest Template</button>';
+        html += '<button id="ne-config-add-quest" class="ne-btn-small">' + escapeHtml(t('add_quest_template')) + '</button>';
     }
     html += '</div>';
 
-    // World Context
+    // World Context (P7: editable)
     html += '<div class="ne-config-field">';
     html += '<label>' + escapeHtml(t('world_context')) + '</label>';
     html += '<div id="ne-config-world-ctx" class="ne-config-world">';
-    if (worldCtx) {
-        var ctxText = typeof worldCtx === 'string' ? worldCtx : (worldCtx.text || JSON.stringify(worldCtx));
-        var ctxTime = worldCtx.extractedAt || '';
-        html += '<div class="ne-world-ctx-text">' + escapeHtml(ctxText.substring(0, 200)) + '</div>';
-        if (ctxTime) html += '<div class="ne-world-ctx-meta">' + escapeHtml(t('ai_extracted')) + ' · ' + escapeHtml(ctxTime) + '</div>';
+    if (_worldCtxEditing) {
+        var ctxText = worldCtx ? (typeof worldCtx === 'string' ? worldCtx : (worldCtx.summary || worldCtx.text || JSON.stringify(worldCtx))) : '';
+        html += '<textarea class="ne-world-ctx-edit-area" id="ne-world-ctx-edit">' + escapeHtml(ctxText) + '</textarea>';
+        html += '<div class="ne-world-ctx-actions">';
+        html += '<button class="ne-btn-small" id="ne-world-ctx-save">' + escapeHtml(t('Save')) + '</button>';
+        html += '<button class="ne-btn-small" id="ne-world-ctx-cancel">' + escapeHtml(t('Cancel')) + '</button>';
+        html += '</div>';
+    } else if (worldCtx) {
+        var displayText = typeof worldCtx === 'string' ? worldCtx : (worldCtx.summary || worldCtx.text || JSON.stringify(worldCtx));
+        var ctxTime = (worldCtx._extractedAt || worldCtx.extractedAt || '');
+        var genre = (typeof worldCtx === 'object' && worldCtx.genre) ? worldCtx.genre : '';
+        html += '<div class="ne-world-ctx-text">' + escapeHtml(displayText.substring(0, 200));
+        if (genre) html += ' <span class="ne-template-source-badge src-ai" style="margin-left:4px;">' + escapeHtml(genre) + '</span>';
+        html += '</div>';
+        if (ctxTime) html += '<div class="ne-world-ctx-meta">' + escapeHtml(t('ai_extracted')) + ' \u00b7 ' + escapeHtml(formatLocalTime(ctxTime)) + '</div>';
+        html += '<div class="ne-world-ctx-actions">';
+        html += '<button class="ne-btn-small" id="ne-world-ctx-edit-btn">' + escapeHtml(t('edit_world_context')) + '</button>';
+        html += '<button class="ne-btn-small ne-btn-danger" id="ne-world-ctx-clear-btn">' + escapeHtml(t('clear_world_context')) + '</button>';
+        html += '</div>';
     } else {
         html += '<div class="ne-config-empty">' + escapeHtml(t('no_world_context')) + '</div>';
+        html += '<div class="ne-world-ctx-actions">';
+        html += '<button class="ne-btn-small" id="ne-world-ctx-edit-btn">' + escapeHtml(t('edit_world_context')) + '</button>';
+        html += '</div>';
     }
     html += '</div></div>';
 
-    html += '</div>'; // .ne-template-config
+    html += '</div>';
     return html;
 }
 
 // ─────────────────────────────────────
-// Library view (PC / NPC split)
+// Library view (P2: role tabs, P3: search/filter/sort)
 // ─────────────────────────────────────
 
-function _renderLibraryHTML(templates, order) {
+function _renderLibraryHTML(templates, order, cardConfig) {
     var html = '<div class="ne-template-library" id="ne-template-library">';
-    html += '<div class="ne-library-toolbar">';
-    html += '<button id="ne-btn-create-template" class="menu_button">+ ' + escapeHtml(t('create_template')) + '</button>';
+
+    // P3: Toolbar (search + sort)
+    html += '<div class="ne-template-toolbar">';
+    html += '<input type="text" id="ne-template-search" placeholder="' + escapeHtml(t('search_templates')) + '" value="' + escapeHtml(_searchQuery) + '">';
+    html += '<select id="ne-template-sort">';
+    html += '<option value="default"' + (_sortBy === 'default' ? ' selected' : '') + '>' + escapeHtml(t('sort_by')) + '</option>';
+    html += '<option value="name"' + (_sortBy === 'name' ? ' selected' : '') + '>' + escapeHtml(t('sort_name')) + '</option>';
+    html += '<option value="date"' + (_sortBy === 'date' ? ' selected' : '') + '>' + escapeHtml(t('sort_date')) + '</option>';
+    html += '<option value="fields"' + (_sortBy === 'fields' ? ' selected' : '') + '>' + escapeHtml(t('sort_fields')) + '</option>';
+    html += '</select>';
+    html += '<button id="ne-btn-create-template" class="ne-btn-small">+ ' + escapeHtml(t('create_template')) + '</button>';
     html += '</div>';
 
-    var pcIds = [];
-    var npcIds = [];
-    var factionIds = [];
-    var questIds = [];
+    // P2: Role tabs
+    var roles = [
+        { key: 'pc', label: t('role_pc') },
+        { key: 'npc', label: t('role_npc') },
+        { key: 'faction', label: t('role_faction') },
+        { key: 'quest', label: t('role_quest') }
+    ];
+    html += '<div class="ne-template-role-tabs">';
+    roles.forEach(function (r) {
+        html += '<div class="ne-template-role-tab' + (_activeRoleTab === r.key ? ' active' : '') + '" data-role-tab="' + r.key + '">' + escapeHtml(r.label) + '</div>';
+    });
+    html += '</div>';
+
+    // Group templates by role
+    var byRole = { pc: [], npc: [], faction: [], quest: [] };
     order.forEach(function (id) {
         var tpl = templates[id];
         if (!tpl) return;
-        if (tpl.role === 'pc') { pcIds.push(id); }
-        else if (tpl.role === 'faction') { factionIds.push(id); }
-        else if (tpl.role === 'quest') { questIds.push(id); }
-        else { npcIds.push(id); }
+        var role = (tpl.role === 'pc' || tpl.role === 'npc' || tpl.role === 'faction' || tpl.role === 'quest') ? tpl.role : 'npc';
+        byRole[role].push(id);
     });
 
-    html += '<div class="ne-template-grid">';
-    // PC Column
-    html += '<div class="ne-template-col">';
-    html += '<div class="ne-col-title">' + escapeHtml(t('pc_templates')) + '</div>';
-    if (pcIds.length === 0) {
-        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
-    } else {
-        pcIds.forEach(function (id) {
-            html += _renderTemplateCardHTML(templates[id], id);
-        });
-    }
-    html += '</div>';
+    // Render each role content
+    roles.forEach(function (r, idx) {
+        var roleIds = byRole[r.key];
+        var active = _activeRoleTab === r.key;
 
-    // NPC Column
-    html += '<div class="ne-template-col">';
-    html += '<div class="ne-col-title">' + escapeHtml(t('npc_templates')) + '</div>';
-    if (npcIds.length === 0) {
-        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
-    } else {
-        var byCategory = {};
-        npcIds.forEach(function (id) {
+        // P3: Collect tags for this role
+        var allTags = {};
+        roleIds.forEach(function (id) {
             var tpl = templates[id];
-            var cat = (tpl.tags && tpl.tags.length > 0) ? tpl.tags[0] : '__other__';
-            if (!byCategory[cat]) byCategory[cat] = [];
-            byCategory[cat].push(id);
-        });
-        Object.keys(byCategory).forEach(function (cat) {
-            if (cat !== '__other__') {
-                html += '<div class="ne-npc-category-title">' + escapeHtml(cat) + '</div>';
+            if (tpl && tpl.tags) {
+                tpl.tags.forEach(function (tag) { allTags[tag] = true; });
             }
-            byCategory[cat].forEach(function (id) {
-                html += _renderTemplateCardHTML(templates[id], id);
+        });
+
+        html += '<div class="ne-template-role-content' + (active ? ' active' : '') + '" data-role-content="' + r.key + '">';
+
+        // P3: Tag filter chips
+        var tagKeys = Object.keys(allTags);
+        if (tagKeys.length > 0) {
+            html += '<div class="ne-tag-chips">';
+            html += '<span class="ne-tag-chip' + (!_activeTagFilter ? ' active' : '') + '" data-tag-filter="">' + escapeHtml(t('all_tags')) + '</span>';
+            tagKeys.forEach(function (tag) {
+                html += '<span class="ne-tag-chip' + (_activeTagFilter === tag ? ' active' : '') + '" data-tag-filter="' + escapeHtml(tag) + '">' + escapeHtml(tag) + '</span>';
             });
-        });
-    }
-    html += '</div>';
+            html += '</div>';
+        }
 
-    // Faction Column
-    html += '<div class="ne-template-col">';
-    html += '<div class="ne-col-title">' + escapeHtml(t('faction_templates')) + '</div>';
-    if (factionIds.length === 0) {
-        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
-    } else {
-        factionIds.forEach(function (id) {
-            html += _renderTemplateCardHTML(templates[id], id);
-        });
-    }
-    html += '</div>';
+        if (roleIds.length === 0) {
+            html += '<div class="ne-empty-state"><div class="ne-empty-state-icon">📝</div>' +
+                '<div class="ne-empty-state-text">' + escapeHtml(t('no_templates')) + '</div></div>';
+        } else {
+            // Sort
+            var sortedIds = _sortTemplateIds(roleIds, templates);
 
-    // Quest Column
-    html += '<div class="ne-template-col">';
-    html += '<div class="ne-col-title">' + escapeHtml(t('quest_templates')) + '</div>';
-    if (questIds.length === 0) {
-        html += '<div class="ne-empty-state">' + escapeHtml(t('no_templates')) + '</div>';
-    } else {
-        questIds.forEach(function (id) {
-            html += _renderTemplateCardHTML(templates[id], id);
-        });
-    }
-    html += '</div>';
+            // NPC: group by first tag
+            if (r.key === 'npc') {
+                var byCategory = {};
+                var uncategorized = [];
+                sortedIds.forEach(function (id) {
+                    var tpl = templates[id];
+                    var cat = (tpl.tags && tpl.tags.length > 0) ? tpl.tags[0] : null;
+                    if (cat) {
+                        if (!byCategory[cat]) byCategory[cat] = [];
+                        byCategory[cat].push(id);
+                    } else {
+                        uncategorized.push(id);
+                    }
+                });
+                Object.keys(byCategory).forEach(function (cat) {
+                    html += '<div class="ne-npc-category-title">' + escapeHtml(cat) + '</div>';
+                    byCategory[cat].forEach(function (id) {
+                        html += _renderTemplateCardHTML(templates[id], id, cardConfig);
+                    });
+                });
+                uncategorized.forEach(function (id) {
+                    html += _renderTemplateCardHTML(templates[id], id, cardConfig);
+                });
+            } else {
+                sortedIds.forEach(function (id) {
+                    html += _renderTemplateCardHTML(templates[id], id, cardConfig);
+                });
+            }
+        }
 
-    html += '</div>'; // .ne-template-grid
-    html += '</div>'; // .ne-template-library
+        html += '</div>';
+    });
+
+    html += '</div>';
     return html;
 }
 
-function _renderTemplateCardHTML(tpl, id) {
+function _sortTemplateIds(ids, templates) {
+    var arr = ids.slice();
+    if (_sortBy === 'name') {
+        arr.sort(function (a, b) {
+            var na = (templates[a] && templates[a].name) || a;
+            var nb = (templates[b] && templates[b].name) || b;
+            return na.localeCompare(nb);
+        });
+    } else if (_sortBy === 'date') {
+        arr.sort(function (a, b) {
+            var da = (templates[a] && templates[a].createdAt) || '';
+            var db = (templates[b] && templates[b].createdAt) || '';
+            return db.localeCompare(da);
+        });
+    } else if (_sortBy === 'fields') {
+        arr.sort(function (a, b) {
+            var fa = (templates[a] ? ((templates[a].presetFields || []).length + (templates[a].customFieldRefs || []).length) : 0);
+            var fb = (templates[b] ? ((templates[b].presetFields || []).length + (templates[b].customFieldRefs || []).length) : 0);
+            return fb - fa;
+        });
+    }
+    return arr;
+}
+
+function _getInUseTemplateIds(cardConfig) {
+    if (!cardConfig || !cardConfig._templateConfig) return {};
+    var cfg = cardConfig._templateConfig;
+    var inUse = {};
+    if (cfg.pc && cfg.pc._templateId) inUse[cfg.pc._templateId] = 'pc';
+    if (cfg.npc && Array.isArray(cfg.npc)) {
+        cfg.npc.forEach(function (n) { if (n._templateId) inUse[n._templateId] = 'npc'; });
+    }
+    if (cfg.faction) inUse[cfg.faction] = 'faction';
+    if (cfg.quest && Array.isArray(cfg.quest)) {
+        cfg.quest.forEach(function (q) { if (q) inUse[q] = 'quest'; });
+    }
+    return inUse;
+}
+
+// P4: Template card redesign
+function _renderTemplateCardHTML(tpl, id, cardConfig) {
     if (!tpl) return '';
     var name = tpl.name || id;
     var desc = tpl.description || '';
-    if (desc.length > 50) desc = desc.substring(0, 50) + '...';
     var presetCount = (tpl.presetFields && Array.isArray(tpl.presetFields)) ? tpl.presetFields.length : 0;
     var customCount = (tpl.customFieldRefs && Array.isArray(tpl.customFieldRefs)) ? tpl.customFieldRefs.length : 0;
-    var sourceLabel = tpl.source === 'ai_generated' ? t('ai_generated') : t('user_created');
+    var role = tpl.role || 'npc';
+    var source = tpl.source || (tpl.system ? 'system' : 'user_created');
+    var sourceLabel = source === 'ai_generated' ? t('ai_generated') : (source === 'system' ? t('system_template') : t('user_created'));
+    var sourceClass = source === 'ai_generated' ? 'src-ai' : (source === 'system' ? 'src-system' : 'src-user');
     var created = tpl.createdAt ? formatLocalTime(tpl.createdAt) : '';
     var locked = tpl._locked ? (' \u{1F512}') : '';
+    var inUseMap = _getInUseTemplateIds(cardConfig);
+    var inUse = inUseMap[id];
+    var isSystem = !!tpl.system;
 
-    return '<div class="ne-template-card" data-template-id="' + escapeHtml(id) + '">' +
-        '<div class="ne-template-card-header">' +
-        '<b>' + escapeHtml(name) + '</b>' +
-        '<span class="ne-template-lock">' + locked + '</span>' +
-        '</div>' +
-        (desc ? '<div class="ne-template-card-desc">' + escapeHtml(desc) + '</div>' : '') +
-        '<div class="ne-template-card-meta">' +
-        escapeHtml(presetCount) + ' ' + t('preset_fields') + ' · ' +
-        escapeHtml(customCount) + ' ' + t('custom_fields') +
-        ' · ' + escapeHtml(sourceLabel) +
-        (created ? ' · ' + escapeHtml(created) : '') +
-        '</div>' +
-        '<div class="ne-template-card-actions">' +
-        '<button class="ne-btn-small ne-btn-edit" data-action="edit" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('view_edit')) + '</button>' +
-        '<button class="ne-btn-small ne-btn-danger" data-action="delete" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('Delete')) + '</button>' +
-        '</div>' +
-        '</div>';
+    var html = '<div class="ne-template-card" data-template-id="' + escapeHtml(id) + '">';
+    html += '<div class="ne-template-card-header">';
+    html += '<span><span class="ne-template-role-badge role-' + escapeHtml(role) + '">' + escapeHtml(t('role_' + role)) + '</span><b>' + escapeHtml(name) + '</b></span>';
+    html += '<span class="ne-template-lock">' + locked + '</span>';
+    html += '</div>';
+    if (desc) {
+        html += '<div class="ne-template-card-desc" data-toggle-desc>' + escapeHtml(desc) + '</div>';
+    }
+    html += '<div class="ne-template-card-meta">';
+    html += '<span class="ne-template-field-chip">' + escapeHtml(presetCount) + ' ' + escapeHtml(t('preset_fields')) + '</span>';
+    html += '<span class="ne-template-field-chip">' + escapeHtml(customCount) + ' ' + escapeHtml(t('custom_fields')) + '</span>';
+    html += '<span class="ne-template-source-badge ' + sourceClass + '">' + escapeHtml(sourceLabel) + '</span>';
+    if (created) html += '<span>' + escapeHtml(created) + '</span>';
+    if (inUse) html += '<span class="ne-template-in-use">' + escapeHtml(t('in_use')) + '</span>';
+    html += '</div>';
+    html += '<div class="ne-template-card-actions">';
+    html += '<button class="ne-btn-small ne-btn-edit" data-action="edit" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('view_edit')) + '</button>';
+    html += '<button class="ne-btn-small" data-action="duplicate" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('duplicate')) + '</button>';
+    if (!isSystem) {
+        html += '<button class="ne-btn-small ne-btn-danger" data-action="delete" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('Delete')) + '</button>';
+    }
+    html += '</div>';
+    html += '</div>';
+    return html;
 }
 
 // ─────────────────────────────────────
@@ -336,6 +471,7 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
     for (var k = 0; k < lockBtns.length; k++) {
         lockBtns[k].addEventListener('click', function () {
             var tplId = this.getAttribute('data-lock-npc');
+            var tplName = this.getAttribute('data-template-name') || tplId;
             var charName = _getCurrentCharName();
             if (!charName) return;
             var wasLocked = this.classList.contains('locked');
@@ -348,7 +484,7 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
                 this.classList.remove('locked');
                 this.textContent = '\u{1F513}';
             }
-            showToast((newLocked ? t('locked') : t('unlock')) + ': ' + tplId, 'info', 2000);
+            showToast((newLocked ? t('locked') : t('unlock')) + ': ' + tplName, 'info', 2000);
         });
     }
 
@@ -356,7 +492,16 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
     var addBtn = container.querySelector('#ne-config-add-npc');
     if (addBtn) {
         addBtn.addEventListener('click', function () {
-            _showNpcSelector(templates, cardConfig);
+            _showTemplateSelectorModal({
+                title: t('select_npc_template'),
+                templates: templates,
+                role: 'npc',
+                excludeIds: (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.npc) ?
+                    cardConfig._templateConfig.npc.map(function (n) { return n._templateId; }) : [],
+                onPick: function (tplId) {
+                    _addNpcToPool(tplId, cardConfig, templates);
+                }
+            });
         });
     }
 
@@ -397,12 +542,76 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
     var addQuestBtn = container.querySelector('#ne-config-add-quest');
     if (addQuestBtn) {
         addQuestBtn.addEventListener('click', function () {
-            _showQuestSelector(templates, cardConfig);
+            _showTemplateSelectorModal({
+                title: t('select_quest_template'),
+                templates: templates,
+                role: 'quest',
+                excludeIds: (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.quest) ?
+                    cardConfig._templateConfig.quest.slice() : [],
+                onPick: function (tplId) {
+                    if (!cardConfig) return;
+                    if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+                    var pool = cardConfig._templateConfig.quest || ['_default_quest'];
+                    if (pool.indexOf(tplId) === -1) {
+                        pool.push(tplId);
+                        cardConfig._templateConfig.quest = pool;
+                        var charName = _getCurrentCharName();
+                        if (charName) saveCardConfig(charName, cardConfig);
+                        _refreshCurrentPanel();
+                    }
+                }
+            });
+        });
+    }
+
+    // World context edit/clear (P7)
+    var editBtn = container.querySelector('#ne-world-ctx-edit-btn');
+    if (editBtn) {
+        editBtn.addEventListener('click', function () {
+            _worldCtxEditing = true;
+            _refreshCurrentPanel();
+        });
+    }
+    var clearBtn = container.querySelector('#ne-world-ctx-clear-btn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function () {
+            showConfirm(t('clear_world_context'), t('confirm_clear_world_context'), t('Delete'), t('Cancel'), true).then(function (confirmed) {
+                if (confirmed && cardConfig) {
+                    cardConfig._worldContext = null;
+                    var charName = _getCurrentCharName();
+                    if (charName) saveCardConfig(charName, cardConfig);
+                    _refreshCurrentPanel();
+                }
+            });
+        });
+    }
+    var wcSaveBtn = container.querySelector('#ne-world-ctx-save');
+    if (wcSaveBtn) {
+        wcSaveBtn.addEventListener('click', function () {
+            var editArea = container.querySelector('#ne-world-ctx-edit');
+            if (!editArea || !cardConfig) return;
+            var text = editArea.value.trim();
+            if (text) {
+                cardConfig._worldContext = { summary: text, source: 'user_edit', _extractedAt: new Date().toISOString() };
+            } else {
+                cardConfig._worldContext = null;
+            }
+            var charName = _getCurrentCharName();
+            if (charName) saveCardConfig(charName, cardConfig);
+            _worldCtxEditing = false;
+            _refreshCurrentPanel();
+        });
+    }
+    var wcCancelBtn = container.querySelector('#ne-world-ctx-cancel');
+    if (wcCancelBtn) {
+        wcCancelBtn.addEventListener('click', function () {
+            _worldCtxEditing = false;
+            _refreshCurrentPanel();
         });
     }
 }
 
-function _hookLibraryEvents(container, templates, order) {
+function _hookLibraryEvents(container, templates, order, cardConfig) {
     // Create template
     var createBtn = container.querySelector('#ne-btn-create-template');
     if (createBtn) {
@@ -411,12 +620,19 @@ function _hookLibraryEvents(container, templates, order) {
         });
     }
 
-    // Edit / Delete buttons
+    // Edit / Duplicate / Delete buttons
     var editBtns = container.querySelectorAll('[data-action="edit"]');
     for (var i = 0; i < editBtns.length; i++) {
         editBtns[i].addEventListener('click', function () {
             var tplId = this.getAttribute('data-template-id');
             _showEditor(container, tplId, false, templates, order);
+        });
+    }
+    var dupBtns = container.querySelectorAll('[data-action="duplicate"]');
+    for (var d = 0; d < dupBtns.length; d++) {
+        dupBtns[d].addEventListener('click', function () {
+            var tplId = this.getAttribute('data-template-id');
+            _duplicateTemplate(tplId, templates, container);
         });
     }
     var delBtns = container.querySelectorAll('[data-action="delete"]');
@@ -426,15 +642,165 @@ function _hookLibraryEvents(container, templates, order) {
             _deleteTemplateConfirm(tplId, templates, order, container);
         });
     }
+
+    // P3: Search input
+    var searchInput = container.querySelector('#ne-template-search');
+    if (searchInput) {
+        searchInput.addEventListener('input', function () {
+            _searchQuery = this.value.toLowerCase();
+            _applySearchFilter(container, templates);
+        });
+    }
+
+    // P3: Sort select
+    var sortSelect = container.querySelector('#ne-template-sort');
+    if (sortSelect) {
+        sortSelect.addEventListener('change', function () {
+            _sortBy = this.value;
+            renderTemplatesIntoSlide(container);
+        });
+    }
+
+    // P2: Role tab switching
+    var roleTabs = container.querySelectorAll('[data-role-tab]');
+    for (var rt = 0; rt < roleTabs.length; rt++) {
+        roleTabs[rt].addEventListener('click', function () {
+            var roleKey = this.getAttribute('data-role-tab');
+            _activeRoleTab = roleKey;
+            _activeTagFilter = null;
+            renderTemplatesIntoSlide(container);
+        });
+    }
+
+    // P3: Tag filter chips
+    var tagChips = container.querySelectorAll('[data-tag-filter]');
+    for (var tc = 0; tc < tagChips.length; tc++) {
+        tagChips[tc].addEventListener('click', function () {
+            _activeTagFilter = this.getAttribute('data-tag-filter') || null;
+            renderTemplatesIntoSlide(container);
+        });
+    }
+
+    // P4: Expandable description
+    var descToggles = container.querySelectorAll('[data-toggle-desc]');
+    for (var dt = 0; dt < descToggles.length; dt++) {
+        descToggles[dt].addEventListener('click', function () {
+            this.classList.toggle('expanded');
+        });
+    }
+}
+
+function _applySearchFilter(container, templates) {
+    var cards = container.querySelectorAll('.ne-template-card');
+    var anyVisible = false;
+    for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var tplId = card.getAttribute('data-template-id');
+        var tpl = templates[tplId];
+        if (!tpl) continue;
+
+        var matches = true;
+        if (_searchQuery) {
+            var name = (tpl.name || tplId).toLowerCase();
+            var desc = (tpl.description || '').toLowerCase();
+            var tags = (tpl.tags || []).join(' ').toLowerCase();
+            matches = name.indexOf(_searchQuery) !== -1 || desc.indexOf(_searchQuery) !== -1 || tags.indexOf(_searchQuery) !== -1;
+        }
+        if (_activeTagFilter) {
+            var tplTags = tpl.tags || [];
+            matches = matches && tplTags.indexOf(_activeTagFilter) !== -1;
+        }
+        card.classList.toggle('ne-search-hidden', !matches);
+        if (matches) anyVisible = true;
+    }
+    // Show/hide no-match message
+    var noMatch = container.querySelector('.ne-search-no-match');
+    if (!anyVisible && _searchQuery) {
+        if (!noMatch) {
+            var activeContent = container.querySelector('.ne-template-role-content.active');
+            if (activeContent) {
+                var msg = pdCreate('div');
+                msg.className = 'ne-search-no-match';
+                msg.textContent = t('none_available');
+                activeContent.appendChild(msg);
+            }
+        }
+    } else if (noMatch) {
+        noMatch.remove();
+    }
 }
 
 // ─────────────────────────────────────
-// Template Editor
+// P5: Unified template selector modal
+// ─────────────────────────────────────
+
+function _showTemplateSelectorModal(opts) {
+    var title = opts.title || '';
+    var templates = opts.templates || {};
+    var role = opts.role || 'npc';
+    var excludeIds = opts.excludeIds || [];
+    var onPick = opts.onPick;
+
+    var available = Object.keys(templates).filter(function (id) {
+        return templates[id] && templates[id].role === role && excludeIds.indexOf(id) === -1;
+    });
+
+    if (available.length === 0) {
+        showToast(t('none_available'), 'info');
+        return;
+    }
+
+    var html = '<div class="ne-modal-overlay" id="ne-template-selector-modal">';
+    html += '<div class="ne-modal">';
+    html += '<h3>' + escapeHtml(title) + '</h3>';
+    html += '<div class="ne-modal-body">';
+    available.forEach(function (id) {
+        var tpl = templates[id];
+        html += '<label class="ne-preset-field">' +
+            '<input type="radio" name="ne-template-select" value="' + escapeHtml(id) + '"> ' +
+            escapeHtml(tpl.name || id) +
+            (tpl.description ? ' <span style="color:var(--grey-50);font-size:0.85em;">' + escapeHtml(tpl.description.substring(0, 60)) + '</span>' : '') +
+            '</label>';
+    });
+    html += '</div>';
+    html += '<div class="ne-modal-footer">';
+    html += '<button id="ne-template-select-save" class="menu_button">' + escapeHtml(t('add')) + '</button>';
+    html += '<button id="ne-template-select-cancel" class="menu_button">' + escapeHtml(t('Cancel')) + '</button>';
+    html += '</div></div></div>';
+
+    var overlay = pdCreate('div');
+    overlay.innerHTML = html;
+    var modalEl = overlay.firstElementChild;
+    PD.body.appendChild(modalEl);
+
+    // Show with animation
+    requestAnimationFrame(function () { modalEl.classList.add('show'); });
+
+    // Close handler
+    function closeModal() {
+        modalEl.classList.remove('show');
+        setTimeout(function () { if (modalEl.parentNode) modalEl.parentNode.removeChild(modalEl); }, 200);
+    }
+
+    modalEl.querySelector('#ne-template-select-cancel').addEventListener('click', closeModal);
+    modalEl.addEventListener('click', function (e) { if (e.target === modalEl) closeModal(); });
+
+    modalEl.querySelector('#ne-template-select-save').addEventListener('click', function () {
+        var selected = modalEl.querySelector('input[name="ne-template-select"]:checked');
+        if (selected && onPick) {
+            onPick(selected.value);
+        }
+        closeModal();
+    });
+}
+
+// ─────────────────────────────────────
+// Template Editor (P6 deferred to phase 3, basic version here)
 // ─────────────────────────────────────
 
 function _showEditor(container, templateId, isNew, templates, order) {
     var tpl = isNew
-        ? { name: '', role: 'npc', presetFields: [], customFieldRefs: [], tags: [], description: '', source: 'user_created' }
+        ? { name: '', role: _activeRoleTab || 'npc', presetFields: [], customFieldRefs: [], tags: [], description: '', source: 'user_created' }
         : (templateId ? templates[templateId] : null);
     if (!tpl && !isNew) return;
 
@@ -447,10 +813,10 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<input type="text" id="ne-editor-name" class="ne-editor-input" value="' + escapeHtml(tpl.name || '') + '" placeholder="' + escapeHtml(t('Name')) + '">';
     html += '<label>' + escapeHtml(t('Role')) + '</label>';
     html += '<select id="ne-editor-role" class="ne-config-select">';
-    html += '<option value="npc"' + (tpl.role === 'npc' || !tpl.role ? ' selected' : '') + '>NPC</option>';
-    html += '<option value="pc"' + (tpl.role === 'pc' ? ' selected' : '') + '>PC</option>';
-    html += '<option value="faction"' + (tpl.role === 'faction' ? ' selected' : '') + '>Faction</option>';
-    html += '<option value="quest"' + (tpl.role === 'quest' ? ' selected' : '') + '>Quest</option>';
+    html += '<option value="npc"' + (tpl.role === 'npc' || !tpl.role ? ' selected' : '') + '>' + escapeHtml(t('role_npc')) + '</option>';
+    html += '<option value="pc"' + (tpl.role === 'pc' ? ' selected' : '') + '>' + escapeHtml(t('role_pc')) + '</option>';
+    html += '<option value="faction"' + (tpl.role === 'faction' ? ' selected' : '') + '>' + escapeHtml(t('role_faction')) + '</option>';
+    html += '<option value="quest"' + (tpl.role === 'quest' ? ' selected' : '') + '>' + escapeHtml(t('role_quest')) + '</option>';
     html += '</select>';
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
     html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2">' + escapeHtml(tpl.description || '') + '</textarea>';
@@ -496,7 +862,6 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<div class="ne-preset-category">';
     var roundFieldCandidates = ['current_mood', 'inner_thoughts', 'affection', 'relationship', 'injuries', 'status_effects'];
     var existingPerRound = (tpl.perRoundFields && Array.isArray(tpl.perRoundFields)) ? tpl.perRoundFields : [];
-    var hasPerRound = existingPerRound.length > 0;
     roundFieldCandidates.forEach(function (fn) {
         var checked = existingPerRound.indexOf(fn) !== -1;
         html += '<label class="ne-preset-field">' +
@@ -533,7 +898,7 @@ function _showEditor(container, templateId, isNew, templates, order) {
     html += '<button id="ne-editor-cancel" class="menu_button">' + escapeHtml(t('Cancel')) + '</button>';
     html += '</div>';
 
-    html += '</div>'; // .ne-template-editor
+    html += '</div>';
 
     container.innerHTML = html;
 
@@ -541,6 +906,7 @@ function _showEditor(container, templateId, isNew, templates, order) {
     var backBtn = container.querySelector('#ne-editor-back');
     if (backBtn) {
         backBtn.addEventListener('click', function () {
+            _activeTopTab = 'library';
             renderTemplatesIntoSlide(container);
         });
     }
@@ -548,6 +914,7 @@ function _showEditor(container, templateId, isNew, templates, order) {
     var cancelBtn = container.querySelector('#ne-editor-cancel');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', function () {
+            _activeTopTab = 'library';
             renderTemplatesIntoSlide(container);
         });
     }
@@ -607,11 +974,14 @@ function _renderVersionHistoryHTML(tpl) {
         var isActive = ver._versionId === activeVer;
         var date = ver.createdAt ? formatLocalTime(ver.createdAt) : '';
         var dotClass = isActive ? 'ne-version-dot active' : 'ne-version-dot';
+        var verSource = ver.source || 'user_created';
+        var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('user_created') : t('user_created'));
         html += '<div class="ne-version-item">';
         html += '<span class="' + dotClass + '"></span>';
         html += '<div class="ne-version-info">';
         html += '<span class="ne-version-date">' + escapeHtml(date) + '</span>';
         if (isActive) html += ' <span class="ne-version-badge">(' + escapeHtml(t('current')) + ')</span>';
+        html += ' <span class="ne-template-source-badge src-' + (verSource === 'ai_generated' ? 'ai' : 'user') + '" style="font-size:0.7em;">' + escapeHtml(verSourceLabel) + '</span>';
         if (ver.added && ver.added.length) html += '<div class="ne-version-diff">+ ' + escapeHtml(ver.added.join(', ')) + '</div>';
         if (ver.removed && ver.removed.length) html += '<div class="ne-version-diff ne-diff-removed">- ' + escapeHtml(ver.removed.join(', ')) + '</div>';
         html += '</div></div>';
@@ -628,18 +998,16 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     var lockEl = container.querySelector('#ne-editor-lock');
 
     if (!nameEl || !nameEl.value.trim()) {
-        showToast('Name is required.', 'warn');
+        showToast(t('name_required'), 'warn');
         return;
     }
 
-    // Collect preset fields
     var presetFields = [];
     var checkboxes = container.querySelectorAll('.ne-preset-checkbox:checked');
     for (var c = 0; c < checkboxes.length; c++) {
         presetFields.push(checkboxes[c].value);
     }
 
-    // Collect custom fields
     var customFieldRefs = [];
     var customItems = container.querySelectorAll('.ne-custom-field-item span');
     for (var i = 0; i < customItems.length; i++) {
@@ -649,7 +1017,6 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     var tags = tagsEl ? tagsEl.value.split(',').map(function(t) { return t.trim(); }).filter(Boolean) : [];
     var isLocked = lockEl ? lockEl.checked : false;
 
-    // Collect perRoundFields
     var perRoundFields = [];
     var perRoundCheckboxes = container.querySelectorAll('.ne-perround-checkbox:checked');
     for (var pr = 0; pr < perRoundCheckboxes.length; pr++) {
@@ -674,6 +1041,7 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
 
     saveTemplate(template);
     showToast(t('template_saved'), 'success', 3000);
+    _activeTopTab = 'library';
     renderTemplatesIntoSlide(container);
 }
 
@@ -681,9 +1049,13 @@ function _addCustomFieldToEditor(container) {
     var input = container.querySelector('#ne-editor-add-custom');
     if (!input || !input.value.trim()) return;
     var fieldName = input.value.trim();
+    // P6: conflict check with predefined fields
+    if (ALL_PREDEFINED_FIELDS && ALL_PREDEFINED_FIELDS[fieldName]) {
+        showToast(t('custom_field_conflict'), 'warn');
+        return;
+    }
     var listEl = container.querySelector('#ne-editor-custom-fields');
     if (!listEl) return;
-    // Check dup
     var existing = listEl.querySelectorAll('.ne-custom-field-item span');
     for (var i = 0; i < existing.length; i++) {
         if (existing[i].textContent === fieldName) return;
@@ -718,13 +1090,35 @@ function _deleteTemplateConfirm(templateId, templates, order, container) {
     showConfirm(
         t('Confirm'),
         t('Delete this entry? This cannot be undone.'),
-        t('Delete'), t('Cancel'), true/*isDanger*/
+        t('Delete'), t('Cancel'), true
     ).then(function(confirmed) {
         if (confirmed) {
             deleteTemplate(templateId);
             showToast(t('template_deleted'), 'info', 3000);
             renderTemplatesIntoSlide(container || panelById('ne-slide-panel-content'));
         }
+    });
+}
+
+function _duplicateTemplate(templateId, templates, container) {
+    var tpl = templates[templateId];
+    if (!tpl) return;
+    showConfirm(t('duplicate'), t('confirm_duplicate'), t('duplicate'), t('Cancel'), false).then(function(confirmed) {
+        if (!confirmed) return;
+        var newId = 'tpl_' + Date.now();
+        var newTpl = JSON.parse(JSON.stringify(tpl));
+        newTpl.id = newId;
+        newTpl.name = (tpl.name || templateId) + ' ' + t('duplicated_suffix');
+        newTpl.source = 'user_created';
+        newTpl._locked = false;
+        newTpl.system = false;
+        newTpl.createdAt = new Date().toISOString();
+        newTpl.updatedAt = new Date().toISOString();
+        delete newTpl.versions;
+        delete newTpl._activeVersion;
+        saveTemplate(newTpl);
+        showToast(t('template_saved'), 'success', 3000);
+        renderTemplatesIntoSlide(container || panelById('ne-slide-panel-content'));
     });
 }
 
@@ -750,13 +1144,19 @@ function _saveCardConfigChange(cardConfig, templates) {
     }
 
     saveCardConfig(charName, cardConfig);
-    showToast('Settings saved.', 'success', 2000);
+    showToast(t('Settings saved.'), 'success', 2000);
 }
 
 function _removeNpcFromPool(npcId, cardConfig) {
     if (!cardConfig || !cardConfig._templateConfig) return;
     var pool = cardConfig._templateConfig.npc || ['_default_npc'];
     var idx = pool.indexOf(npcId);
+    if (idx === -1) {
+        // Try by _templateId
+        for (var i = 0; i < pool.length; i++) {
+            if (pool[i] && pool[i]._templateId === npcId) { idx = i; break; }
+        }
+    }
     if (idx === -1) return;
     if (pool.length <= 1) {
         console.log('[NE-Templates] Cannot remove last NPC template from pool');
@@ -789,106 +1189,10 @@ function _removeQuestFromPool(questId, cardConfig) {
     }
 }
 
-function _showQuestSelector(templates, cardConfig) {
-    var questOptions = Object.keys(templates).filter(function (id) {
-        return templates[id] && templates[id].role === 'quest';
-    });
-    var questPool = (cardConfig._templateConfig && cardConfig._templateConfig.quest) ? cardConfig._templateConfig.quest : ['_default_quest'];
-
-    var html = '<div class="ne-modal-overlay" id="ne-quest-selector">';
-    html += '<div class="ne-modal">';
-    html += '<h3>Select Quest Template</h3>';
-    html += '<div class="ne-modal-body">';
-    questOptions.forEach(function (id) {
-        var tpl = templates[id];
-        var disabled = questPool.indexOf(id) !== -1;
-        html += '<label class="ne-preset-field"' + (disabled ? ' style="opacity:0.5"' : '') + '>' +
-            '<input type="radio" name="ne-quest-select" value="' + escapeHtml(id) + '"' + (disabled ? ' disabled' : '') + '> ' +
-            escapeHtml(tpl.name || id) + (disabled ? ' (already in pool)' : '') +
-            '</label>';
-    });
-    html += '</div>';
-    html += '<div class="ne-modal-footer">';
-    html += '<button id="ne-quest-select-save" class="menu_button">Add</button>';
-    html += '<button id="ne-quest-select-cancel" class="menu_button">Cancel</button>';
-    html += '</div></div></div>';
-
-    var panel = document.getElementById('ne-template-config-panel');
-    if (!panel) return;
-    var overlay = document.createElement('div');
-    overlay.innerHTML = html;
-    var selectorEl = overlay.firstElementChild;
-    panel.appendChild(selectorEl);
-
-    selectorEl.querySelector('#ne-quest-select-cancel').addEventListener('click', function () {
-        selectorEl.remove();
-    });
-
-    selectorEl.querySelector('#ne-quest-select-save').addEventListener('click', function () {
-        var selected = selectorEl.querySelector('input[name="ne-quest-select"]:checked');
-        if (selected) {
-            var qid = selected.value;
-            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
-            var pool = cardConfig._templateConfig.quest || ['_default_quest'];
-            if (pool.indexOf(qid) === -1) {
-                pool.push(qid);
-                cardConfig._templateConfig.quest = pool;
-                var charName = _getCurrentCharName();
-                if (charName) saveCardConfig(charName, cardConfig);
-            }
-        }
-        selectorEl.remove();
-        _refreshCurrentPanel();
-    });
-}
-
-function _showNpcSelector(templates, cardConfig) {
-    var npcTpls = Object.keys(templates).filter(function(id) {
-        return templates[id] && templates[id].role === 'npc';
-    });
-    if (npcTpls.length === 0) {
-        showToast(t('no_templates'), 'info');
-        return;
-    }
-
-    var container = panelById('ne-slide-panel-content');
-    if (!container) return;
-
-    var html = '<div class="ne-npc-selector" id="ne-npc-selector">';
-    html += '<div class="ne-section-title">' + escapeHtml(t('add_from_library')) + '</div>';
-    npcTpls.forEach(function(id) {
-        var tpl = templates[id];
-        html += '<div class="ne-npc-select-item">' +
-            '<span>' + escapeHtml(tpl.name || id) + '</span>' +
-            '<button class="ne-btn-small" data-select-npc="' + escapeHtml(id) + '">+</button>' +
-            '</div>';
-    });
-    html += '<button class="ne-btn-small" id="ne-npc-selector-cancel">' + escapeHtml(t('Cancel')) + '</button>';
-    html += '</div>';
-
-    container.innerHTML = html;
-
-    // Bind
-    var selBtns = container.querySelectorAll('[data-select-npc]');
-    for (var i = 0; i < selBtns.length; i++) {
-        selBtns[i].addEventListener('click', function() {
-            var tplId = this.getAttribute('data-select-npc');
-            _addNpcToPool(tplId, cardConfig, templates);
-        });
-    }
-    var cancelBtn = container.querySelector('#ne-npc-selector-cancel');
-    if (cancelBtn) {
-        cancelBtn.addEventListener('click', function() {
-            renderTemplatesIntoSlide(container);
-        });
-    }
-}
-
 function _addNpcToPool(templateId, cardConfig, templates) {
     if (!cardConfig) return;
     if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
     if (!cardConfig._templateConfig.npc) cardConfig._templateConfig.npc = [];
-    // Check duplicate
     for (var i = 0; i < cardConfig._templateConfig.npc.length; i++) {
         if (cardConfig._templateConfig.npc[i]._templateId === templateId) return;
     }
@@ -900,6 +1204,10 @@ function _addNpcToPool(templateId, cardConfig, templates) {
     });
     var charName = _getCurrentCharName();
     if (charName) saveCardConfig(charName, cardConfig);
+    _refreshCurrentPanel();
+}
+
+function _refreshCurrentPanel() {
     var container = panelById('ne-slide-panel-content');
     if (container) renderTemplatesIntoSlide(container);
 }

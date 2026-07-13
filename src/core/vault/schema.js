@@ -1085,9 +1085,15 @@ export function saveFieldLibrary(lib) {
 }
 
 /**
- * Register a field definition to an NPC scheme's fields map.
+ * Register a field definition to an NPC scheme's fields map (runtime instance).
  * Used by template LLM's resolveFieldProposal handler when a new field is accepted.
- * @param {Object} scheme — npc_schemes entry { fields: {...} }
+ *
+ * NOTE: This operates on the runtime scheme.fields map (the instantiated tracking
+ * fields for a specific NPC). For adding a custom field reference to a *template*
+ * definition (so it's reused across conversations), use
+ * store.js `registerFieldToTemplate(templateId, fieldName)` instead.
+ *
+ * @param {Object} scheme - npc_schemes entry { fields: {...} }
  * @param {string} fieldName
  * @param {import('../../types.js').SchemaFieldDef} fieldDef
  * @param {'ai_generated'|'user_created'} source

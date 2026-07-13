@@ -6,7 +6,7 @@
  * and tool handler implementations (resolveNpcScheme / resolveFieldProposal).
  */
 
-import { callMemoryPipeline } from '../api/llm.js';
+import { callMemoryPipeline, callMemoryLLM } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import {
     ALL_PREDEFINED_FIELDS, expandTemplateFields, resolveFieldDef,
@@ -144,12 +144,15 @@ export function buildTools() {
  */
 export function callTemplateLLM(messages, options, chatId) {
     options = options || {};
+    // N6: Route through resolvePipelineApi to use dedicated ne_template_api channel
+    // instead of falling back to callMemoryPipeline (which may hit ST main pipeline).
+    // Fallback chain: ne_template_api > default secondary > ST main pipeline.
     var mergedOptions = Object.assign({}, options, {
         operation: options.operation || 'template_scheme',
         temperature: options.temperature || 0.4,
-        _forcePipelineApi: false
+        _forcePipelineApi: true
     });
-    return callMemoryPipeline(messages, mergedOptions, chatId);
+    return callMemoryLLM(messages, mergedOptions, chatId);
 }
 
 /**

@@ -511,8 +511,54 @@ export function injectBottomDrawerCSS() {
         // ── NPC Selector ──
         '.ne-npc-selector{background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px 12px;margin-top:6px;}' +
         '.ne-npc-select-item{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:3px 0;font-size:0.85em;}' +
-        // ── Responsive: 768px two-col → stacked ──
+        // ── Responsive: 768px two-col -> stacked ──
         '.ne-mobile .ne-template-grid{grid-template-columns:1fr;}' +
+        // ── Modal overlay (P5: unified selector modal) ──
+        '.ne-modal-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;' +
+        'background:rgba(0,0,0,.5);opacity:0;transition:opacity .15s;}' +
+        '.ne-modal-overlay.show{opacity:1;}' +
+        '.ne-modal{background:var(--SmartThemeBlurTintColor,#1e1e1e);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
+        'border:1px solid var(--SmartThemeBorderColor,#444);border-radius:12px;padding:16px 20px;min-width:300px;max-width:90vw;max-height:70vh;' +
+        'display:flex;flex-direction:column;transform:scale(.9);transition:transform .2s cubic-bezier(0,0,0.2,1);}' +
+        '.ne-modal-overlay.show .ne-modal{transform:scale(1);}' +
+        '.ne-modal h3{font-size:1em;font-weight:bold;margin:0 0 10px;}' +
+        '.ne-modal-body{flex:1;overflow-y:auto;margin-bottom:12px;}' +
+        '.ne-modal-footer{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;}' +
+        // ── Template toolbar (P3: search + filter + sort) ──
+        '.ne-template-toolbar{display:flex;gap:6px;align-items:center;margin-bottom:8px;flex-wrap:wrap;}' +
+        '.ne-template-toolbar input[type=text]{flex:1;min-width:120px;padding:4px 8px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.82em;}' +
+        '.ne-template-toolbar select{padding:4px 8px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.82em;}' +
+        '.ne-tag-chips{display:flex;gap:4px;flex-wrap:wrap;margin-bottom:6px;}' +
+        '.ne-tag-chip{padding:2px 8px;border-radius:10px;font-size:0.75em;cursor:pointer;background:var(--black20a);color:var(--grey-60);border:1px solid var(--SmartThemeBorderColor);transition:background .15s,color .15s;}' +
+        '.ne-tag-chip:hover{background:var(--black30a);color:var(--text);}' +
+        '.ne-tag-chip.active{background:var(--ne-info-bg);color:var(--ne-info);border-color:var(--ne-info-border);}' +
+        // ── Template card redesign (P4) ──
+        '.ne-template-card-desc{font-size:0.8em;color:var(--grey-50);margin-bottom:4px;line-height:1.4;cursor:pointer;' +
+        'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}' +
+        '.ne-template-card-desc.expanded{-webkit-line-clamp:unset;overflow:visible;}' +
+        '.ne-template-role-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.72em;font-weight:bold;margin-right:4px;}' +
+        '.ne-template-role-badge.role-pc{background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);}' +
+        '.ne-template-role-badge.role-npc{background:var(--ne-muted-bg);color:var(--ne-muted);border:1px solid rgba(136,136,136,0.25);}' +
+        '.ne-template-role-badge.role-faction{background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);}' +
+        '.ne-template-role-badge.role-quest{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
+        '.ne-template-source-badge{font-size:0.72em;padding:1px 5px;border-radius:3px;margin-right:4px;}' +
+        '.ne-template-source-badge.src-system{background:var(--ne-info-bg);color:var(--ne-info);}' +
+        '.ne-template-source-badge.src-ai{background:var(--ne-warning-bg);color:var(--ne-warning);}' +
+        '.ne-template-source-badge.src-user{background:var(--ne-muted-bg);color:var(--ne-muted);}' +
+        '.ne-template-field-chip{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.72em;margin-right:3px;background:var(--black20a);color:var(--grey-60);}' +
+        '.ne-template-in-use{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.72em;font-weight:bold;background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
+        '.ne-template-card-meta{display:flex;flex-wrap:wrap;gap:4px;align-items:center;font-size:0.75em;color:var(--grey-60);margin-bottom:6px;}' +
+        // ── Config panel polish (P7) ──
+        '.ne-config-in-use-badge{font-size:0.7em;padding:1px 5px;border-radius:3px;background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);margin-left:4px;}' +
+        '.ne-world-ctx-actions{display:flex;gap:6px;margin-top:4px;}' +
+        '.ne-world-ctx-edit-area{width:100%;min-height:80px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);color:var(--text);border-radius:4px;padding:6px 8px;font-size:0.82em;font-family:inherit;resize:vertical;}' +
+        // ── Role tabs within library (P2) ──
+        '.ne-template-role-tabs{display:flex;gap:2px;margin-bottom:8px;border-bottom:1px solid var(--SmartThemeBorderColor);}' +
+        '.ne-template-role-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;color:var(--grey-70);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;user-select:none;}' +
+        '.ne-template-role-tab:hover{color:var(--text,#ddd);}' +
+        '.ne-template-role-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor);font-weight:bold;}' +
+        '.ne-template-role-content{display:none;}' +
+        '.ne-template-role-content.active{display:block;}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 }

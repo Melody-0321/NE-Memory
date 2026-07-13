@@ -940,6 +940,17 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     return lockedNames;
 }
 
+/**
+ * Register a custom field reference to a template definition (persisted in library).
+ * Adds fieldName to template.customFieldRefs so it's reused across conversations.
+ *
+ * NOTE: This operates on the template *definition* in the global library. For
+ * registering a field on a runtime NPC scheme instance (the instantiated
+ * tracking fields), use schema.js `registerFieldToScheme(scheme, ...)` instead.
+ *
+ * @param {string} templateId
+ * @param {string} fieldName
+ */
 export function registerFieldToTemplate(templateId, fieldName) {
     var lib = loadTemplateLibrary();
     var tpl = lib.templates[templateId];
