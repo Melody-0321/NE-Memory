@@ -599,9 +599,9 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         if (alreadyActive) return;
         tplOptionsHtml += '<option value="__global__' + escapeHtml(tid) + '">' + escapeHtml(gt.name) + ' [' + escapeHtml(t('global')) + ']</option>';
     });
-    html += '<div class="ne-scheme-section">';
+    html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
     html += '<label>' + escapeHtml('Template') + '</label>';
-    html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;margin-bottom:8px;">' + tplOptionsHtml + '</select>';
+    html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;">' + tplOptionsHtml + '</select>';
     html += '</div>';
 
     // Required fields section
@@ -655,11 +655,12 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '</div>';
     html += '</div>';
 
-    // P9: Version history (for non-new templates)
+    // P9: Version history (only in edit_current mode)
+    var vhDisplay = (defaultMode === 'edit_current') ? '' : ' display:none;';
     if (dtKey && dialogueTemplates[dtKey]) {
         var currentDt = dialogueTemplates[dtKey];
         if (currentDt && currentDt._versionHistory && currentDt._versionHistory.length > 0) {
-            html += '<div class="ne-scheme-section">';
+            html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
             html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + currentDt._versionHistory.length + ')</div>';
             html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
             currentDt._versionHistory.slice(0, 5).forEach(function(vh) {
@@ -742,7 +743,49 @@ function _exitSchemeEditMode(cardEl) {
 function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKey, tpl, cardConfig, templates) {
     var dialogueTemplates = cardConfig._dialogueTemplates || {};
 
-    // Template selector — handles both card-level and global template selection
+    // P9: Mode tab switching - controls visibility of template dropdown and version history
+    var modeTabs = cardEl.querySelectorAll('.ne-scheme-mode-tab');
+    for (var mi = 0; mi < modeTabs.length; mi++) {
+        modeTabs[mi].addEventListener('click', function() {
+            if (this.getAttribute('data-disabled') === '1') return;
+            var mode = this.getAttribute('data-scheme-mode');
+            // Update tab styles
+            for (var tj = 0; tj < modeTabs.length; tj++) {
+                var tab = modeTabs[tj];
+                var tabMode = tab.getAttribute('data-scheme-mode');
+                var isActive = (tabMode === mode);
+                var tabEnabled = tab.getAttribute('data-disabled') !== '1';
+                tab.className = 'ne-scheme-mode-tab' + (isActive ? ' active' : '');
+                tab.style.borderBottomColor = isActive ? 'var(--ne-accent)' : 'transparent';
+                tab.style.color = isActive ? 'var(--ne-accent)' : (!tabEnabled ? 'var(--grey-30)' : 'var(--grey-50)');
+            }
+
+            // Toggle template dropdown visibility
+            var tplSection = cardEl.querySelector('#ne-scheme-tpl-section');
+            if (tplSection) tplSection.style.display = (mode === 'switch_template') ? '' : 'none';
+
+            // Toggle version history visibility
+            var vhSection = cardEl.querySelector('#ne-scheme-version-section');
+            if (vhSection) vhSection.style.display = (mode === 'edit_current') ? '' : 'none';
+
+            // Mode-specific field loading
+            if (mode === 'edit_current') {
+                // Restore current dt's fields
+                var curDt = dtKey ? dialogueTemplates[dtKey] : null;
+                _refreshSchemeCheckboxes(cardEl, (curDt && curDt.presetFields) || []);
+                _refreshSchemeCustomFields(cardEl, (curDt && curDt.customFieldRefs) || []);
+            } else if (mode === 'from_scratch') {
+                // Clear all checkboxes and custom fields
+                _refreshSchemeCheckboxes(cardEl, []);
+                _refreshSchemeCustomFields(cardEl, []);
+                dtKey = null;
+                tpl = null;
+            }
+            // switch_template: don't change fields yet, wait for dropdown selection
+        });
+    }
+
+    // Template selector - handles both card-level and global template selection
     var tplSelect = cardEl.querySelector('#ne-scheme-template-select');
     if (tplSelect) {
         tplSelect.addEventListener('change', function() {
