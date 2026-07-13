@@ -1,4 +1,4 @@
-import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard } from '../core/vault/store.js';
+import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
@@ -687,22 +687,40 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '</div>';
     html += '</div>';
 
-    // P9: Version history (only in edit_current mode)
+    // P9: Version history (only in edit_current mode) - traverse _dialogueTemplates by _templateId
     var vhDisplay = (defaultMode === 'edit_current') ? '' : ' display:none;';
     if (dtKey && dialogueTemplates[dtKey]) {
         var currentDt = dialogueTemplates[dtKey];
-        if (currentDt && currentDt._versionHistory && currentDt._versionHistory.length > 0) {
+        var currentTplId = currentDt._templateId || null;
+        // Find all versions with the same _templateId
+        var allVersions = [];
+        if (currentTplId) {
+            Object.keys(dialogueTemplates).forEach(function(k) {
+                var dt = dialogueTemplates[k];
+                if (dt && dt._templateId === currentTplId) {
+                    allVersions.push({ key: k, tpl: dt });
+                }
+            });
+        }
+        if (allVersions.length > 1) {
+            allVersions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
             html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
-            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + currentDt._versionHistory.length + ')</div>';
+            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + allVersions.length + ')</div>';
             html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
-            currentDt._versionHistory.slice(0, 5).forEach(function(vh) {
-                var isActive = (currentDt._activeVersionKey === vh.key);
+            allVersions.slice(0, 5).forEach(function(ver) {
+                var isActive = !!ver.tpl._active;
                 html += '<div style="padding:2px 4px;display:flex;align-items:center;gap:4px;' + (isActive ? 'background:var(--grey-10);' : '') + '">';
-                html += '<span style="color:var(--grey-50);">' + escapeHtml(formatLocalTime(vh.createdAt)) + '</span>';
+                html += '<span style="color:var(--grey-50);">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
                 if (isActive) {
                     html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
                 } else {
-                    html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(vh.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
+                    html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
+                }
+                var verSource = ver.tpl.source || 'user_created';
+                var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('rollback') : t('user_created'));
+                html += ' <span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(verSourceLabel) + '</span>';
+                if (ver.tpl._state && ver.tpl._state !== 'synced') {
+                    html += ' <span style="font-size:0.85em;color:var(--ne-warn);">' + escapeHtml(ver.tpl._state) + '</span>';
                 }
                 html += '</div>';
             });
@@ -899,38 +917,23 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
         });
     }
 
-    // P9: Version switch buttons
+    // P9: Version switch buttons - use restoreTemplateVersion from store
     var switchBtns = cardEl.querySelectorAll('[data-switch-version]');
     for (var j = 0; j < switchBtns.length; j++) {
         switchBtns[j].addEventListener('click', function() {
             var versionKey = this.getAttribute('data-switch-version');
-            if (versionKey && dtKey && cardConfig && cardConfig._dialogueTemplates) {
-                var currentDt = cardConfig._dialogueTemplates[dtKey];
-                if (currentDt && currentDt._versionHistory) {
-                    // Find the target version
-                    var targetVer = null;
-                    for (var vi = 0; vi < currentDt._versionHistory.length; vi++) {
-                        if (currentDt._versionHistory[vi].key === versionKey) {
-                            targetVer = currentDt._versionHistory[vi];
-                            break;
-                        }
-                    }
-                    if (targetVer) {
-                        // Update active version key
-                        currentDt._activeVersionKey = versionKey;
-                        currentDt.presetFields = targetVer.presetFields || [];
-                        currentDt.customFieldRefs = targetVer.customFieldRefs || [];
-                        // Refresh UI
-                        _refreshSchemeCheckboxes(cardEl, currentDt.presetFields);
-                        _refreshSchemeCustomFields(cardEl, currentDt.customFieldRefs);
-                        showToast(t('version_switched'), 'success', 2000);
-                        // Re-render editor to update version history display
-                        var state = _getCurrentState();
-                        if (state) {
-                            enterSchemeEditMode(cardEl, charName, getCharacterCardType(charName, state));
-                        }
-                    }
+            if (!versionKey || !protoName) return;
+            // Use store-level restoreTemplateVersion to switch active version
+            var ok = restoreTemplateVersion(protoName, versionKey);
+            if (ok) {
+                showToast(t('version_switched'), 'success', 2000);
+                // Reload cardConfig and re-render editor
+                var state = _getCurrentState();
+                if (state) {
+                    enterSchemeEditMode(cardEl, charName, getCharacterCardType(charName, state));
                 }
+            } else {
+                showToast(t('Save failed'), 'error', 3000);
             }
         });
     }

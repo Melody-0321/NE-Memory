@@ -172,6 +172,7 @@ function _renderConfigPanelHTML(cardConfig, templates, order) {
             html += '<div class="ne-config-npc-item">' +
                 '<span>' + escapeHtml(label) + stateBadge + '</span>' +
                 '<span class="ne-npc-lock-btn' + (dtLocked ? ' locked' : '') + '" data-lock-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('lock_tooltip')) + '" data-template-name="' + escapeHtml(label) + '">' + (dtLocked ? '\u{1F512}' : '\u{1F513}') + '</span>' +
+                '<button class="ne-btn-small" data-edit-card-version="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('view_edit')) + '">\u270E</button>' +
                 '<button class="ne-btn-small ne-btn-danger" data-remove-npc="' + escapeHtml(entry._templateId) + '" title="' + escapeHtml(t('remove')) + '">\u2715</button>' +
                 '</div>';
         });
@@ -489,6 +490,18 @@ function _hookConfigEvents(container, cardConfig, templates, order) {
         removeButtons[i].addEventListener('click', function () {
             var tplId = this.getAttribute('data-remove-npc');
             _removeNpcFromPool(tplId, cardConfig);
+        });
+    }
+
+    // Edit card-level version (opens editor with active dialogue template)
+    var editCardBtns = container.querySelectorAll('[data-edit-card-version]');
+    for (var ec = 0; ec < editCardBtns.length; ec++) {
+        editCardBtns[ec].addEventListener('click', function () {
+            var tplId = this.getAttribute('data-edit-card-version');
+            if (!tplId || !cardConfig || !cardConfig._dialogueTemplates) return;
+            var activeKey = getActiveVersionKey(cardConfig._dialogueTemplates, tplId);
+            if (!activeKey) return;
+            _showEditor(container, tplId, false, templates, order, true, activeKey);
         });
     }
 
@@ -829,42 +842,72 @@ function _showTemplateSelectorModal(opts) {
 // Template Editor (P6 deferred to phase 3, basic version here)
 // ─────────────────────────────────────
 
-function _showEditor(container, templateId, isNew, templates, order) {
-    var tpl = isNew
-        ? { name: '', role: _activeRoleTab || 'npc', presetFields: [], customFieldRefs: [], tags: [], description: '', source: 'user_created' }
-        : (templateId ? templates[templateId] : null);
-    if (!tpl && !isNew) return;
-
-    // N7: Load cardConfig for push/detach/version history
+function _showEditor(container, templateId, isNew, templates, order, isCardLevel, cardDtKey) {
+    // N7: Load cardConfig first (needed for card-level mode)
     var cardConfig = null;
     var charName = _getCurrentCharName();
     try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
 
+    var tpl;
+    if (isNew) {
+        tpl = { name: '', role: _activeRoleTab || 'npc', presetFields: [], customFieldRefs: [], tags: [], description: '', source: 'user_created' };
+    } else if (isCardLevel && cardDtKey && cardConfig && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[cardDtKey]) {
+        // Card-level mode: load from dialogue template version
+        var dt = cardConfig._dialogueTemplates[cardDtKey];
+        tpl = {
+            id: dt._templateId,
+            name: (templates[dt._templateId] && templates[dt._templateId].name) || dt._templateId || 'Card Version',
+            role: (templates[dt._templateId] && templates[dt._templateId].role) || 'npc',
+            presetFields: dt.presetFields || [],
+            customFieldRefs: dt.customFieldRefs || [],
+            tags: (templates[dt._templateId] && templates[dt._templateId].tags) || [],
+            description: (templates[dt._templateId] && templates[dt._templateId].description) || '',
+            source: dt.source || 'user_created',
+            createdAt: dt.createdAt,
+            _state: dt._state || 'synced',
+            _active: dt._active
+        };
+    } else {
+        tpl = templateId ? templates[templateId] : null;
+    }
+    if (!tpl && !isNew) return;
+
     var html = '<div class="ne-template-editor" id="ne-template-editor">';
     // P6: Breadcrumb navigation
     html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:0.82em;">';
-    html += '<span class="ne-breadcrumb-link" id="ne-editor-bc-library" style="cursor:pointer;color:var(--ne-info);">' + escapeHtml(t('breadcrumb_library')) + '</span>';
+    if (isCardLevel) {
+        html += '<span class="ne-breadcrumb-link" id="ne-editor-bc-library" style="cursor:pointer;color:var(--ne-info);">' + escapeHtml(t('dialogue_config')) + '</span>';
+    } else {
+        html += '<span class="ne-breadcrumb-link" id="ne-editor-bc-library" style="cursor:pointer;color:var(--ne-info);">' + escapeHtml(t('breadcrumb_library')) + '</span>';
+    }
     html += '<span style="color:var(--grey-50);"> \u203a </span>';
     html += '<span style="color:var(--grey-50);">' + (isNew ? escapeHtml(t('breadcrumb_new')) : escapeHtml(t('breadcrumb_edit'))) + '</span>';
     if (!isNew && tpl.name) {
         html += '<span style="color:var(--grey-50);"> \u203a </span>';
         html += '<span>' + escapeHtml(tpl.name) + '</span>';
     }
+    if (isCardLevel) {
+        html += ' <span class="ne-template-source-badge src-user" style="font-size:0.75em;">' + escapeHtml(t('card_level')) + '</span>';
+    }
     html += '</div>';
 
-    // Basic info
+    // Basic info (read-only in card-level mode)
+    var metaDisabled = isCardLevel ? ' disabled' : '';
     html += '<div class="ne-editor-section">';
     html += '<label>' + escapeHtml(t('Name')) + '</label>';
-    html += '<input type="text" id="ne-editor-name" class="ne-editor-input" value="' + escapeHtml(tpl.name || '') + '" placeholder="' + escapeHtml(t('Name')) + '">';
+    html += '<input type="text" id="ne-editor-name" class="ne-editor-input" value="' + escapeHtml(tpl.name || '') + '" placeholder="' + escapeHtml(t('Name')) + '"' + metaDisabled + '>';
     html += '<label>' + escapeHtml(t('Role')) + '</label>';
-    html += '<select id="ne-editor-role" class="ne-config-select">';
+    html += '<select id="ne-editor-role" class="ne-config-select"' + metaDisabled + '>';
     html += '<option value="npc"' + (tpl.role === 'npc' || !tpl.role ? ' selected' : '') + '>' + escapeHtml(t('role_npc')) + '</option>';
     html += '<option value="pc"' + (tpl.role === 'pc' ? ' selected' : '') + '>' + escapeHtml(t('role_pc')) + '</option>';
     html += '<option value="faction"' + (tpl.role === 'faction' ? ' selected' : '') + '>' + escapeHtml(t('role_faction')) + '</option>';
     html += '<option value="quest"' + (tpl.role === 'quest' ? ' selected' : '') + '>' + escapeHtml(t('role_quest')) + '</option>';
     html += '</select>';
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
-    html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2">' + escapeHtml(tpl.description || '') + '</textarea>';
+    html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2"' + metaDisabled + '>' + escapeHtml(tpl.description || '') + '</textarea>';
+    if (isCardLevel) {
+        html += '<div style="font-size:0.8em;color:var(--grey-50);margin-top:4px;">' + escapeHtml(t('card_version_edit_hint') || 'Editing card-level fields only. Metadata is read-only.') + '</div>';
+    }
     html += '</div>';
 
     // Preset fields
@@ -919,26 +962,31 @@ function _showEditor(container, templateId, isNew, templates, order) {
     });
     html += '</div></div>';
 
-    // Tags
-    html += '<div class="ne-editor-section">';
-    html += '<label>' + escapeHtml(t('Tags')) + '</label>';
-    var tags = (tpl.tags && Array.isArray(tpl.tags)) ? tpl.tags.join(', ') : '';
-    html += '<input type="text" id="ne-editor-tags" class="ne-editor-input" value="' + escapeHtml(tags) + '" placeholder="tag1, tag2">';
-    html += '</div>';
-
-    // Version history
-    if (!isNew && tpl.versions && tpl.versions.length > 0) {
-        html += _renderVersionHistoryHTML(tpl);
+    // Tags (hidden in card-level mode)
+    if (!isCardLevel) {
+        html += '<div class="ne-editor-section">';
+        html += '<label>' + escapeHtml(t('Tags')) + '</label>';
+        var tags = (tpl.tags && Array.isArray(tpl.tags)) ? tpl.tags.join(', ') : '';
+        html += '<input type="text" id="ne-editor-tags" class="ne-editor-input" value="' + escapeHtml(tags) + '" placeholder="tag1, tag2">';
+        html += '</div>';
     }
 
-    // Lock toggle
-    var isLocked = !!(tpl._locked);
-    html += '<div class="ne-editor-section">';
-    html += '<label class="ne-lock-toggle">' +
-        '<input type="checkbox" id="ne-editor-lock"' + (isLocked ? ' checked' : '') + '> ' +
-        escapeHtml(t('lock_template')) +
-        '</label>';
-    html += '</div>';
+    // Version history - always check for non-new templates (reads from cardConfig._dialogueTemplates)
+    if (!isNew) {
+        var vhHtml = _renderVersionHistoryHTML(tpl);
+        if (vhHtml) html += vhHtml;
+    }
+
+    // Lock toggle (hidden in card-level mode - lock is managed from config panel)
+    if (!isCardLevel) {
+        var isLocked = !!(tpl._locked);
+        html += '<div class="ne-editor-section">';
+        html += '<label class="ne-lock-toggle">' +
+            '<input type="checkbox" id="ne-editor-lock"' + (isLocked ? ' checked' : '') + '> ' +
+            escapeHtml(t('lock_template')) +
+            '</label>';
+        html += '</div>';
+    }
 
     // P6: Show in-use count for non-new templates
     if (!isNew && cardConfig && cardConfig._dialogueTemplates) {
@@ -988,11 +1036,15 @@ function _showEditor(container, templateId, isNew, templates, order) {
     container.innerHTML = html;
 
     // Bind editor events
-    // P6: Breadcrumb "Library" click returns to library tab view
+    // P6: Breadcrumb click returns to previous view
     var bcLib = container.querySelector('#ne-editor-bc-library');
     if (bcLib) {
         bcLib.addEventListener('click', function () {
-            _activeTopTab = 'library';
+            if (isCardLevel) {
+                _activeTopTab = 'config';
+            } else {
+                _activeTopTab = 'library';
+            }
             renderTemplatesIntoSlide(container);
         });
     }
@@ -1000,7 +1052,11 @@ function _showEditor(container, templateId, isNew, templates, order) {
     var cancelBtn = container.querySelector('#ne-editor-cancel');
     if (cancelBtn) {
         cancelBtn.addEventListener('click', function () {
-            _activeTopTab = 'library';
+            if (isCardLevel) {
+                _activeTopTab = 'config';
+            } else {
+                _activeTopTab = 'library';
+            }
             renderTemplatesIntoSlide(container);
         });
     }
@@ -1008,7 +1064,11 @@ function _showEditor(container, templateId, isNew, templates, order) {
     var saveBtn = container.querySelector('#ne-editor-save');
     if (saveBtn) {
         saveBtn.addEventListener('click', function () {
-            _saveTemplateFromEditor(container, templateId, isNew, templates, order);
+            if (isCardLevel) {
+                _saveCardLevelEditor(container, charName, cardDtKey, cardConfig, templates, order);
+            } else {
+                _saveTemplateFromEditor(container, templateId, isNew, templates, order);
+            }
         });
     }
 
@@ -1158,6 +1218,31 @@ function _renderVersionHistoryHTML(tpl) {
     });
     html += '</div></div>';
     return html;
+}
+
+function _saveCardLevelEditor(container, charName, cardDtKey, cardConfig, templates, order) {
+    // Read preset fields from checkboxes
+    var presetFields = [];
+    var checkboxes = container.querySelectorAll('.ne-preset-checkbox:checked');
+    for (var i = 0; i < checkboxes.length; i++) {
+        presetFields.push(checkboxes[i].value);
+    }
+    // Read custom fields
+    var customFieldRefs = [];
+    var customItems = container.querySelectorAll('.ne-custom-field-item span');
+    for (var j = 0; j < customItems.length; j++) {
+        customFieldRefs.push(customItems[j].textContent);
+    }
+
+    // Use editTemplateInCard to create new immutable version
+    var newKey = editTemplateInCard(charName, cardDtKey, presetFields, customFieldRefs);
+    if (newKey) {
+        showToast(t('template_saved'), 'success', 3000);
+        _activeTopTab = 'config';
+        renderTemplatesIntoSlide(container);
+    } else {
+        showToast(t('Save') + ': ERROR', 'error', 3000);
+    }
 }
 
 function _saveTemplateFromEditor(container, templateId, isNew, templates, order) {
