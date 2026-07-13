@@ -496,11 +496,13 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
 
     // Get state and protagonist name
     var state = _getCurrentState();
-    var protoName = (state && state.protagonist_name) || '';
+    var protoName = _getCurrentCharName();
     if (!protoName) {
         showToast('No protagonist configured', 'error', 3000);
         return;
     }
+    // Sync state.protagonist_name if missing
+    if (state && !state.protagonist_name) state.protagonist_name = protoName;
 
     // Load card config (per-protagonist) and global template library
     var cardConfig = loadCardConfigSync(protoName) || { _dialogueTemplates: {}, _templateConfig: {}, _version: 0 };
@@ -961,6 +963,20 @@ function _getCurrentState() {
         if (typeof window.__NE_CURRENT_VAULT_STATE !== 'undefined') return window.__NE_CURRENT_VAULT_STATE;
     } catch (e) {}
     return null;
+}
+
+function _getCurrentCharName() {
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            if (ctx && ctx.name2) return ctx.name2;
+        }
+    } catch (e) {}
+    try {
+        if (typeof window.__NE_CURRENT_CHAT_ID === 'function') return window.__NE_CURRENT_CHAT_ID();
+    } catch (e) {}
+    var st = _getCurrentState();
+    return (st && st.protagonist_name) || null;
 }
 
 function exitCardEditMode(cardDiv) {
