@@ -102,8 +102,8 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
     var cfg = cardConfig && cardConfig._templateConfig ? cardConfig._templateConfig : {};
     var pcTemplate = cfg.pc || null;
     var npcPool = (cfg.npc && Array.isArray(cfg.npc)) ? cfg.npc : [];
-    var factionId = cfg.faction || '_default_faction';
-    var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_task', '_default_goal'];
+    var factionId = cfg.faction || null;
+    var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : [];
     var hasChar = !!_getCurrentCharName();
 
     if (!hasChar) {
@@ -144,7 +144,7 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
                 }
             });
         } else if (r.key === 'faction') {
-            if (factionId && factionId !== '_default_faction') {
+            if (factionId) {
                 var facTpl = templates[factionId];
                 if (facTpl) {
                     cardsHtml = _renderConfigCardHTML(facTpl, factionId, cardConfig, 'faction');
@@ -153,7 +153,7 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
             }
         } else if (r.key === 'quest') {
             questPool.forEach(function (qid) {
-                if (qid && qid !== '_default_task' && qid !== '_default_goal') {
+                if (qid) {
                     var qTpl = templates[qid];
                     if (qTpl) {
                         cardsHtml += _renderConfigCardHTML(qTpl, qid, cardConfig, 'quest');
@@ -735,8 +735,8 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
             _templateConfig: {
                 pc: null,
                 npc: [],
-                faction: '_default_faction',
-                quest: ['_default_task', '_default_goal'],
+                faction: null,
+                quest: [],
                 _templateMode: 'fast'
             },
             _dialogueTemplates: {}
@@ -797,7 +797,7 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
             if (!cardConfig._templateConfig.npc) cardConfig._templateConfig.npc = [];
             cardConfig._templateConfig.npc.push({ _templateId: tplId, name: tpl.name || '', role: 'npc' });
         } else if (roleType === 'quest') {
-            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_task', '_default_goal'];
+            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = [];
             if (cardConfig._templateConfig.quest.indexOf(tplId) !== -1) {
                 showToast(t('already_in_pool'), 'info', 2000);
                 return;
@@ -805,7 +805,7 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
             if (charName) cloneTemplateToCard(charName, tpl);
             cardConfig = loadCardConfigSync(charName) || cardConfig;
             if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
-            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_task', '_default_goal'];
+            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = [];
             cardConfig._templateConfig.quest.push(tplId);
         }
         if (charName) saveCardConfig(charName, cardConfig);
@@ -821,7 +821,7 @@ function _removeTemplateFromDialogue(tplId, roleType, cardConfig, container) {
     if (roleType === 'pc') {
         delete cardConfig._templateConfig.pc;
     } else if (roleType === 'faction') {
-        cardConfig._templateConfig.faction = '_default_faction';
+        cardConfig._templateConfig.faction = null;
     } else if (roleType === 'npc') {
         var npcPool = cardConfig._templateConfig.npc || [];
         var idx = -1;
@@ -832,7 +832,7 @@ function _removeTemplateFromDialogue(tplId, roleType, cardConfig, container) {
         npcPool.splice(idx, 1);
         cardConfig._templateConfig.npc = npcPool;
     } else if (roleType === 'quest') {
-        var questPool = cardConfig._templateConfig.quest || ['_default_task', '_default_goal'];
+        var questPool = cardConfig._templateConfig.quest || [];
         var qIdx = questPool.indexOf(tplId);
         if (qIdx === -1) return;
         questPool.splice(qIdx, 1);
@@ -1567,7 +1567,7 @@ function _removeNpcFromPool(npcId, cardConfig) {
 
 function _removeQuestFromPool(questId, cardConfig) {
     if (!cardConfig || !cardConfig._templateConfig) return;
-    var pool = cardConfig._templateConfig.quest || ['_default_task', '_default_goal'];
+    var pool = cardConfig._templateConfig.quest || [];
     var idx = pool.indexOf(questId);
     if (idx === -1) return;
     if (pool.length <= 1) {
