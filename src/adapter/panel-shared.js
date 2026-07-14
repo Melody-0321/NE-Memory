@@ -386,6 +386,25 @@ export function injectBottomDrawerCSS() {
         '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,.08);' +
         '--ne-radius-sm:4px;--ne-radius-md:8px;--ne-radius-lg:12px;' +
         '}' +
+        // ── Custom scrollbar (Webkit + Firefox) ──
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay, .ne-slide-panel, .ne-template-editor') + '{' +
+        '--ne-scroll-thumb:rgba(255,255,255,.15);' +
+        '--ne-scroll-thumb-hover:rgba(255,255,255,.28);' +
+        '--ne-scroll-track:transparent;' +
+        '}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar,' +
+        '.ne-slide-panel *::-webkit-scrollbar{width:8px;height:8px;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-track,' +
+        '.ne-slide-panel *::-webkit-scrollbar-track{background:var(--ne-scroll-track);border-radius:4px;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb,' +
+        '.ne-slide-panel *::-webkit-scrollbar-thumb{background:var(--ne-scroll-thumb);border-radius:4px;' +
+        'border:2px solid transparent;background-clip:padding-box;transition:background .15s;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb:hover,' +
+        '.ne-slide-panel *::-webkit-scrollbar-thumb:hover{background:var(--ne-scroll-thumb-hover);background-clip:padding-box;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-corner,' +
+        '.ne-slide-panel *::-webkit-scrollbar-corner{background:transparent;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *,' +
+        '.ne-slide-panel *{scrollbar-width:thin;scrollbar-color:var(--ne-scroll-thumb) var(--ne-scroll-track);}' +
         // ── Slide-in panel ──
         '.ne-slide-panel{position:absolute;top:0;right:0;bottom:0;width:85%;' +
         'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
@@ -616,7 +635,12 @@ export function injectBottomDrawerCSS() {
                 '.ne-modal-overlay.show .ne-modal{transform:scale(1);}' +
                 '.ne-modal h3{font-size:1em;font-weight:bold;margin:0 0 10px;}' +
                 '.ne-modal-body{flex:1;overflow-y:auto;margin-bottom:12px;}' +
-                '.ne-modal-footer{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;}';
+                '.ne-modal-footer{display:flex;gap:8px;justify-content:flex-end;flex-shrink:0;}' +
+                '.ne-modal *::-webkit-scrollbar{width:6px;height:6px;}' +
+                '.ne-modal *::-webkit-scrollbar-track{background:transparent;}' +
+                '.ne-modal *::-webkit-scrollbar-thumb{background:rgba(255,255,255,.15);border-radius:3px;}' +
+                '.ne-modal *::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.28);}' +
+                '.ne-modal *{scrollbar-width:thin;scrollbar-color:rgba(255,255,255,.15) transparent;}';
             pdHead().appendChild(modalStyle);
         }
     }
