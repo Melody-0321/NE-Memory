@@ -1,4 +1,5 @@
 import { readVault, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
+import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versions.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
@@ -136,6 +137,7 @@ export async function updateVaultViewerPopout(getChatId) {
                         var isLocked = !state.characters[name]._templateLocked;
                         state.characters[name]._templateLocked = isLocked;
                         await write(chatId, vault);
+                        recordStateDelta(chatId, { source: 'manual_edit', summary: '切换模板锁定 ' + name, changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                         if (isLocked) {
                             this.classList.add('locked');
                             this.textContent = '\u{1F512}';
@@ -182,6 +184,7 @@ export async function updateVaultViewerPopout(getChatId) {
             c.stm_entries = stmEntries.concat(misplacedEntries);
             c.unconsolidated_stm = unconsolidatedRaw.filter(function (e) { return !e.parent_ltm; });
             await write(getChatId(), vault);
+            recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: 'STM 自愈迁移 ' + misplacedEntries.length + ' 条', delta: {}, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
             stmIndexMap = {};
             var stmEntries2 = Array.isArray(c.stm_entries) ? c.stm_entries : [];
             var unconsolidatedRaw2 = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
@@ -272,6 +275,7 @@ export async function updateVaultViewerPopout(getChatId) {
                     var json = ta ? JSON.parse(ta.value) : {};
                     c.state = json;
                     await write(getChatId(), vault);
+                    recordStateDelta(getChatId(), { source: 'manual_edit', summary: 'JSON 编辑 state', changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                     await updateVaultViewerPopout(getChatId);
                 } catch(e) { alert(t('Invalid JSON') + ': ' + e.message); }
             };
@@ -283,6 +287,7 @@ export async function updateVaultViewerPopout(getChatId) {
                     if (await showConfirm(t('Clear all state?'), t('LLM will regenerate from character card and world book on next turn.'), t('Clear'), t('Cancel'), true)) {
                         c.state = {};
                         await write(getChatId(), vault);
+                        recordStateDelta(getChatId(), { source: 'manual_edit', summary: '清空 state', changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                         await updateVaultViewerPopout(getChatId);
                     }
                 } catch (e) {

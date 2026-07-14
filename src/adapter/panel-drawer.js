@@ -1,4 +1,5 @@
 import { write } from '../core/vault/store.js';
+import { recordMemoryVersion } from '../core/vault/state-versions.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast, closeSlidePanel } from './panel-shared.js';
@@ -198,6 +199,7 @@ export async function saveSingleEntry(entryType, entryId, updates) {
         console.error('[NE] saveSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
         throw err;
     }
+    recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: '手动编辑 ' + entryType + ' ' + entryId, delta: {}, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
 }
 
 export async function deleteSingleEntry(entryType, entryId) {
@@ -235,6 +237,7 @@ export async function deleteSingleEntry(entryType, entryId) {
         console.error('[NE] deleteSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
         throw err;
     }
+    recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: '删除 ' + entryType + ' ' + entryId, delta: { stm_removed: [entryId] }, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
 }
 
 export function renderMemoryButton(getChatId) {

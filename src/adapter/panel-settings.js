@@ -7,11 +7,10 @@ import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
 import { neSyncAll } from '../core/settings-adapter.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
-import { readVault, writeMemory, collectAllMsgIds } from '../core/vault/store.js';
+import { readVault, writeMemory } from '../core/vault/store.js';
+import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versions.js';
 import { getActiveChain, listStateDeltas, listMemoryVersions } from '../core/vault/state-versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
-import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { enqueueStmWrite, reset } from '../core/engine/pipeline-guard.js';
 import { initTestRunner } from './panel-tools.js';
 
 export function renderSettingsTab() {
@@ -761,113 +760,27 @@ export function renderSettingsIntoSlide(container) {
         '</div>';
     container.appendChild(dmTitle);
 
-    // ── Operations ──
-    var opsTitle = pdCreate('div');
-    opsTitle.className = 'ne-tool-card';
-    opsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Operations') + '</div>' +
-        '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Process History') + '</button>';
-    container.appendChild(opsTitle);
+    // ── Diagnostics (dev only) ──
+    if (__NE_DEV_MODE) {
+        var diagTitle = pdCreate('div');
+        diagTitle.className = 'ne-tool-card';
+        diagTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
+            '<div class="ne-accordion" id="ne-tool-test-runner">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
+            '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>';
+        container.appendChild(diagTitle);
 
-    // ── Diagnostics ──
-    var diagTitle = pdCreate('div');
-    diagTitle.className = 'ne-tool-card';
-    diagTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
-        '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (__NE_DEV_MODE ? '' : 'display:none;') + '">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
-        '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>';
-    container.appendChild(diagTitle);
-
-    // ── Troubleshoot ──
-    var tsTitle = pdCreate('div');
-    tsTitle.className = 'ne-tool-card';
-    tsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Troubleshoot') + '</div>';
-    container.appendChild(tsTitle);
+        // ── Troubleshoot (dev only) ──
+        var tsTitle = pdCreate('div');
+        tsTitle.className = 'ne-tool-card';
+        tsTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Troubleshoot') + '</div>';
+        container.appendChild(tsTitle);
+    }
 
     // Render settings content
     renderSettingsTab();
 
     // Event handlers for data management buttons
-
-    // Process History
-    var processHistoryBtn = container.querySelector('#narrative_vault_process_history');
-    if (processHistoryBtn) {
-        processHistoryBtn.onclick = async function() {
-            if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
-            var prevText = processHistoryBtn.textContent;
-            var PH_BATCH_CHARS = 4000;
-            try {
-                var rs = localStorage.getItem('ne_settings');
-                if (rs) { var ps = JSON.parse(rs); if (ps.phBatchChars) PH_BATCH_CHARS = Number(ps.phBatchChars); }
-            } catch (e) {}
-            var total = 0;
-            try {
-                var chatMessages = [];
-                try {
-                    if (typeof window.parent.SillyTavern !== 'undefined' && window.parent.SillyTavern.getContext) {
-                        chatMessages = window.parent.SillyTavern.getContext().chat || [];
-                    } else if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-                        chatMessages = SillyTavern.getContext().chat || [];
-                    }
-                } catch (e) {}
-                if (chatMessages.length === 0) { alert(t('No messages found in chat.')); return; }
-                var toProcess = [];
-                chatMessages.forEach(function(msg, idx) {
-                    var content = msg.mes || '';
-                    if (content.trim().length > 0) {
-                        toProcess.push({ id: idx, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
-                    }
-                });
-                if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
-                var vault = await readVault(_currentGetChatId);
-                var stmMsgIdSet = collectAllMsgIds(vault);
-                toProcess = toProcess.filter(function(msg) { return !stmMsgIdSet.has(String(msg.id)); });
-                if (toProcess.length === 0) { alert(t('All messages have already been processed.')); return; }
-                processHistoryBtn.disabled = true;
-                total = toProcess.length;
-                processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
-                var cpKey = 'ne_ph_' + _currentGetChatId();
-                var processedCount = 0;
-                try {
-                    var cp = localStorage.getItem(cpKey);
-                    if (cp) {
-                        var cpData = JSON.parse(cp);
-                        if (cpData.t && cpData.i >= total) { try { localStorage.removeItem(cpKey); } catch (e2) {} }
-                        else if (cpData.t && cpData.i > 0) { processedCount = cpData.i; }
-                    }
-                } catch (e) {}
-                await enqueueStmWrite(async function() {
-                var PIPELINE_TIMEOUT_MS = 60000;
-                var accumTurns = processedCount, batchStart = processedCount, batchChars = 0;
-                for (var i = processedCount; i < total; i++) {
-                    var msgLen = toProcess[i].mes.length;
-                    if (batchChars + msgLen > PH_BATCH_CHARS && i > batchStart) {
-                        var batch = toProcess.slice(batchStart, i);
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
-                        await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
-                        accumTurns = i;
-                        try { localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: i })); } catch (e2) {}
-                        batchStart = i; batchChars = 0;
-                    }
-                    batchChars += msgLen;
-                }
-                if (batchStart < total) {
-                    var batch = toProcess.slice(batchStart, total);
-                    await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
-                    accumTurns = total;
-                    try { localStorage.removeItem(cpKey); } catch (e3) {}
-                }
-                processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
-                });
-            } catch (e) {
-                console.error('[NE] Process history failed:', e);
-                processHistoryBtn.textContent = t('Failed');
-                showToast(t('Process History') + ': ' + e.message, 'error', 6000);
-            } finally {
-                setTimeout(function() { processHistoryBtn.textContent = prevText; processHistoryBtn.disabled = false; }, 2000);
-                busEmit('vault:updated', { getChatId: _currentGetChatId });
-            }
-        };
-    }
 
     // Export button
     var exportBtn = container.querySelector('#narrative_vault_export_json');
@@ -933,6 +846,8 @@ export function renderSettingsIntoSlide(container) {
                     var text = await new Promise(function(r) { var fr = new FileReader(); fr.onload = function(e) { r(e.target.result); }; fr.readAsText(file); });
                     var imported = JSON.parse(text);
                     await writeMemory(chatId, imported);
+                    recordMemoryVersion(chatId, { type: 'manual_edit', summary: '导入 vault', delta: {}, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
+                    recordStateDelta(chatId, { source: 'manual_edit', summary: '导入 vault', changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                     busEmit('vault:updated', { getChatId: _currentGetChatId });
                 } catch (e) { alert(t('Import failed') + ': ' + e.message); }
             };

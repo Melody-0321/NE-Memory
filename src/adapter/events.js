@@ -1181,58 +1181,26 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
         return { rolledBackState: 0, rolledBackMem: 0, degraded: true, affectedMsgIds: [] };
     }
 
-    var allMsgIdsInVault = new Set();
-    var content = currentVault.content || {};
-    var allStm = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
-    allStm.forEach(function(stm) {
-        (stm.msg_ids || []).forEach(function(mid) { allMsgIdsInVault.add(String(mid)); });
-    });
-
-    function _extractSendDate(mid) {
-        var parts = String(mid).split('_');
-        if (parts.length >= 3 && parts[0] !== '?' && isFinite(parts[0])) {
-            return parts.slice(1, -1).join('_');
-        }
-        return String(mid);
+    function _msgGone(md) {
+        if (md == null) return false;
+        return findMessageInChat(chatMessages, md) == null;
     }
-
-    var deletedIds = [];
-    var deletedSendDates = new Set();
-    allMsgIdsInVault.forEach(function(mid) {
-        if (!findMessageInChat(chatMessages, mid)) {
-            deletedIds.push(mid);
-            deletedSendDates.add(_extractSendDate(mid));
-        }
-    });
-    if (deletedIds.length === 0) return { rolledBackState: 0, rolledBackMem: 0, degraded: false, affectedMsgIds: [] };
 
     var stateDeltas = await listStateDeltas(chatId, 200);
     var memVersions = await listMemoryVersions(chatId, 200);
-
-    function _msgDateHit(md) {
-        if (md == null) return false;
-        var str = String(md);
-        if (deletedIds.indexOf(str) !== -1) return true;
-        if (deletedSendDates.has(str)) return true;
-        var extracted = _extractSendDate(str);
-        return deletedSendDates.has(extracted);
-    }
 
     var affectedStateSeqs = [];
     for (var si = 0; si < stateDeltas.length; si++) {
         var sd = stateDeltas[si];
         if (!sd || !sd.message_dates) continue;
-        var hit = sd.message_dates.some(_msgDateHit);
-        if (hit) affectedStateSeqs.push(sd.seq);
+        if (sd.message_dates.some(_msgGone)) affectedStateSeqs.push(sd.seq);
     }
 
     var affectedMemSeqs = [];
     for (var mi = 0; mi < memVersions.length; mi++) {
         var mv = memVersions[mi];
         if (!mv || !mv.message_dates) continue;
-        var hit = mv.message_dates.some(_msgDateHit);
-        if (hit) affectedMemSeqs.push(mv.seq);
-
+        if (mv.message_dates.some(_msgGone)) affectedMemSeqs.push(mv.seq);
         if (mv.derived_from_stm_version != null && affectedMemSeqs.indexOf(mv.derived_from_stm_version) !== -1) {
             if (affectedMemSeqs.indexOf(mv.seq) === -1) affectedMemSeqs.push(mv.seq);
         }
@@ -1261,7 +1229,7 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
 
     reconcileOrphanedStm(currentVault, chatMessages);
 
-    return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq, affectedMsgIds: deletedIds };
+    return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq, affectedMsgIds: [] };
 }
 
 /**
@@ -1276,6 +1244,17 @@ function _handleMessageRollback(chatId, opts) {
             var vault = await readVault(chatId);
             var chatMessages = opts.chat || (getChatMessagesFn ? getChatMessagesFn() : []);
             chatMessages = Array.isArray(chatMessages) ? chatMessages : (chatMessages && chatMessages.messages ? chatMessages.messages : []);
+
+            // 改动 2: 清理 pendingMessages 中已消失的消息（避免后续 batch 提取陈旧内容）
+            var beforeLen = pendingMessages.length;
+            pendingMessages = pendingMessages.filter(function(e) {
+                if (e.id == null) return true;
+                return findMessageInChat(chatMessages, e.id) != null;
+            });
+            if (pendingMessages.length < beforeLen) {
+                persistPending();
+                console.log('[NE] _handleMessageRollback: purged ' + (beforeLen - pendingMessages.length) + ' deleted msg(s) from pending');
+            }
 
             var result = await _detectAndRollback(chatId, chatMessages, vault);
 
