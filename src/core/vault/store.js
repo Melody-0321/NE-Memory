@@ -617,7 +617,7 @@ export function getEffectiveTemplates() {
             tpl.perRoundFields = ['current_mood', 'inner_thoughts'];
         }
     });
-    return { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id], updatedAt: lib.updatedAt };
+    return { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id, DEFAULT_FACTION_TEMPLATE.id, DEFAULT_TASK_TEMPLATE.id, DEFAULT_GOAL_TEMPLATE.id], updatedAt: lib.updatedAt };
 }
 
 export function saveTemplateLibrary(lib) {
