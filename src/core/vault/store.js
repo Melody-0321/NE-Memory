@@ -645,13 +645,28 @@ export function saveTemplate(template) {
 }
 
 export function deleteTemplate(templateId) {
+    // Guard: never delete system default templates
+    var defaults = _getDefaultTemplates();
+    if (defaults[templateId]) {
+        // If a user override exists in localStorage, remove only the override
+        var lib = loadTemplateLibrary();
+        if (lib.templates[templateId]) {
+            delete lib.templates[templateId];
+            if (lib.order) {
+                var idx = lib.order.indexOf(templateId);
+                if (idx !== -1) lib.order.splice(idx, 1);
+            }
+            saveTemplateLibrary(lib);
+        }
+        return true;
+    }
     var lib = loadTemplateLibrary();
     if (!lib.templates[templateId]) return false;
     delete lib.templates[templateId];
     // Remove from order array
     if (lib.order) {
-        var idx = lib.order.indexOf(templateId);
-        if (idx !== -1) lib.order.splice(idx, 1);
+        var idx2 = lib.order.indexOf(templateId);
+        if (idx2 !== -1) lib.order.splice(idx2, 1);
     }
     saveTemplateLibrary(lib);
 

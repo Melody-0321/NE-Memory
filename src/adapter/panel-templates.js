@@ -1280,8 +1280,13 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     }
 
     // Actions
+    var isEditingSystem = !isNew && !isCardLevel && !!(tpl.system);
     html += '<div class="ne-editor-actions">';
-    html += '<button id="ne-editor-save" class="menu_button">' + escapeHtml(t('Save')) + '</button>';
+    if (isEditingSystem) {
+        html += '<button id="ne-editor-save" class="menu_button" data-system-copy="1">' + escapeHtml(t('copy_and_save')) + '</button>';
+    } else {
+        html += '<button id="ne-editor-save" class="menu_button">' + escapeHtml(t('Save')) + '</button>';
+    }
     html += '<button id="ne-editor-cancel" class="menu_button">' + escapeHtml(t('Cancel')) + '</button>';
     html += '</div>';
 
@@ -1491,6 +1496,8 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     var descEl = container.querySelector('#ne-editor-desc');
     var tagsEl = container.querySelector('#ne-editor-tags');
     var lockEl = container.querySelector('#ne-editor-lock');
+    var saveBtn = container.querySelector('#ne-editor-save');
+    var isSystemCopy = saveBtn && saveBtn.getAttribute('data-system-copy') === '1';
 
     if (!nameEl || !nameEl.value.trim()) {
         showToast(t('name_required'), 'warn');
@@ -1519,8 +1526,12 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     }
     var roleVal = roleEl ? roleEl.value : 'npc';
 
+    // System template copy: always create new ID, mark as non-system
+    var effectiveIsNew = isNew || isSystemCopy;
+    var effectiveId = effectiveIsNew ? ('tpl_' + Date.now()) : templateId;
+
     var template = {
-        id: isNew ? ('tpl_' + Date.now()) : templateId,
+        id: effectiveId,
         name: nameEl.value.trim(),
         role: roleVal,
         description: descEl ? descEl.value.trim() : '',
@@ -1530,12 +1541,17 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
         tags: tags,
         _locked: isLocked,
         source: 'user_created',
-        createdAt: isNew ? new Date().toISOString() : (templates[templateId] ? templates[templateId].createdAt : new Date().toISOString()),
+        system: false,
+        createdAt: effectiveIsNew ? new Date().toISOString() : (templates[templateId] ? templates[templateId].createdAt : new Date().toISOString()),
         updatedAt: new Date().toISOString()
     };
 
     saveTemplate(template);
-    showToast(t('template_saved'), 'success', 3000);
+    if (isSystemCopy) {
+        showToast(t('template_copied'), 'success', 3000);
+    } else {
+        showToast(t('template_saved'), 'success', 3000);
+    }
     renderTemplatesIntoSlide(container);
 }
 
