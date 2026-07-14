@@ -1,7 +1,9 @@
 #!/bin/sh
 # Pre-commit: auto-build dist before every commit
-echo "[NE] pre-commit: npm run build..."
-if ! npm run build; then
+# Use dev build (non-stripped) so hash versions loaded from CDN have diagnostics content.
+# Release commits should use --no-verify to preserve the prod build from `npm run build:all`.
+echo "[NE] pre-commit: npm run build:dev:all..."
+if ! npm run build:dev:all; then
     echo "[NE] Build failed, commit aborted."
     exit 1
 fi
