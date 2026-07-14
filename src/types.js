@@ -384,7 +384,6 @@ export {};
  * @typedef {Object} CardConfig
  * @property {Object<string, DialogueTemplate>} _dialogueTemplates
  * @property {TemplateConfig} _templateConfig
- * @property {{genre: string, tropes: string[], summary: string, source: 'wb'|'manual', _extractedAt: string}} [_worldContext]
  * @property {number} _version
  * @property {string} _createdAt
  * @property {string} _updatedAt

@@ -518,9 +518,7 @@ function buildFactionExtractionPrompt() {
     }).join(',\n');
 
     return '## Task\n' +
-        'Extract TWO things from the World Setting above:\n' +
-        '1. Organizations / factions / guilds / clans / families / groups\n' +
-        '2. World context — genre, tropes, summary\n' +
+        'Extract organizations / factions / guilds / clans / families / groups from the World Setting above.\n' +
         '\nFaction fields (from template): ' + factionFieldNames.join(', ') + '\n' +
         '\nOutput ONLY valid JSON:\n' +
         '{\n' +
@@ -529,15 +527,9 @@ function buildFactionExtractionPrompt() {
         '      "name": "<Full name>",\n' +
         '      ' + fieldsDesc + '\n' +
         '    }\n' +
-        '  },\n' +
-        '  "world_context": {\n' +
-        '    "genre": "\u4e16\u754c\u89c2\u7c7b\u578b\uff08\u7b80\u4f53\u4e2d\u6587\uff0c\u5982 \u90fd\u5e02\u5947\u5e7b\u3001\u8d5b\u535a\u670b\u514b\u3001\u53e4\u4ee3\u4ed9\u4fa0\u2026\uff09",\n' +
-        '    "tropes": ["\u5957\u8def1", "\u5957\u8def2"],\n' +
-        '    "summary": "\u7528 2-3 \u53e5\u4e2d\u6587\u7b80\u8ff0\u8fd9\u4e2a\u4e16\u754c\u7684\u57fa\u7840\u8bbe\u5b9a\u3002\u6ca1\u6709\u660e\u786e\u4e16\u754c\u89c2\u65f6\uff0c\u4e5f\u6839\u636e\u89d2\u8272\u5361\u63cf\u8ff0\u63a8\u65ad\u3002"\n' +
         '  }\n' +
         '}\n' +
-        '\nIf no factions exist, factions is {}.\n' +
-        'world_context is always required.';
+        '\nIf no factions exist, factions is {}.';
 }
 
 /**
@@ -601,7 +593,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                 var wbSysBlock = buildWorldBookSystemBlock(wbContent);
                 var factionResp = await callMemoryPipeline([
                     wbSysBlock,
-                    { role: 'system', content: 'You extract organizations, factions, and world context from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}. world_context is always required.' },
+                    { role: 'system', content: 'You extract organizations and factions from world settings. Return only what is explicitly described. If nothing matches, return {"factions":{}}.' },
                     { role: 'user', content: buildFactionExtractionPrompt() }
                 ], { operation: 'faction_discovery' }, chatId);
 
@@ -625,37 +617,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                             };
                         });
                         stateVault.content.faction_keywords = buildFactionKeywords(state.factions);
-                    }
-                }
-
-                if (fp && fp.world_context && typeof fp.world_context === 'object' && fp.world_context.genre) {
-                    state._world_context_cache = {
-                        genre: fp.world_context.genre || '',
-                        tropes: fp.world_context.tropes || [],
-                        summary: fp.world_context.summary || '',
-                        source: 'faction_discovery',
-                        _extractedAt: new Date().toISOString()
-                    };
-                    console.log('[NE] world_context extracted via faction_discovery: ' + fp.world_context.genre);
-
-                    // N1: Sync world_context to cardConfig._worldContext for panel display
-                    var _wcCharName = state.protagonist_name || '';
-                    if (_wcCharName) {
-                        try {
-                            var _wcCardConfig = loadCardConfigSync(_wcCharName) || {
-                                _dialogueTemplates: {}, _templateConfig: {}, _version: 0
-                            };
-                            _wcCardConfig._worldContext = {
-                                genre: state._world_context_cache.genre,
-                                tropes: state._world_context_cache.tropes,
-                                summary: state._world_context_cache.summary,
-                                source: state._world_context_cache.source,
-                                _extractedAt: state._world_context_cache._extractedAt
-                            };
-                            saveCardConfig(_wcCharName, _wcCardConfig);
-                        } catch (e) {
-                            console.warn('[NE] Failed to sync _worldContext to cardConfig:', e.message);
-                        }
                     }
                 }
             } catch (e) {

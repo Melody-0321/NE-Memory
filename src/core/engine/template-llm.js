@@ -353,8 +353,7 @@ export function resolveNpcScheme(args, state, charName) {
         buildNewSchemePrompt(
             'You design ' + roleLabel + ' tracking schemes.',
             'Character: ' + characterName + ', role: ' + role + (role === 'faction' ? ' (organization/faction)' : role === 'quest' ? ' (quest/task)' : ''),
-            ((state && state._world_context_cache && state._world_context_cache.summary) || '') +
-            ' ' + ((state && state._world_context_cache && state._world_context_cache.genre) || ''),
+            '',
             roleLabel + ' baseline: ' + roleBaseline
         ),
         { operation: 'template_scheme' }

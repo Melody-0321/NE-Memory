@@ -22,7 +22,6 @@ var _renderTicket = 0;
 var _searchQuery = '';
 var _activeTagFilter = null;
 var _sortBy = 'default';      // 'default' | 'name' | 'date' | 'fields'
-var _worldCtxEditing = false;
 var _libAccordionState = { pc: true, npc: true, faction: false, quest: false };
 var _cfgAccordionState = { pc: true, npc: true, faction: false, quest: false };
 
@@ -105,7 +104,6 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
     var npcPool = (cfg.npc && Array.isArray(cfg.npc)) ? cfg.npc : [];
     var factionId = cfg.faction || '_default_faction';
     var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_task', '_default_goal'];
-    var worldCtx = (cardConfig && cardConfig._worldContext) ? cardConfig._worldContext : null;
     var hasChar = !!_getCurrentCharName();
 
     if (!hasChar) {
@@ -190,37 +188,6 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
         html += '</div>';
         html += '</div>';
     });
-
-    // World Context (editable)
-    html += '<div class="ne-config-field">';
-    html += '<label>' + escapeHtml(t('world_context')) + '</label>';
-    html += '<div id="ne-config-world-ctx" class="ne-config-world">';
-    if (_worldCtxEditing) {
-        var ctxText = worldCtx ? (typeof worldCtx === 'string' ? worldCtx : (worldCtx.summary || worldCtx.text || JSON.stringify(worldCtx))) : '';
-        html += '<textarea class="ne-world-ctx-edit-area" id="ne-world-ctx-edit">' + escapeHtml(ctxText) + '</textarea>';
-        html += '<div class="ne-world-ctx-actions">';
-        html += '<button class="ne-btn-small" id="ne-world-ctx-save">' + escapeHtml(t('Save')) + '</button>';
-        html += '<button class="ne-btn-small" id="ne-world-ctx-cancel">' + escapeHtml(t('Cancel')) + '</button>';
-        html += '</div>';
-    } else if (worldCtx) {
-        var displayText = typeof worldCtx === 'string' ? worldCtx : (worldCtx.summary || worldCtx.text || JSON.stringify(worldCtx));
-        var ctxTime = (worldCtx._extractedAt || worldCtx.extractedAt || '');
-        var genre = (typeof worldCtx === 'object' && worldCtx.genre) ? worldCtx.genre : '';
-        html += '<div class="ne-world-ctx-text">' + escapeHtml(displayText.substring(0, 200));
-        if (genre) html += ' <span class="ne-template-source-badge src-ai" style="margin-left:4px;">' + escapeHtml(genre) + '</span>';
-        html += '</div>';
-        if (ctxTime) html += '<div class="ne-world-ctx-meta">' + escapeHtml(t('ai_extracted')) + ' \u00b7 ' + escapeHtml(formatLocalTime(ctxTime)) + '</div>';
-        html += '<div class="ne-world-ctx-actions">';
-        html += '<button class="ne-btn-small" id="ne-world-ctx-edit-btn">' + escapeHtml(t('edit_world_context')) + '</button>';
-        html += '<button class="ne-btn-small ne-btn-danger" id="ne-world-ctx-clear-btn">' + escapeHtml(t('clear_world_context')) + '</button>';
-        html += '</div>';
-    } else {
-        html += '<div class="ne-config-empty">' + escapeHtml(t('no_world_context')) + '</div>';
-        html += '<div class="ne-world-ctx-actions">';
-        html += '<button class="ne-btn-small" id="ne-world-ctx-edit-btn">' + escapeHtml(t('edit_world_context')) + '</button>';
-        html += '</div>';
-    }
-    html += '</div></div>';
 
     html += '</div>';
     return html;
@@ -730,52 +697,6 @@ function _hookUnifiedEvents(container, templates, order, cardConfig) {
         tagChips[tc].addEventListener('click', function () {
             _activeTagFilter = this.getAttribute('data-tag-filter') || null;
             renderTemplatesIntoSlide(container);
-        });
-    }
-
-    // ── World context edit/save/cancel/clear ──
-    var wcEditBtn = container.querySelector('#ne-world-ctx-edit-btn');
-    if (wcEditBtn) {
-        wcEditBtn.addEventListener('click', function () {
-            _worldCtxEditing = true;
-            _refreshCurrentPanel();
-        });
-    }
-    var wcClearBtn = container.querySelector('#ne-world-ctx-clear-btn');
-    if (wcClearBtn) {
-        wcClearBtn.addEventListener('click', function () {
-            showConfirm(t('clear_world_context'), t('confirm_clear_world_context'), t('Delete'), t('Cancel'), true).then(function (confirmed) {
-                if (confirmed && cardConfig) {
-                    cardConfig._worldContext = null;
-                    var charName = _getCurrentCharName();
-                    if (charName) saveCardConfig(charName, cardConfig);
-                    _refreshCurrentPanel();
-                }
-            });
-        });
-    }
-    var wcSaveBtn = container.querySelector('#ne-world-ctx-save');
-    if (wcSaveBtn) {
-        wcSaveBtn.addEventListener('click', function () {
-            var editArea = container.querySelector('#ne-world-ctx-edit');
-            if (!editArea || !cardConfig) return;
-            var text = editArea.value.trim();
-            if (text) {
-                cardConfig._worldContext = { summary: text, source: 'user_edit', _extractedAt: new Date().toISOString() };
-            } else {
-                cardConfig._worldContext = null;
-            }
-            var charName = _getCurrentCharName();
-            if (charName) saveCardConfig(charName, cardConfig);
-            _worldCtxEditing = false;
-            _refreshCurrentPanel();
-        });
-    }
-    var wcCancelBtn = container.querySelector('#ne-world-ctx-cancel');
-    if (wcCancelBtn) {
-        wcCancelBtn.addEventListener('click', function () {
-            _worldCtxEditing = false;
-            _refreshCurrentPanel();
         });
     }
 
