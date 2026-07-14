@@ -908,20 +908,12 @@ function _removeTemplateFromDialogue(tplId, roleType, cardConfig, container) {
             if (npcPool[i]._templateId === tplId) { idx = i; break; }
         }
         if (idx === -1) return;
-        if (npcPool.length <= 1) {
-            showToast(t('no_templates'), 'warn', 2000);
-            return;
-        }
         npcPool.splice(idx, 1);
         cardConfig._templateConfig.npc = npcPool;
     } else if (roleType === 'quest') {
         var questPool = cardConfig._templateConfig.quest || ['_default_task', '_default_goal'];
         var qIdx = questPool.indexOf(tplId);
         if (qIdx === -1) return;
-        if (questPool.length <= 1) {
-            showToast(t('no_templates'), 'warn', 2000);
-            return;
-        }
         questPool.splice(qIdx, 1);
         cardConfig._templateConfig.quest = questPool;
     }
