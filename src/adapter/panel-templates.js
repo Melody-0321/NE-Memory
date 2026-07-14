@@ -832,9 +832,26 @@ function _hookUnifiedEvents(container, templates, order, cardConfig) {
 // ─────────────────────────────────────
 
 function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, container) {
-    if (!cardConfig) return;
-    if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
     var charName = _getCurrentCharName();
+    if (!charName) {
+        showToast(t('no_character_selected') || 'No character selected', 'warn', 3000);
+        return;
+    }
+    // Create cardConfig if it doesn't exist yet
+    if (!cardConfig) {
+        cardConfig = {
+            _templateConfig: {
+                pc: null,
+                npc: [],
+                faction: '_default_faction',
+                quest: ['_default_quest'],
+                _templateMode: 'smart'
+            },
+            _dialogueTemplates: {}
+        };
+    }
+    if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+    if (!cardConfig._dialogueTemplates) cardConfig._dialogueTemplates = {};
     var tpl = templates[tplId];
     if (!tpl) return;
 
@@ -845,8 +862,10 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
         if (existingId && existingId !== tplId) {
             showConfirm(t('set_as_active'), t('confirm_replace_single').replace('{name}', tpl.name || tplId), t('Save'), t('Cancel'), false).then(function (confirmed) {
                 if (!confirmed) return;
-                // Clone template to card
+                // Clone template to card (saves to localStorage), then reload to get fresh state
                 if (charName) cloneTemplateToCard(charName, tpl);
+                cardConfig = loadCardConfigSync(charName) || cardConfig;
+                if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
                 if (roleType === 'pc') {
                     cardConfig._templateConfig.pc = { _templateId: tplId, name: tpl.name || '', role: 'protagonist' };
                 } else {
@@ -859,6 +878,8 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
         } else {
             // No existing or same template
             if (charName) cloneTemplateToCard(charName, tpl);
+            cardConfig = loadCardConfigSync(charName) || cardConfig;
+            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
             if (roleType === 'pc') {
                 cardConfig._templateConfig.pc = { _templateId: tplId, name: tpl.name || '', role: 'protagonist' };
             } else {
@@ -879,6 +900,9 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
                 }
             }
             if (charName) cloneTemplateToCard(charName, tpl);
+            cardConfig = loadCardConfigSync(charName) || cardConfig;
+            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+            if (!cardConfig._templateConfig.npc) cardConfig._templateConfig.npc = [];
             cardConfig._templateConfig.npc.push({ _templateId: tplId, name: tpl.name || '', role: 'npc' });
         } else if (roleType === 'quest') {
             if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_quest'];
@@ -887,6 +911,9 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
                 return;
             }
             if (charName) cloneTemplateToCard(charName, tpl);
+            cardConfig = loadCardConfigSync(charName) || cardConfig;
+            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
+            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_quest'];
             cardConfig._templateConfig.quest.push(tplId);
         }
         if (charName) saveCardConfig(charName, cardConfig);
