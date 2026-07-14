@@ -5,6 +5,7 @@
  */
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from './template-defs.js';
 import { neSync } from '../settings-adapter.js';
+import { buildMsgId } from '../engine/msg-id.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
@@ -484,9 +485,9 @@ export function mergeVaultFromMessages(messages, existingVault) {
     var newMessages = [];
     for (var i = 0; i < messages.length; i++) {
         var msg = messages[i];
-        var msgId = (msg.id != null) ? msg.id : msg.mes_id;
-        if (msgId == null || !processedIds.has(String(msgId))) {
-            newMessages.push({ id: msgId != null ? msgId : i, role: msg.is_user ? 'user' : 'assistant', content: msg.mes || '', name: msg.name || '' });
+        var msgId = buildMsgId(msg, i);
+        if (!processedIds.has(String(msgId))) {
+            newMessages.push({ id: msgId, role: msg.is_user ? 'user' : 'assistant', content: msg.mes || '', name: msg.name || '' });
         }
     }
     return { vault, newMessages };

@@ -205,6 +205,7 @@ export function onMessageSent(messageIndex) {
                         name: earlyMsg.name || '',
                         content: earlyMsg.mes || '',
                         id: earlyMsg._ne_id,
+                        _slotIdx: i,
                         timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
                     });
                 }
@@ -220,7 +221,7 @@ export function onMessageSent(messageIndex) {
         if (message) {
             _neCheckChatIntegrity('onMessageReceived:beforeNeCharStrip');
             message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
-            pendingMessages.push({ role: 'user', name: message.name || '', content: message.mes || '', id: message._ne_id, timestamp: Date.now() });
+            pendingMessages.push({ role: 'user', name: message.name || '', content: message.mes || '', id: message._ne_id, _slotIdx: messageIndex, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
@@ -231,7 +232,7 @@ export function onMessageSent(messageIndex) {
     }
 }
 
-async function consumeNeCharBlocks(messageIndex) {
+async function consumeNeCharBlocks(messageIndex, neId) {
     var pending = globalThis.__ne_pending_char_blocks;
     if (!pending || pending.length === 0) return;
     globalThis.__ne_pending_char_blocks = null;
@@ -336,7 +337,7 @@ async function consumeNeCharBlocks(messageIndex) {
                 source: 'ne_char_update',
                 summary: allCharChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
                 changes: allCharChanges,
-                message_dates: []
+                message_dates: neId ? [neId] : []
             });
         }
         await saveStateVault(chatId, vault);
@@ -373,7 +374,7 @@ export async function onMessageReceived(messageIndex) {
                     ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
             }
 
-            var assistantMsg = { role: 'assistant', content: rawMes, id: message._ne_id, timestamp: Date.now() };
+            var assistantMsg = { role: 'assistant', content: rawMes, id: message._ne_id, _slotIdx: messageIndex, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(
@@ -471,7 +472,42 @@ export async function onMessageReceived(messageIndex) {
                 }
             }
 
-            await consumeNeCharBlocks(messageIndex);
+            await consumeNeCharBlocks(messageIndex, message._ne_id);
+
+            // P0-3: reroll 回退检测（排入 stm 队列串行化，在 push pending 之前）
+            // 普通新消息 -> 无缺失 msg_id -> no-op；reroll -> 旧 msg_id 缺失 -> 回退旧提取
+            try {
+                var rbChat = runtime.getChat ? runtime.getChat() : (getChatMessagesFn ? getChatMessagesFn() : []);
+                var rbResult = null;
+                await enqueueStmWrite(async function() {
+                    var rbVault = await readVault(chatId);
+                    rbResult = await _detectAndRollback(chatId, rbChat, rbVault);
+                    if (rbResult.degraded) {
+                        await saveMemoryVault(chatId, rbVault);
+                    } else if (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0) {
+                        await saveMemoryVault(chatId, rbVault);
+                        try { await rebuildStateVault(chatId, rbResult._targetStateSeq || 0); } catch (e) { console.warn('[NE] State vault rebuild failed:', e); }
+                    }
+                });
+                if (rbResult && (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0)) {
+                    // reroll 命中：去重 pending 同槽旧条目，避免同槽多版本被当多条提取
+                    pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== messageIndex; });
+                    console.log('[NE] onMessageReceived: reroll/switch detected, rolled back state=' + rbResult.rolledBackState + ' mem=' + rbResult.rolledBackMem);
+                    notifyVaultChanged();
+                }
+            } catch (e) { console.warn('[NE] reroll detect failed:', e); }
+
+            // P1-2: UI 延迟回退标记无条件执行（解开批次门槛，原嵌在 pending>2 / shouldRunPipeline 内）
+            var psRb = globalThis.__ne_pending_state_rollback;
+            if (psRb && psRb.chatId === chatId) {
+                try { await rollbackState(chatId, psRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
+                globalThis.__ne_pending_state_rollback = null;
+            }
+            var pmRb = globalThis.__ne_pending_mem_rollback;
+            if (pmRb && pmRb.chatId === chatId) {
+                try { await rollbackMemory(chatId, pmRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
+                globalThis.__ne_pending_mem_rollback = null;
+            }
 
             pendingMessages.push(assistantMsg);
             persistPending();
@@ -484,19 +520,9 @@ export async function onMessageReceived(messageIndex) {
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
             if (isStateSchemaEnabled() && pendingMessages.length > 2) {
-                var pendingStateRb = globalThis.__ne_pending_state_rollback;
-                if (pendingStateRb && pendingStateRb.chatId === chatId) {
-                    try { await rollbackState(chatId, pendingStateRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
-                    globalThis.__ne_pending_state_rollback = null;
-                }
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
-                var pendingMemRb = globalThis.__ne_pending_mem_rollback;
-                if (pendingMemRb && pendingMemRb.chatId === chatId) {
-                    try { await rollbackMemory(chatId, pendingMemRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
-                    globalThis.__ne_pending_mem_rollback = null;
-                }
                 flushPendingMessages().catch(function(e) { console.warn('[NE] BG pipeline failed:', e); });
             }
 
@@ -595,6 +621,9 @@ export async function runLtmConsolidation(chatId) {
                 if (ltmAdded.length > 0 || stmMoved.length > 0 || ltmModified.length > 0) {
                     var chain = await getActiveChain(chatId);
                     var stmVerSeq = chain ? chain.mem_head_seq : null;
+                    // P1-4: 汇总本次巩固涉及 STM 的 msg_ids，让版本链回退能正向命中 LTM 版本
+                    var ltmMsgDates = [];
+                    stmMoved.forEach(function(e) { (e.msg_ids || []).forEach(function(mid) { if (ltmMsgDates.indexOf(mid) === -1) ltmMsgDates.push(mid); }); });
                     recordMemoryVersion(chatId, {
                         type: 'ltm_consolidation',
                         summary: 'LTM 巩固: ' + (ltmAdded.length ? ltmAdded.length + '个新arc' : '') + (stmMoved.length ? ' ' + stmMoved.length + '条STM已巩固' : ''),
@@ -603,7 +632,7 @@ export async function runLtmConsolidation(chatId) {
                             ltm_added: ltmAdded.map(function(e) { return JSON.parse(JSON.stringify(e)); }),
                             ltm_modified: ltmModified
                         },
-                        message_dates: [],
+                        message_dates: ltmMsgDates,
                         derived_from_stm_version: stmVerSeq
                     }).catch(function(err) { console.error('[NE] recordMemoryVersion (ltm) failed for ' + chatId, err); });
                 }
@@ -1129,10 +1158,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 /* ──────── 消息删除 / Swipe / 更新 — 记忆协调 ──────── */
 
 /**
- * rollbackByMessageDates — 按消息 send_date 精确回滚 State + Memory
+ * _detectAndRollback - 检测旧 msg_id 缺失并回退 State + Memory 版本链
  *
- * 沿 Pipeline Log 反查受影响的版本，利用 Delta 版本链回退。
- * 如果 Pipeline Log 不可用（P1 未实施或迁移未完成），降级到 reconcileOrphanedStm。
+ * 用 findMessageInChat（send_date+role 锚定，带 idx 漂移兜底）判定 vault 中的
+ * msg_id 是否已从当前 chat 消失。覆盖删除、reroll（send_date 变更）、swipe-switch。
+ * 沿 Pipeline Log 反查受影响版本，利用 Delta 版本链回退；降级到 reconcileOrphanedStm。
  *
  * 匹配策略：
  * - deletedIds 来自 vault STM 条目的 msg_ids（格式：idx_send_date_role）
@@ -1144,21 +1174,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
  * @param {object} currentVault — 当前 vault（用于降级路径）
  * @returns {Promise<{rolledBackState: number, rolledBackMem: number, degraded: boolean}>}
  */
-async function rollbackByMessageDates(chatId, chatMessages, currentVault) {
+async function _detectAndRollback(chatId, chatMessages, currentVault) {
     var chain = await getActiveChain(chatId);
     if (!chain || (chain.state_head_seq === 0 && chain.mem_head_seq === 0)) {
         reconcileOrphanedStm(currentVault, chatMessages);
-        return { rolledBackState: 0, rolledBackMem: 0, degraded: true };
-    }
-
-    var currentMsgIds = new Set();
-    var currentSendDates = new Set();
-    for (var i = 0; i < (chatMessages || []).length; i++) {
-        var m = chatMessages[i];
-        if (!m) continue;
-        try { currentMsgIds.add(buildMsgId(m, i)); } catch (e) {}
-        try { if (m.send_date) currentSendDates.add(String(m.send_date)); } catch (e) {}
-        try { currentMsgIds.add(String(m.id)); } catch (e) {}
+        return { rolledBackState: 0, rolledBackMem: 0, degraded: true, affectedMsgIds: [] };
     }
 
     var allMsgIdsInVault = new Set();
@@ -1179,12 +1199,12 @@ async function rollbackByMessageDates(chatId, chatMessages, currentVault) {
     var deletedIds = [];
     var deletedSendDates = new Set();
     allMsgIdsInVault.forEach(function(mid) {
-        if (!currentMsgIds.has(mid)) {
+        if (!findMessageInChat(chatMessages, mid)) {
             deletedIds.push(mid);
             deletedSendDates.add(_extractSendDate(mid));
         }
     });
-    if (deletedIds.length === 0) return { rolledBackState: 0, rolledBackMem: 0, degraded: false };
+    if (deletedIds.length === 0) return { rolledBackState: 0, rolledBackMem: 0, degraded: false, affectedMsgIds: [] };
 
     var stateDeltas = await listStateDeltas(chatId, 200);
     var memVersions = await listMemoryVersions(chatId, 200);
@@ -1241,7 +1261,7 @@ async function rollbackByMessageDates(chatId, chatMessages, currentVault) {
 
     reconcileOrphanedStm(currentVault, chatMessages);
 
-    return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq };
+    return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq, affectedMsgIds: deletedIds };
 }
 
 /**
@@ -1249,14 +1269,15 @@ async function rollbackByMessageDates(chatId, chatMessages, currentVault) {
  *
  * @param {string} chatId
  */
-function _handleMessageRollback(chatId) {
+function _handleMessageRollback(chatId, opts) {
+    opts = opts || {};
     enqueueStmWrite(async function() {
         try {
             var vault = await readVault(chatId);
-            var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+            var chatMessages = opts.chat || (getChatMessagesFn ? getChatMessagesFn() : []);
             chatMessages = Array.isArray(chatMessages) ? chatMessages : (chatMessages && chatMessages.messages ? chatMessages.messages : []);
 
-            var result = await rollbackByMessageDates(chatId, chatMessages, vault);
+            var result = await _detectAndRollback(chatId, chatMessages, vault);
 
             if (result.degraded) {
                 await saveMemoryVault(chatId, vault);
@@ -1271,6 +1292,9 @@ function _handleMessageRollback(chatId) {
                 console.log('[NE] Rollback: state versions=' + result.rolledBackState +
                     ', memory versions=' + result.rolledBackMem +
                     (result.degraded ? ' (degraded to full scan)' : ' (Pipeline Log)'));
+                if (opts.reextractSlotIdx != null && chatMessages[opts.reextractSlotIdx]) {
+                    _reextractSlot(chatMessages, opts.reextractSlotIdx);
+                }
             }
 
             notifyVaultChanged();
@@ -1278,6 +1302,38 @@ function _handleMessageRollback(chatId) {
             console.warn('[NE] Rollback failed:', e);
         }
     });
+}
+
+/**
+ * _reextractSlot - 把指定槽位消息重入 pending 以便重新提取
+ *
+ * 用于 swipe-switch：回退旧变体提取后，把当前活跃变体重新排队，
+ * 让下次 pipeline batch 基于活跃变体内容重新提取。
+ * 按 _slotIdx 去重，避免同槽多次入队。
+ *
+ * @param {object[]} chatMessages
+ * @param {number} idx
+ */
+function _reextractSlot(chatMessages, idx) {
+    var m = chatMessages[idx];
+    if (!m) return;
+    try {
+        var role = (m.is_user || m.role === 'user') ? 'user' : 'assistant';
+        m._ne_id = m._ne_id || buildMsgId(m, idx);
+        pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== idx; });
+        pendingMessages.push({
+            role: role,
+            name: m.name || '',
+            content: m.mes || '',
+            id: m._ne_id,
+            _slotIdx: idx,
+            timestamp: m.send_date ? new Date(m.send_date).getTime() : Date.now()
+        });
+        persistPending();
+        console.log('[NE] reextractSlot: re-queued slot ' + idx + ' for re-extraction (pending=' + pendingMessages.length + ')');
+    } catch (e) {
+        console.warn('[NE] reextractSlot failed:', e);
+    }
 }
 
 /**
@@ -1332,6 +1388,48 @@ function reconcileOrphanedStm(vault, chatMessages) {
     return { removedSTM: removedSTM, removedLTM: removedLTM };
 }
 
+/**
+ * _purgeStmByMsgId - 按 msg_id 强制清除 STM 条目（编辑场景专用）
+ *
+ * 编辑不改 send_date -> msg_id 不变 -> reconcileOrphanedStm 不会移除其 STM。
+ * 本函数直接移除 msg_ids 含指定 msgId 的 STM 条目，并级联清理 LTM stm_refs。
+ *
+ * @param {object} vault - 完整 vault 对象（原地修改）
+ * @param {string} msgId - 被编辑消息的 _ne_id
+ * @returns {{ removedSTM: number, removedLTM: number }}
+ */
+function _purgeStmByMsgId(vault, msgId) {
+    var content = vault.content || {};
+    var removedStmIds = new Set();
+    var filterList = function(list) {
+        return (list || []).filter(function(stm) {
+            var has = (stm.msg_ids || []).indexOf(msgId) !== -1;
+            if (has && stm.id != null) removedStmIds.add(stm.id);
+            return !has;
+        });
+    };
+    content.unconsolidated_stm = filterList(content.unconsolidated_stm);
+    content.stm_entries = filterList(content.stm_entries);
+
+    var removedLTM = 0;
+    var keptLTM = [];
+    (content.ltm_entries || []).forEach(function(ltm) {
+        var refs = (ltm.stm_refs || []).filter(function(sid) { return !removedStmIds.has(sid); });
+        if (refs.length === 0) {
+            removedLTM++;
+        } else {
+            ltm.stm_refs = refs;
+            keptLTM.push(ltm);
+        }
+    });
+    content.ltm_entries = keptLTM;
+    var removedSTM = removedStmIds.size;
+    if (removedSTM > 0) {
+        console.log('[NE] _purgeStmByMsgId: removed ' + removedSTM + ' STM, ' + removedLTM + ' LTM for ' + msgId);
+    }
+    return { removedSTM: removedSTM, removedLTM: removedLTM };
+}
+
 export async function onMessageDeleted(messageId) {
     if (!getChatIdFn) return;
     _handleMessageRollback(getChatIdFn());
@@ -1339,12 +1437,83 @@ export async function onMessageDeleted(messageId) {
 
 export async function onMessageSwiped(messageId) {
     if (!getChatIdFn) return;
-    _handleMessageRollback(getChatIdFn());
+    var chatId = getChatIdFn();
+    var chat = getChatMessagesFn ? getChatMessagesFn() : [];
+    chat = Array.isArray(chat) ? chat : (chat && chat.messages ? chat.messages : []);
+    // P0-5: 位置守卫 - 中间消息 swipe/reroll 无法干净修复（尾部提取链无法重建）
+    if (typeof messageId === 'number' && chat.length > 0 && messageId < chat.length - 1) {
+        try { toastr.warning('中间消息的 swipe/reroll 不受支持，记忆未变更。请对最新消息操作。'); } catch (e) {}
+        return;
+    }
+    // P0-4: switch 场景 send_date 已被 syncSwipeToMes 改写 -> 旧 msg_id 缺失 -> 回退 + 重入 pending；
+    //       生成场景 send_date 未变 -> no-op（留给 MESSAGE_RECEIVED 处理）
+    _handleMessageRollback(chatId, { reextractSlotIdx: messageId, chat: chat });
 }
 
 export async function onMessageUpdated(messageId) {
     if (!getChatIdFn) return;
-    _handleMessageRollback(getChatIdFn());
+    var chatId = getChatIdFn();
+    var chat = getChatMessagesFn ? getChatMessagesFn() : [];
+    chat = Array.isArray(chat) ? chat : (chat && chat.messages ? chat.messages : []);
+    // P0-5: 位置守卫 - 中间消息编辑无法干净修复
+    if (typeof messageId === 'number' && chat.length > 0 && messageId < chat.length - 1) {
+        try { toastr.warning('中间消息的编辑不受支持，记忆未变更。请对最新消息操作。'); } catch (e) {}
+        return;
+    }
+    var m = chat[messageId];
+    if (!m) return;
+    m._ne_id = m._ne_id || buildMsgId(m, messageId);
+    var editedMsgId = m._ne_id;
+    // P1-3: 编辑不改 send_date -> msg_id 不变 -> 按 msg_id 正向定位受影响版本并回退
+    enqueueStmWrite(async function() {
+        try {
+            var vault = await readVault(chatId);
+            var stateDeltas = await listStateDeltas(chatId, 200);
+            var memVersions = await listMemoryVersions(chatId, 200);
+            var affectedStateSeqs = [];
+            for (var si = 0; si < stateDeltas.length; si++) {
+                var sd = stateDeltas[si];
+                if (sd && sd.message_dates && sd.message_dates.indexOf(editedMsgId) !== -1) {
+                    affectedStateSeqs.push(sd.seq);
+                }
+            }
+            var affectedMemSeqs = [];
+            for (var mi = 0; mi < memVersions.length; mi++) {
+                var mv = memVersions[mi];
+                if (mv && mv.message_dates && mv.message_dates.indexOf(editedMsgId) !== -1) {
+                    affectedMemSeqs.push(mv.seq);
+                }
+            }
+            var targetStateSeq = 0;
+            if (affectedStateSeqs.length > 0) {
+                var earliestState = Math.min.apply(null, affectedStateSeqs);
+                if (earliestState > 0) {
+                    targetStateSeq = earliestState - 1;
+                    await rollbackState(chatId, targetStateSeq);
+                }
+            }
+            if (affectedMemSeqs.length > 0) {
+                var earliestMem = Math.min.apply(null, affectedMemSeqs);
+                if (earliestMem > 0) {
+                    await rollbackMemory(chatId, earliestMem - 1);
+                }
+            }
+            if (affectedStateSeqs.length > 0 || affectedMemSeqs.length > 0) {
+                _purgeStmByMsgId(vault, editedMsgId);
+                await saveMemoryVault(chatId, vault);
+                try { await rebuildStateVault(chatId, targetStateSeq || 0); } catch (e) { console.warn('[NE] State vault rebuild failed:', e); }
+                _reextractSlot(chat, messageId);
+                console.log('[NE] onMessageUpdated: edit rollback state=' + affectedStateSeqs.length + ' mem=' + affectedMemSeqs.length + ' -> re-extract slot ' + messageId);
+                notifyVaultChanged();
+            } else {
+                // 该消息尚无提取记录（未进过 pipeline）-> 无需回退，直接重入 pending 以便首次提取
+                _reextractSlot(chat, messageId);
+                console.log('[NE] onMessageUpdated: no prior extraction for ' + editedMsgId + ' -> re-extract slot ' + messageId);
+            }
+        } catch (e) {
+            console.warn('[NE] onMessageUpdated rollback failed:', e);
+        }
+    });
 }
 
 export async function onChatDeleted(chatId) {

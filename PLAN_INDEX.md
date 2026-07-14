@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-14 | 31 个文档 | 35% 完成
+> 自动生成 | 2026-07-14 | 32 个文档 | 38% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -12,6 +12,7 @@
 | `fix-dialog-round-control.md` | ✅ 已完成 | 2026-06-18 | 2026-06-22 | 修复计划：对话轮数注入控制不生效 |
 | `fix-panel-chat-switch-sync.md` | ✅ 已完成 | 2026-06-20 | 2026-06-28 | 修复面板聊天切换不同步问题 |
 | `fix-template-llm-and-world-context.md` | ❓ 未知 | — | — | 修复：Template LLM 触发 + World Context 填充 |
+| `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -41,7 +42,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：11
+- ✅ 已完成：12
 - 🔄 进行中：7
 - ⏳ 未开始：3
 - ❓ 未标记：10
