@@ -686,8 +686,6 @@ callMemoryLLM(messages, options)
 |------|------|
 | `DEFAULT_GLOBAL_SCHEMA` | 全局状态 Schema（characters, factions, quests, power_slots） |
 | `DEFAULT_CHARACTER_SCHEMA` | 角色卡 Schema（protagonist + npc 两个 block） |
-| `DEFAULT_FACTION_SCHEMA` | 势力 Schema（name, description, leader, relations 等） |
-| `DEFAULT_QUESTS_SCHEMA` | 任务/目标/事件 Schema（tasks, goals, events 三个子块） |
 | `POWER_SLOTS_TEMPLATES` | 战力槽模板（修仙: 修为/真气/境界、科幻: energy/shield、现代: stamina/morale） |
 | `DEFAULT_NPC_SCHEME` | 默认 NPC 字段方案（standard / complex 等） |
 

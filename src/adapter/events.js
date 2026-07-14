@@ -40,9 +40,9 @@ function _neCheckChatIntegrity(tag) {
         }
     } catch (e) {}
 }
-import { checkFunctionCallingSupport, isFunctionCallingSupported, setToolResultNotifier } from '../core/engine/template-llm.js';
+import { setToolResultNotifier } from '../core/engine/template-llm.js';
 import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rebuildStateVault, recordStateDelta, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
-import { sendNeNotification, sendNeInteraction, sendNePopup } from './ne-system-msg.js';
+import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆，按实体分链组织。]',
@@ -93,23 +93,6 @@ export function restorePending() {
             localStorage.removeItem('ne_inflight');
         }
     } catch (e) { console.warn('[NE] restorePending error:', e); }
-    checkFunctionCallingSupport().then(function(supported) {
-        if (!supported) {
-            sendNePopup(null,
-                '\u26A0\uFE0F NE-Memory \u68C0\u6D4B\u5230\u5F53\u524D\u6A21\u578B\u4E0D\u652F\u6301 Function Calling\u3002\n\n' +
-                '\u4EE5\u4E0B\u529F\u80FD\u5C06\u65E0\u6CD5\u6B63\u5E38\u5DE5\u4F5C\uFF1A\n' +
-                '\u00B7 \u81EA\u52A8\u4E3A NPC \u751F\u6210\u8FFD\u8E2A\u65B9\u6848\n' +
-                '\u00B7 \u81EA\u52A8\u53D1\u73B0\u5E76\u8FFD\u8E2A\u65B0\u5C5E\u6027\n\n' +
-                '\u5EFA\u8BAE\u5207\u6362\u5230\u652F\u6301 Function Calling \u7684\u6A21\u578B\u3002\n' +
-                '\u5728\u6B64\u671F\u95F4 NE-Memory \u5C06\u4EE5\u201C\u5FEB\u901F\u6A21\u5F0F\u201D\u8FD0\u884C\uFF1A\n' +
-                '\u00B7 \u65B0 NPC \u76F4\u63A5\u4F7F\u7528\u6A21\u677F\u6C60\u4E2D\u7684\u9ED8\u8BA4\u6A21\u677F\n' +
-                '\u00B7 \u4E0D\u4F1A\u81EA\u52A8\u63D0\u6848\u65B0\u5B57\u6BB5\n' +
-                '\u00B7 \u5DF2\u6709\u7684\u89D2\u8272\u8FFD\u8E2A\u4E0D\u53D7\u5F71\u54CD',
-                { dedupKey: 'ne_fc_unsupported' }
-            );
-        }
-    });
-
     setToolResultNotifier(function(level, text, options) {
         if (level === 'error') {
             sendNeNotification(null, text, { level: 'error', durationMs: 8000 });
@@ -264,6 +247,7 @@ async function consumeNeCharBlocks(messageIndex) {
         var affectedKeys = Object.keys(charBefore);
         var summaryBefore = {};
         var allCharChanges = [];
+        var _effTemplates = getEffectiveTemplates().templates || {};
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             var c = charBefore[cb.name];
@@ -307,6 +291,12 @@ async function consumeNeCharBlocks(messageIndex) {
             if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
             var resolvedFields = resolveActiveTemplateFields(cardName, schemeKey);
             var perRoundFields = Object.keys(resolvedFields);
+            var _tpl = _effTemplates[schemeKey];
+            if (_tpl && _tpl.perRoundFields) {
+                _tpl.perRoundFields.forEach(function(fk) {
+                    if (perRoundFields.indexOf(fk) === -1) perRoundFields.push(fk);
+                });
+            }
             if (perRoundFields.length === 0) perRoundFields = ['current_mood', 'inner_thoughts'];
 
             var charChanges = [];

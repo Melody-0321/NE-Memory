@@ -54,8 +54,9 @@
 | 新文件位置 | 风险 | 加入层级 |
 |-----------|------|---------|
 | `src/core/engine/` — 影响 pipeline 流程、检索、注入、数据流 | 🔴 | 第二层提醒 + 风险表 |
-| `src/core/vault/` — 影响存储结构、Schema、快照 | 🔴 | 第二层提醒 + 风险表 |
-| `src/core/engine/` — 支持功能（遥测、统计、文本工具） | 🟡 | 仅风险表 |
+| `src/core/vault/` - 影响存储结构、Schema、快照 | 🔴 | 第二层提醒 + 风险表 |
+| `src/core/vault/template-defs.js` - 纯数据常量（默认模板定义） | 🟡 | 仅风险表 |
+| `src/core/engine/` - 支持功能（遥测、统计、文本工具） | 🟡 | 仅风险表 |
 | `src/core/` 根模块 — 轻量模块 | 🟡 | 仅风险表 |
 | `src/adapter/` — 事件绑定、引导逻辑 | 🟡 | 第二层提醒 + 风险表 |
 | `src/adapter/` — 纯 UI (panel-*.js) | 🟢 | 豁免清单 |
@@ -103,5 +104,5 @@ updated: 2026-07-09
 - 技术栈：JavaScript ES Modules → Rollup IIFE 构建
 - 核心模块风险分级：
   - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval
-  - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding
+  - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding, template-defs
   - 🟢 低风险：panel-*.js, i18n.js, style.css, test-data, token-stats, telemetry

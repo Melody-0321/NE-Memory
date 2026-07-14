@@ -276,11 +276,11 @@ var stateWithFactions = {
     main_event: '',
     protagonist_name: 'Hero',
     characters: { 'Hero': { name: 'Hero', status: '活跃', occupation: '' } },
-    factions: { 'Brotherhood': { name: 'Brotherhood', leader: 'BigBro', attitude_toward_player: '友好', notes: 'underground', _hidden: false } }
+    factions: { 'Brotherhood': { name: 'Brotherhood', attitude_toward_player: '友好', notes: 'underground', reputation_with_pc: '尊敬', _hidden: false } }
 };
 var factionTable = buildStateInjectionTable(stateWithFactions, [], {}, {});
 ok(factionTable.indexOf('Brotherhood') !== -1, 'table includes faction name');
-ok(factionTable.indexOf('BigBro') !== -1, 'table includes faction leader');
+ok(factionTable.indexOf('尊敬') !== -1, 'table includes faction reputation');
 
 var stateWithHiddenFaction = {
     main_event: '',

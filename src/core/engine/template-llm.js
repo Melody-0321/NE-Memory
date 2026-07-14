@@ -10,7 +10,7 @@ import { callMemoryPipeline, callMemoryLLM } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import {
     ALL_PREDEFINED_FIELDS, expandTemplateFields, resolveFieldDef,
-    DEFAULT_NPC_TEMPLATE, DEFAULT_PC_TEMPLATE
+    DEFAULT_NPC_TEMPLATE, DEFAULT_PC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE
 } from '../vault/schema.js';
 import { getPresetFieldsForRole } from '../vault/schema.js';
 import {
@@ -112,27 +112,6 @@ export function buildTools() {
             }
         }
     }];
-
-    if (isFunctionCallingSupported()) {
-        tools.push({
-            type: 'function',
-            function: {
-                name: 'propose_field',
-                description: 'Propose a new custom field for a character scheme. The system will validate the proposal, check the field library for duplicates, and return acceptance or rejection.',
-                parameters: {
-                    type: 'object',
-                    properties: {
-                        character_name: { type: 'string', description: 'Character this field is for' },
-                        field_name: { type: 'string', description: 'Proposed field key (snake_case, max 30 chars)' },
-                        field_type: { type: 'string', enum: ['string', 'number', 'boolean', 'enum'], description: 'Field value type' },
-                        description: { type: 'string', description: 'What this field tracks (1 sentence)' },
-                        sample_value: { type: 'string', description: 'Example value from current context' }
-                    },
-                    required: ['character_name', 'field_name', 'field_type', 'description']
-                }
-            }
-        });
-    }
 
     return tools;
 }
@@ -292,7 +271,7 @@ export function resolveNpcScheme(args, state, charName) {
     }
 
     if (cardConfig && cardConfig._templateConfig) {
-        var rawMode = (cardConfig._templateConfig._templateMode || cardConfig._templateConfig._npcTemplateMode) || 'smart';
+        var rawMode = (cardConfig._templateConfig._templateMode || cardConfig._templateConfig._npcTemplateMode) || 'fast';
         mode = (rawMode === 'fast') ? 'exact' : rawMode;
     }
 
@@ -342,7 +321,7 @@ export function resolveNpcScheme(args, state, charName) {
         // N4: determine role for default fallback
         var _isPC = (state && state.protagonist_name && characterName === state.protagonist_name);
         var _fallbackRole = _isPC ? 'npc' : (state && state.factions && state.factions.hasOwnProperty(characterName) ? 'faction' : (state && state.quests && state.quests.tasks && state.quests.tasks.hasOwnProperty(characterName) ? 'quest' : 'npc'));
-        var _fallbackTpl = _fallbackRole === 'faction' ? DEFAULT_FACTION_TEMPLATE : (_fallbackRole === 'quest' ? DEFAULT_QUEST_TEMPLATE : DEFAULT_NPC_TEMPLATE);
+        var _fallbackTpl = _fallbackRole === 'faction' ? DEFAULT_FACTION_TEMPLATE : (_fallbackRole === 'quest' ? DEFAULT_TASK_TEMPLATE : DEFAULT_NPC_TEMPLATE);
         _recordMapping('_default_' + _fallbackRole);
         var defaultFields = expandTemplateFields(_fallbackTpl);
         return Promise.resolve({
@@ -368,7 +347,7 @@ export function resolveNpcScheme(args, state, charName) {
     var roleLabel = role === 'pc' ? 'protagonist' : role;
     var roleBaseline = Object.keys(getPresetFieldsForRole(role)).join(', ').substring(0, 120);
     var defaultFallback = role === 'faction' ? DEFAULT_FACTION_TEMPLATE
-                        : role === 'quest' ? DEFAULT_QUEST_TEMPLATE
+                        : role === 'quest' ? DEFAULT_TASK_TEMPLATE
                         : DEFAULT_NPC_TEMPLATE;
     return callTemplateLLM(
         buildNewSchemePrompt(

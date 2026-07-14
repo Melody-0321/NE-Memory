@@ -3,7 +3,6 @@ import {
     registerFieldToScheme,
     ALL_PREDEFINED_FIELDS, SYSTEM_REQUIRED_FIELDS, PRESET_FIELDS,
     DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
-    DEFAULT_FACTION_SCHEMA, DEFAULT_QUESTS_SCHEMA,
     buildCharacterSchemaFromTemplates
 } from '../src/core/vault/schema.js';
 
@@ -164,15 +163,6 @@ assert(!builtSchema.npc.fields['affection'], 'npc schema should not have affecti
 // No circular template reference
 assert(DEFAULT_PC_TEMPLATE.presetFields.indexOf('name') === -1, 'PC template does not include name');
 assert(DEFAULT_NPC_TEMPLATE.presetFields.indexOf('name') === -1, 'NPC template does not include name');
-
-// ====== DEFAULT_FACTION_SCHEMA ======
-ok(DEFAULT_FACTION_SCHEMA.type === 'object', 'faction schema has type');
-ok(DEFAULT_FACTION_SCHEMA.schema, 'faction schema has schema');
-ok(DEFAULT_FACTION_SCHEMA.schema.fields, 'faction schema has fields');
-
-// ====== DEFAULT_QUESTS_SCHEMA ======
-ok(DEFAULT_QUESTS_SCHEMA.tasks, 'quests schema has tasks');
-ok(DEFAULT_QUESTS_SCHEMA.tasks.type === 'object', 'quests tasks is object type');
 
 console.log('\n=== schema-new: ' + passed + ' passed, ' + failed + ' failed ===');
 if (failed > 0) process.exit(1);

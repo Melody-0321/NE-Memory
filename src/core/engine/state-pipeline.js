@@ -1,12 +1,12 @@
 import { readState, loadCardConfigSync, saveCardConfig, getLockedTemplateCharacters } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
 import { neSync } from '../settings-adapter.js';
 import { runtime } from '../runtime.js';
 import { recordStateDelta, buildStateDeltaSummary, initializeStateChain, pruneOrphanedBranches } from '../vault/state-versions.js';
-import { buildTools, processToolCalls, isFunctionCallingSupported } from './template-llm.js';
+import { processToolCalls } from './template-llm.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -250,13 +250,6 @@ function buildTemplateLibrarySection() {
             lines.push('## NPC Templates Available');
             lines.push('- When a new NPC appears: match to the best template below. Assign via state_changes.characters.<name>._scheme = "<dialogue_template_key>".');
             lines.push('');
-            lines.push('## Tool Calling Rules');
-            lines.push('- NEW characters (any role) — MUST call get_character_scheme to build tracking scheme');
-            lines.push('  Receive field list, then output state_changes filling those fields');
-            lines.push('- Existing characters WITH _scheme — do NOT change _scheme, do NOT call get_character_scheme');
-            lines.push('- Existing characters WITHOUT _scheme — may call get_character_scheme if default is insufficient');
-            lines.push('- Need a new tracking field — call propose_field');
-            lines.push('');
             npcKeys.forEach(function(k) {
                 var t = templates[k];
                 var fields = (t.presetFields || []).concat(t.customFieldRefs || []);
@@ -288,12 +281,14 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var identityNames = getIdentityFieldNames();
 
     var factionFields = (DEFAULT_FACTION_TEMPLATE.presetFields || []).join(', ');
-    var questFields = (DEFAULT_QUEST_TEMPLATE.presetFields || []).join(', ');
+    var questFields = (DEFAULT_TASK_TEMPLATE.presetFields || []).join(', ');
+    var goalFields = (DEFAULT_GOAL_TEMPLATE.presetFields || []).filter(function(fk) { return fk !== 'name'; }).join(', ');
 
     var rulesStaticEn = '\n## Field Rules\n' +
         '- You manage characters: ' + managedList + '.\n' +
         '- You manage factions: ' + factionFields + '.\n' +
-        '- You manage quests: ' + questFields + '.\n' +
+        '- You manage tasks: ' + questFields + '.\n' +
+        '- You manage goals: ' + goalFields + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Use the field key shown in parentheses in the table above (e.g. ' + (managedFields[0] || 'gender_age') + ') as the JSON path.\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
@@ -307,6 +302,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 你管理角色: ' + managedList + '。\n' +
         '- 你管理势力: ' + factionFields + '。\n' +
         '- 你管理任务: ' + questFields + '。\n' +
+        '- 你管理目标: ' + goalFields + '。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- JSON 路径使用上方表格括号内的字段名（如 ' + (managedFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
@@ -557,7 +553,7 @@ function _persistCardConfig(charName, state) {
         var now = new Date().toISOString();
         var config = {
             _dialogueTemplates: {},
-            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _templateMode: 'exact', faction: '_default_faction', quest: ['_default_quest'] },
+            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _npcTemplateMode: 'exact', faction: '_default_faction', quest: ['_default_task', '_default_goal'] },
             _version: 1,
             _createdAt: now,
             _updatedAt: now
@@ -697,9 +693,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         });
         _checkChatIntegrity('extractStateChangesOnly:beforeLLM');
 
-        var tools = isFunctionCallingSupported() ? buildTools() : null;
-        console.log('[NE-FC] extractStateChangesOnly: FC supported =', isFunctionCallingSupported(),
-            '| tools =', tools ? tools.length : 0, '| chatId =', chatId);
+        var tools = null;
         var llmMessages = sysMsgs.concat([{ role: 'user', content: statePrompt.user }]);
         var stateResp;
 

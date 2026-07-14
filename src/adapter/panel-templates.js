@@ -11,7 +11,7 @@
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
   editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey, cloneTemplateToCard } from '../core/vault/store.js';
-import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
+import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';
@@ -104,8 +104,7 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
     var pcTemplate = cfg.pc || null;
     var npcPool = (cfg.npc && Array.isArray(cfg.npc)) ? cfg.npc : [];
     var factionId = cfg.faction || '_default_faction';
-    var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_quest'];
-    var templateMode = cfg._templateMode || cfg._npcTemplateMode || 'smart';
+    var questPool = (cfg.quest && Array.isArray(cfg.quest)) ? cfg.quest : ['_default_task', '_default_goal'];
     var worldCtx = (cardConfig && cardConfig._worldContext) ? cardConfig._worldContext : null;
     var hasChar = !!_getCurrentCharName();
 
@@ -116,15 +115,6 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
     }
 
     var html = '<div class="ne-template-config" id="ne-template-config">';
-
-    // Template mode radios
-    html += '<div class="ne-config-field ne-template-mode-field">';
-    html += '<label>' + escapeHtml(t('template_mode')) + '</label>';
-    html += '<label class="ne-radio-label"><input type="radio" name="ne-template-mode" value="fast"' + (templateMode === 'fast' ? ' checked' : '') + '> ' + escapeHtml(t('fast_mode')) + '</label>';
-    html += '<label class="ne-radio-label"><input type="radio" name="ne-template-mode" value="smart"' + (templateMode === 'smart' ? ' checked' : '') + '> ' + escapeHtml(t('smart_adjust')) + '</label>';
-    html += '</div>';
-    // Mode hint
-    html += '<div class="ne-template-mode-hint">' + escapeHtml(templateMode === 'fast' ? t('fast_mode_hint') : t('smart_mode_hint')) + '</div>';
 
     // Role accordions
     var roles = [
@@ -165,7 +155,7 @@ function _renderDialogueConfigHTML(cardConfig, templates, order) {
             }
         } else if (r.key === 'quest') {
             questPool.forEach(function (qid) {
-                if (qid && qid !== '_default_quest') {
+                if (qid && qid !== '_default_task' && qid !== '_default_goal') {
                     var qTpl = templates[qid];
                     if (qTpl) {
                         cardsHtml += _renderConfigCardHTML(qTpl, qid, cardConfig, 'quest');
@@ -743,25 +733,6 @@ function _hookUnifiedEvents(container, templates, order, cardConfig) {
         });
     }
 
-    // ── Template mode radios ──
-    var modeRadios = container.querySelectorAll('input[name="ne-template-mode"]');
-    for (var mr = 0; mr < modeRadios.length; mr++) {
-        modeRadios[mr].addEventListener('change', function () {
-            if (!cardConfig) return;
-            if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
-            cardConfig._templateConfig._templateMode = this.value;
-            // Also update _npcTemplateMode for backward compat
-            cardConfig._templateConfig._npcTemplateMode = this.value;
-            var charName = _getCurrentCharName();
-            if (charName) saveCardConfig(charName, cardConfig);
-            // Update hint text
-            var hintEl = container.querySelector('.ne-template-mode-hint');
-            if (hintEl) {
-                hintEl.textContent = this.value === 'fast' ? t('fast_mode_hint') : t('smart_mode_hint');
-            }
-        });
-    }
-
     // ── World context edit/save/cancel/clear ──
     var wcEditBtn = container.querySelector('#ne-world-ctx-edit-btn');
     if (wcEditBtn) {
@@ -844,8 +815,8 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
                 pc: null,
                 npc: [],
                 faction: '_default_faction',
-                quest: ['_default_quest'],
-                _templateMode: 'smart'
+                quest: ['_default_task', '_default_goal'],
+                _templateMode: 'fast'
             },
             _dialogueTemplates: {}
         };
@@ -905,7 +876,7 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
             if (!cardConfig._templateConfig.npc) cardConfig._templateConfig.npc = [];
             cardConfig._templateConfig.npc.push({ _templateId: tplId, name: tpl.name || '', role: 'npc' });
         } else if (roleType === 'quest') {
-            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_quest'];
+            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_task', '_default_goal'];
             if (cardConfig._templateConfig.quest.indexOf(tplId) !== -1) {
                 showToast(t('already_in_pool'), 'info', 2000);
                 return;
@@ -913,7 +884,7 @@ function _addTemplateToDialogue(tplId, roleType, cardConfig, templates, containe
             if (charName) cloneTemplateToCard(charName, tpl);
             cardConfig = loadCardConfigSync(charName) || cardConfig;
             if (!cardConfig._templateConfig) cardConfig._templateConfig = {};
-            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_quest'];
+            if (!cardConfig._templateConfig.quest) cardConfig._templateConfig.quest = ['_default_task', '_default_goal'];
             cardConfig._templateConfig.quest.push(tplId);
         }
         if (charName) saveCardConfig(charName, cardConfig);
@@ -944,7 +915,7 @@ function _removeTemplateFromDialogue(tplId, roleType, cardConfig, container) {
         npcPool.splice(idx, 1);
         cardConfig._templateConfig.npc = npcPool;
     } else if (roleType === 'quest') {
-        var questPool = cardConfig._templateConfig.quest || ['_default_quest'];
+        var questPool = cardConfig._templateConfig.quest || ['_default_task', '_default_goal'];
         var qIdx = questPool.indexOf(tplId);
         if (qIdx === -1) return;
         if (questPool.length <= 1) {
@@ -1683,7 +1654,7 @@ function _removeNpcFromPool(npcId, cardConfig) {
 
 function _removeQuestFromPool(questId, cardConfig) {
     if (!cardConfig || !cardConfig._templateConfig) return;
-    var pool = cardConfig._templateConfig.quest || ['_default_quest'];
+    var pool = cardConfig._templateConfig.quest || ['_default_task', '_default_goal'];
     var idx = pool.indexOf(questId);
     if (idx === -1) return;
     if (pool.length <= 1) {

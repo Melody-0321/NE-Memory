@@ -1,7 +1,7 @@
 import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_QUEST_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
+import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 import { recordStateDelta } from '../core/vault/state-versions.js';
@@ -540,7 +540,8 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
             '_default_pc': DEFAULT_PC_TEMPLATE,
             '_default_npc': DEFAULT_NPC_TEMPLATE,
             '_default_faction': DEFAULT_FACTION_TEMPLATE,
-            '_default_quest': DEFAULT_QUEST_TEMPLATE
+            '_default_task': DEFAULT_TASK_TEMPLATE,
+            '_default_goal': DEFAULT_GOAL_TEMPLATE
         };
         dt = defaultMap[dtKey] || null;
     }
@@ -823,7 +824,7 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                 // Restore current fields (from card-level dt or default template)
                 var curDt = dtKey ? dialogueTemplates[dtKey] : null;
                 if (!curDt && dtKey && dtKey.indexOf('_default_') === 0) {
-                    var defMap = { '_default_pc': DEFAULT_PC_TEMPLATE, '_default_npc': DEFAULT_NPC_TEMPLATE, '_default_faction': DEFAULT_FACTION_TEMPLATE, '_default_quest': DEFAULT_QUEST_TEMPLATE };
+                    var defMap = { '_default_pc': DEFAULT_PC_TEMPLATE, '_default_npc': DEFAULT_NPC_TEMPLATE, '_default_faction': DEFAULT_FACTION_TEMPLATE, '_default_task': DEFAULT_TASK_TEMPLATE, '_default_goal': DEFAULT_GOAL_TEMPLATE };
                     curDt = defMap[dtKey] || null;
                 }
                 _refreshSchemeCheckboxes(cardEl, (curDt && curDt.presetFields) || []);
