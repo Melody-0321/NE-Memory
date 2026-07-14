@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-13 | 30 个文档 | 37% 完成
+> 自动生成 | 2026-07-14 | 31 个文档 | 35% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -31,6 +31,7 @@
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
 | `template-panel-ux-optimization.md` | 🔄 进行中 | 2026-07-13 | 2026-07-13 | 模板库面板 UI/UX 优化方案 |
 | `token-classification-fix.md` | ❓ 未知 | — | — | Token 统计分类修复 + SmartPush 死代码清理 |
+| `unified-template-panel-restructure.md` | ❓ 未知 | — | — | 模板管理面板统一化重构 |
 | `unify-st-message-id-v2.md` | ❓ 未知 | — | — | 统一 ST 消息身份标识 v2：以 send_date + role 为规范 ID |
 | `unify-state-memory-top-ui.md` | ❓ 未知 | — | — | 统一 State / Memory 面板顶层 UI 结构 |
 | `wire-template-llm-to-state-pipeline.md` | ❓ 未知 | — | — | 接线：模板 LLM → State 管线（补漏计划） |
@@ -43,4 +44,4 @@
 - ✅ 已完成：11
 - 🔄 进行中：7
 - ⏳ 未开始：3
-- ❓ 未标记：9
+- ❓ 未标记：10

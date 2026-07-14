@@ -292,7 +292,7 @@ export function resolveNpcScheme(args, state, charName) {
     }
 
     if (cardConfig && cardConfig._templateConfig) {
-        var rawMode = cardConfig._templateConfig._npcTemplateMode || 'smart';
+        var rawMode = (cardConfig._templateConfig._templateMode || cardConfig._templateConfig._npcTemplateMode) || 'smart';
         mode = (rawMode === 'fast') ? 'exact' : rawMode;
     }
 
@@ -465,7 +465,7 @@ export function resolveFieldProposal(args, state, charName) {
     }
 
     var cardConfig = loadCardConfigSync(charName);
-    var rawMode = (cardConfig && cardConfig._templateConfig) ? (cardConfig._templateConfig._npcTemplateMode || 'smart') : 'smart';
+    var rawMode = (cardConfig && cardConfig._templateConfig) ? ((cardConfig._templateConfig._templateMode || cardConfig._templateConfig._npcTemplateMode) || 'smart') : 'smart';
     var mode = (rawMode === 'fast') ? 'exact' : rawMode;
 
     // 角色锁 → 拒绝

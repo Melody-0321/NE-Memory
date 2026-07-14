@@ -557,7 +557,7 @@ function _persistCardConfig(charName, state) {
         var now = new Date().toISOString();
         var config = {
             _dialogueTemplates: {},
-            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _npcTemplateMode: 'exact', faction: '_default_faction', quest: ['_default_quest'] },
+            _templateConfig: { pc: '_default_pc', npc: ['_default_npc'], _templateMode: 'exact', faction: '_default_faction', quest: ['_default_quest'] },
             _version: 1,
             _createdAt: now,
             _updatedAt: now

@@ -559,6 +559,44 @@ export function injectBottomDrawerCSS() {
         '.ne-template-role-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor);font-weight:bold;}' +
         '.ne-template-role-content{display:none;}' +
         '.ne-template-role-content.active{display:block;}' +
+        /* ── Unified view layout ── */
+        '.ne-unified-view{display:flex;flex-direction:column;height:100%;overflow:hidden;gap:0;}' +
+        '.ne-unified-section{flex:1;overflow-y:auto;min-height:0;padding:0 2px;}' +
+        '.ne-unified-section-title{font-weight:bold;font-size:0.9em;padding:6px 0 4px;position:sticky;top:0;z-index:5;background:var(--SmartThemeBlurTintColor,#1a1a2e);border-bottom:1px solid var(--SmartThemeBorderColor,#444);}' +
+        '.ne-unified-divider{flex-shrink:0;height:3px;margin:4px 0;background:var(--SmartThemeBorderColor,#444);border-radius:2px;opacity:0.4;}' +
+        /* ── Config card (bottom half) ── */
+        '.ne-config-card{border:1px solid var(--SmartThemeBorderColor,#444);border-left:3px solid var(--ne-info,#58a6ff);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:rgba(0,0,0,0.15);}' +
+        '.ne-config-card.state-synced{border-left-color:var(--ne-info,#58a6ff);}' +
+        '.ne-config-card.state-forked{border-left-color:var(--ne-warn,#f0883e);}' +
+        '.ne-config-card.state-orphaned{border-left-color:var(--ne-danger,#f85149);}' +
+        '.ne-config-card.search-hit{box-shadow:0 0 0 2px var(--ne-info,#58a6ff);}' +
+        '.ne-config-card-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;}' +
+        /* ── Empty slot ── */
+        '.ne-config-empty-slot{border:1px dashed var(--SmartThemeBorderColor,#444);border-radius:6px;padding:12px;text-align:center;color:var(--grey-50,#8b949e);font-size:0.82em;}' +
+        '.ne-config-empty-slot button{margin-top:6px;}' +
+        /* ── Library card grid ── */
+        '.ne-library-card-grid{display:grid;grid-template-columns:1fr;gap:6px;padding:4px 0;}' +
+        '@media(min-width:500px){.ne-library-card-grid{grid-template-columns:1fr 1fr;}}' +
+        /* ── Accordion count badge ── */
+        '.ne-role-accordion-count{font-size:0.75em;font-weight:normal;color:var(--grey-50,#8b949e);margin-left:6px;}' +
+        '.ne-role-accordion-header.no-match{opacity:0.5;}' +
+        /* ── Current badge ── */
+        '.ne-card-current-badge{display:inline-block;padding:1px 6px;border-radius:3px;font-size:0.72em;font-weight:bold;background:rgba(88,166,255,0.15);color:var(--ne-info,#58a6ff);border:1px solid rgba(88,166,255,0.3);}' +
+        /* ── Template card expanded state ── */
+        '.ne-template-card-fields-preview{display:none;margin-top:4px;padding:4px 6px;background:rgba(0,0,0,0.1);border-radius:4px;font-size:0.78em;}' +
+        '.ne-template-card.expanded .ne-template-card-fields-preview{display:block;}' +
+        /* ── Highlight animation for "go to library" ── */
+        '@keyframes ne-highlight-flash{0%,100%{box-shadow:none;}50%{box-shadow:0 0 0 3px var(--ne-info,#58a6ff);}}' +
+        '.ne-unified-section-highlight{animation:ne-highlight-flash 0.5s ease-in-out 3;}' +
+        /* ── Template mode hint ── */
+        '.ne-template-mode-hint{font-size:0.78em;color:var(--grey-50,#8b949e);margin-top:2px;margin-bottom:6px;}' +
+        /* ── Mobile dual-zone switcher ── */
+        '.ne-mobile-zone-switch{display:none;}' +
+        '@media(max-width:499px){.ne-mobile .ne-mobile-zone-switch{display:flex;gap:2px;margin-bottom:6px;}' +
+        '.ne-mobile .ne-unified-section{display:none;}' +
+        '.ne-mobile .ne-unified-section.ne-mobile-active{display:block;flex:1;overflow-y:auto;}' +
+        '.ne-mobile .ne-mobile-zone-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
+        '.ne-mobile .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 

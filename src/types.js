@@ -377,7 +377,7 @@ export {};
  * @property {string[]} npc
  * @property {string[]} [quest]
  * @property {string} [faction]
- * @property {'exact'|'adjust'} _npcTemplateMode
+ * @property {'exact'|'adjust'} _templateMode
  */
 
 /**
