@@ -51,6 +51,9 @@ export function renderTemplatesIntoSlide(container) {
     if (!container) return;
     var ticket = ++_renderTicket;
 
+    var _scrollParent = container.parentElement;
+    var _savedScrollTop = _scrollParent ? _scrollParent.scrollTop : 0;
+
     var lib = getEffectiveTemplates();
     var templates = (lib && lib.templates) ? lib.templates : {};
     var order = (lib && lib.order) ? lib.order : [];
@@ -89,6 +92,8 @@ export function renderTemplatesIntoSlide(container) {
     container.style.flexDirection = 'column';
     container.style.height = '100%';
     container.style.overflow = 'hidden';
+
+    if (_scrollParent) _scrollParent.scrollTop = _savedScrollTop;
 
     _hookUnifiedEvents(container, templates, order, cardConfig);
     _lastRenderTick = Date.now();
