@@ -95,6 +95,15 @@ export function ensureStateStructure(vault) {
                     }
                 });
             });
+
+            var activeChars = vault.content._active_characters || [];
+            Object.keys(state.characters).forEach(function (name) {
+                var ch = state.characters[name];
+                if (!ch || typeof ch !== 'object') return;
+                if (!ch.status && activeChars.indexOf(name) !== -1) {
+                    ch.status = '\u6D3B\u8DC3';
+                }
+            });
         }
     }
 }

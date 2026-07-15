@@ -341,13 +341,7 @@ async function consumeNeCharBlocks(messageIndex, neId) {
                 message_dates: neId ? [neId] : []
             });
         }
-        await enqueueStateWrite(async function() {
-            var latestVault = await readState(chatId);
-            if (latestVault && latestVault.content && latestVault.content.state && vault.content.state) {
-                Object.assign(vault.content.state, latestVault.content.state);
-            }
-            await saveStateVault(chatId, vault);
-        });
+        await saveStateVault(chatId, vault);
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
