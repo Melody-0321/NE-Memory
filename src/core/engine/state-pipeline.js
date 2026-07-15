@@ -1,5 +1,5 @@
 import { readState, loadCardConfigSync, saveCardConfig, getLockedTemplateCharacters } from '../vault/store.js';
-import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from '../vault/schema.js';
+import { validateStateChanges, mergeStateChanges, isStateSchemaEnabled, ensureCharacterTemplate, rebuildPresentCharacters, buildStateInjectionTable, ALL_PREDEFINED_FIELDS, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, PRESET_FIELDS } from '../vault/schema.js';
 import { saveStateVault, ensureStateStructure, parseSTMResponse, handleQuestCompletion, _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from '../api/llm.js';
 import { safeJsonParse } from './json-fallback.js';
@@ -39,8 +39,21 @@ function buildCharacterCardSection(vault) {
  * @param {import('../types.js').State|null} state
  * @returns {string[]}
  */
-function collectAllManagedFields(state) {
-    return Object.keys(ALL_PREDEFINED_FIELDS).filter(function(fk) { return fk !== 'name'; }).sort();
+function collectAllManagedFields(state, entityType) {
+    if (!entityType) {
+        return Object.keys(ALL_PREDEFINED_FIELDS).filter(function(fk) { return fk !== 'name'; }).sort();
+    }
+    var role = entityType === 'character' ? 'npc' : entityType;
+    var categories = ROLE_CATEGORY_MAP[role] || [];
+    var result = {};
+    categories.forEach(function(cat) {
+        if (PRESET_FIELDS[cat]) {
+            Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+                if (fn !== 'name') result[fn] = true;
+            });
+        }
+    });
+    return Object.keys(result).sort();
 }
 
 /**
@@ -276,7 +289,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var stateTable = buildStateInjectionTable(state, messages, undefined, content, state.protagonist_name);
     var charCard = buildCharacterCardSection(vault);
 
-    var managedFields = collectAllManagedFields(state);
+    var managedFields = collectAllManagedFields(state, 'character');
     var managedList = managedFields.join(', ');
     var identityNames = getIdentityFieldNames();
 

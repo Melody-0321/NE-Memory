@@ -107,7 +107,8 @@ assert(vsResult4.warnings.length > 0, 'warning for invalid enum value');
 var vsResult5 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, {
     'characters.ZhangSan.newField': 'some value'
 });
-eq(vsResult5.validated['characters.ZhangSan.newField'], 'some value', 'unknown sub-field under known parent passes through');
+eq(vsResult5.validated['characters.ZhangSan.newField'], undefined, 'unknown sub-field under known parent now rejected (not passed through)');
+assert(vsResult5.warnings.length > 0, 'warning for rejected unknown sub-field under known parent');
 
 console.log('\n=== schema: rebuildPresentCharacters ===');
 

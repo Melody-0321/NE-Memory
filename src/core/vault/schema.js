@@ -441,8 +441,7 @@ export function validateStateChanges(stateSchema, changes) {
                 var parentPath = parts.slice(0, parts.length - 1).join('.');
                 var parentSchema = resolveSchemaPath(stateSchema, parentPath);
                 if (parentSchema) {
-                    warnings.push({ path: path, warning: 'Unknown sub-field under known parent, passing through: ' + path });
-                    validated[path] = changes[path];
+                    warnings.push({ path: path, warning: 'Rejected unknown sub-field under known parent: ' + path });
                     return;
                 }
             }
