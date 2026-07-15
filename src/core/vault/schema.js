@@ -5,7 +5,7 @@
 //
 import { t_field } from '../i18n.js';
 import { neSync } from '../settings-adapter.js';
-import { loadCardConfigSync, getActiveVersion, getEffectiveTemplates } from './store.js';
+import { loadCardConfigSync, getActiveVersion, getEffectiveTemplates, loadFieldLibrary, saveFieldLibrary, addFieldToLibrary, addTemplateRefToField, removeTemplateRefFromField } from './store.js';
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from './template-defs.js';
 export { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE };
 // 功能：
@@ -1052,6 +1052,9 @@ export function expandTemplateFields(template) {
                 if (def.max !== undefined) fields[fn].max = def.max;
                 if (def.values) fields[fn].values = def.values.slice();
                 if (def.category) fields[fn].category = def.category;
+            } else {
+                // Fallback: treat as plain string to avoid silent data loss
+                fields[fn] = { type: 'string', max_length: 200, category: 'custom' };
             }
         });
     }
@@ -1076,23 +1079,6 @@ export function resolveFieldDef(fieldName) {
         return { def: ALL_PREDEFINED_FIELDS[fieldName], source: 'preset' };
     }
     return { def: null, source: null };
-}
-
-/** @returns {import('../../types.js').FieldLibrary} */
-export function loadFieldLibrary() {
-    try {
-        var raw = localStorage.getItem('ne_field_library');
-        if (raw) return JSON.parse(raw);
-    } catch (e) {}
-    return { fields: {}, updatedAt: new Date().toISOString() };
-}
-
-/** @param {import('../../types.js').FieldLibrary} lib */
-export function saveFieldLibrary(lib) {
-    try {
-        lib.updatedAt = new Date().toISOString();
-        localStorage.setItem('ne_field_library', JSON.stringify(lib));
-    } catch (e) {}
 }
 
 /**

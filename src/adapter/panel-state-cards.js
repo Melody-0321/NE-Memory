@@ -1,4 +1,4 @@
-import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion } from '../core/vault/store.js';
+import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
@@ -674,17 +674,35 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     // Custom fields section
     html += '<div class="ne-scheme-section">';
     html += '<div class="ne-scheme-section-title">' + escapeHtml(t('custom_section')) + '</div>';
-    html += '<div class="ne-scheme-hint">' + escapeHtml('Custom fields belong to the global field library. Editing them affects all templates using the same field.') + '</div>';
+    html += '<div class="ne-scheme-hint">' + escapeHtml(t('custom_field_lib_hint')) + '</div>';
     html += '<div class="ne-scheme-fields" id="ne-scheme-custom-fields">';
     currentCustoms.forEach(function(fn) {
+        var libEntry = getFieldFromLibrary(fn);
+        var typeLabel = libEntry ? libEntry.type : 'string';
         html += '<div class="ne-scheme-field ne-scheme-custom-item">' +
             '<span>' + escapeHtml(fn) + '</span>' +
+            '<span class="ne-custom-field-type">' + escapeHtml(typeLabel) + '</span>' +
             '<button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fn) + '">\u2715</button>' +
             '</div>';
     });
     html += '</div>';
-    html += '<div class="ne-scheme-add-custom">';
-    html += '<input type="text" id="ne-scheme-add-custom-input" class="ne-editor-input" placeholder="' + escapeHtml(t('add_custom_field')) + '">';
+    html += '<div class="ne-scheme-add-custom" style="display:flex;gap:4px;flex-wrap:wrap;align-items:center">';
+    html += '<input type="text" id="ne-scheme-add-custom-input" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_name')) + '" style="flex:1;min-width:80px">';
+    html += '<select id="ne-scheme-custom-type" class="ne-editor-select" style="width:auto">';
+    html += '<option value="string">string</option>';
+    html += '<option value="number">number</option>';
+    html += '<option value="enum">enum</option>';
+    html += '<option value="boolean">boolean</option>';
+    html += '</select>';
+    html += '<input type="number" id="ne-scheme-custom-maxlen" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_maxlen')) + '" value="200" style="width:70px">';
+    html += '<button id="ne-scheme-add-custom-btn" class="menu_button" style="width:auto;padding:4px 8px">+</button>';
+    html += '</div>';
+    html += '<div id="ne-scheme-custom-enum-row" style="display:none;margin-top:4px">';
+    html += '<input type="text" id="ne-scheme-custom-enum-values" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_enum_values')) + '">';
+    html += '</div>';
+    html += '<div id="ne-scheme-custom-num-row" style="display:none;margin-top:4px;gap:6px">';
+    html += '<input type="number" id="ne-scheme-custom-min" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_min')) + '" style="width:70px">';
+    html += '<input type="number" id="ne-scheme-custom-max" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_max')) + '" style="width:70px">';
     html += '</div>';
     html += '</div>';
 
@@ -769,9 +787,13 @@ function _refreshSchemeCustomFields(cardEl, customFields) {
     if (!customContainer) return;
     customContainer.innerHTML = '';
     (customFields || []).forEach(function(fn) {
+        var libEntry = getFieldFromLibrary(fn);
+        var typeLabel = libEntry ? libEntry.type : 'string';
         var div = document.createElement('div');
         div.className = 'ne-scheme-field ne-scheme-custom-item';
-        div.innerHTML = '<span>' + escapeHtml(fn) + '</span><button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fn) + '">\u2715</button>';
+        div.innerHTML = '<span>' + escapeHtml(fn) + '</span>' +
+            '<span class="ne-custom-field-type">' + escapeHtml(typeLabel) + '</span>' +
+            '<button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fn) + '">\u2715</button>';
         customContainer.appendChild(div);
         div.querySelector('.ne-scheme-remove-custom').addEventListener('click', function() {
             div.remove();
@@ -910,6 +932,23 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
             }
         });
     }
+    var addBtn = cardEl.querySelector('#ne-scheme-add-custom-btn');
+    if (addBtn) {
+        addBtn.addEventListener('click', function() {
+            _addSchemeCustomField(cardEl);
+        });
+    }
+    var schemeTypeSelect = cardEl.querySelector('#ne-scheme-custom-type');
+    if (schemeTypeSelect) {
+        schemeTypeSelect.addEventListener('change', function() {
+            var enumRow = cardEl.querySelector('#ne-scheme-custom-enum-row');
+            var numRow = cardEl.querySelector('#ne-scheme-custom-num-row');
+            var maxlenInput = cardEl.querySelector('#ne-scheme-custom-maxlen');
+            if (enumRow) enumRow.style.display = (this.value === 'enum') ? '' : 'none';
+            if (numRow) numRow.style.display = (this.value === 'number') ? 'flex' : 'none';
+            if (maxlenInput) maxlenInput.style.display = (this.value === 'string' || this.value === 'enum') ? '' : 'none';
+        });
+    }
     // Remove custom field
     var removeBtns = cardEl.querySelectorAll('.ne-scheme-remove-custom');
     for (var i = 0; i < removeBtns.length; i++) {
@@ -954,6 +993,8 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
 
     if (dtKey) {
         // Edit existing card-level template (immutable: creates new version)
+        var oldDt = cardConfig && cardConfig._dialogueTemplates ? cardConfig._dialogueTemplates[dtKey] : null;
+        var oldCustomRefs = oldDt ? (oldDt.customFieldRefs || []) : [];
         var newKey = editTemplateInCard(protoName, dtKey, presetFields, customFieldRefs);
         if (newKey) {
             // Update character's scheme reference to the new key
@@ -961,6 +1002,13 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
             if (state && state.characters && state.characters[charName]) {
                 state.characters[charName]._scheme = newKey;
             }
+            // 维护字段库引用追踪
+            customFieldRefs.forEach(function(fn) {
+                if (oldCustomRefs.indexOf(fn) === -1) addTemplateRefToField(fn, newKey);
+            });
+            oldCustomRefs.forEach(function(fn) {
+                if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, dtKey);
+            });
             showToast(t('template_saved'), 'success', 3000);
         } else {
             showToast(t('Save failed'), 'error', 3000);
@@ -987,10 +1035,14 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         // Update cardConfig and character
         var cloneKey = cloneTemplateToCard(protoName, newTpl);
         if (cloneKey) {
-            var state = _getCurrentState();
-            if (state && state.characters && state.characters[charName]) {
-                state.characters[charName]._scheme = cloneKey;
+            var state2 = _getCurrentState();
+            if (state2 && state2.characters && state2.characters[charName]) {
+                state2.characters[charName]._scheme = cloneKey;
             }
+            // 维护字段库引用追踪
+            customFieldRefs.forEach(function(fn) {
+                addTemplateRefToField(fn, cloneKey);
+            });
         }
         showToast(t('template_saved'), 'success', 3000);
     }
@@ -1023,6 +1075,11 @@ function _addSchemeCustomField(cardEl) {
     var input = cardEl.querySelector('#ne-scheme-add-custom-input');
     if (!input || !input.value.trim()) return;
     var fieldName = input.value.trim();
+    // Conflict check with predefined fields
+    if (ALL_PREDEFINED_FIELDS && ALL_PREDEFINED_FIELDS[fieldName]) {
+        showToast(t('custom_field_conflict'), 'warn');
+        return;
+    }
     var listEl = cardEl.querySelector('#ne-scheme-custom-fields');
     if (!listEl) return;
     // Check duplicate
@@ -1030,15 +1087,50 @@ function _addSchemeCustomField(cardEl) {
     for (var i = 0; i < existing.length; i++) {
         if (existing[i].textContent === fieldName) return;
     }
+
+    // 读取类型和约束
+    var typeSelect = cardEl.querySelector('#ne-scheme-custom-type');
+    var fieldType = typeSelect ? typeSelect.value : 'string';
+    var entry = { name: fieldName, type: fieldType, description: '', usedByTemplates: [] };
+
+    if (fieldType === 'string' || fieldType === 'enum') {
+        var maxlenInput = cardEl.querySelector('#ne-scheme-custom-maxlen');
+        if (maxlenInput && maxlenInput.value) entry.max_length = parseInt(maxlenInput.value, 10) || 200;
+    }
+    if (fieldType === 'enum') {
+        var enumInput = cardEl.querySelector('#ne-scheme-custom-enum-values');
+        var enumRaw = enumInput && enumInput.value ? enumInput.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        if (enumRaw.length > 0) entry.values = enumRaw;
+    }
+    if (fieldType === 'number') {
+        var minInput = cardEl.querySelector('#ne-scheme-custom-min');
+        var maxInput = cardEl.querySelector('#ne-scheme-custom-max');
+        if (minInput && minInput.value !== '') entry.min = parseFloat(minInput.value);
+        if (maxInput && maxInput.value !== '') entry.max = parseFloat(maxInput.value);
+    }
+
+    // 写入字段库
+    addFieldToLibrary(fieldName, entry);
+
     var item = pdCreate('div');
     item.className = 'ne-scheme-field ne-scheme-custom-item';
     item.innerHTML = '<span>' + escapeHtml(fieldName) + '</span>' +
+        '<span class="ne-custom-field-type">' + escapeHtml(fieldType) + '</span>' +
         '<button class="ne-btn-small ne-btn-danger ne-scheme-remove-custom" data-field="' + escapeHtml(fieldName) + '">\u2715</button>';
     item.querySelector('.ne-scheme-remove-custom').addEventListener('click', function() {
         item.remove();
     });
     listEl.appendChild(item);
     input.value = '';
+    // 重置约束输入
+    if (typeSelect) typeSelect.value = 'string';
+    var enumRow = cardEl.querySelector('#ne-scheme-custom-enum-row');
+    var numRow = cardEl.querySelector('#ne-scheme-custom-num-row');
+    var maxlenInput2 = cardEl.querySelector('#ne-scheme-custom-maxlen');
+    if (enumRow) enumRow.style.display = 'none';
+    if (numRow) numRow.style.display = 'none';
+    if (maxlenInput2) { maxlenInput2.value = '200'; maxlenInput2.style.display = ''; }
+    showToast(t('custom_field_added'), 'success', 2000);
 }
 
 function _getCurrentState() {

@@ -10,7 +10,8 @@
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
-  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey, cloneTemplateToCard } from '../core/vault/store.js';
+  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
+  loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
@@ -1080,14 +1081,32 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     var customFields = (tpl.customFieldRefs && Array.isArray(tpl.customFieldRefs)) ? tpl.customFieldRefs : [];
     html += '<div id="ne-editor-custom-fields">';
     customFields.forEach(function (fn) {
+        var libEntry = getFieldFromLibrary(fn);
+        var typeLabel = libEntry ? libEntry.type : 'string';
         html += '<div class="ne-custom-field-item">' +
             '<span>' + escapeHtml(fn) + '</span>' +
+            '<span class="ne-custom-field-type">' + escapeHtml(typeLabel) + '</span>' +
             '<button class="ne-btn-small ne-btn-danger" data-remove-custom="' + escapeHtml(fn) + '">\u2715</button>' +
             '</div>';
     });
     html += '</div>';
     html += '<div class="ne-custom-field-add">';
-    html += '<input type="text" id="ne-editor-add-custom" class="ne-editor-input" placeholder="' + escapeHtml(t('add_custom_field')) + '">';
+    html += '<input type="text" id="ne-editor-add-custom" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_name')) + '" style="flex:1;min-width:80px">';
+    html += '<select id="ne-editor-custom-type" class="ne-editor-select" style="width:auto">';
+    html += '<option value="string">string</option>';
+    html += '<option value="number">number</option>';
+    html += '<option value="enum">enum</option>';
+    html += '<option value="boolean">boolean</option>';
+    html += '</select>';
+    html += '<input type="number" id="ne-editor-custom-maxlen" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_maxlen')) + '" value="200" style="width:70px">';
+    html += '<button id="ne-editor-add-custom-btn" class="menu_button" style="width:auto;padding:4px 8px">+</button>';
+    html += '</div>';
+    html += '<div id="ne-editor-custom-enum-row" style="display:none;margin-top:4px">';
+    html += '<input type="text" id="ne-editor-custom-enum-values" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_enum_values')) + '">';
+    html += '</div>';
+    html += '<div id="ne-editor-custom-num-row" style="display:none;margin-top:4px;gap:6px">';
+    html += '<input type="number" id="ne-editor-custom-min" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_min')) + '" style="width:70px">';
+    html += '<input type="number" id="ne-editor-custom-max" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_max')) + '" style="width:70px">';
     html += '</div>';
     html += '</div>';
 
@@ -1218,6 +1237,23 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
                 e.preventDefault();
                 _addCustomFieldToEditor(container);
             }
+        });
+    }
+    var addCustomBtn = container.querySelector('#ne-editor-add-custom-btn');
+    if (addCustomBtn) {
+        addCustomBtn.addEventListener('click', function () {
+            _addCustomFieldToEditor(container);
+        });
+    }
+    var customTypeSelect = container.querySelector('#ne-editor-custom-type');
+    if (customTypeSelect) {
+        customTypeSelect.addEventListener('change', function () {
+            var enumRow = container.querySelector('#ne-editor-custom-enum-row');
+            var numRow = container.querySelector('#ne-editor-custom-num-row');
+            var maxlenInput = container.querySelector('#ne-editor-custom-maxlen');
+            if (enumRow) enumRow.style.display = (this.value === 'enum') ? '' : 'none';
+            if (numRow) numRow.style.display = (this.value === 'number') ? 'flex' : 'none';
+            if (maxlenInput) maxlenInput.style.display = (this.value === 'string' || this.value === 'enum') ? '' : 'none';
         });
     }
 
@@ -1372,6 +1408,17 @@ function _saveCardLevelEditor(container, charName, cardDtKey, cardConfig, templa
     // Use editTemplateInCard to create new immutable version
     var newKey = editTemplateInCard(charName, cardDtKey, presetFields, customFieldRefs);
     if (newKey) {
+        // 维护字段库引用追踪
+        var cardCfg = loadCardConfigSync(charName);
+        var oldDt = cardCfg && cardCfg._dialogueTemplates ? cardCfg._dialogueTemplates[cardDtKey] : null;
+        var oldCustomRefs = oldDt ? (oldDt.customFieldRefs || []) : [];
+        var refId = newKey;
+        customFieldRefs.forEach(function(fn) {
+            if (oldCustomRefs.indexOf(fn) === -1) addTemplateRefToField(fn, refId);
+        });
+        oldCustomRefs.forEach(function(fn) {
+            if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, cardDtKey);
+        });
         showToast(t('template_saved'), 'success', 3000);
         renderTemplatesIntoSlide(container);
     } else {
@@ -1436,6 +1483,16 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     };
 
     saveTemplate(template);
+
+    // 维护字段库引用追踪
+    var oldCustomRefs = (!effectiveIsNew && templates[templateId]) ? (templates[templateId].customFieldRefs || []) : [];
+    customFieldRefs.forEach(function(fn) {
+        if (oldCustomRefs.indexOf(fn) === -1) addTemplateRefToField(fn, effectiveId);
+    });
+    oldCustomRefs.forEach(function(fn) {
+        if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, effectiveId);
+    });
+
     if (isSystemCopy) {
         showToast(t('template_copied'), 'success', 3000);
     } else {
@@ -1459,15 +1516,50 @@ function _addCustomFieldToEditor(container) {
     for (var i = 0; i < existing.length; i++) {
         if (existing[i].textContent === fieldName) return;
     }
+
+    // 读取类型和约束
+    var typeSelect = container.querySelector('#ne-editor-custom-type');
+    var fieldType = typeSelect ? typeSelect.value : 'string';
+    var entry = { name: fieldName, type: fieldType, description: '', usedByTemplates: [] };
+
+    if (fieldType === 'string' || fieldType === 'enum') {
+        var maxlenInput = container.querySelector('#ne-editor-custom-maxlen');
+        if (maxlenInput && maxlenInput.value) entry.max_length = parseInt(maxlenInput.value, 10) || 200;
+    }
+    if (fieldType === 'enum') {
+        var enumInput = container.querySelector('#ne-editor-custom-enum-values');
+        var enumRaw = enumInput && enumInput.value ? enumInput.value.split(',').map(function(s) { return s.trim(); }).filter(Boolean) : [];
+        if (enumRaw.length > 0) entry.values = enumRaw;
+    }
+    if (fieldType === 'number') {
+        var minInput = container.querySelector('#ne-editor-custom-min');
+        var maxInput = container.querySelector('#ne-editor-custom-max');
+        if (minInput && minInput.value !== '') entry.min = parseFloat(minInput.value);
+        if (maxInput && maxInput.value !== '') entry.max = parseFloat(maxInput.value);
+    }
+
+    // 写入字段库
+    addFieldToLibrary(fieldName, entry);
+
     var item = pdCreate('div');
     item.className = 'ne-custom-field-item';
     item.innerHTML = '<span>' + escapeHtml(fieldName) + '</span>' +
+        '<span class="ne-custom-field-type">' + escapeHtml(fieldType) + '</span>' +
         '<button class="ne-btn-small ne-btn-danger" data-remove-custom="' + escapeHtml(fieldName) + '">\u2715</button>';
     item.querySelector('[data-remove-custom]').addEventListener('click', function() {
         item.remove();
     });
     listEl.appendChild(item);
     input.value = '';
+    // 重置约束输入
+    if (typeSelect) typeSelect.value = 'string';
+    var enumRow = container.querySelector('#ne-editor-custom-enum-row');
+    var numRow = container.querySelector('#ne-editor-custom-num-row');
+    var maxlenInput2 = container.querySelector('#ne-editor-custom-maxlen');
+    if (enumRow) enumRow.style.display = 'none';
+    if (numRow) numRow.style.display = 'none';
+    if (maxlenInput2) { maxlenInput2.value = '200'; maxlenInput2.style.display = ''; }
+    showToast(t('custom_field_added'), 'success', 2000);
 }
 
 function _removeCustomFieldFromEditor(container, fieldName) {
