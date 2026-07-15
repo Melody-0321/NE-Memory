@@ -1037,6 +1037,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             if (!stateProtoName && ctxName1) {
                 vault.content.state.protagonist_name = ctxName1;
                 stateProtoName = ctxName1;
+                try { await saveStateVault(chatId, vault); } catch (e) {}
             }
         }
         var protagonistName = stateProtoName || ctxName1;

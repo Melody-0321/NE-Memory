@@ -1,4 +1,4 @@
-import { readState, writeState, readMemory, writeMemory, readVault } from './vault/store.js';
+import { readState, writeState, readMemory, writeMemory, readVault, STATE_CONTENT_FIELDS, MEMORY_CONTENT_FIELDS } from './vault/store.js';
 import { runtime } from './runtime.js';
 
 var _loadedChatIds = {};
@@ -61,17 +61,14 @@ export function persistVaultToChatFile(vault) {
  *   - 仅有 chat_metadata 无 IndexedDB → 自动恢复到 IndexedDB
  *   - 两者都有 → 取 version 更高的
  */
-var _stateContentFields = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
-var _memoryContentFields = ['unconsolidated_stm', 'stm_entries', 'ltm_entries', 'cursor_state', 'segment_counter', 'consolidate_threshold', 'language', 'memory_config', 'summary', 'current_scene', 'character_states', 'relationships'];
-
 function _splitMergedVault(chatId, mergedVault) {
     var content = mergedVault.content || {};
 
     var stateContent = {};
-    _stateContentFields.forEach(function (f) { if (content[f] !== undefined) stateContent[f] = content[f]; });
+    STATE_CONTENT_FIELDS.forEach(function (f) { if (content[f] !== undefined) stateContent[f] = content[f]; });
 
     var memoryContent = {};
-    _memoryContentFields.forEach(function (f) { if (content[f] !== undefined) memoryContent[f] = content[f]; });
+    MEMORY_CONTENT_FIELDS.forEach(function (f) { if (content[f] !== undefined) memoryContent[f] = content[f]; });
 
     var stateVault = {
         chat_id: chatId,

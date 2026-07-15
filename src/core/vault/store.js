@@ -6,6 +6,7 @@
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from './template-defs.js';
 import { neSync } from '../settings-adapter.js';
 import { buildMsgId } from '../engine/msg-id.js';
+import { persistVaultToChatFile } from '../auto-restore.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
 const STATE_STORE = 'state_vaults';
@@ -360,13 +361,15 @@ export async function writeMemory(chatId, memoryVault) {
 
 // ====== Merged Read (for UI / compat) ======
 
-var _STATE_CONTENT_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+export var STATE_CONTENT_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+
+export var MEMORY_CONTENT_FIELDS = ['unconsolidated_stm', 'stm_entries', 'ltm_entries', 'cursor_state', 'segment_counter', 'consolidate_threshold', 'language', 'memory_config', 'summary', 'current_scene', 'character_states', 'relationships'];
 
 export async function readVault(chatId) {
     var [stateVault, memoryVault] = await Promise.all([readState(chatId), readMemory(chatId)]);
     var mergedContent = Object.assign({}, memoryVault.content || {});
     var stateContent = stateVault.content || {};
-    _STATE_CONTENT_FIELDS.forEach(function (f) {
+    STATE_CONTENT_FIELDS.forEach(function (f) {
         if (stateContent[f] !== undefined) mergedContent[f] = stateContent[f];
         else delete mergedContent[f];
     });
@@ -419,7 +422,8 @@ export async function write(chatId, vault) {
         content: { unconsolidated_stm: content.unconsolidated_stm || [], stm_entries: content.stm_entries || [], ltm_entries: content.ltm_entries || [], cursor_state: content.cursor_state || { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } }, segment_counter: content.segment_counter || 0, consolidate_threshold: content.consolidate_threshold || 5, language: content.language || 'zh', memory_config: content.memory_config || {}, summary: content.summary || '', current_scene: content.current_scene || '', character_states: content.character_states || {}, relationships: content.relationships || [] },
         stm_index: vault.stm_index || {}, link_index: vault.link_index || {}, memory_system_prompt: vault.memory_system_prompt || ''
     };
-    return Promise.all([writeState(chatId, stateVault), writeMemory(chatId, memoryVault)]);
+    await Promise.all([writeState(chatId, stateVault), writeMemory(chatId, memoryVault)]);
+    await persistVaultToChatFile(vault);
 }
 
 // ====== Common ======

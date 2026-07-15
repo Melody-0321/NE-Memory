@@ -607,6 +607,7 @@ export async function rollbackMemory(chatId, targetSeq) {
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
         tx.objectStore('orphaned_branches').put(branch);
     });
+    await rebuildMemoryVault(chatId, targetSeq);
 }
 
 export async function rebuildStateVault(chatId, targetSeq) {
@@ -615,6 +616,17 @@ export async function rebuildStateVault(chatId, targetSeq) {
     var state = await foldState(chatId, targetSeq, null);
     stateVault.content = stateVault.content || {};
     stateVault.content.state = state;
+    await writeState(chatId, stateVault);
+}
+
+export async function rebuildMemoryVault(chatId, targetSeq) {
+    var stateVault = await readState(chatId);
+    if (!stateVault) return;
+    var folded = await foldMemory(chatId, targetSeq, null);
+    stateVault.content = stateVault.content || {};
+    stateVault.content.stm_entries = folded.stm_entries;
+    stateVault.content.unconsolidated_stm = folded.unconsolidated_stm;
+    stateVault.content.ltm_entries = folded.ltm_entries;
     await writeState(chatId, stateVault);
 }
 

@@ -1,5 +1,4 @@
-import { writeState, writeMemory } from '../vault/store.js';
-import { persistVaultToChatFile } from '../auto-restore.js';
+import { writeState, writeMemory, STATE_CONTENT_FIELDS } from '../vault/store.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 
@@ -34,19 +33,19 @@ export async function saveStateVault(chatId, stateVault) {
     }
 }
 
-var _MEM_STRIP_STATE_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+
 
 function _stripStateFieldsForMemory(vault) {
     var content = vault && vault.content;
     if (!content) return vault;
     var hasStateField = false;
-    for (var i = 0; i < _MEM_STRIP_STATE_FIELDS.length; i++) {
-        if (content[_MEM_STRIP_STATE_FIELDS[i]] !== undefined) { hasStateField = true; break; }
+    for (var i = 0; i < STATE_CONTENT_FIELDS.length; i++) {
+        if (content[STATE_CONTENT_FIELDS[i]] !== undefined) { hasStateField = true; break; }
     }
     if (!hasStateField) return vault;
     var cleanContent = {};
     Object.keys(content).forEach(function (k) {
-        if (_MEM_STRIP_STATE_FIELDS.indexOf(k) === -1) cleanContent[k] = content[k];
+        if (STATE_CONTENT_FIELDS.indexOf(k) === -1) cleanContent[k] = content[k];
     });
     return Object.assign({}, vault, { content: cleanContent });
 }
@@ -59,19 +58,6 @@ export async function saveMemoryVault(chatId, memoryVault) {
         await writeMemory(chatId, clean);
     } catch (e) {
         console.error('[NE] saveMemoryVault failed:', e);
-    }
-}
-
-export async function saveVault(chatId, vault) {
-    console.warn('[NE] saveVault() is deprecated — use saveStateVault() or saveMemoryVault()');
-    var stateVault = { chat_id: chatId, version: vault.version || 0, tokens: 0, updated_at: new Date().toISOString(), _meta: { created_at: (vault._meta && vault._meta.created_at) || new Date().toISOString(), last_state_task: (vault._meta && vault._meta.last_state_task) || null, last_state_time: (vault._meta && vault._meta.last_state_time) || null }, content: { state: vault.content.state || {}, story_time: vault.content.story_time || '', story_scene: vault.content.story_scene || '', story_date: vault.content.story_date || '', state_schema: vault.content.state_schema || null, state_css: vault.content.state_css || '', character_schema: vault.content.character_schema || null, _active_characters: vault.content._active_characters || [], faction_keywords: vault.content.faction_keywords || {} } };
-    var memoryVault = { chat_id: chatId, version: vault.version || 0, tokens: 0, updated_at: new Date().toISOString(), _meta: { created_at: (vault._meta && vault._meta.created_at) || new Date().toISOString(), last_pipeline_task: (vault._meta && vault._meta.last_pipeline_task) || null, last_pipeline_time: (vault._meta && vault._meta.last_pipeline_time) || null }, content: { unconsolidated_stm: vault.content.unconsolidated_stm || [], stm_entries: vault.content.stm_entries || [], ltm_entries: vault.content.ltm_entries || [], cursor_state: vault.content.cursor_state || { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } }, segment_counter: vault.content.segment_counter || 0, consolidate_threshold: vault.content.consolidate_threshold || 5, language: vault.content.language || 'zh', memory_config: vault.content.memory_config || {}, summary: vault.content.summary || '', current_scene: vault.content.current_scene || '', character_states: vault.content.character_states || {}, relationships: vault.content.relationships || [] }, stm_index: vault.stm_index || {}, link_index: vault.link_index || {}, memory_system_prompt: vault.memory_system_prompt || '' };
-    try {
-        await writeState(chatId, stateVault);
-        await writeMemory(chatId, memoryVault);
-        persistVaultToChatFile(vault);
-    } catch (e) {
-        console.error('[NE] saveVault (deprecated) failed:', e);
     }
 }
 
