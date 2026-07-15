@@ -610,72 +610,12 @@ export async function rollbackMemory(chatId, targetSeq) {
 }
 
 export async function rebuildStateVault(chatId, targetSeq) {
-    var db = await openDB();
-    var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
-        return tx.objectStore('active_chains').get(chatId);
-    });
-    if (!chainData) return;
-    var chain = chainData.chain || chainData;
-    if (targetSeq > chain.state_head_seq) targetSeq = chain.state_head_seq;
-    if (targetSeq < 0) return;
-
-    var base = {};
-    if (chain.state_base_seq >= 0) {
-        var baseDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, chain.state_base_seq));
-        });
-        if (baseDelta && baseDelta.folded_state) {
-            base = JSON.parse(JSON.stringify(baseDelta.folded_state));
-        }
-    }
-
-    if (Object.keys(base).length === 0) {
-        try {
-            var vault = await readState(chatId);
-            if (vault && vault.content && vault.content.state) {
-                base = JSON.parse(JSON.stringify(vault.content.state));
-                var allStateDeltas = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-                    return tx.objectStore('state_deltas').getAll();
-                });
-                if (allStateDeltas) {
-                    for (var ri = 0; ri < allStateDeltas.length; ri++) {
-                        var rd = allStateDeltas[ri];
-                        if (rd.chat_id !== chatId) continue;
-                        if (rd.seq <= targetSeq) continue;
-                        if (chain.state_active.indexOf(rd.seq) !== -1) continue;
-                        if (!rd.changes) continue;
-                        for (var rci = 0; rci < rd.changes.length; rci++) {
-                            var rc = rd.changes[rci];
-                            if (rc.old !== undefined) _setByPath(base, rc.path, rc.old);
-                        }
-                    }
-                }
-            }
-        } catch (e) {}
-    }
-
-    var startIdx = chain.state_active.indexOf(chain.state_base_seq);
-    if (startIdx < 0) startIdx = 0;
-    for (var i = startIdx; i < chain.state_active.length; i++) {
-        var seq = chain.state_active[i];
-        if (seq > targetSeq) break;
-        if (seq === chain.state_base_seq) continue;
-        var delta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, seq));
-        });
-        if (!delta || !delta.changes) continue;
-        for (var ci = 0; ci < delta.changes.length; ci++) {
-            var ch = delta.changes[ci];
-            if (ch.new !== undefined) _setByPath(base, ch.path, ch.new);
-        }
-    }
-
     var stateVault = await readState(chatId);
-    if (stateVault) {
-        stateVault.content = stateVault.content || {};
-        stateVault.content.state = base;
-        await writeState(chatId, stateVault);
-    }
+    if (!stateVault) return;
+    var state = await foldState(chatId, targetSeq, null);
+    stateVault.content = stateVault.content || {};
+    stateVault.content.state = state;
+    await writeState(chatId, stateVault);
 }
 
 export async function pruneOrphanedBranches(chatId) {
