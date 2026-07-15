@@ -41,7 +41,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rebuildStateVault, recordStateDelta, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -486,7 +486,6 @@ export async function onMessageReceived(messageIndex) {
                         await saveMemoryVault(chatId, rbVault);
                     } else if (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0) {
                         await saveMemoryVault(chatId, rbVault);
-                        try { await rebuildStateVault(chatId, rbResult._targetStateSeq || 0); } catch (e) { console.warn('[NE] State vault rebuild failed:', e); }
                     }
                 });
                 if (rbResult && (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0)) {
@@ -1262,9 +1261,6 @@ function _handleMessageRollback(chatId, opts) {
                 await saveMemoryVault(chatId, vault);
             } else if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
                 await saveMemoryVault(chatId, vault);
-                try { await rebuildStateVault(chatId, result._targetStateSeq || 0); } catch (e) {
-                    console.warn('[NE] State vault rebuild failed:', e);
-                }
             }
 
             if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
@@ -1480,7 +1476,6 @@ export async function onMessageUpdated(messageId) {
             if (affectedStateSeqs.length > 0 || affectedMemSeqs.length > 0) {
                 _purgeStmByMsgId(vault, editedMsgId);
                 await saveMemoryVault(chatId, vault);
-                try { await rebuildStateVault(chatId, targetStateSeq || 0); } catch (e) { console.warn('[NE] State vault rebuild failed:', e); }
                 _reextractSlot(chat, messageId);
                 console.log('[NE] onMessageUpdated: edit rollback state=' + affectedStateSeqs.length + ' mem=' + affectedMemSeqs.length + ' -> re-extract slot ' + messageId);
                 notifyVaultChanged();
