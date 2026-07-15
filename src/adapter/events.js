@@ -473,10 +473,9 @@ export async function onMessageReceived(messageIndex) {
                 }
             }
 
-            await consumeNeCharBlocks(messageIndex, message._ne_id);
-
-            // P0-3: reroll 回退检测（排入 stm 队列串行化，在 push pending 之前）
-            // 普通新消息 -> 无缺失 msg_id -> no-op；reroll -> 旧 msg_id 缺失 -> 回退旧提取
+            // P0-3: reroll 回退检测（排入 stm 队列串行化，在 consumeNeCharBlocks 之前）
+            // 普通新消息 → 无缺失 msg_id → no-op；reroll → 旧 msg_id 缺失 → 回退旧提取
+            // 必须在 consumeNeCharBlocks 前执行，否则回退会覆盖 NE-CHAR 新写入
             try {
                 var rbChat = runtime.getChat ? runtime.getChat() : (getChatMessagesFn ? getChatMessagesFn() : []);
                 var rbResult = null;
@@ -490,12 +489,13 @@ export async function onMessageReceived(messageIndex) {
                     }
                 });
                 if (rbResult && (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0)) {
-                    // reroll 命中：去重 pending 同槽旧条目，避免同槽多版本被当多条提取
                     pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== messageIndex; });
                     console.log('[NE] onMessageReceived: reroll/switch detected, rolled back state=' + rbResult.rolledBackState + ' mem=' + rbResult.rolledBackMem);
                     notifyVaultChanged();
                 }
             } catch (e) { console.warn('[NE] reroll detect failed:', e); }
+
+            await consumeNeCharBlocks(messageIndex, message._ne_id);
 
             // P1-2: UI 延迟回退标记无条件执行（解开批次门槛，原嵌在 pending>2 / shouldRunPipeline 内）
             var psRb = globalThis.__ne_pending_state_rollback;
@@ -519,7 +519,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
+            if (isStateSchemaEnabled() && (pendingMessages.length > 2 || (rbResult && rbResult.rolledBackState > 0))) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
