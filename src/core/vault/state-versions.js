@@ -539,24 +539,15 @@ export async function rollbackState(chatId, targetSeq) {
         }
     }
 
-    /** @type {object} */
-    var branch = {
-        id: 'orphan_state_' + chatId + '_' + targetSeq,
-        chat_id: chatId,
-        fork_point_seq: targetSeq,
-        type: 'state',
-        versions: orphanedSeqs,
-        detached_at: _nowISO(),
-        auto_clean_at: new Date(Date.now() + BRANCH_TTL_MS).toISOString()
-    };
-
-    await _tx(db, ['active_chains', 'orphaned_branches'], 'readwrite', function (tx) {
+    await _tx(db, ['active_chains', 'state_deltas'], 'readwrite', function (tx) {
         chain.state_head_seq = targetSeq;
         chain.state_active = newActive;
         if (newActive.length > 0) chain.state_base_seq = newActive[0];
         else chain.state_base_seq = 0;
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
-        tx.objectStore('orphaned_branches').put(branch);
+        for (var oi = 0; oi < orphanedSeqs.length; oi++) {
+            tx.objectStore('state_deltas').delete(_generateId('delta', chatId, orphanedSeqs[oi]));
+        }
     });
     await rebuildStateVault(chatId, targetSeq);
 }
@@ -588,24 +579,15 @@ export async function rollbackMemory(chatId, targetSeq) {
         }
     }
 
-    /** @type {object} */
-    var branch = {
-        id: 'orphan_mem_' + chatId + '_' + targetSeq,
-        chat_id: chatId,
-        fork_point_seq: targetSeq,
-        type: 'memory',
-        versions: orphanedSeqs,
-        detached_at: _nowISO(),
-        auto_clean_at: new Date(Date.now() + BRANCH_TTL_MS).toISOString()
-    };
-
-    await _tx(db, ['active_chains', 'orphaned_branches'], 'readwrite', function (tx) {
+    await _tx(db, ['active_chains', 'memory_versions'], 'readwrite', function (tx) {
         chain.mem_head_seq = targetSeq;
         chain.mem_active = newActive;
         if (newActive.length > 0) chain.mem_base_seq = newActive[0];
         else chain.mem_base_seq = 0;
         tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
-        tx.objectStore('orphaned_branches').put(branch);
+        for (var oi = 0; oi < orphanedSeqs.length; oi++) {
+            tx.objectStore('memory_versions').delete(_generateId('memver', chatId, orphanedSeqs[oi]));
+        }
     });
     await rebuildMemoryVault(chatId, targetSeq);
 }
