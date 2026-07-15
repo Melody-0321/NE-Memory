@@ -521,13 +521,11 @@ function _buildDebugApi() {
         gc: async function() { try { return await scanOrphans(); } catch (e) { return 'Error: ' + e.message; } },
         purgeChat: async function(chatId) { try { return await purgeOrphanChatData(chatId); } catch (e) { return 'Error: ' + e.message; } },
     };
-    if (__NE_DEV_MODE) {
-        api.runTest = async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } };
-        api.runTestByName = async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } };
-        api.listTests = function() { return listTests(); };
-        api.getTestCaseMetadata = function(name) { return getTestCaseMetadata(name); };
-        api.setReportsDir = async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } };
-    }
+    api.runTest = async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } };
+    api.runTestByName = async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } };
+    api.listTests = function() { return listTests(); };
+    api.getTestCaseMetadata = function(name) { return getTestCaseMetadata(name); };
+    api.setReportsDir = async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } };
     return api;
 }
 
