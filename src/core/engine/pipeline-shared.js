@@ -34,11 +34,29 @@ export async function saveStateVault(chatId, stateVault) {
     }
 }
 
+var _MEM_STRIP_STATE_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+
+function _stripStateFieldsForMemory(vault) {
+    var content = vault && vault.content;
+    if (!content) return vault;
+    var hasStateField = false;
+    for (var i = 0; i < _MEM_STRIP_STATE_FIELDS.length; i++) {
+        if (content[_MEM_STRIP_STATE_FIELDS[i]] !== undefined) { hasStateField = true; break; }
+    }
+    if (!hasStateField) return vault;
+    var cleanContent = {};
+    Object.keys(content).forEach(function (k) {
+        if (_MEM_STRIP_STATE_FIELDS.indexOf(k) === -1) cleanContent[k] = content[k];
+    });
+    return Object.assign({}, vault, { content: cleanContent });
+}
+
 export async function saveMemoryVault(chatId, memoryVault) {
-    memoryVault.version = (memoryVault.version || 0) + 1;
-    memoryVault.updated_at = new Date().toISOString();
+    var clean = _stripStateFieldsForMemory(memoryVault);
+    clean.version = (clean.version || 0) + 1;
+    clean.updated_at = new Date().toISOString();
     try {
-        await writeMemory(chatId, memoryVault);
+        await writeMemory(chatId, clean);
     } catch (e) {
         console.error('[NE] saveMemoryVault failed:', e);
     }

@@ -360,8 +360,16 @@ export async function writeMemory(chatId, memoryVault) {
 
 // ====== Merged Read (for UI / compat) ======
 
+var _STATE_CONTENT_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
+
 export async function readVault(chatId) {
     var [stateVault, memoryVault] = await Promise.all([readState(chatId), readMemory(chatId)]);
+    var mergedContent = Object.assign({}, memoryVault.content || {});
+    var stateContent = stateVault.content || {};
+    _STATE_CONTENT_FIELDS.forEach(function (f) {
+        if (stateContent[f] !== undefined) mergedContent[f] = stateContent[f];
+        else delete mergedContent[f];
+    });
     var v = {
         chat_id: chatId,
         version: Math.max(stateVault.version || 0, memoryVault.version || 0),
@@ -374,7 +382,7 @@ export async function readVault(chatId) {
             last_state_task: stateVault._meta && stateVault._meta.last_state_task || null,
             last_state_time: stateVault._meta && stateVault._meta.last_state_time || null
         },
-        content: Object.assign({}, stateVault.content || {}, memoryVault.content || {}),
+        content: mergedContent,
         stm_index: memoryVault.stm_index || {},
         link_index: memoryVault.link_index || {},
         memory_system_prompt: memoryVault.memory_system_prompt || ''
