@@ -674,6 +674,7 @@ export const STATE_FIELD_I18N = {
         'power_slot_defs': 'Power Slots', 'power_slots': 'Power Values',
         'inner_thoughts': 'Inner Thoughts', 'affection': 'Affection',
         'relationship': 'Relationship', 'current_mood': 'Mood', 'past_experience': 'Background',
+        'current_outfit': 'Current Outfit', 'abilities': 'Abilities', 'power_level': 'Power Level',
         // Faction
         'attitude_toward_player': 'Attitude', 'description': 'Description',
         'leader': 'Leader', 'notes': 'Notes', 'reputation_with_pc': 'Reputation',
@@ -698,6 +699,7 @@ export const STATE_FIELD_I18N = {
         'power_slot_defs': '战力槽', 'power_slots': '战力值',
         'inner_thoughts': '内心想法', 'affection': '好感度',
         'relationship': '关系', 'current_mood': '当前情绪', 'past_experience': '过往经历',
+        'current_outfit': '当前穿着', 'abilities': '技能', 'power_level': '战力等级',
         'attitude_toward_player': '态度', 'description': '描述',
         'leader': '首领', 'notes': '备注', 'reputation_with_pc': '声望',
         'current_goal': '当前目标', 'relations': '势力关系',
@@ -718,6 +720,7 @@ export const STATE_FIELD_I18N = {
         'power_slot_defs': '戰力槽', 'power_slots': '戰力值',
         'inner_thoughts': '內心想法', 'affection': '好感度',
         'relationship': '關係', 'current_mood': '當前情緒', 'past_experience': '過往經歷',
+        'current_outfit': '當前穿著', 'abilities': '技能', 'power_level': '戰力等級',
         'attitude_toward_player': '態度', 'description': '描述',
         'leader': '首領', 'notes': '備註', 'reputation_with_pc': '聲望',
         'current_goal': '當前目標', 'relations': '勢力關係',

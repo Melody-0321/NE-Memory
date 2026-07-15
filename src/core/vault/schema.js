@@ -86,7 +86,8 @@ export var PRESET_FIELDS = {
         occupation:      { type: 'string', max_length: 30,  required: false, category: 'identity' },
         clothing_build:  { type: 'string', max_length: 60,  required: false, category: 'identity' },
         personality:     { type: 'string', max_length: 80,  required: false, category: 'identity' },
-        past_experience: { type: 'string', max_length: 200, required: false, category: 'identity' }
+        past_experience: { type: 'string', max_length: 200, required: false, category: 'identity' },
+        current_outfit:  { type: 'string', max_length: 100, required: false, category: 'identity' }
     },
     psychology: {
         inner_thoughts:  { type: 'string', max_length: 120, required: false, category: 'psychology' },
@@ -99,6 +100,18 @@ export var PRESET_FIELDS = {
     battle: {
         injuries:        { type: 'string', max_length: 120, required: false, category: 'battle' },
         status_effects:  { type: 'string', max_length: 120, required: false, category: 'battle' }
+    },
+    ability: {
+        abilities: {
+            type: 'object', required: false, category: 'ability',
+            item_schema: {
+                name:   { type: 'string', max_length: 40, description: '技能/能力名称' },
+                type:   { type: 'enum', values: ['被动','主动','天赋','种族'], description: '技能类型' },
+                level:  { type: 'string', max_length: 30, description: '等级/阶段/境界' },
+                effect: { type: 'string', max_length: 200, description: '效果描述' }
+            }
+        },
+        power_level:     { type: 'string', max_length: 30, required: false, category: 'ability' }
     },
     inventory: {
         inventory:       { type: 'object', required: false, category: 'inventory',
@@ -157,8 +170,8 @@ export var PRESET_FIELDS = {
  * are available for each template role.
  */
 export var ROLE_CATEGORY_MAP = {
-    pc:     ['identity', 'psychology', 'social', 'battle', 'inventory'],
-    npc:    ['identity', 'psychology', 'social', 'battle', 'inventory'],
+    pc:     ['identity', 'psychology', 'social', 'battle', 'inventory', 'ability'],
+    npc:    ['identity', 'psychology', 'social', 'battle', 'inventory', 'ability'],
     faction: ['faction'],
     quest:   ['quest', 'goal'],
     event:   ['event']
