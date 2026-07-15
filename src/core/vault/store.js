@@ -463,15 +463,15 @@ export async function remove(chatId) {
         tx.objectStore(MEMORY_STORE).delete(chatId);
         tx.objectStore('active_chains').delete(chatId);
 
-        var sdIdx = tx.objectStore('state_deltas').index('chat_id_seq');
-        var sdCursorReq = sdIdx.openCursor(IDBKeyRange.bound([chatId, 0], [chatId, Infinity]));
+        var sdIdx = tx.objectStore('state_deltas').index('chat_id');
+        var sdCursorReq = sdIdx.openCursor(IDBKeyRange.only(chatId));
         sdCursorReq.onsuccess = function(e) {
             var cursor = e.target.result;
             if (cursor) { cursor.delete(); cursor.continue(); }
         };
 
-        var mvIdx = tx.objectStore('memory_versions').index('chat_id_seq');
-        var mvCursorReq = mvIdx.openCursor(IDBKeyRange.bound([chatId, 0], [chatId, Infinity]));
+        var mvIdx = tx.objectStore('memory_versions').index('chat_id');
+        var mvCursorReq = mvIdx.openCursor(IDBKeyRange.only(chatId));
         mvCursorReq.onsuccess = function(e) {
             var cursor = e.target.result;
             if (cursor) { cursor.delete(); cursor.continue(); }

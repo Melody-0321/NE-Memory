@@ -73,7 +73,7 @@ function _splitMergedVault(chatId, mergedVault) {
     var stateVault = {
         chat_id: chatId,
         version: mergedVault.version || 0,
-        tokens: mergedVault.tokens || 0,
+        tokens: 0,
         updated_at: mergedVault.updated_at || new Date().toISOString(),
         _meta: {
             created_at: (mergedVault._meta && mergedVault._meta.created_at) || new Date().toISOString(),
@@ -86,7 +86,7 @@ function _splitMergedVault(chatId, mergedVault) {
     var memoryVault = {
         chat_id: chatId,
         version: mergedVault.version || 0,
-        tokens: mergedVault.tokens || 0,
+        tokens: 0,
         updated_at: mergedVault.updated_at || new Date().toISOString(),
         _meta: {
             created_at: (mergedVault._meta && mergedVault._meta.created_at) || new Date().toISOString(),
@@ -114,27 +114,40 @@ export async function loadVault(chatId) {
         try { chatVault = JSON.parse(neVaultJson); } catch (e) { console.warn('[NE] chat_metadata.ne_vault JSON parse failed:', e.message); }
     }
 
-    var dbVault = null;
-    try { dbVault = await readVault(chatId); } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
+    var stateVault = null, memVault = null;
+    try {
+        var result = await Promise.all([readState(chatId), readMemory(chatId)]);
+        stateVault = result[0]; memVault = result[1];
+    } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
 
-    var effectiveVersion = (dbVault && dbVault.version) || 0;
+    var stateDBVer = (stateVault && stateVault.version) || 0;
+    var memDBVer = (memVault && memVault.version) || 0;
     var chatVersion = (chatVault && chatVault.version) || 0;
 
-    console.log('[NE-VAULT] loadVault chatId=' + chatId + ' chatVer=' + chatVersion + ' dbVer=' + effectiveVersion);
+    console.log('[NE-VAULT] loadVault chatId=' + chatId + ' chatVer=' + chatVersion + ' stateDBVer=' + stateDBVer + ' memDBVer=' + memDBVer);
 
-    if (chatVersion > effectiveVersion) {
+    if (chatVersion > stateDBVer || chatVersion > memDBVer) {
         console.log('[NE-VAULT] Chat metadata is newer — restoring to IndexedDB...');
         try {
-            await _writeSplitVault(chatId, chatVault);
+            var split = _splitMergedVault(chatId, chatVault);
+            var writes = [];
+            if (chatVersion > stateDBVer) writes.push(writeState(chatId, split.stateVault));
+            if (chatVersion > memDBVer) writes.push(writeMemory(chatId, split.memoryVault));
+            await Promise.all(writes);
             console.log('[NE-VAULT] Restore complete — ' +
                 'STM=' + ((chatVault.content && chatVault.content.unconsolidated_stm || []).length + (chatVault.content && chatVault.content.stm_entries || []).length) +
                 ' LTM=' + ((chatVault.content && chatVault.content.ltm_entries || []).length) +
                 ' state_keys=' + Object.keys((chatVault.content && chatVault.content.state) || {}).length);
         } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
-        return chatVault;
+        var dbVault = await readVault(chatId);
+        if (dbVault && dbVault.version > 0) {
+            persistVaultToChatFile(dbVault);
+        }
+        return dbVault;
     }
 
-    if (effectiveVersion > 0) {
+    var dbVault = await readVault(chatId);
+    if (dbVault && dbVault.version > 0) {
         persistVaultToChatFile(dbVault);
     } else {
         console.log('[NE-VAULT] Both DB and chat metadata are empty — fresh start');

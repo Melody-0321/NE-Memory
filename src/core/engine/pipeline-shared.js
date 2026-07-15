@@ -30,6 +30,7 @@ export async function saveStateVault(chatId, stateVault) {
         await writeState(chatId, stateVault);
     } catch (e) {
         console.error('[NE] saveStateVault failed:', e);
+        throw e;
     }
 }
 
@@ -58,6 +59,7 @@ export async function saveMemoryVault(chatId, memoryVault) {
         await writeMemory(chatId, clean);
     } catch (e) {
         console.error('[NE] saveMemoryVault failed:', e);
+        throw e;
     }
 }
 

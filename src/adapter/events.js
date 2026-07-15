@@ -341,7 +341,14 @@ async function consumeNeCharBlocks(messageIndex, neId) {
                 message_dates: neId ? [neId] : []
             });
         }
-        await saveStateVault(chatId, vault);
+        await enqueueStateWrite(async function() {
+            var latestVault = await readState(chatId);
+            if (latestVault && latestVault.content && latestVault.content.state) {
+                Object.assign(latestVault.content.state, vault.content.state);
+                vault.content.state = latestVault.content.state;
+            }
+            await saveStateVault(chatId, vault);
+        });
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
@@ -1176,6 +1183,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
  * @returns {Promise<{rolledBackState: number, rolledBackMem: number, degraded: boolean}>}
  */
 async function _detectAndRollback(chatId, chatMessages, currentVault) {
+    try {
     var chain = await getActiveChain(chatId);
     if (!chain || (chain.state_head_seq === 0 && chain.mem_head_seq === 0)) {
         reconcileOrphanedStm(currentVault, chatMessages);
@@ -1215,6 +1223,7 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
         var earliestStateSeq = Math.min.apply(null, affectedStateSeqs);
         if (earliestStateSeq > 0) {
             targetStateSeq = earliestStateSeq - 1;
+            await enqueueStateWrite(async function() {}); // drain state queue to avoid lost writes
             await rollbackState(chatId, targetStateSeq);
             rolledBackState = affectedStateSeqs.length;
         }
@@ -1231,6 +1240,10 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
     reconcileOrphanedStm(currentVault, chatMessages);
 
     return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq, affectedMsgIds: [] };
+    } catch (e) {
+        console.error('[NE] _detectAndRollback failed:', e);
+        return { rolledBackState: 0, rolledBackMem: 0, degraded: true, affectedMsgIds: [] };
+    }
 }
 
 /**

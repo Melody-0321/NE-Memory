@@ -11,7 +11,7 @@
  *   orphaned_branches keyPath: "id"
  */
 
-import { openDB, readState, writeState } from './store.js';
+import { openDB, readState, writeState, readMemory, writeMemory } from './store.js';
 
 var BRANCH_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -526,7 +526,7 @@ export async function rollbackState(chatId, targetSeq) {
     });
     if (!chainData) return;
     var chain = chainData.chain || chainData;
-    if (targetSeq >= chain.state_head_seq) return;
+    if (targetSeq >= chain.state_head_seq || targetSeq < 0) return;
 
     var orphanedSeqs = [];
     var newActive = [];
@@ -566,7 +566,7 @@ export async function rollbackMemory(chatId, targetSeq) {
     });
     if (!chainData) return;
     var chain = chainData.chain || chainData;
-    if (targetSeq >= chain.mem_head_seq) return;
+    if (targetSeq >= chain.mem_head_seq || targetSeq < 0) return;
 
     var orphanedSeqs = [];
     var newActive = [];
@@ -602,14 +602,14 @@ export async function rebuildStateVault(chatId, targetSeq) {
 }
 
 export async function rebuildMemoryVault(chatId, targetSeq) {
-    var stateVault = await readState(chatId);
-    if (!stateVault) return;
+    var memVault = await readMemory(chatId);
+    if (!memVault) return;
     var folded = await foldMemory(chatId, targetSeq, null);
-    stateVault.content = stateVault.content || {};
-    stateVault.content.stm_entries = folded.stm_entries;
-    stateVault.content.unconsolidated_stm = folded.unconsolidated_stm;
-    stateVault.content.ltm_entries = folded.ltm_entries;
-    await writeState(chatId, stateVault);
+    memVault.content = memVault.content || {};
+    memVault.content.stm_entries = folded.stm_entries;
+    memVault.content.unconsolidated_stm = folded.unconsolidated_stm;
+    memVault.content.ltm_entries = folded.ltm_entries;
+    await writeMemory(chatId, memVault);
 }
 
 export async function pruneOrphanedBranches(chatId) {

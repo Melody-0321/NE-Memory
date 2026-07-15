@@ -176,3 +176,325 @@
 - `dist/test-harness.js` / `dist/th-test.js` — 测试用 dist 文件
 - `scripts/extract-precise.cjs` — 一次性脚本
 - `testv4.*.json` / `test5.*.json` — 旧版测试配置
+
+---
+
+# NE-Memory v6.0.0 更新日志
+
+> 2026-07-03 · 架构清理 + 管线重构合并 · 从 v5.6 到 v6.0 跨版本整合
+
+## 架构重构
+
+- **Pipeline 拆分**：原单体管线拆分为 STM / LTM / State / InnerThoughts 四大独立子管线，互不阻塞
+- **SmartPush 重构**：记忆检索从 onBeforeGenerate 中移出，仅在 recall_memory 工具中触发次级 LLM；Smart Context 仅做廉价 vault 格式化注入
+- **实体系统简化**：移除递归 gapfill 和检索 LLM 合成，减少 pipeline 复杂度
+- **API 设置精简**：移除 API split 设置项，统一为副 API 单一路径
+
+## 新功能
+
+- **Inner Thoughts 管线**：缓存积累 → STM prompt 注入 → entities+thoughts UI 渲染，系统级别的内心独白记忆链
+- **Embedding 一键预设**：SiliconFlow bge-m3 免费嵌入模型一键配置（预填 URL + model，零配置门槛）
+- **向量质量测试**：端到端语义检索验证取代基本的连通性 ping
+- **反回声查询策略**：多样化检索查询生成，带注入去重追踪
+- **faction 势力提取**：一次性势力信息提取 + 关键词激活机制
+
+## 性能优化
+
+- **KV-Cache 复用**：State LLM prompt 拆分为两条 system message，利用 KV-Cache 减少重复计算
+- **实体链预取移除**：从检索管线中移除 entity chain pre-fetch，减少不必要开销
+- **STM prompt 精简**：移除角色 inner_thoughts 字段，缩小 prompt 体积
+- **词阈触发器删除**：移除 words-threshold 触发条件（曾绕过 batchSize 导致每轮 STM 提取）
+
+## Bug 修复
+
+- **Pipeline Guard 锁泄漏**：移除 `isIdle()` 门控，修复并发管线死锁
+- **computeContextPressure 崩溃**：`neSettings` 在模块作用域中 undefined，导致 ReferenceError
+- **LTM 验证替换**：`validateLTMOutput` 替换为 `validateLtmDecision`，带 action 验证 + 重试 + 标题截断
+- **panel 拆分后 import 缺失三联**：6 个模块 11 处跨文件引用修复
+- **LTM force-close prompt 注入修复** + placeholder 文本区分
+- **token stats 图表 overhaul**：面板统计修复 + 图表完全重绘
+- **测试评估器卡死**：evaluator 从 ST 主 API 切换到副 API，避开 `isGenerating` 锁
+
+## UI/UX 改进
+
+- **管线状态去重**：副 API 和向量搜索标题栏显示绿色小圆点，移除引擎区和检索区的重复文本
+- **统计面板重设计**：弃用总计统计，改为对话-今日-本月三栏卡片布局
+- **每日趋势图**：全月 x 轴堆叠柱状图，支持 tooltip
+- **面板视觉润色**：标题重命名为 NE-叙事引擎、版本号下沉到 Memory Tab、设置 accordion 默认闭合、ToS 确认存档
+- **L1/L2/L3 三级 UI 负债清理**：emoji → Font Awesome 图标、语义色 token、斑马表格、无障碍覆盖、搜索过滤、键盘导航、Touch 反馈、i18n 补全
+
+---
+
+# NE-Memory v5.6 更新日志
+
+> 2026-06-30 · Pipeline 拆分 + 实体简化 + SmartPush 重构
+
+## 架构重构
+
+- **Pipeline 拆分 + 智能分块**：多管线并行、batch LTM、自适应分段
+- **检索与合成分离**：Memory LLM 合成仅在 recall_memory 工具触发，SmartPush 纯本地 BM25/向量 → 格式化注入
+- **语义化测试断言**：从 6 个语义断言重构为结构化断言，新增截断/回退监控，简化评估器
+- **死代码清理**：移除递归 gapfill、检索 LLM 合成、分类器死代码、API 拆分设置
+
+## 新功能
+
+- **Embedding 质量端到端测试**：语义检索正确率验证取代基础连通性 ping，`_vectorUsed` 标记暴露给调试全局变量
+- **测试管线 token 统计**：每次测试运行追踪每次操作的 token 消耗
+- **反回声查询策略**：标记并追踪查询多样性，防止重复检索噪声
+- **Vector-RRF 管线监控**：candidate count 暴露给自动化断言
+
+## Bug 修复
+
+- **Pipeline guard 锁泄漏修复**：transitionTo 在 STM pipeline 中被移除
+- **panel 拆分跨模块 import 缺失**：`loadVault`、`isAuto`、`createVaultPopout` 等 11 处修复
+- **LTM 输出验证重写**：`validateLTMOutput` → `validateLtmDecision`，包含 action 验证 + 重试 + 标题截断
+- **测试滑块默认值被覆盖**：`updateSmokeSliderDefault` 不再在测试完成后覆盖用户设置
+- **周期/场景信号冲突**：分类器死代码移除 + 双信号冲突修复
+
+---
+
+# NE-Memory v5.0 更新日志
+
+> 2026-06-26~27 · 上下文窗口注入 + 管道压力 + 交互式 NE-CHAR
+
+## 新功能
+
+- **上下文窗口记忆注入**：`formatContextMemory` 在 `onBeforeGenerate` 中工作，注入会话窗口之前的 LTM+STM 摘要，对话轮数范围 2-30（默认 10）
+- **三重管线压力系统**：token 密度（主指标）+ maxContext 溢出 + 窗口轮数溢出，自动调参
+- **physique（体格）字段**：从 `gender_age` 中拆分出独立体格描述字段，PC+NPC 必需，Schema + i18n + 注入 + prompt 全覆盖
+- **NE-CHAR 回退系统**：主 LLM 跳过情感块时发出警告，State LLM 从对话上下文推断 affection/mood/thoughts
+- **势力一次性提取**：`faction` 字段通过独立 LLM 调用提取，关键词激活，合并进 `resolveNpcSchemes`
+- **World Book 记忆整合**：`getWorldInfoPrompt` 按角色名作为 key 定向激活世界书条目，移除角色 lore 特殊大小写
+
+## 架构改进
+
+- **State 字段三级分类**：字段分为 static/snapshot/hybrid，每种带边界定义；衣着字段支持场景感知推断
+- **State LLM prompt 全面重构**：i18n 标签以表格呈现、newCharHint 移至末尾带完整示例、World Book 提取指导、条件性零变更示例
+- **BANNER 集成**：`story_date` 从 `story_day` 中独立，代码合并进 STM/LTM period；`resolveSchemaPath` 修复纯字段容器通配符解析
+- **faction 提取独立 LLM 调用**：从 State LLM 中拆分，通过 `Promise.all` 并行执行
+- **管道守卫锁泄漏修复**：移除 `isIdle()` 门控
+
+## Bug 修复
+
+- `computeContextPressure` 中 `neSettings` undefined 导致 ReferenceError
+- `resolveSchemaPath` 通配符后裸字段容器处理失败
+- World Book 非恒定 key 条目激活：`{{user}}` 宏 → 直接角色名 → ST 原生 `substituteParams`
+- State LLM 新角色强制要求 state_changes 输出（此前允许空 `{}`）
+- `status` 字段去冗余：卡片标题和正文中移除重复状态显示
+- UI 中角色卡片字段标签改为 `t_field()` i18n 显示
+
+---
+
+# NE-Memory v4.0 更新日志
+
+> 2026-06-15~25 · 逐轮 State 管线 + 字段分类 + 副 LLM 增强
+
+## 新功能
+
+- **逐轮 State 管线**：消息发出后自动触发管线（`onMessageSent` → `onMessageReceived`），游标单次调用整合
+- **动态字段发现**：从角色卡描述/first_mes/世界书中自动提取 `key:value` 字段 → 双模式自动切换 → `dynamic.*` 路径路由
+- **State Schema 全面翻新**：Core 层字段约束 + 三种独立 prompt 模式（full/extract/update）+ 动态角色面板
+- **Cursor/State 双管线拆分**：游标追踪和状态提取独立为两个管线，游标在所有 STM 写入后先更新再驱动 State
+- **World Book 字段泄漏防护**：`isDynamicStateMode()` 守卫防止世界书字段污染非动态模式
+- **回退捕获**：首次打开聊天时自动回退处理开场消息
+
+## 架构改进
+
+- **副 API 用户体验增强**：本地代理默认 + 模型覆盖支持 + OpenAI 格式 + 本地代理 `{content}` 格式
+- **LLM 输出验证**：提取结果缺失 time/scene/event 时拒绝 + 重试一次 + 后填充回退
+- **chat_metadata 嵌套 Vault**：每次保存自动嵌入 + 加载时恢复（跨设备数据持久化）
+- **CDN 分发修复**：从 `raw.githubusercontent.com` → `jsDelivr` → `gcore` 多轮迭代解决 CDN 缓存滞后
+
+## Bug 修复
+
+- State 阶段 1 状态丢失：游标阶段失败时立即持久化状态
+- Cursor 过期位置修复：游标 >= batch 长度时重置（因上一轮不完整运行遗留的过期值）
+- `generateRaw` / `generateQuietPrompt` 无限递归：`onBeforeGenerateRunning` 重入守卫
+- 非用户触发的 Generate() 不触发 SmartPush
+- MESSAGE_SENT/MESSAGE_RECEIVED 使用小写事件名（此前永不被触发）
+- eventSource 事件注册健壮性：并发守卫、崩溃恢复、异步管线、阈值修复
+
+---
+
+# NE-Memory v3.0 更新日志
+
+> 2026-06-10~14 · 动态 State Schema + World Book 整合
+
+## 架构升级
+
+- **动态 State 字段系统**：从角色卡自动发现并注册 `key:value` 字段，双模式（静态/动态）自动切换，支持世界书字段作为动态扩展
+- **State Pipeline 逐轮执行**：`onMessageSent` + `onMessageReceived` 双触发器，游标增量追踪
+- **CDN 分发链路稳定化**：jsDelivr (gcore) 主 CDN + GitHub raw 回退，解决 Tampermonkey 脚本加载器在 TH 环境下的兼容性问题
+
+## 新功能
+
+- **World Book 记忆整合**：世界书条目作为动态字段源，`globalSelect` 过滤启用条目，多回退策略保证字段解析
+- **副 API 本地代理**：LLM 调用支持两种格式 — 标准 OpenAI chat/completions + 本地代理 `{content}` 模板格式
+- **导出/导入 Vault**：面板 JSON 格式导出/导入按钮
+- **Process History**：一键处理全历史消息为记忆
+- **LLM 日志面板**：完整记录 prompt + response
+- **角色自动衰减**：非活跃角色 prompt + 代码双重回退
+
+## Bug 修复
+
+- Cursor 过期位置重置：batch 完成状态检测
+- parseSTMResponse 数组优先解析 + null checkpoint 校验
+- State 字段缺失时显式 fallback：`story_time=Day 1`、`story_scene=未知`
+- 适配层健壮性 6 连修：await、死代码清理、null 检查、并发守卫、空 catch 块
+- 世界书字段泄漏：动态模式守卫 + 未知字段拒绝
+
+---
+
+# NE-Memory v2.0 更新日志
+
+> 2026-06-06~09 · Per-Round State Pipeline + 动态字段发现
+
+## 架构升级
+
+- **逐轮 State 管线**：从批量处理改为每轮消息自动触发，游标模式增量更新
+- **动态 State 字段发现**：自动从角色卡描述/first_mes/世界书扫描 `key:value` 模式，`dynamic.*` 路径路由
+- **Cursor/State 双管线**：游标追踪和状态提取独立为两条管线，游标先更新 → 驱动 State
+
+## 新功能
+
+- **回退捕获（Retroactive Capture）**：`retroCapturedChatId` 守卫防止重复运行，首次打开聊天自动回退处理开场消息
+- **World Book 字段泄漏防护**：`isDynamicStateMode()` 守卫 + `dynamic.*` 路径隔离
+- **副 API 本地代理**：LLM 调用双格式路由（OpenAI + 本地代理 `{content}`）
+- **Token 统计分类**：按管线操作类型细分统计
+- **快照限制**：每聊天最多 30 个历史快照
+
+## Bug 修复
+
+- State 阶段 1 数据丢失：游标失败时立即持久化
+- `MESSAGE_SENT` / `MESSAGE_RECEIVED` 使用小写事件名（此前永不被触发）
+- Tampermonkey 环境 `window.parent.document` 不可用时的多重回退
+- `generateRaw`/`generateQuietPrompt` 递归级联守卫
+- SmartPush 干跑防涌：`_smartPushDone` 标志 + 新消息/聊天切换时重置
+
+---
+
+# NE-Memory v1.0.0 更新日志
+
+> 2026-06-09 · 生产级发布 · 从 0→1 完成的里程碑
+
+## 新功能
+
+- **Vault 面板全面翻新**：Tabs 分页（State / Memory / Settings / Usage）、手风琴展开、快速索引跳转、行内编辑、设置迁移至面板内集成
+- **Tool-calling 正式上线**：`access`（统一引用查询，穿透 LTM 摘要 → STM 详情 → 原始对话）和 `recall_memory`（开放语义检索）两个注册工具，带独立遥测统计
+- **SmartPush 注入日志**：每次 LLM 生成前注入的记忆内容写入 LLM 日志面板，含语义对齐标识
+- **角色自动衰减**：长时间未活跃的角色自动进入衰减状态，prompt + 代码双重回退保底
+- **快照限制**：每聊天最多 30 个历史快照，`pruneSnapshotsForChat` 自动清理超量
+
+## Bug 修复
+
+- **11 项生产级润色修复**：覆盖数据流断点、重试队列、空响应处理、合并 STM 过滤、统一 openDB 等
+- **State 字段翻译缺失**：`main_event`、`present_characters` 等关键字段补充中英繁三语翻译
+- **角色 Current State 文本区字段名翻译**：面板中的字段显示名现在跟随语言
+- **审计发现 9 个 Bug 全部修复**：（#90–#98）涵盖 UI 渲染、数据处理、事件绑定等多模块
+- **dryRun 触发误判**：`onBeforeGenerate` 检测 `dryRun` 参数后直接跳过，不再误触发生成管线
+- **非用户触发的 Generate() 跳过 SmartPush**：按钮状态不再被面板操作异常切换
+- **Cascade Loop 无限递归**：`generateRaw` / `generateQuietPrompt` 内部调用 ST 的 `Generate()` 触发 `GENERATION_AFTER_COMMANDS` 形成递归级联，新增 `onBeforeGenerateRunning` 重入守卫彻底阻断
+- **5s 硬超时保护**：`formatSmartContext` 挂载超时兜底，`callTavernHelper` 的 `generateRaw` / `generateQuietPrompt` 可超时退出，防止阻塞 ST 主生成管线
+- **LLM 提供的 stm_refs 校验**：`postFillLTM` 验证 LLM 返回的引用 ID 有效性，无效引用（如数组下标）替换为实际 STM ID
+- **已合并 STM 条目自愈**：面板渲染时检测 stuck 在 `unconsolidated_stm` 中的已合并条目，自动移入 `stm_entries`
+- **AI帮答/impersonate 跳过管线**：非用户主动发送的消息不触发记忆提取
+- **parent_ltm 双重过滤**：显示侧和 `allSTM` 池侧同时过滤，防止已合并 LTM 条目出现在 STM 表格中
+
+## UI/UX 改进
+
+- 滑块标签重命名：`stmBatch` / `stmMaxUnconsolidated` 改为用户可理解的名称
+- 移除死代码工具：`update_state`、`rollback_memory`
+- Time Range 派生逻辑改进：全量空 `time_label` 时不再显示 `??`
+
+---
+
+# NE-Memory v0.4 更新日志
+
+> 2026-06-01 · Smart Push + 记忆检索服务上线
+
+## 新功能
+
+- **Smart Push 记忆检索**：每次 LLM 生成前自动检索并注入相关记忆，懒激活（STM < 20 条时跳过 LLM，直接注入全量摘要），分层上下文排序
+- **Smart Context 注入**：`formatVaultForPrompt` 仅做廉价的 vault 格式化注入（无二次 LLM），记忆检索 LLM 专属于 `recall_memory` 工具
+- **Process History 按钮**：一键处理全部历史对话消息为记忆条目
+- **可配置 STM 批次大小**：Settings 面板增加 `stmBatch` 滑块
+- **LTM 整合阈值滑块**：整合从固定阈值改为可配置最大未整合 STM 数
+- **LLM 日志面板**：完整记录每次 LLM 调用的 prompt + response
+- **Vault 导出/导入**：面板增加 JSON 格式导出/导入按钮
+- **chat_metadata 自动嵌套**：每次管线保存时自动将 vault 嵌入 chat_metadata，聊天加载时自动恢复
+
+## 性能优化
+
+- **500 轮 BM25 池排除**：LTM 条目在 500 条 STM 之前不纳入 BM25 检索池
+- **整合逻辑重排**：Consolidation 移入管线最前（在新一轮提取之前运行）
+- **阈值一致性**：所有调用方统一 LTM/STM 选择逻辑，排除已含 `parent_ltm` 的 STM
+
+## Bug 修复
+
+- **IndexedDB 升级**：版本升至 2，新增 snapshots 存储区
+- **待处理消息冲刷**：`flushPendingMessages` 遵循 batch + words 阈值
+- **未整合 STM 下限**：最小未整合 STM 数设为 2
+- **保存快照错误显式日志**：`saveVaultWithSnapshot` 不再静默失败
+
+---
+
+# NE-Memory v0.3.0 更新日志
+
+> 2026-05-31 · State Schema 模块 + 工具体系奠基
+
+## 新功能
+
+- **State Schema 模块**：字段级 Schema 约束，LLM 只修改变化字段不重写全量，支持 Schema 驱动的状态维护
+- **Tool 体系整合**：从散落函数整合为统一的工具注册与调用框架
+
+## Bug 修复
+
+- **数据流断点三联**：重试队列恢复、空 LLM 响应处理、usage 声明补齐
+- **合并 STM 过滤**：已合并至 LTM 的 STM 条目不再参与新一轮处理
+- **统一 openDB**：多处重复的 IndexedDB 打开逻辑收归单一路径
+- **Pin 图标恢复**：修复尺寸与 hover 效果
+- **配置按钮布局修复**：Settings 面板按钮对齐
+
+---
+
+# NE-Memory v0.2.0 更新日志
+
+> 2026-05-30 · 纯前端架构 + CDN 分发首版
+
+## 架构决策
+
+- **纯前端架构**：不依赖任何服务端，基于 SillyTavern Extension API 的纯浏览器端记忆引擎
+- **CDN 分发链路**：jsDelivr（gcore）+ GitHub raw 双 CDN，Tampermonkey 脚本装载器实现零安装部署
+- **Shadow DOM 隔离**：面板渲染在 `window.parent.document` 上，与 SillyTavern 主页面 DOM 完全隔离
+
+## 新功能
+
+- **右侧抽屉式 Vault 面板**：带 Tabs 分页、历史记录面板、LLM 操作日志面板、记忆条目编辑
+- **遥测模块**：Issue 报告 + gcore CDN 埋点，提供运行时健康数据采集
+- **TH 脚本导入模板**：一键安装 JSON，README 安装指引
+
+## Bug 修复
+
+- **iframe 高度冻结**：抽屉 UI 实现 `iframe height freeze`，防止面板撑开主页面
+- **CSS 注入**：因 TH 环境 `style.css` 不加载，改为 JS 动态注入样式
+- **CDN 缓存**：多次迭代 CDN URL（raw → jsDelivr → gcore）解决缓存滞后
+- **启动方式**：从 jQuery-only 改为 `DOMContentLoaded` + 重试机制
+- **Tampermonkey banner**：移除被 TH 误解析的 UserScript 头部注释
+
+---
+
+# 项目起源 — 叙事引擎 P1-P3
+
+> 2026-05-28 ~ 2026-05-29 · SillyTavern Extension 架构下的记忆引擎原初设计
+
+## 核心决策
+
+- **定位**：SillyTavern AI 角色扮演前端的长对话结构化记忆管理引擎
+- **技术选型**：JavaScript ES Modules → Rollup IIFE 构建，IndexedDB 持久化存储
+- **分层架构**：STM（短期记忆，对话轮次级）→ LTM（长期记忆，叙事弧线级）→ State（角色状态，Schema 驱动）
+
+## 初始骨架
+
+- **叙事引擎 P1–P3 全量基础骨架**：pipeline-guard 管线编排器、STM/LTM 提取管线、IndexedDB vault 存储层
+- **前端配置页**：设置面板 UI 框架、参数滑块、连接状态指示
+- **LLM 适配层**：副 API 渠道（独立于主对话 LLM 的记忆提取专用 API），支持 OpenAI 格式 + 本地代理

@@ -576,9 +576,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     var stateVault = await readState(chatId);
     if (!stateVault || !stateVault.content) return { stateVault, changed: false };
 
-    initializeStateChain(chatId, stateVault.content || {}).catch(function(err) {
-        console.error('[NE] initializeStateChain failed for ' + chatId, err);
-    });
+    await initializeStateChain(chatId, stateVault.content || {});
 
     // 首次对话：初始化 c.state 结构（字段名+空值）—— 仅执行一次
     ensureStateStructure(stateVault);
