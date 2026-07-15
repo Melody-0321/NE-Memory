@@ -634,6 +634,22 @@ export async function rebuildStateVault(chatId, targetSeq) {
             var vault = await readState(chatId);
             if (vault && vault.content && vault.content.state) {
                 base = JSON.parse(JSON.stringify(vault.content.state));
+                var allStateDeltas = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
+                    return tx.objectStore('state_deltas').getAll();
+                });
+                if (allStateDeltas) {
+                    for (var ri = 0; ri < allStateDeltas.length; ri++) {
+                        var rd = allStateDeltas[ri];
+                        if (rd.chat_id !== chatId) continue;
+                        if (rd.seq <= targetSeq) continue;
+                        if (chain.state_active.indexOf(rd.seq) !== -1) continue;
+                        if (!rd.changes) continue;
+                        for (var rci = 0; rci < rd.changes.length; rci++) {
+                            var rc = rd.changes[rci];
+                            if (rc.old !== undefined) _setByPath(base, rc.path, rc.old);
+                        }
+                    }
+                }
             }
         } catch (e) {}
     }
