@@ -519,7 +519,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && (pendingMessages.length > 2 || (rbResult && rbResult.rolledBackState > 0))) {
+            if (isStateSchemaEnabled() && (pendingMessages.length >= 2 || (rbResult && rbResult.rolledBackState > 0))) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
@@ -1125,13 +1125,13 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 if (Object.keys(npcPerRoundFields).length === 0) npcPerRoundFields = { current_mood: true, inner_thoughts: true };
                 var npcFieldsStr = Object.keys(npcPerRoundFields).sort().join(', ');
 
-                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
+                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u5fc5\u987b\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
     '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: ' + pcFieldsStr + '\n' +
     '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: ' + npcFieldsStr + '\n' +
     '\n\u683c\u5f0f\uff1a\n' +
     '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
     '\n\u89c4\u5219\uff1a\n' +
-    '- \u53ea\u6709\u672c\u8f6e\u5b9e\u9645\u53d1\u751f\u4e86\u53d8\u5316\u7684\u89d2\u8272\u624d\u8f93\u51fa NE-CHAR \u5757\u3002\u65e0\u53d8\u5316\u7684\u89d2\u8272\u8df3\u8fc7\u3002\n' +
+    '- \u6bcf\u4e2a\u672c\u8f6e\u51fa\u73b0\u7684\u6d3b\u8dc3\u89d2\u8272\u90fd\u5fc5\u987b\u8f93\u51fa NE-CHAR \u5757\u3002\n' +
     '- current_mood: \u89d2\u8272\u5f53\u524d\u5fc3\u60c5/\u60c5\u7eea\u3002\n' +
     '- inner_thoughts: \u89d2\u8272\u5185\u5fc3\u60f3\u6cd5\u3002\n' +
     '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +

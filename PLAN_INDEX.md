@@ -1,11 +1,12 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-15 | 35 个文档 | 43% 完成
+> 自动生成 | 2026-07-15 | 36 个文档 | 44% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
 | `api-connection-model-dropdown-plan.md` | ✅ 已完成 | 2026-06-24 | 2026-07-02 | Plan 1：API 连接检测重构 + 模型下拉改造 |
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
+| `audit-consistency.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 全量审计 — 重复造轮子 & 一致性修复 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
 | `doc-management-optimization-plan.md` | ✅ 已完成 | 2026-07-09 | 2026-07-09 | NE-Memory 文档管理优化计划 |
 | `extend-templates-to-faction-quest.md` | ✅ 已完成 | 2026-07-09 | 2026-07-13 | 模板系统扩展：势力 + 任务/事件 + NE-CHAR 动态字段 |
@@ -45,7 +46,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：15
+- ✅ 已完成：16
 - 🔄 进行中：7
 - ⏳ 未开始：3
 - ❓ 未标记：10

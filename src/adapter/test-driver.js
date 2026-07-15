@@ -420,11 +420,7 @@ function getLastAiReply() {
         var chat = SillyTavern.getContext().chat || [];
         for (var i = chat.length - 1; i >= 0; i--) {
             if (!chat[i].is_user && chat[i].mes) {
-                var reasoning = chat[i].extra ? chat[i].extra.reasoning : '';
-                if (reasoning && reasoning.length > 0) {
-                    return chat[i].mes + '\n\n[思考过程]\n' + reasoning;
-                }
-                return chat[i].mes;
+                return stripFormatTags(chat[i].mes);
             }
         }
     } catch (e) {}

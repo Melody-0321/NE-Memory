@@ -303,7 +303,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- You manage tasks: ' + questFields + '.\n' +
         '- You manage goals: ' + goalFields + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
-        '- Use the field key shown in parentheses in the table above (e.g. ' + (managedFields[0] || 'gender_age') + ') as the JSON path.\n' +
+        '- Use the full dotted path as the JSON path (e.g. characters.\u89d2\u8272\u540d.' + (managedFields[0] || 'gender_age') + ').\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
@@ -317,7 +317,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 你管理任务: ' + questFields + '。\n' +
         '- 你管理目标: ' + goalFields + '。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- JSON 路径使用上方表格括号内的字段名（如 ' + (managedFields[0] || 'gender_age') + '）。\n' +
+        '- JSON 路径使用完整的点分隔路径（如 characters.角色名.' + (managedFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
