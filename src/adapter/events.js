@@ -41,7 +41,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory } from '../core/vault/state-versions.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
 import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -243,6 +243,7 @@ async function consumeNeCharBlocks(messageIndex, neId) {
             if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
             return;
         }
+        await initializeStateChain(chatId, vault.content || {});
         var charState = vault.content.state || {};
         var charBefore = charState.characters || {};
         var affectedKeys = Object.keys(charBefore);
