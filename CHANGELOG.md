@@ -1,3 +1,67 @@
+# NE-Memory v7.0.0 更新日志
+
+## 架构升级
+
+- **增量版本链引擎**：取代旧快照系统（30 次上限），改为无限增量 delta 记录。每次管线运行自动产生 State 和 Memory 版本，支持任意深度回滚。Pipeline Log 追踪每条版本的来源
+- **精确回滚机制**：消息删除/重掷/滑动/编辑时，基于版本链自动回滚相关 State 和 Memory，不再依赖脆弱的消息 ID 快照匹配
+- **存储分离**：IndexedDB 拆分为 `state_vaults` + `memory_vaults` 两个独立 Object Store，消除并行写入竞争导致的数据丢失。DB 自动检测损坏并从 `chat_metadata` 恢复
+
+## 新功能
+
+### 开放角色 Schema & 模板系统
+- **自定义角色 Schema**：放弃硬编码字段列表，改为开放的字段库 + Schema 编辑器。支持动态字段定义、嵌套子字段
+- **模板库**：预设 PC/NPC/Faction/Task/Goal 五类模板。双区卡片布局（全局库 / 对话配置），一键添加到对话，支持编辑、复制、版本管理
+- **模板版本系统**：不可变版本历史，支持导航、回退到任意历史版本。卡片级编辑入口
+- **方案发现**：新角色自动检测已安装的角色卡 Schema，推断默认字段方案
+- **模板 LLM 子代理**：Native Function Calling 驱动的模板操作（方案发现、字段建议），独立于主记忆管线运行
+- **三层锁架构**：系统锁（预设模板编辑自动复制）+ 卡片锁 + 字段锁
+
+### 注入增强
+- **相对时间前缀**：SmartPush 注入内容包含相对于当前时间的描述（如"约 2 小时前"），替代裸时间戳
+- **HTML 格式化**：注入内容改为 HTML 格式，支持粗体/斜体/着色
+
+### 配置与同步
+- **跨设备配置同步**：所有设置持久化到 `extension_settings.ne_memory`，随 SillyTavern 聊天同步跨设备传输
+- **诊断导出按钮**：Settings → Data 新增一键导出全部存储数据
+- **聊天删除清理**：删除聊天时自动清理全关联 IndexedDB + localStorage
+
+### UI 改进
+- **面板重构**：State / Memory 双主 Tab + Settings / Usage 侧滑面板
+- **滚动条美化**：细窄半透明风格（8px），匹配毛玻璃视觉
+- **角色名称编辑**：编辑模式下可修改显示名称
+
+## 性能优化
+
+- **并行写入队列**：各管线独立写入队列，STM/LTM/State 写入不再互相阻塞
+- **检索缓存**：BM25 分词+索引按 chatId 缓存，增量更新；检索结果浅拷贝替代 JSON 序列化
+- **LTM 子表懒渲染**：首次展开填充，减少初始 DOM 节点
+- **topK 收紧**：15–80 → 10–50，基于 token 效率基准
+
+## Bug 修复
+
+### 严重修复
+- **Firefox 面板不可见**：Firefox Shadow DOM 不应用 `:host(.open)` CSS，改用 inline style 绕过
+- **DB 迁移数据丢失**：连续升级路径中重复迁移 + 异步属性未解包导致 Vault 数据清零
+- **消息接收崩溃**：`computeWindowStartMsgId` import 缺失（v6.7 遗留）
+
+### 管线修复
+- **State LLM 漏轮**：阈值修正（`>2` → `>=2`），管线排空后正确触发
+- **NE-CHAR 合并方向**：State LLM 的新状态不再被 NE-CHAR 过时默认值覆盖，角色不再全部显示"非活跃"
+- **活跃角色默认状态**：首次使用自动初始化 `status='活跃'`
+- **跨类型字段泄漏**：State LLM 不再向角色卡写入势力/任务/目标专属字段
+- **重掷状态丢失**：重掷后 State LLM 正确重新运行
+- **Token 统计**：7 个管线操作不再落入不可见 "tok" 分类
+
+### 面板修复
+- **首次打开不渲染**：`open` class 与 `busEmit` 时序冲突
+- **CORS 代理 URL**：`127.0.0.1:8000` 硬编码 → `window.location.origin`
+- **Embedding API 验证**：发送前校验模型名非空
+- **滚动位置保存**：innerHTML 重建后恢复 scrollTop
+- **版本导航按钮**：Shadow DOM 内查询改用 container.querySelector
+- **事件总线竞态**：侦听器注册移至 await 之前
+
+---
+
 # NE-Memory v6.8.0 更新日志
 
 ## 新功能
