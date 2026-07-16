@@ -132,7 +132,9 @@ function renderCharacterGroup(label, names, characters, schema, state) {
 }
 
 export function getCharacterSchemaForPanel(content) {
-    return content.character_schema || buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
+    // Always rebuild from current template definitions — persisted character_schema
+    // can be stale after template updates
+    return buildCharacterSchemaFromTemplates(DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE);
 }
 
 export function renderCharacterPanelHTML(state, characterSchema) {

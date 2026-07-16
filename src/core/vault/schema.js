@@ -551,7 +551,6 @@ function _resolveFactionTemplateFields(stCharName) {
  */
 export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     if (!state.characters) state.characters = {};
-    if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) return;
 
     var isPC = (state.protagonist_name && name === state.protagonist_name) ||
         (state.characters[name] && state.characters[name]._role === 'protagonist');
@@ -567,6 +566,23 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     } else {
         // NPC: resolve template via cardConfig three-layer fallback chain
         template = resolveActiveTemplateFields(stCharName, schemeKey);
+    }
+
+    // Backfill: if character already exists, add any missing template fields
+    if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) {
+        Object.keys(template).forEach(function (fk) {
+            if (!state.characters[name].hasOwnProperty(fk)) {
+                var field = template[fk];
+                if (field.type === 'boolean') {
+                    state.characters[name][fk] = false;
+                } else if (field.type === 'number') {
+                    state.characters[name][fk] = null;
+                } else {
+                    state.characters[name][fk] = '';
+                }
+            }
+        });
+        return;
     }
 
     state.characters[name] = {};
