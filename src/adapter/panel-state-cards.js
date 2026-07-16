@@ -60,6 +60,7 @@ function renderCharacterCard(name, card, schema, cardType) {
 
     Object.keys(cardSchema.fields).forEach(function (key) {
         if (key === 'status') return; // shown in card header + grouping, redundant in body
+        if (key.startsWith('_')) return; // skip system fields like _scheme, _templateLocked
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
 
@@ -96,9 +97,24 @@ function renderCharacterCard(name, card, schema, cardType) {
     var inventoryHtml = '';
     if (card.inventory && typeof card.inventory === 'object') {
         var invItems = [];
-        Object.keys(card.inventory).forEach(function (slot) {
-            invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(slot) + '</span><span class="ne-inv-val">' + escapeHtml(String(card.inventory[slot])) + '</span></span>');
-        });
+        if (Array.isArray(card.inventory)) {
+            card.inventory.forEach(function(item) {
+                if (item && typeof item === 'object') {
+                    var itemName = item.name || '?';
+                    var parts = [];
+                    if (item.description) parts.push(item.description);
+                    if (item.rarity) parts.push(item.rarity);
+                    if (item.properties && item.properties !== '无') parts.push(item.properties);
+                    invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(itemName) + '</span><span class="ne-inv-val">' + escapeHtml(parts.join(' / ')) + '</span></span>');
+                } else {
+                    invItems.push('<span class="ne-inv-slot"><span class="ne-inv-val">' + escapeHtml(String(item)) + '</span></span>');
+                }
+            });
+        } else {
+            Object.keys(card.inventory).forEach(function (slot) {
+                invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(slot) + '</span><span class="ne-inv-val">' + escapeHtml(String(card.inventory[slot])) + '</span></span>');
+            });
+        }
         if (invItems.length > 0) {
             inventoryHtml = '<div class="ne-inventory-bar">' + invItems.join(' ') + '</div>';
         }
@@ -404,6 +420,9 @@ export function enterCardEditMode(editBtn) {
         var textVal = span ? (span.textContent || '').trim() : '';
         if (textVal === t('empty_value') || textVal === '(Not filled)') textVal = '';
 
+        // object/array fields: read-only, not editable as plain text
+        if (fieldType === 'object') return;
+
         var editor;
         switch (fieldType) {
             case 'enum':
@@ -412,20 +431,20 @@ export function enterCardEditMode(editBtn) {
                 values.forEach(function(v) {
                     var vv = v.trim();
                     var sel = (textVal === vv) ? ' selected' : '';
-                    editor += '<option value="' + escapeHtml(vv) + '"' + sel + '>' + escapeHtml(vv) + '</option>';
+                    editor += '<option value="' + escapeHtml(vv).replace(/"/g, '&quot;') + '"' + sel + '>' + escapeHtml(vv) + '</option>';
                 });
                 editor += '</select>';
                 break;
             case 'number':
                 var min = td.getAttribute('data-min');
                 var max = td.getAttribute('data-max');
-                editor = '<input class="ne-char-edit" type="number" value="' + escapeHtml(textVal) + '"' +
+                editor = '<input class="ne-char-edit" type="number" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '"' +
                     (min ? ' min="' + min + '"' : '') +
                     (max ? ' max="' + max + '"' : '') + '>';
                 break;
             default:
                 var maxlen = td.getAttribute('data-maxlen');
-                editor = '<input class="ne-char-edit" type="text" value="' + escapeHtml(textVal) + '"' +
+                editor = '<input class="ne-char-edit" type="text" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '"' +
                     (maxlen ? ' maxlength="' + maxlen + '"' : '') + '>';
         }
         span.outerHTML = editor;
@@ -603,7 +622,7 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         var usedCustoms = [];
         Object.keys(charData).forEach(function(k) {
             if (k === 'name' || k === 'status') return;
-            if (k.startsWith('_') && k !== '_scheme') return;
+            if (k.startsWith('_')) return;
             if (allPresetNames.indexOf(k) !== -1) return;
             if (charData[k] !== '' && charData[k] !== null) usedCustoms.push(k);
         });
