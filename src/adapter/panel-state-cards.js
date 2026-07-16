@@ -605,7 +605,7 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     });
     html += '</div>';
 
-    // Template selector — only visible in switch_template mode; only shows global templates
+    // switch_template mode: copy/version list (primary) + global template dropdown (secondary)
     var tplDisplay = (defaultMode === 'switch_template') ? '' : ' display:none;';
     var tplOptionsHtml = '<option value="">— ' + escapeHtml(t('select_template')) + ' —</option>';
     Object.keys(templates).forEach(function(tid) {
@@ -614,7 +614,42 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         tplOptionsHtml += '<option value="__global__' + escapeHtml(tid) + '">' + escapeHtml(gt.name) + '</option>';
     });
     html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
-    html += '<label>' + escapeHtml(t('switch_template')) + '</label>';
+
+    // Primary: list of copies/versions belonging to the current template
+    if (dtKey && dialogueTemplates[dtKey]) {
+        var swDt = dialogueTemplates[dtKey];
+        var swTplId = swDt._templateId || null;
+        if (swTplId) {
+            var swVersions = [];
+            Object.keys(dialogueTemplates).forEach(function(k) {
+                var d = dialogueTemplates[k];
+                if (d && d._templateId === swTplId) swVersions.push({ key: k, tpl: d });
+            });
+            if (swVersions.length > 0) {
+                swVersions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
+                html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + swVersions.length + ')</div>';
+                html += '<div style="max-height:180px;overflow-y:auto;font-size:0.8em;">';
+                swVersions.forEach(function(ver) {
+                    var vActive = !!ver.tpl._active;
+                    html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);' + (vActive ? 'background:var(--grey-10);' : '') + '">';
+                    html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
+                    var vSource = ver.tpl.source || 'user_created';
+                    var vSourceLabel = vSource === 'ai_generated' ? t('ai_generated') : (vSource === 'user_rollback' ? t('rollback') : t('user_created'));
+                    html += '<span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(vSourceLabel) + '</span>';
+                    if (vActive) {
+                        html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
+                    } else {
+                        html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
+                    }
+                    html += '</div>';
+                });
+                html += '</div>';
+            }
+        }
+    }
+
+    // Secondary: global template dropdown (switch to a different template entirely)
+    html += '<label style="display:block;margin-top:8px;font-size:0.8em;color:var(--grey-50);">' + escapeHtml(t('switch_template')) + '</label>';
     html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;">' + tplOptionsHtml + '</select>';
     html += '</div>';
 
