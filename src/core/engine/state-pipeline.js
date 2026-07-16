@@ -34,31 +34,9 @@ function buildCharacterCardSection(vault) {
 }
 
 /**
- * Collect all managed field names from state, derived dynamically from field definitions.
- * Replaces the old hardcoded list. Returns field names in consistent order.
- * @param {import('../types.js').State|null} state
- * @returns {string[]}
- */
-function collectAllManagedFields(state, entityType) {
-    if (!entityType) {
-        return Object.keys(ALL_PREDEFINED_FIELDS).filter(function(fk) { return fk !== 'name'; }).sort();
-    }
-    var role = entityType === 'character' ? 'npc' : entityType;
-    var categories = ROLE_CATEGORY_MAP[role] || [];
-    var result = {};
-    categories.forEach(function(cat) {
-        if (PRESET_FIELDS[cat]) {
-            Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
-                if (fn !== 'name') result[fn] = true;
-            });
-        }
-    });
-    return Object.keys(result).sort();
-}
-
-/**
  * Get identity field names that should be extracted from sources for new characters.
  * These are the core identity fields that character cards / world books typically define.
+ * Used to detect "new character" status (identity-all-empty ≈ uninitialized).
  * @returns {string[]}
  */
 function getIdentityFieldNames() {
@@ -66,32 +44,78 @@ function getIdentityFieldNames() {
 }
 
 /**
+ * Get the union of ALL character template field names (PC + NPC).
+ * Used to prompt the LLM to fill every template field, not just identity.
+ * @returns {string[]}
+ */
+function getAllCharacterFieldNames() {
+    var result = {};
+    ['pc', 'npc'].forEach(function(role) {
+        var categories = ROLE_CATEGORY_MAP[role] || [];
+        categories.forEach(function(cat) {
+            if (PRESET_FIELDS[cat]) {
+                Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+                    if (fn !== 'name') result[fn] = true;
+                });
+            }
+        });
+    });
+    return Object.keys(result).sort();
+}
+
+// Sample values for every character field, used in new-character prompt examples.
+var FIELD_SAMPLES_EN = {
+    gender_age: 'Female,26',
+    physique: '170cm tall, athletic build, short black hair',
+    occupation: 'novelist',
+    personality: 'confident, sharp-tongued',
+    clothing_build: 'grey tank top, black shorts',
+    current_outfit: 'grey tank top, black shorts, white sneakers',
+    past_experience: 'debut novel sold 100k copies last year',
+    inner_thoughts: 'worried about the impending deadline',
+    current_mood: 'anxious',
+    relationship: 'acquaintance of the protagonist',
+    affection: 50,
+    injuries: 'none',
+    status_effects: 'none',
+    abilities: [{ name: 'Empathy', type: '被动', level: 'Lv.3', effect: 'senses others emotions' }],
+    power_level: 'ordinary human',
+    inventory: [{ name: 'notebook', description: 'leather journal', rarity: 'common', properties: 'none' }]
+};
+
+var FIELD_SAMPLES_ZH = {
+    gender_age: '女,26岁',
+    physique: '约170cm,假小子风格,黑色短发',
+    occupation: '网络小说作者',
+    personality: '自信、毒舌',
+    clothing_build: '运动背心、短款运动裤',
+    current_outfit: '运动背心、短款运动裤、白色运动鞋',
+    past_experience: '去年出道作销量破十万',
+    inner_thoughts: '担心截稿日逼近',
+    current_mood: '焦虑',
+    relationship: '主角的熟人',
+    affection: 50,
+    injuries: '无',
+    status_effects: '无',
+    abilities: [{ name: '共情', type: '被动', level: 'Lv.3', effect: '感知他人情绪' }],
+    power_level: '普通人',
+    inventory: [{ name: '笔记本', description: '皮质手账', rarity: '普通', properties: '无' }]
+};
+
+/**
  * Build a new-character example JSON string for the prompt,
- * dynamically generated from identity field definitions.
+ * showing ALL template fields with sample values (not just identity fields).
  * @param {string} name - character name for the example
  * @param {boolean} isEn - language flag
  * @returns {string}
  */
 function buildNewCharacterExample(name, isEn) {
-    var identityNames = getIdentityFieldNames();
+    var allFields = getAllCharacterFieldNames();
+    var samples = isEn ? FIELD_SAMPLES_EN : FIELD_SAMPLES_ZH;
     var sampleName = name || (isEn ? 'Alice' : '安然');
     var sampleFields = {};
-    identityNames.forEach(function(fk) {
-        if (isEn) {
-            if (fk === 'gender_age') sampleFields[fk] = 'Female,26';
-            else if (fk === 'physique') sampleFields[fk] = '170cm tall, athletic build, short black hair';
-            else if (fk === 'occupation') sampleFields[fk] = 'novelist';
-            else if (fk === 'personality') sampleFields[fk] = 'confident,sharp';
-            else if (fk === 'clothing_build') sampleFields[fk] = 'grey tank top, black shorts';
-            else sampleFields[fk] = '';
-        } else {
-            if (fk === 'gender_age') sampleFields[fk] = '女,26岁';
-            else if (fk === 'physique') sampleFields[fk] = '约170cm,假小子风格,黑色短发';
-            else if (fk === 'occupation') sampleFields[fk] = '网络小说作者';
-            else if (fk === 'personality') sampleFields[fk] = '自信、毒舌';
-            else if (fk === 'clothing_build') sampleFields[fk] = '运动背心、短款运动裤';
-            else sampleFields[fk] = '';
-        }
+    allFields.forEach(function(fk) {
+        sampleFields[fk] = samples[fk] !== undefined ? samples[fk] : '';
     });
     return JSON.stringify({ state_changes: { characters: {} } }).replace('"characters":{}', '"characters":{"' + sampleName + '":' + JSON.stringify(sampleFields) + '}');
 }
@@ -121,6 +145,47 @@ function findNewCharacterNames(vault) {
         }
     }
     return newNames;
+}
+
+/**
+ * Detect existing characters that have ANY empty template fields.
+ * Returns { name: [empty_field_names] } excluding fully-new characters
+ * (those are handled by findNewCharacterNames + world book).
+ * Role-specific: PC fields checked for protagonist, NPC fields for others.
+ * @param {object} vault
+ * @param {string[]} newNames - names already flagged as new (skip them here)
+ * @returns {Object}
+ */
+function findCharactersWithEmptyFields(vault, newNames) {
+    var state = (vault && vault.content && vault.content.state) || {};
+    var chars = state.characters || {};
+    var skip = {};
+    (newNames || []).forEach(function(n) { skip[n] = true; });
+    var result = {};
+    Object.keys(chars).forEach(function(name) {
+        if (skip[name]) return;
+        var card = chars[name];
+        if (!card || typeof card !== 'object') return;
+        var role = (name === state.protagonist_name || card._role === 'protagonist') ? 'pc' : 'npc';
+        var categories = ROLE_CATEGORY_MAP[role] || ROLE_CATEGORY_MAP.npc;
+        var roleFields = {};
+        categories.forEach(function(cat) {
+            if (PRESET_FIELDS[cat]) {
+                Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+                    if (fn !== 'name') roleFields[fn] = true;
+                });
+            }
+        });
+        var emptyFields = Object.keys(roleFields).filter(function(fk) {
+            var v = card[fk];
+            if (v === undefined || v === null || v === '' || v === '(未填)') return true;
+            if (Array.isArray(v) && v.length === 0) return true;
+            if (typeof v === 'object' && Object.keys(v).length === 0) return true;
+            return false;
+        });
+        if (emptyFields.length > 0) result[name] = emptyFields;
+    });
+    return result;
 }
 
 function _matchEntryKeyToName(entry, name, protagonistName) {
@@ -179,7 +244,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
         if (!names || names.length === 0) return '';
         if (!worldBookText || !worldBookText.trim()) return '';
         return '\n## World Book — new character profiles\n' +
-            '(以上是世界书原文。请重点关注：角色外貌描述→用于 gender_age、角色身份→用于 occupation、性格描述→用于 personality、穿着设定→用于 clothing_build)\n\n' +
+            '(以上是世界书原文。请重点关注并映射到对应字段：性别年龄→gender_age、体型外貌→physique、职业身份→occupation、性格→personality、穿着设定→clothing_build 与 current_outfit、过往经历→past_experience、人际关系→relationship、能力技能→abilities 与 power_level、随身物品→inventory。原文未直接写出的字段，请结合对话与场景合理推断，不要留空。)\n\n' +
             '[WB] ' + worldBookText.trim() + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
@@ -289,39 +354,44 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var stateTable = buildStateInjectionTable(state, messages, undefined, content, state.protagonist_name);
     var charCard = buildCharacterCardSection(vault);
 
-    var managedFields = collectAllManagedFields(state, 'character');
-    var managedList = managedFields.join(', ');
-    var identityNames = getIdentityFieldNames();
+    var allCharFields = getAllCharacterFieldNames();
+    var managedList = allCharFields.join(', ');
 
     var factionFields = (DEFAULT_FACTION_TEMPLATE.presetFields || []).join(', ');
     var questFields = (DEFAULT_TASK_TEMPLATE.presetFields || []).join(', ');
     var goalFields = (DEFAULT_GOAL_TEMPLATE.presetFields || []).filter(function(fk) { return fk !== 'name'; }).join(', ');
 
+    // Detect existing characters with empty template fields (excluding fully-new ones)
+    var emptyFieldsMap = findCharactersWithEmptyFields(vault, newNames);
+    var hasEmptyFieldChars = Object.keys(emptyFieldsMap).length > 0;
+
     var rulesStaticEn = '\n## Field Rules\n' +
-        '- You manage characters: ' + managedList + '.\n' +
+        '- You manage characters (union of PC + NPC fields): ' + managedList + '.\n' +
         '- You manage factions: ' + factionFields + '.\n' +
         '- You manage tasks: ' + questFields + '.\n' +
         '- You manage goals: ' + goalFields + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
-        '- Use the full dotted path as the JSON path (e.g. characters.\u89d2\u8272\u540d.' + (managedFields[0] || 'gender_age') + ').\n' +
+        '- Empty/(未填) fields MUST be filled this round: extract from sources above (Character Cards / World Book), or infer from dialogue + scene context. NEVER leave a template field empty.\n' +
+        '- Use the full dotted path as the JSON path (e.g. characters.\u89d2\u8272\u540d.' + (allCharFields[0] || 'gender_age') + ').\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
-        (newNames.length > 0 ? '' : '\nZero-change example: {"state_changes":{}}\n') +
+        ((newNames.length > 0 || hasEmptyFieldChars) ? '' : '\nZero-change example: {"state_changes":{}}\n') +
         '- When a faction is first mentioned or interacts with the player, update its attitude and notes.\n' +
         '\n';
 
     var rulesStaticZh = '\n## 字段规则\n' +
-        '- 你管理角色: ' + managedList + '。\n' +
+        '- 你管理角色（PC + NPC 字段并集）: ' + managedList + '。\n' +
         '- 你管理势力: ' + factionFields + '。\n' +
         '- 你管理任务: ' + questFields + '。\n' +
         '- 你管理目标: ' + goalFields + '。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
-        '- JSON 路径使用完整的点分隔路径（如 characters.角色名.' + (managedFields[0] || 'gender_age') + '）。\n' +
+        '- 空字段/(未填) 必须在本轮填充：从上方来源（角色卡 / 世界书）提取，或从对话 + 场景上下文合理推断。模板字段不得留空。\n' +
+        '- JSON 路径使用完整的点分隔路径（如 characters.角色名.' + (allCharFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
-        (newNames.length > 0 ? '' : '\n零变化示例: {"state_changes":{}}\n') +
+        ((newNames.length > 0 || hasEmptyFieldChars) ? '' : '\n零变化示例: {"state_changes":{}}\n') +
         '- 势力首次被提及或与 PC 互动时，更新其 attitude 和 notes。\n' +
         '\n';
 
@@ -337,60 +407,95 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         console.log('[NE-DEBUG] buildStatePrompt_Preset: newNames=' + JSON.stringify(newNames) +
             ' | worldBook_len=' + (worldBook ? worldBook.length : 0) +
             ' | worldBook_preview=' + JSON.stringify(worldBook ? worldBook.substring(0, 300) : '(empty)') +
-            ' | neCharFallback=' + neCharFallback);
+            ' | neCharFallback=' + neCharFallback +
+            ' | emptyFieldChars=' + JSON.stringify(Object.keys(emptyFieldsMap)));
+    }
+
+    // Build a description list of ALL character fields with constraints
+    function buildAllFieldsDesc(isEn) {
+        return allCharFields.map(function(fn) {
+            var def = ALL_PREDEFINED_FIELDS[fn];
+            var desc = '- ' + fn;
+            if (!def) return desc;
+            if (def.type === 'object' && def.item_schema) {
+                desc += isEn ? ': object[] (items: ' + Object.keys(def.item_schema).join('/') + ')' : '：对象数组（字段：' + Object.keys(def.item_schema).join('/') + '）';
+            } else if (def.type === 'number') {
+                var range = '';
+                if (def.min !== undefined && def.max !== undefined) range = isEn ? (': number ' + def.min + '-' + def.max) : ('：数值 ' + def.min + '-' + def.max);
+                desc += range;
+            } else if (def.type === 'enum' && def.values) {
+                desc += isEn ? ': enum [' + def.values.join('/') + ']' : '：枚举 [' + def.values.join('/') + ']';
+            } else if (def.max_length) {
+                desc += isEn ? ': max ' + def.max_length + ' chars' : '：最长 ' + def.max_length + ' 字符';
+            }
+            return desc;
+        }).join('\n');
+    }
+
+    // Build "existing characters with empty fields" hint
+    function buildEmptyFieldsHint(isEn) {
+        if (!hasEmptyFieldChars) return '';
+        var lines = [];
+        Object.keys(emptyFieldsMap).forEach(function(name) {
+            lines.push('- ' + name + ': ' + emptyFieldsMap[name].join(', '));
+        });
+        if (isEn) {
+            return '\n## Existing Characters — Fill Empty Fields (MUST)\n' +
+                'The following characters have empty fields that MUST be filled this round:\n' +
+                lines.join('\n') + '\n' +
+                'Extract from Character Cards / World Book / dialogue where directly stated; otherwise INFER reasonable values from scene context and character role. Do NOT leave these empty.\n';
+        }
+        return '\n## 已有角色 — 填充空字段（必须）\n' +
+            '以下角色存在空字段，必须在本轮填充：\n' +
+            lines.join('\n') + '\n' +
+            '能从角色卡 / 世界书 / 对话中直接提取的优先提取；未直接写出的请结合场景与角色定位合理推断。不得留空。\n';
     }
 
     if (lang === 'en') {
         var newCharHintEn = '';
         if (newNames.length > 0) {
             var sourceLabel = worldBook ? 'World Book' : 'Character Cards';
-            var identityFieldsDesc = identityNames.map(function(fn) {
-                var def = ALL_PREDEFINED_FIELDS[fn];
-                var desc = '- ' + fn;
-                if (def && def.max_length) desc += ': max ' + def.max_length + ' chars';
-                return desc;
-            }).join('\n');
+            var allFieldsDescEn = buildAllFieldsDesc(true);
             var example = buildNewCharacterExample(newNames[0], true);
-            newCharHintEn = '\n## New Characters (MUST fill)\n' +
-                'The following characters appear for the first time. Fields are empty: ' + newNames.join(', ') + '.\n' +
-                'You MUST output state_changes.characters.<name> containing:\n' +
-                identityFieldsDesc + '\n' +
-                (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above.\n' : 'Extract values from ' + sourceLabel + ' above.\n') +
-                '\nCorrect example:\n' + example + '\n';
+            newCharHintEn = '\n## New Characters (MUST fill ALL fields)\n' +
+                'The following characters appear for the first time. All fields are empty: ' + newNames.join(', ') + '.\n' +
+                'You MUST output state_changes.characters.<name> containing ALL template fields:\n' +
+                allFieldsDescEn + '\n' +
+                (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above where directly stated; INFER the rest from dialogue + scene context.\n' : 'Extract values from ' + sourceLabel + ' above where directly stated; INFER the rest from dialogue + scene context.\n') +
+                'NEVER leave any field empty. Use reasonable defaults like "none" for injuries/status_effects if truly nothing applies.\n' +
+                '\nCorrect example (all fields filled):\n' + example + '\n';
         }
+        var emptyHintEn = buildEmptyFieldsHint(true);
         var templateSection = buildTemplateLibrarySection();
         return {
             system: [
                 (charCard || '') + rulesStaticEn + templateSection,
-                stateTable + worldBook + fallbackNote + newCharHintEn
+                stateTable + worldBook + fallbackNote + newCharHintEn + emptyHintEn
             ],
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill identity fields from sources above; infer other fields from dialogue + scene context.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. For new characters, fill ALL template fields. For existing characters, fill any empty fields. Extract from sources above where directly stated; infer from dialogue + scene context otherwise. Never leave a template field empty.'
         };
     }
     var newCharHintZh = '';
     if (newNames.length > 0) {
         var sourceLabelZh = worldBook ? 'World Book' : '角色卡';
-        var identityFieldsDescZh = identityNames.map(function(fn) {
-            var def = ALL_PREDEFINED_FIELDS[fn];
-            var desc = '- ' + fn;
-            if (def && def.max_length) desc += '：最长 ' + def.max_length + ' 字符';
-            return desc;
-        }).join('\n');
+        var allFieldsDescZh = buildAllFieldsDesc(false);
         var exampleZh = buildNewCharacterExample(newNames[0], false);
-        newCharHintZh = '\n## 新角色（必须填充）\n' +
-            '以下角色首次出场，字段为空：' + newNames.join('、') + '。\n' +
-            '你必须输出 state_changes.characters.<name> 包含：\n' +
-            identityFieldsDescZh + '\n' +
-            (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取。\n' : '从上方 ' + sourceLabelZh + ' 中提取。\n') +
-            '\n正确示例：\n' + exampleZh + '\n';
+        newCharHintZh = '\n## 新角色（必须填充全部字段）\n' +
+            '以下角色首次出场，所有字段为空：' + newNames.join('、') + '。\n' +
+            '你必须输出 state_changes.characters.<name> 包含全部模板字段：\n' +
+            allFieldsDescZh + '\n' +
+            (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取能直接对应的值；其余字段从对话 + 场景上下文合理推断。\n' : '从上方 ' + sourceLabelZh + ' 中提取能直接对应的值；其余字段从对话 + 场景上下文合理推断。\n') +
+            '任何字段不得留空。若确实无相关内容（如 injuries/status_effects），可填 "无"。\n' +
+            '\n正确示例（全部字段已填）：\n' + exampleZh + '\n';
     }
+    var emptyHintZh = buildEmptyFieldsHint(false);
     var templateSection = buildTemplateLibrarySection();
     return {
         system: [
             (charCard || '') + rulesStaticZh + templateSection,
-            stateTable + worldBook + fallbackNote + newCharHintZh
+            stateTable + worldBook + fallbackNote + newCharHintZh + emptyHintZh
         ],
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。身份字段从上方来源填充；其它字段从对话 + 场景上下文推断。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。新角色必须填充全部模板字段；已有角色必须填充空字段。能从上方来源直接提取的优先提取，其余从对话 + 场景上下文合理推断。模板字段不得留空。'
     };
 }
 
