@@ -18,7 +18,7 @@ import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
-import { isStateSchemaEnabled, setStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
+import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
@@ -518,17 +518,6 @@ export async function onMessageReceived(messageIndex) {
             var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
-
-            if (isStateSchemaEnabled() && assistantMsg) {
-                // Auto-detect MVU variable cards: if the assistant output contains <UpdateVariable> blocks,
-                // the card manages its own state — disable NE State Schema to avoid double-tracking.
-                var mvuDetected = (typeof assistantMsg === 'string' && assistantMsg.indexOf('<UpdateVariable>') >= 0)
-                    || (assistantMsg && typeof assistantMsg.content === 'string' && assistantMsg.content.indexOf('<UpdateVariable>') >= 0);
-                if (mvuDetected) {
-                    setStateSchemaEnabled(false);
-                    try { toastr.warning(t_narrative('NE State Schema auto-disabled (MVU card detected). Re-enable in Advanced Settings.')); } catch (e) {}
-                }
-            }
 
             if (isStateSchemaEnabled() && (pendingMessages.length >= 2 || (rbResult && rbResult.rolledBackState > 0))) {
                 triggerPerRoundExtraction(assistantMsg);
