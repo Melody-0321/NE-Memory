@@ -1,4 +1,11 @@
-import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
+import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefToField } from '../core/vault/store.js';
+
+function _getChatId() {
+    try {
+        if (typeof window.__NE_CURRENT_CHAT_ID === 'function') return window.__NE_CURRENT_CHAT_ID();
+    } catch (e) {}
+    return null;
+}
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
@@ -981,36 +988,36 @@ function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
     var clonedDt = cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[clonedKey];
     var tplId = clonedDt && clonedDt._templateId;
 
-    // Update character scheme references — current character + cascade to same-template others
-    var stored = _pendingInlineStorage;
-    var vaultState = stored && stored.vault && stored.vault.content && stored.vault.content.state;
-    var state = vaultState || _getCurrentState();
-
-    if (state && state.characters) {
-        if (tplId) {
-            Object.keys(state.characters).forEach(function(name) {
-                if (name === charName) return;
-                var c = state.characters[name];
-                if (c._templateLocked) return;
-                var theirDtKey = c._scheme;
-                var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
-                if (dt && dt._templateId === tplId) {
-                    c._scheme = clonedKey;
-                }
-            });
-        }
-        if (state.characters[charName]) {
-            state.characters[charName]._scheme = clonedKey;
-        }
-    }
-
-    // Persist to vault
-    if (stored && stored.vault && stored.getChatId) {
-        writeState(stored.getChatId(), stored.vault).then(function() {
-            busEmit('vault:updated', { getChatId: stored.getChatId });
+    // Persist scheme update — cascade same-template characters + current character
+    var chatId = _getChatId();
+    if (!chatId) { busEmit('vault:updated', {}); }
+    else {
+        readState(chatId).then(function(vault) {
+            if (!vault || !vault.content || !vault.content.state) return;
+            var vs = vault.content.state;
+            if (!vs.characters) return;
+            // Cascade to same-template characters (skip locked ones)
+            if (tplId) {
+                Object.keys(vs.characters).forEach(function(name) {
+                    if (name === charName) return;
+                    var c = vs.characters[name];
+                    if (c._templateLocked) return;
+                    var theirDtKey = c._scheme;
+                    var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
+                    if (dt && dt._templateId === tplId) {
+                        c._scheme = clonedKey;
+                    }
+                });
+            }
+            if (vs.characters[charName]) {
+                vs.characters[charName]._scheme = clonedKey;
+            }
+            return writeState(chatId, vault);
+        }).then(function() {
+            busEmit('vault:updated', { getChatId: chatId });
+        }).catch(function() {
+            busEmit('vault:updated', {});
         });
-    } else {
-        busEmit('vault:updated', {});
     }
 
     showToast(t('template_saved'), 'success', 3000);
@@ -1098,28 +1105,39 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, safeOldDtKey);
     });
 
-    // Update character's scheme reference and persist to vault
-    var stored = _pendingInlineStorage;
-    if (stored && stored.vault && stored.getChatId) {
-        var vaultState = stored.vault.content && stored.vault.content.state;
-        if (vaultState && vaultState.characters && vaultState.characters[charName]) {
-            vaultState.characters[charName]._scheme = savedKey;
-        }
-        // Sync the global state reference for immediate UI reflection
-        var globalState = _getCurrentState();
-        if (globalState && globalState.characters && globalState.characters[charName]) {
-            globalState.characters[charName]._scheme = savedKey;
-        }
-        writeState(stored.getChatId(), stored.vault).then(function() {
-            busEmit('vault:updated', { getChatId: stored.getChatId });
+    // Persist _scheme update — cascade same-template characters + current character
+    var chatId = _getChatId();
+    if (!chatId) { busEmit('vault:updated', {}); }
+    else {
+        readState(chatId).then(function(vault) {
+            if (!vault || !vault.content || !vault.content.state) return;
+            var vs = vault.content.state;
+            if (!vs.characters) return;
+            // Cascade to same-template characters (skip locked ones)
+            cardConfig = cardConfig || loadCardConfigSync(protoName) || {};
+            var saveDt = cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[savedKey];
+            var tplId = saveDt && saveDt._templateId;
+            if (tplId) {
+                Object.keys(vs.characters).forEach(function(name) {
+                    if (name === charName) return;
+                    var c = vs.characters[name];
+                    if (c._templateLocked) return;
+                    var theirDtKey = c._scheme;
+                    var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
+                    if (dt && dt._templateId === tplId) {
+                        c._scheme = savedKey;
+                    }
+                });
+            }
+            if (vs.characters[charName]) {
+                vs.characters[charName]._scheme = savedKey;
+            }
+            return writeState(chatId, vault);
+        }).then(function() {
+            busEmit('vault:updated', { getChatId: chatId });
+        }).catch(function() {
+            busEmit('vault:updated', {});
         });
-    } else {
-        // Fallback: just update in-memory state
-        var state = _getCurrentState();
-        if (state && state.characters && state.characters[charName]) {
-            state.characters[charName]._scheme = savedKey;
-        }
-        busEmit('vault:updated', {});
     }
 
     showToast(t('template_saved'), 'success', 3000);
