@@ -2,6 +2,17 @@ import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getAc
 
 function _getChatId() {
     try {
+        if (_pendingInlineStorage && typeof _pendingInlineStorage.getChatId === 'function') {
+            return _pendingInlineStorage.getChatId();
+        }
+    } catch (e) {}
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            if (ctx && ctx.chatId && ctx.chatId !== 'default') return ctx.chatId;
+        }
+    } catch (e) {}
+    try {
         if (typeof window.__NE_CURRENT_CHAT_ID === 'function') return window.__NE_CURRENT_CHAT_ID();
     } catch (e) {}
     return null;
