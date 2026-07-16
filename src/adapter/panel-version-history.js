@@ -529,18 +529,18 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
     _refreshUI('state', stateEls);
     _refreshUI('memory', memEls);
 
-    // State — step through active chain entries, not raw cursor ±1
+    // State — arrays are newest-first (idx 0 = head), so rollback = idx+1 (older), restore = idx-1 (newer)
     if (stateEls.rollbackBtn) stateEls.rollbackBtn.onclick = async function() {
         if (!await _reloadChains()) return;
         _refreshUI('state', stateEls);
         var idx = _stateDeltas.findIndex(function(d) { return d.seq === _stateCursor; });
-        if (idx > 0) await _doNavigate('state', _stateDeltas[idx - 1].seq, stateEls);
+        if (idx >= 0 && idx < _stateDeltas.length - 1) await _doNavigate('state', _stateDeltas[idx + 1].seq, stateEls);
     };
     if (stateEls.restoreBtn) stateEls.restoreBtn.onclick = async function() {
         if (!await _reloadChains()) return;
         _refreshUI('state', stateEls);
         var idx = _stateDeltas.findIndex(function(d) { return d.seq === _stateCursor; });
-        if (idx >= 0 && idx < _stateDeltas.length - 1) await _doNavigate('state', _stateDeltas[idx + 1].seq, stateEls);
+        if (idx > 0) await _doNavigate('state', _stateDeltas[idx - 1].seq, stateEls);
     };
 
     // Memory — same
@@ -548,12 +548,12 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         if (!await _reloadChains()) return;
         _refreshUI('memory', memEls);
         var idx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
-        if (idx > 0) await _doNavigate('memory', _memVersions[idx - 1].seq, memEls);
+        if (idx >= 0 && idx < _memVersions.length - 1) await _doNavigate('memory', _memVersions[idx + 1].seq, memEls);
     };
     if (memEls.restoreBtn) memEls.restoreBtn.onclick = async function() {
         if (!await _reloadChains()) return;
         _refreshUI('memory', memEls);
         var idx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
-        if (idx >= 0 && idx < _memVersions.length - 1) await _doNavigate('memory', _memVersions[idx + 1].seq, memEls);
+        if (idx > 0) await _doNavigate('memory', _memVersions[idx - 1].seq, memEls);
     };
 }
