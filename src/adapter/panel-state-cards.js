@@ -1015,22 +1015,11 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         var oldDt = cardConfig && cardConfig._dialogueTemplates ? cardConfig._dialogueTemplates[dtKey] : null;
         var oldCustomRefs = oldDt ? (oldDt.customFieldRefs || []) : [];
         var newKey = editTemplateInCard(protoName, dtKey, presetFields, customFieldRefs);
-        if (newKey) {
-            // Update character's scheme reference to the new key
-            var state = _getCurrentState();
-            if (state && state.characters && state.characters[charName]) {
-                state.characters[charName]._scheme = newKey;
-            }
-            // 维护字段库引用追踪
-            customFieldRefs.forEach(function(fn) {
-                if (oldCustomRefs.indexOf(fn) === -1) addTemplateRefToField(fn, newKey);
-            });
-            oldCustomRefs.forEach(function(fn) {
-                if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, dtKey);
-            });
-            showToast(t('template_saved'), 'success', 3000);
-        } else {
+        var savedKey = newKey;
+        if (!newKey) {
             showToast(t('Save failed'), 'error', 3000);
+            _exitSchemeEditMode(cardEl);
+            return;
         }
     } else {
         // Create new global template and clone to card
@@ -1052,21 +1041,51 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         var templates = (lib && lib.templates) ? lib.templates : {};
         templates[tplId] = newTpl;
         // Update cardConfig and character
-        var cloneKey = cloneTemplateToCard(protoName, newTpl);
-        if (cloneKey) {
-            var state2 = _getCurrentState();
-            if (state2 && state2.characters && state2.characters[charName]) {
-                state2.characters[charName]._scheme = cloneKey;
-            }
-            // 维护字段库引用追踪
-            customFieldRefs.forEach(function(fn) {
-                addTemplateRefToField(fn, cloneKey);
-            });
+        savedKey = cloneTemplateToCard(protoName, newTpl);
+        if (!savedKey) {
+            showToast(t('Save failed'), 'error', 3000);
+            _exitSchemeEditMode(cardEl);
+            return;
         }
-        showToast(t('template_saved'), 'success', 3000);
     }
+
+    // 维护字段库引用追踪
+    var safeOldRefs = oldCustomRefs || [];
+    var safeOldDtKey = dtKey || '';
+    customFieldRefs.forEach(function(fn) {
+        if (safeOldRefs.indexOf(fn) === -1) addTemplateRefToField(fn, savedKey);
+    });
+    safeOldRefs.forEach(function(fn) {
+        if (customFieldRefs.indexOf(fn) === -1) removeTemplateRefFromField(fn, safeOldDtKey);
+    });
+
+    // Update character's scheme reference and persist to vault
+    var stored = _pendingInlineStorage;
+    if (stored && stored.vault && stored.getChatId) {
+        var vaultState = stored.vault.content && stored.vault.content.state;
+        if (vaultState && vaultState.characters && vaultState.characters[charName]) {
+            vaultState.characters[charName]._scheme = savedKey;
+        }
+        // Sync the global state reference for immediate UI reflection
+        var globalState = _getCurrentState();
+        if (globalState && globalState.characters && globalState.characters[charName]) {
+            globalState.characters[charName]._scheme = savedKey;
+        }
+        writeState(stored.getChatId(), stored.vault).then(function() {
+            busEmit('vault:updated', { getChatId: stored.getChatId });
+        });
+    } else {
+        // Fallback: just update in-memory state
+        var state = _getCurrentState();
+        if (state && state.characters && state.characters[charName]) {
+            state.characters[charName]._scheme = savedKey;
+        }
+        busEmit('vault:updated', {});
+    }
+
+    showToast(t('template_saved'), 'success', 3000);
     _exitSchemeEditMode(cardEl);
-    busEmit('vault:updated', {});
+
 }
 
 function _saveSchemeAsTemplate(cardEl, charName, protoName, dtKey, cardConfig) {
