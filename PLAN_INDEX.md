@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-16 | 38 个文档 | 42% 完成
+> 自动生成 | 2026-07-16 | 39 个文档 | 41% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -36,6 +36,7 @@
 | `rollback-buttons-and-scheme-editor.md` | ❓ 未知 | — | — | 计划：版本回退按钮外移 + 方案编辑器从当前状态开始 |
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
+| `template-copy-management-plan.md` | ❓ 未知 | — | — | 模板副本管理：删除 + 去重 + UI 简化 |
 | `template-panel-ux-optimization.md` | 🔄 进行中 | 2026-07-13 | 2026-07-13 | 模板库面板 UI/UX 优化方案 |
 | `token-classification-fix.md` | ❓ 未知 | — | — | Token 统计分类修复 + SmartPush 死代码清理 |
 | `unified-template-panel-restructure.md` | ❓ 未知 | — | — | 模板管理面板统一化重构 |
@@ -51,4 +52,4 @@
 - ✅ 已完成：16
 - 🔄 进行中：7
 - ⏳ 未开始：3
-- ❓ 未标记：12
+- ❓ 未标记：13

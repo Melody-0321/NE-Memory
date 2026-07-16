@@ -1106,6 +1106,16 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     return lockedNames;
 }
 
+export function deleteTemplateVersion(charName, versionKey) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return false;
+    var dt = config._dialogueTemplates[versionKey];
+    if (!dt) return false;
+    if (dt._active) return false;
+    delete config._dialogueTemplates[versionKey];
+    return saveCardConfig(charName, config);
+}
+
 /**
  * Register a custom field reference to a template definition (persisted in library).
  * Adds fieldName to template.customFieldRefs so it's reused across conversations.
@@ -1149,12 +1159,42 @@ export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, 
     var dt = config._dialogueTemplates[dialogueTemplateKey];
     if (!dt) return false;
 
-    // Create new version copy
+    var newPreset = (presetFields || []).slice().sort();
+    var newCustom = (customFieldRefs || []).slice().sort();
+    var newSig = JSON.stringify(newPreset) + '|' + JSON.stringify(newCustom);
+
+    var dupKeys = [];
+    Object.keys(config._dialogueTemplates).forEach(function(k) {
+        if (k === dialogueTemplateKey) return;
+        var existing = config._dialogueTemplates[k];
+        if (existing._templateId !== dt._templateId) return;
+        var exPreset = (existing.presetFields || []).slice().sort();
+        var exCustom = (existing.customFieldRefs || []).slice().sort();
+        var exSig = JSON.stringify(exPreset) + '|' + JSON.stringify(exCustom);
+        if (exSig === newSig) dupKeys.push(k);
+    });
+
+    if (dupKeys.length > 0) {
+        dupKeys.sort(function(a, b) {
+            var ta = new Date(config._dialogueTemplates[a].createdAt || 0).getTime();
+            var tb = new Date(config._dialogueTemplates[b].createdAt || 0).getTime();
+            return ta - tb;
+        });
+        var keepKey = dupKeys[0];
+        for (var i = 1; i < dupKeys.length; i++) {
+            delete config._dialogueTemplates[dupKeys[i]];
+        }
+        dt._active = false;
+        config._dialogueTemplates[keepKey]._active = true;
+        config._dialogueTemplates[keepKey].source = 'user_created';
+        saveCardConfig(charName, config);
+        return keepKey;
+    }
+
     var now = new Date().toISOString();
     var suffix = Math.random().toString(36).slice(2, 8);
     var newKey = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
 
-    // Deactivate old version
     dt._active = false;
 
     config._dialogueTemplates[newKey] = {

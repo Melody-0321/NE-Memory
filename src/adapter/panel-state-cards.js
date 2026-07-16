@@ -1,4 +1,4 @@
-import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefToField } from '../core/vault/store.js';
+import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, deleteTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefToField } from '../core/vault/store.js';
 
 function _getChatId() {
     try {
@@ -662,62 +662,36 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     });
     html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
 
-    // Primary: list of copies/versions — grouped by _templateId
+    // Primary: main copy + collapsible history copies
     var allDtKeys = Object.keys(dialogueTemplates);
     if (allDtKeys.length > 0) {
-        // Determine current templateId (if any)
-        var curSwTplId = (dtKey && dialogueTemplates[dtKey]) ? dialogueTemplates[dtKey]._templateId : null;
-
-        // Group dialogueTemplates by _templateId
-        var swGroups = {};
-        allDtKeys.forEach(function(k) {
-            var d = dialogueTemplates[k];
-            if (!d || !d._templateId) return;
-            if (!swGroups[d._templateId]) swGroups[d._templateId] = [];
-            swGroups[d._templateId].push({ key: k, tpl: d });
-        });
-
-        var swGroupIds = Object.keys(swGroups);
-        if (swGroupIds.length > 0) {
-            // Sort groups: current template first, then by latest createdAt
-            swGroupIds.sort(function(a, b) {
-                if (a === curSwTplId) return -1;
-                if (b === curSwTplId) return 1;
-                var aMax = 0, bMax = 0;
-                swGroups[a].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > aMax) aMax = t; });
-                swGroups[b].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > bMax) bMax = t; });
-                return bMax - aMax;
-            });
-
-            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + '</div>';
-            html += '<div style="max-height:240px;overflow-y:auto;font-size:0.8em;">';
-
-            swGroupIds.forEach(function(gid) {
-                var versions = swGroups[gid];
-                versions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
-                var gt = templates[gid];
-                var gName = (gt && gt.name) ? gt.name : gid;
-                var isCurGroup = (gid === curSwTplId);
-                html += '<div style="padding:4px 6px;font-weight:bold;color:var(--grey-50);border-bottom:1px solid var(--grey-20);background:var(--grey-10);">' + escapeHtml(gName) + (isCurGroup ? ' (' + escapeHtml(t('current')) + ')' : '') + '</div>';
-                versions.forEach(function(ver) {
-                    var vActive = !!ver.tpl._active && isCurGroup;
-                    html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);' + (vActive ? 'background:var(--grey-10);' : '') + '">';
-                    html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
-                    var vSource = ver.tpl.source || 'user_created';
-                    var vSourceLabel = vSource === 'ai_generated' ? t('ai_generated') : (vSource === 'user_rollback' ? t('rollback') : t('user_created'));
-                    html += '<span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(vSourceLabel) + '</span>';
-                    if (vActive) {
-                        html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
-                    } else {
-                        html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
-                    }
-                    html += '</div>';
-                });
-            });
-
+        var mainTpl = (dtKey && dialogueTemplates[dtKey]) ? dialogueTemplates[dtKey] : null;
+        if (mainTpl) {
+            var gtMain = templates[mainTpl._templateId];
+            var mainName = (gtMain && gtMain.name) ? gtMain.name : (mainTpl._templateId || '?');
+            html += '<div style="padding:8px;border:1px solid var(--ne-info-border);border-radius:6px;background:var(--ne-info-bg);margin-bottom:8px;">';
+            html += '<div style="font-weight:bold;color:var(--ne-info);">' + escapeHtml(t('current')) + '</div>';
+            html += '<div style="font-size:0.85em;margin-top:2px;">' + escapeHtml(mainName) + '</div>';
+            html += '<div style="font-size:0.78em;color:var(--grey-50);">' + escapeHtml(mainTpl.createdAt ? formatLocalTime(mainTpl.createdAt) : '?') + '</div>';
             html += '</div>';
-        } else {
-            html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
+        }
+
+        var historyKeys = allDtKeys.filter(function(k) { return k !== dtKey; });
+        if (historyKeys.length > 0) {
+            html += '<div style="margin-bottom:8px;">';
+            html += '<div id="ne-scheme-history-toggle" style="cursor:pointer;padding:4px 6px;font-size:0.8em;color:var(--grey-50);user-select:none;">';
+            html += '<span id="ne-scheme-history-arrow">\u25B6</span> ' + escapeHtml(t('history_copies')) + ' (' + historyKeys.length + ')</div>';
+            html += '<div id="ne-scheme-history-list" style="display:none;max-height:200px;overflow-y:auto;font-size:0.78em;">';
+            historyKeys.forEach(function(k) {
+                var h = dialogueTemplates[k];
+                if (!h) return;
+                html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--black20a);">';
+                html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(h.createdAt ? formatLocalTime(h.createdAt) : '?') + '</span>';
+                html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(k) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
+                html += '<button class="ne-btn-small" data-delete-version="' + escapeHtml(k) + '" style="font-size:0.75em;color:var(--ne-error);">' + escapeHtml(t('Delete')) + '</button>';
+                html += '</div>';
+            });
+            html += '</div></div>';
         }
     } else {
         html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
@@ -801,40 +775,22 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '</div>';
     html += '</div>';
 
-    // Version history — edit_current mode only (same-template copies)
+    // History copies — edit_current mode only (collapsible, same as switch_template)
     var vhDisplay = (defaultMode === 'edit_current') ? '' : ' display:none;';
     if (dtKey && dialogueTemplates[dtKey]) {
-        var currentDt = dialogueTemplates[dtKey];
-        var currentTplId = currentDt._templateId || null;
-        var allVersions = [];
-        if (currentTplId) {
-            Object.keys(dialogueTemplates).forEach(function(k) {
-                var dt = dialogueTemplates[k];
-                if (dt && dt._templateId === currentTplId) {
-                    allVersions.push({ key: k, tpl: dt });
-                }
-            });
-        }
-        if (allVersions.length > 1) {
-            allVersions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
+        var edHistoryKeys = Object.keys(dialogueTemplates).filter(function(k) { return k !== dtKey; });
+        if (edHistoryKeys.length > 0) {
             html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
-            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + allVersions.length + ')</div>';
-            html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
-            allVersions.slice(0, 5).forEach(function(ver) {
-                var isActive = !!ver.tpl._active;
-                html += '<div style="padding:2px 4px;display:flex;align-items:center;gap:4px;' + (isActive ? 'background:var(--grey-10);' : '') + '">';
-                html += '<span style="color:var(--grey-50);">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
-                if (isActive) {
-                    html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
-                } else {
-                    html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
-                }
-                var verSource = ver.tpl.source || 'user_created';
-                var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('rollback') : t('user_created'));
-                html += ' <span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(verSourceLabel) + '</span>';
-                if (ver.tpl._state && ver.tpl._state !== 'synced') {
-                    html += ' <span style="font-size:0.85em;color:var(--ne-warn);">' + escapeHtml(ver.tpl._state) + '</span>';
-                }
+            html += '<div id="ne-edu-history-toggle" style="cursor:pointer;padding:4px 6px;font-size:0.8em;color:var(--grey-50);user-select:none;">';
+            html += '<span id="ne-edu-history-arrow">\u25B6</span> ' + escapeHtml(t('history_copies')) + ' (' + edHistoryKeys.length + ')</div>';
+            html += '<div id="ne-edu-history-list" style="display:none;max-height:200px;overflow-y:auto;font-size:0.78em;">';
+            edHistoryKeys.forEach(function(k) {
+                var h = dialogueTemplates[k];
+                if (!h) return;
+                html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--black20a);">';
+                html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(h.createdAt ? formatLocalTime(h.createdAt) : '?') + '</span>';
+                html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(k) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
+                html += '<button class="ne-btn-small" data-delete-version="' + escapeHtml(k) + '" style="font-size:0.75em;color:var(--ne-error);">' + escapeHtml(t('Delete')) + '</button>';
                 html += '</div>';
             });
             html += '</div></div>';
@@ -1095,6 +1051,51 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                 console.error('[NE Scheme Switch] error:', err);
                 showToast(t('Save failed'), 'error', 3000);
             });
+        });
+    }
+
+    // P10: Delete version buttons
+    var delBtns = cardEl.querySelectorAll('[data-delete-version]');
+    for (var d = 0; d < delBtns.length; d++) {
+        delBtns[d].addEventListener('click', function() {
+            var versionKey = this.getAttribute('data-delete-version');
+            if (!versionKey || !protoName) return;
+            showConfirm(t('Delete'), t('confirm_delete_copy'), t('Delete'), t('Cancel'), true).then(function(confirmed) {
+                if (!confirmed) return;
+                var ok = deleteTemplateVersion(protoName, versionKey);
+                if (ok) {
+                    showToast(t('copy_deleted'), 'success', 2000);
+                    busEmit('vault:updated', {});
+                } else {
+                    showToast(t('cannot_delete_active'), 'error', 3000);
+                }
+            });
+        });
+    }
+
+    // P11: History collapse toggles (switch_template + edit_current)
+    var swToggle = cardEl.querySelector('#ne-scheme-history-toggle');
+    if (swToggle) {
+        swToggle.addEventListener('click', function() {
+            var list = cardEl.querySelector('#ne-scheme-history-list');
+            var arrow = cardEl.querySelector('#ne-scheme-history-arrow');
+            if (list) {
+                var isHidden = list.style.display === 'none';
+                list.style.display = isHidden ? '' : 'none';
+                if (arrow) arrow.textContent = isHidden ? '\u25BC' : '\u25B6';
+            }
+        });
+    }
+    var eduToggle = cardEl.querySelector('#ne-edu-history-toggle');
+    if (eduToggle) {
+        eduToggle.addEventListener('click', function() {
+            var list = cardEl.querySelector('#ne-edu-history-list');
+            var arrow = cardEl.querySelector('#ne-edu-history-arrow');
+            if (list) {
+                var isHidden = list.style.display === 'none';
+                list.style.display = isHidden ? '' : 'none';
+                if (arrow) arrow.textContent = isHidden ? '\u25BC' : '\u25B6';
+            }
         });
     }
 }

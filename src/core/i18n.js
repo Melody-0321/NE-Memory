@@ -151,7 +151,7 @@ export const NARRATIVE_I18N = {
         // P9: Scheme editor
         'scheme_actions': 'Scheme Actions', 'edit_from_current': 'Edit Current', 'switch_template': 'Switch', 'start_from_scratch': 'From Scratch',
         'card_level': 'Card', 'global': 'Global', 'active': 'Active', 'switch_to': 'Switch to', 'version_switched': 'Version switched.', 'save_scheme_first': 'Save the scheme first.', 'card_version_edit_hint': 'Editing card-level fields only. Metadata is read-only.',
-        'select_template': 'Select a template', 'apply': 'Apply',
+        'select_template': 'Select a template', 'apply': 'Apply', 'history_copies': 'History Copies', 'cannot_delete_active': 'Cannot delete the active copy.', 'confirm_delete_copy': 'Delete this copy? This cannot be undone.', 'copy_deleted': 'Copy deleted.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -294,7 +294,7 @@ export const NARRATIVE_I18N = {
         // P9: Scheme editor
         'scheme_actions': '方案操作', 'edit_from_current': '编辑当前', 'switch_template': '切换模板', 'start_from_scratch': '从零开始',
         'card_level': '卡片', 'global': '全局', 'active': '当前', 'switch_to': '切换', 'version_switched': '版本已切换。', 'save_scheme_first': '请先保存方案。', 'card_version_edit_hint': '仅编辑卡片级字段，元数据只读。',
-        'select_template': '选择模板', 'apply': '应用',
+        'select_template': '选择模板', 'apply': '应用', 'history_copies': '历史副本', 'cannot_delete_active': '无法删除当前使用的副本。', 'confirm_delete_copy': '确定删除此副本？此操作无法撤销。', 'copy_deleted': '副本已删除。',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -423,7 +423,7 @@ export const NARRATIVE_I18N = {
         // P9: Scheme editor
         'scheme_actions': '方案操作', 'edit_from_current': '編輯當前', 'switch_template': '切換模板', 'start_from_scratch': '從零開始',
         'card_level': '卡片', 'global': '全域', 'active': '當前', 'switch_to': '切換', 'version_switched': '版本已切換。', 'save_scheme_first': '請先儲存方案。', 'card_version_edit_hint': '僅編輯卡片級欄位，元資料唯讀。',
-        'select_template': '選擇模板', 'apply': '應用',
+        'select_template': '選擇模板', 'apply': '應用', 'history_copies': '歷史副本', 'cannot_delete_active': '無法刪除當前使用的副本。', 'confirm_delete_copy': '確定刪除此副本？此操作無法撤銷。', 'copy_deleted': '副本已刪除。',
     }
 };
 
