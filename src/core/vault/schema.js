@@ -510,8 +510,8 @@ export function resolveActiveTemplateFields(stCharName, schemeKey) {
     if (stCharName) {
         var cardConfig = loadCardConfigSync(stCharName);
         if (cardConfig && cardConfig._dialogueTemplates && schemeKey) {
-            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, schemeKey);
-            if (activeTemplate) return expandTemplateFields(activeTemplate);
+            var tpl = cardConfig._dialogueTemplates[schemeKey];
+            if (tpl) return expandTemplateFields(tpl);
         }
     }
     // Fallback 2: global template library lookup by schemeKey as global template ID

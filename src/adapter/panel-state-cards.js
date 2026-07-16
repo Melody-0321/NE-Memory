@@ -38,7 +38,7 @@ function renderCharacterCard(name, card, schema, cardType) {
 
     // Resolve actual template fields from character's _scheme instead of always using default schema
     var schemeKey = (card && card._scheme) || null;
-    if (schemeKey) {
+    if (schemeKey && schemeKey.indexOf('_default_') !== 0) {
         var protoName = _getCurrentCharName();
         if (protoName) {
             var resolvedFields = resolveActiveTemplateFields(protoName, schemeKey);
