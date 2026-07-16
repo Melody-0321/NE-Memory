@@ -10,7 +10,7 @@
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
-  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
+  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, deleteTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
   loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
@@ -1297,6 +1297,44 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         });
     }
 
+    // 历史副本折叠/展开
+    var vhToggle = container.querySelector('.ne-vh-toggle');
+    if (vhToggle) {
+        vhToggle.addEventListener('click', function() {
+            var list = container.querySelector('.ne-vh-list');
+            var arrow = container.querySelector('.ne-vh-arrow');
+            if (list) {
+                if (list.style.display === 'none') {
+                    list.style.display = '';
+                    if (arrow) arrow.textContent = '\u25BC';
+                } else {
+                    list.style.display = 'none';
+                    if (arrow) arrow.textContent = '\u25B6';
+                }
+            }
+        });
+    }
+
+    // 删除副本按钮
+    var deleteVerBtns = container.querySelectorAll('[data-delete-version]');
+    for (var dv = 0; dv < deleteVerBtns.length; dv++) {
+        deleteVerBtns[dv].addEventListener('click', function () {
+            var versionKey = this.getAttribute('data-delete-version');
+            var charName = _getCurrentCharName();
+            if (!charName || !versionKey) return;
+            showConfirm(t('Delete'), t('confirm_delete_copy'), t('Delete'), t('Cancel'), true).then(function (confirmed) {
+                if (!confirmed) return;
+                var ok = deleteTemplateVersion(charName, versionKey);
+                if (ok) {
+                    showToast(t('copy_deleted'), 'info', 2000);
+                    renderTemplatesIntoSlide(container);
+                } else {
+                    showToast(t('cannot_delete_active'), 'warn', 3000);
+                }
+            });
+        });
+    }
+
     // N7: Push to global library button
     var pushBtn = container.querySelector('#ne-editor-push-global');
     if (pushBtn) {
@@ -1339,13 +1377,12 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
 }
 
 function _renderVersionHistoryHTML(tpl) {
-    // N3: Read versions from cardConfig._dialogueTemplates (card-level), not from global template
     var cardConfig = null;
     var charName = _getCurrentCharName();
     try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
     if (!cardConfig || !cardConfig._dialogueTemplates) return '';
 
-    // Find all versions for this template
+    // 收集同 _templateId 的所有副本
     var versions = [];
     Object.keys(cardConfig._dialogueTemplates).forEach(function (k) {
         var dt = cardConfig._dialogueTemplates[k];
@@ -1355,39 +1392,43 @@ function _renderVersionHistoryHTML(tpl) {
     });
     if (versions.length === 0) return '';
 
-    // Sort by createdAt descending
-    versions.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
+    // 分离主副本和历史副本
+    var main = null;
+    var history = [];
+    versions.forEach(function (v) {
+        if (v.tpl._active) main = v;
+        else history.push(v);
+    });
+    if (!main) { main = versions[0]; history = versions.slice(1); }
 
     var html = '<div class="ne-editor-section">';
     html += '<div class="ne-section-title">' + escapeHtml(t('version_history')) + '</div>';
-    html += '<div class="ne-version-timeline">';
-    versions.forEach(function (ver) {
-        var isActive = !!ver.tpl._active;
-        var date = ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '';
-        var dotClass = isActive ? 'ne-version-dot active' : 'ne-version-dot';
-        var verSource = ver.tpl.source || 'user_created';
-        var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('rollback') : t('user_created'));
-        var verSourceClass = verSource === 'ai_generated' ? 'src-ai' : 'src-user';
-        var stateLabel = ver.tpl._state ? ver.tpl._state : '';
-        html += '<div class="ne-version-item">';
-        html += '<span class="' + dotClass + '"></span>';
-        html += '<div class="ne-version-info">';
-        html += '<span class="ne-version-date">' + escapeHtml(date) + '</span>';
-        if (isActive) html += ' <span class="ne-version-badge">(' + escapeHtml(t('current')) + ')</span>';
-        html += ' <span class="ne-template-source-badge ' + verSourceClass + '" style="font-size:0.7em;">' + escapeHtml(verSourceLabel) + '</span>';
-        if (stateLabel && stateLabel !== 'synced') {
-            html += ' <span class="ne-template-source-badge src-user" style="font-size:0.7em;">' + escapeHtml(stateLabel) + '</span>';
-        }
-        // N3: Rollback button for non-active versions
-        if (!isActive) {
-            html += ' <button class="ne-btn-small" data-rollback-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('rollback_to_version')) + '</button>';
-        }
-        var presetCount = (ver.tpl.presetFields || []).length;
-        var customCount = (ver.tpl.customFieldRefs || []).length;
-        html += '<div class="ne-version-diff">' + escapeHtml(presetCount) + ' ' + escapeHtml(t('preset_fields')) + ', ' + escapeHtml(customCount) + ' ' + escapeHtml(t('custom_fields')) + '</div>';
+
+    // 主副本
+    if (main) {
+        html += '<div style="padding:8px;border:1px solid var(--ne-info-border);border-radius:6px;background:var(--ne-info-bg);margin-bottom:8px;">';
+        html += '<div style="font-weight:bold;color:var(--ne-info);">' + escapeHtml(t('current')) + '</div>';
+        html += '<div style="font-size:0.78em;color:var(--grey-50);margin-top:2px;">' + escapeHtml(main.tpl.createdAt ? formatLocalTime(main.tpl.createdAt) : '?') + '</div>';
+        html += '</div>';
+    }
+
+    // 历史副本（折叠）
+    if (history.length > 0) {
+        html += '<div style="margin-bottom:8px;">';
+        html += '<div class="ne-vh-toggle" style="cursor:pointer;padding:4px 6px;font-size:0.8em;color:var(--grey-50);user-select:none;">';
+        html += '<span class="ne-vh-arrow">\u25B6</span> ' + escapeHtml(t('history_copies')) + ' (' + history.length + ')</div>';
+        html += '<div class="ne-vh-list" style="display:none;max-height:200px;overflow-y:auto;font-size:0.78em;">';
+        history.forEach(function (ver) {
+            html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--black20a);">';
+            html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
+            html += '<button class="ne-btn-small" data-rollback-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('rollback_to_version')) + '</button>';
+            html += '<button class="ne-btn-small ne-btn-danger" data-delete-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;color:var(--ne-error);">' + escapeHtml(t('Delete')) + '</button>';
+            html += '</div>';
+        });
         html += '</div></div>';
-    });
-    html += '</div></div>';
+    }
+
+    html += '</div>';
     return html;
 }
 

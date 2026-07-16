@@ -1090,6 +1090,16 @@ export function restoreTemplateVersion(charName, versionKey, state) {
     return true;
 }
 
+export function deleteTemplateVersion(charName, versionKey) {
+    var config = loadCardConfigSync(charName);
+    if (!config || !config._dialogueTemplates) return false;
+    var dt = config._dialogueTemplates[versionKey];
+    if (!dt) return false;
+    if (dt._active) return false; // 禁止删除主副本
+    delete config._dialogueTemplates[versionKey];
+    return saveCardConfig(charName, config);
+}
+
 export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     if (!state || !state.characters) return;
     var lockedNames = [];
@@ -1104,16 +1114,6 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
         }
     });
     return lockedNames;
-}
-
-export function deleteTemplateVersion(charName, versionKey) {
-    var config = loadCardConfigSync(charName);
-    if (!config || !config._dialogueTemplates) return false;
-    var dt = config._dialogueTemplates[versionKey];
-    if (!dt) return false;
-    if (dt._active) return false;
-    delete config._dialogueTemplates[versionKey];
-    return saveCardConfig(charName, config);
 }
 
 /**
@@ -1159,42 +1159,37 @@ export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, 
     var dt = config._dialogueTemplates[dialogueTemplateKey];
     if (!dt) return false;
 
+    // 去重：扫描同 _templateId 下所有副本，找字段完全相同的
     var newPreset = (presetFields || []).slice().sort();
     var newCustom = (customFieldRefs || []).slice().sort();
-    var newSig = JSON.stringify(newPreset) + '|' + JSON.stringify(newCustom);
-
-    var dupKeys = [];
+    var dedupKey = null;
     Object.keys(config._dialogueTemplates).forEach(function(k) {
         if (k === dialogueTemplateKey) return;
         var existing = config._dialogueTemplates[k];
         if (existing._templateId !== dt._templateId) return;
         var exPreset = (existing.presetFields || []).slice().sort();
         var exCustom = (existing.customFieldRefs || []).slice().sort();
-        var exSig = JSON.stringify(exPreset) + '|' + JSON.stringify(exCustom);
-        if (exSig === newSig) dupKeys.push(k);
+        if (JSON.stringify(exPreset) === JSON.stringify(newPreset) &&
+            JSON.stringify(exCustom) === JSON.stringify(newCustom)) {
+            dedupKey = k;
+        }
     });
 
-    if (dupKeys.length > 0) {
-        dupKeys.sort(function(a, b) {
-            var ta = new Date(config._dialogueTemplates[a].createdAt || 0).getTime();
-            var tb = new Date(config._dialogueTemplates[b].createdAt || 0).getTime();
-            return ta - tb;
-        });
-        var keepKey = dupKeys[0];
-        for (var i = 1; i < dupKeys.length; i++) {
-            delete config._dialogueTemplates[dupKeys[i]];
-        }
+    if (dedupKey) {
+        // 找到重复：激活已有副本，停用当前，不创建新副本
         dt._active = false;
-        config._dialogueTemplates[keepKey]._active = true;
-        config._dialogueTemplates[keepKey].source = 'user_created';
+        config._dialogueTemplates[dedupKey]._active = true;
+        config._dialogueTemplates[dedupKey].source = 'user_created';
         saveCardConfig(charName, config);
-        return keepKey;
+        return dedupKey;
     }
 
+    // 无重复：创建新版本
     var now = new Date().toISOString();
     var suffix = Math.random().toString(36).slice(2, 8);
     var newKey = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
 
+    // Deactivate old version
     dt._active = false;
 
     config._dialogueTemplates[newKey] = {

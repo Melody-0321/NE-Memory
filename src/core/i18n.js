@@ -146,12 +146,13 @@ export const NARRATIVE_I18N = {
         'lock_tooltip': 'Lock: this template will not be auto-replaced during dialogue.',
         'confirm_duplicate': 'Duplicate this template?', 'duplicated_suffix': '(Copy)', 'no_current_char': 'No active character card. Config unavailable.',
         'orphaned': 'Orphaned', 'rollback': 'Rollback', 'confirm_rollback': 'Restore this version? Current version will be kept as history.',
+        'history_copies': 'History Copies', 'cannot_delete_active': 'Cannot delete the active copy', 'confirm_delete_copy': 'Delete this copy? This cannot be undone.', 'copy_deleted': 'Copy deleted.',
         'push_to_global': 'Push to Global Library', 'confirm_push_to_global': 'Push this template to the global library as a new template?',
         'detach_template': 'Detach from Global', 'confirm_detach': 'Detach this template from the global library? It will become independent (orphaned).',
         // P9: Scheme editor
         'scheme_actions': 'Scheme Actions', 'edit_from_current': 'Edit Current', 'switch_template': 'Switch', 'start_from_scratch': 'From Scratch',
         'card_level': 'Card', 'global': 'Global', 'active': 'Active', 'switch_to': 'Switch to', 'version_switched': 'Version switched.', 'save_scheme_first': 'Save the scheme first.', 'card_version_edit_hint': 'Editing card-level fields only. Metadata is read-only.',
-        'select_template': 'Select a template', 'apply': 'Apply', 'history_copies': 'History Copies', 'cannot_delete_active': 'Cannot delete the active copy.', 'confirm_delete_copy': 'Delete this copy? This cannot be undone.', 'copy_deleted': 'Copy deleted.',
+        'select_template': 'Select a template', 'apply': 'Apply',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -289,12 +290,13 @@ export const NARRATIVE_I18N = {
         'lock_tooltip': '锁定：该模板在对话中不会被自动替换。',
         'confirm_duplicate': '复制此模板？', 'duplicated_suffix': '(副本)', 'no_current_char': '无当前角色卡，配置不可用。',
         'orphaned': '已分离', 'rollback': '回滚', 'confirm_rollback': '恢复到此版本？当前版本将保留为历史记录。',
+        'history_copies': '历史副本', 'cannot_delete_active': '无法删除当前使用的副本', 'confirm_delete_copy': '确定删除此副本？此操作无法撤销。', 'copy_deleted': '副本已删除。',
         'push_to_global': '推回全局库', 'confirm_push_to_global': '将此模板作为新模板推回全局库？',
         'detach_template': '分离', 'confirm_detach': '从全局库分离此模板？它将变为独立状态（已分离）。',
         // P9: Scheme editor
         'scheme_actions': '方案操作', 'edit_from_current': '编辑当前', 'switch_template': '切换模板', 'start_from_scratch': '从零开始',
         'card_level': '卡片', 'global': '全局', 'active': '当前', 'switch_to': '切换', 'version_switched': '版本已切换。', 'save_scheme_first': '请先保存方案。', 'card_version_edit_hint': '仅编辑卡片级字段，元数据只读。',
-        'select_template': '选择模板', 'apply': '应用', 'history_copies': '历史副本', 'cannot_delete_active': '无法删除当前使用的副本。', 'confirm_delete_copy': '确定删除此副本？此操作无法撤销。', 'copy_deleted': '副本已删除。',
+        'select_template': '选择模板', 'apply': '应用',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -418,12 +420,13 @@ export const NARRATIVE_I18N = {
         'lock_tooltip': '鎖定：該模板在對話中不會被自動替換。',
         'confirm_duplicate': '複製此模板？', 'duplicated_suffix': '(副本)', 'no_current_char': '無當前角色卡，設定不可用。',
         'orphaned': '已分離', 'rollback': '回滾', 'confirm_rollback': '恢復到此版本？當前版本將保留為歷史記錄。',
+        'history_copies': '歷史副本', 'cannot_delete_active': '無法刪除當前使用的副本', 'confirm_delete_copy': '確定刪除此副本？此操作無法撤銷。', 'copy_deleted': '副本已刪除。',
         'push_to_global': '推回全局庫', 'confirm_push_to_global': '將此模板作為新模板推回全局庫？',
         'detach_template': '分離', 'confirm_detach': '從全局庫分離此模板？它將變為獨立狀態（已分離）。',
         // P9: Scheme editor
         'scheme_actions': '方案操作', 'edit_from_current': '編輯當前', 'switch_template': '切換模板', 'start_from_scratch': '從零開始',
         'card_level': '卡片', 'global': '全域', 'active': '當前', 'switch_to': '切換', 'version_switched': '版本已切換。', 'save_scheme_first': '請先儲存方案。', 'card_version_edit_hint': '僅編輯卡片級欄位，元資料唯讀。',
-        'select_template': '選擇模板', 'apply': '應用', 'history_copies': '歷史副本', 'cannot_delete_active': '無法刪除當前使用的副本。', 'confirm_delete_copy': '確定刪除此副本？此操作無法撤銷。', 'copy_deleted': '副本已刪除。',
+        'select_template': '選擇模板', 'apply': '應用',
     }
 };
 
