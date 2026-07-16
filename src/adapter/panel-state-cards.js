@@ -598,43 +598,22 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     });
     html += '</div>';
 
-    // Template selector - only visible in switch_template mode
+    // Template selector — only visible in switch_template mode; only shows global templates
     var tplDisplay = (defaultMode === 'switch_template') ? '' : ' display:none;';
-    // Template selector - show both card-level active versions and global templates
-
-    // Template selector — show both card-level active versions and global templates
-    var tplOptionsHtml = '<option value="">— ' + escapeHtml(t('create_template')) + ' —</option>';
-    // Card-level active versions
-    var hasActiveVersions = false;
-    Object.keys(dialogueTemplates).forEach(function(dtk) {
-        var dtt = dialogueTemplates[dtk];
-        if (!dtt._active) return;
-        hasActiveVersions = true;
-        var globalTpl = dtt._templateId ? templates[dtt._templateId] : null;
-        var label = (globalTpl && globalTpl.name) ? globalTpl.name : (dtt._templateId || dtk);
-        var sel = (dtKey === dtk) ? ' selected' : '';
-        tplOptionsHtml += '<option value="' + escapeHtml(dtk) + '"' + sel + '>' + escapeHtml(label) + ' [' + escapeHtml(t('card_level')) + ']</option>';
-    });
-    // Global templates (only those not already active in card)
-    if (hasActiveVersions) {
-        tplOptionsHtml += '<option disabled>\u2500\u2500 ' + escapeHtml(t('global_template')) + ' \u2500\u2500</option>';
-    }
+    var tplOptionsHtml = '<option value="">— ' + escapeHtml(t('select_template')) + ' —</option>';
     Object.keys(templates).forEach(function(tid) {
         var gt = templates[tid];
         if (!gt || !gt.name) return;
-        // Skip if this global template is already represented by an active version
-        var alreadyActive = false;
-        Object.keys(dialogueTemplates).forEach(function(dtk) {
-            var dtt = dialogueTemplates[dtk];
-            if (dtt._active && dtt._templateId === tid) alreadyActive = true;
-        });
-        if (alreadyActive) return;
-        tplOptionsHtml += '<option value="__global__' + escapeHtml(tid) + '">' + escapeHtml(gt.name) + ' [' + escapeHtml(t('global')) + ']</option>';
+        tplOptionsHtml += '<option value="__global__' + escapeHtml(tid) + '">' + escapeHtml(gt.name) + '</option>';
     });
     html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
-    html += '<label>' + escapeHtml('Template') + '</label>';
+    html += '<label>' + escapeHtml(t('switch_template')) + '</label>';
     html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;">' + tplOptionsHtml + '</select>';
     html += '</div>';
+
+    // Field editing area — hidden in switch_template mode (no field-level editing when switching templates)
+    var fieldsDisplay = (defaultMode === 'switch_template') ? ' display:none;' : '';
+    html += '<div id="ne-scheme-fields-editor" style="' + fieldsDisplay + '">';
 
     // Required fields section
     html += '<div class="ne-scheme-section ne-scheme-required">';
@@ -705,12 +684,11 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '</div>';
     html += '</div>';
 
-    // P9: Version history (only in edit_current mode) - traverse _dialogueTemplates by _templateId
+    // Version history — edit_current mode only (same-template copies)
     var vhDisplay = (defaultMode === 'edit_current') ? '' : ' display:none;';
     if (dtKey && dialogueTemplates[dtKey]) {
         var currentDt = dialogueTemplates[dtKey];
         var currentTplId = currentDt._templateId || null;
-        // Find all versions with the same _templateId
         var allVersions = [];
         if (currentTplId) {
             Object.keys(dialogueTemplates).forEach(function(k) {
@@ -746,10 +724,17 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         }
     }
 
-    // Actions
+    html += '</div>'; // close #ne-scheme-fields-editor
+
+    // Actions — differentiated by mode
     html += '<div class="ne-scheme-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;">';
-    html += '<button class="menu_button" id="ne-scheme-save" style="flex:1;min-width:80px;">' + escapeHtml(t('save_scheme')) + '</button>';
-    html += '<button class="menu_button" id="ne-scheme-save-as-template" style="flex:1;min-width:80px;">' + escapeHtml(t('save_as_template')) + '</button>';
+    // apply-template: only for switch_template mode
+    var applyDisplay = (defaultMode === 'switch_template') ? '' : ' display:none;';
+    html += '<button class="menu_button" id="ne-scheme-apply-template" style="flex:1;min-width:80px;' + applyDisplay + '">' + escapeHtml(t('apply')) + '</button>';
+    // save / save-as: only for edit_current / from_scratch modes
+    var editBtnDisplay = (defaultMode === 'switch_template') ? ' display:none;' : '';
+    html += '<button class="menu_button" id="ne-scheme-save" style="flex:1;min-width:80px;' + editBtnDisplay + '">' + escapeHtml(t('save_scheme')) + '</button>';
+    html += '<button class="menu_button" id="ne-scheme-save-as-template" style="flex:1;min-width:80px;' + editBtnDisplay + '">' + escapeHtml(t('save_as_template')) + '</button>';
     html += '<button class="menu_button" id="ne-scheme-cancel" style="flex:1;min-width:80px;">' + escapeHtml(t('Cancel')) + '</button>';
     html += '</div>';
     html += '</div>';
@@ -815,7 +800,7 @@ function _exitSchemeEditMode(cardEl) {
 function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKey, tpl, cardConfig, templates) {
     var dialogueTemplates = cardConfig._dialogueTemplates || {};
 
-    // P9: Mode tab switching - controls visibility of template dropdown and version history
+    // Mode tab switching — controls visibility of template dropdown, field editor, and action buttons
     var modeTabs = cardEl.querySelectorAll('.ne-scheme-mode-tab');
     for (var mi = 0; mi < modeTabs.length; mi++) {
         modeTabs[mi].addEventListener('click', function() {
@@ -832,17 +817,30 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                 tab.style.color = isActive ? 'var(--ne-accent)' : (!tabEnabled ? 'var(--grey-30)' : 'var(--grey-50)');
             }
 
-            // Toggle template dropdown visibility
-            var tplSection = cardEl.querySelector('#ne-scheme-tpl-section');
-            if (tplSection) tplSection.style.display = (mode === 'switch_template') ? '' : 'none';
+            var isSwitchMode = (mode === 'switch_template');
 
-            // Toggle version history visibility
+            // Toggle template dropdown
+            var tplSection = cardEl.querySelector('#ne-scheme-tpl-section');
+            if (tplSection) tplSection.style.display = isSwitchMode ? '' : 'none';
+
+            // Toggle field editing panel (hidden in switch_template)
+            var fieldsEditor = cardEl.querySelector('#ne-scheme-fields-editor');
+            if (fieldsEditor) fieldsEditor.style.display = isSwitchMode ? 'none' : '';
+
+            // Toggle version history (edit_current only)
             var vhSection = cardEl.querySelector('#ne-scheme-version-section');
             if (vhSection) vhSection.style.display = (mode === 'edit_current') ? '' : 'none';
 
+            // Toggle action buttons
+            var applyBtn = cardEl.querySelector('#ne-scheme-apply-template');
+            var saveBtn = cardEl.querySelector('#ne-scheme-save');
+            var saveAsBtn = cardEl.querySelector('#ne-scheme-save-as-template');
+            if (applyBtn) applyBtn.style.display = isSwitchMode ? '' : 'none';
+            if (saveBtn) saveBtn.style.display = isSwitchMode ? 'none' : '';
+            if (saveAsBtn) saveAsBtn.style.display = isSwitchMode ? 'none' : '';
+
             // Mode-specific field loading
             if (mode === 'edit_current') {
-                // Restore current fields (from card-level dt or default template)
                 var curDt = dtKey ? dialogueTemplates[dtKey] : null;
                 if (!curDt && dtKey && dtKey.indexOf('_default_') === 0) {
                     var defMap = { '_default_pc': DEFAULT_PC_TEMPLATE, '_default_npc': DEFAULT_NPC_TEMPLATE, '_default_faction': DEFAULT_FACTION_TEMPLATE, '_default_task': DEFAULT_TASK_TEMPLATE, '_default_goal': DEFAULT_GOAL_TEMPLATE };
@@ -851,17 +849,15 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                 _refreshSchemeCheckboxes(cardEl, (curDt && curDt.presetFields) || []);
                 _refreshSchemeCustomFields(cardEl, (curDt && curDt.customFieldRefs) || []);
             } else if (mode === 'from_scratch') {
-                // Clear all checkboxes and custom fields
                 _refreshSchemeCheckboxes(cardEl, []);
                 _refreshSchemeCustomFields(cardEl, []);
                 dtKey = null;
                 tpl = null;
             }
-            // switch_template: don't change fields yet, wait for dropdown selection
         });
     }
 
-    // Template selector - handles both card-level and global template selection
+    // Template selector — switch_template mode only: store selection for apply button
     var tplSelect = cardEl.querySelector('#ne-scheme-template-select');
     if (tplSelect) {
         tplSelect.addEventListener('change', function() {
@@ -871,32 +867,10 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                 tpl = null;
                 return;
             }
-            // P9: Check if global template selected (__global__ prefix)
             if (selectedKey.indexOf('__global__') === 0) {
                 var globalTplId = selectedKey.replace('__global__', '');
-                var globalTpl = templates[globalTplId];
-                if (globalTpl) {
-                    // Clone global template to card
-                    var clonedKey = cloneTemplateToCard(protoName, globalTpl);
-                    if (clonedKey) {
-                        dtKey = clonedKey;
-                        tpl = globalTpl;
-                        var newDt = cardConfig._dialogueTemplates[clonedKey];
-                        // Update checkboxes
-                        if (newDt) {
-                            _refreshSchemeCheckboxes(cardEl, newDt.presetFields || []);
-                            _refreshSchemeCustomFields(cardEl, newDt.customFieldRefs || []);
-                        }
-                    }
-                }
-                return;
-            }
-            var newDt = dialogueTemplates[selectedKey];
-            if (newDt) {
-                _refreshSchemeCheckboxes(cardEl, newDt.presetFields || []);
-                _refreshSchemeCustomFields(cardEl, newDt.customFieldRefs || []);
-                dtKey = selectedKey;
-                tpl = newDt._templateId ? templates[newDt._templateId] : null;
+                dtKey = selectedKey; // keep marker for _applyTemplateSwitch
+                tpl = templates[globalTplId] || null;
             }
         });
     }
@@ -905,6 +879,13 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
             _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig);
+        });
+    }
+    // Apply template (switch_template mode only)
+    var applyBtn = cardEl.querySelector('#ne-scheme-apply-template');
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function() {
+            _applyTemplateSwitch(cardEl, charName, protoName, cardConfig);
         });
     }
     // Cancel
@@ -976,6 +957,64 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
             }
         });
     }
+}
+
+function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
+    var tplSelect = cardEl.querySelector('#ne-scheme-template-select');
+    if (!tplSelect || !tplSelect.value) return;
+
+    var selectedKey = tplSelect.value;
+    if (selectedKey.indexOf('__global__') !== 0) return;
+
+    var globalTplId = selectedKey.replace('__global__', '');
+    var lib = getEffectiveTemplates();
+    var templates = (lib && lib.templates) ? lib.templates : {};
+    var template = templates[globalTplId];
+    if (!template) { showToast('Template not found', 'error', 3000); return; }
+
+    // Clone global template into card-level dialogue templates
+    var clonedKey = cloneTemplateToCard(protoName, template);
+    if (!clonedKey) { showToast(t('Save failed'), 'error', 3000); return; }
+
+    // Refresh cardConfig so it contains the new clone
+    cardConfig = loadCardConfigSync(protoName) || cardConfig;
+    var clonedDt = cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[clonedKey];
+    var tplId = clonedDt && clonedDt._templateId;
+
+    // Update character scheme references — current character + cascade to same-template others
+    var stored = _pendingInlineStorage;
+    var vaultState = stored && stored.vault && stored.vault.content && stored.vault.content.state;
+    var state = vaultState || _getCurrentState();
+
+    if (state && state.characters) {
+        if (tplId) {
+            Object.keys(state.characters).forEach(function(name) {
+                if (name === charName) return;
+                var c = state.characters[name];
+                if (c._templateLocked) return;
+                var theirDtKey = c._scheme;
+                var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
+                if (dt && dt._templateId === tplId) {
+                    c._scheme = clonedKey;
+                }
+            });
+        }
+        if (state.characters[charName]) {
+            state.characters[charName]._scheme = clonedKey;
+        }
+    }
+
+    // Persist to vault
+    if (stored && stored.vault && stored.getChatId) {
+        writeState(stored.getChatId(), stored.vault).then(function() {
+            busEmit('vault:updated', { getChatId: stored.getChatId });
+        });
+    } else {
+        busEmit('vault:updated', {});
+    }
+
+    showToast(t('template_saved'), 'success', 3000);
+    _exitSchemeEditMode(cardEl);
 }
 
 function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
