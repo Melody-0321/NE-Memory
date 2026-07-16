@@ -234,7 +234,13 @@ export function renderSettingsTab() {
 
     // === Advanced Settings ===
     if (advContainer) {
-        var advHtml = '<div class="ne-accordion" id="ne-set-memory">' +
+        var advHtml = '<div style="margin:8px 0;">' +
+            '<label><input type="checkbox" id="nes_disable_state_schema" ' + (settings.disableStateSchema ? 'checked' : '') + '> ' +
+            '<span>' + t('Disable State Schema') + '</span></label>' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:2px 0 8px 22px;">' +
+            t('When enabled, stops auto-tracking character state and injecting State Table. Use for MVU variable cards that manage state independently. STM/LTM memory continues.') +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-set-memory">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory Parameters') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-settings-grid">' +
@@ -630,6 +636,8 @@ function saveSettingsTab() {
     try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
 
     settings.useDynamicState = settings.useDynamicState || false;
+    if (panelById('nes_disable_state_schema'))
+        settings.disableStateSchema = panelById('nes_disable_state_schema').checked;
     if (panelById('nes_enable_retrieval'))
         settings.retrievalEnabled = panelById('nes_enable_retrieval').checked;
     if (panelById('nes_enable_vector_search'))

@@ -21,11 +21,23 @@ export { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DE
 
 /** @returns {boolean} */
 export function isStateSchemaEnabled() {
+    try {
+        var s = JSON.parse(localStorage.getItem('ne_settings'));
+        return !(s && s.disableStateSchema);
+    } catch (e) {}
     return true;
 }
 
 /** @param {boolean} val */
 export function setStateSchemaEnabled(val) {
+    var settings = {};
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) settings = JSON.parse(raw);
+    } catch (e) {}
+    settings.disableStateSchema = !val;
+    try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
+    try { neSync('ne_settings'); } catch (e) {}
 }
 
 /** @param {boolean} val */
