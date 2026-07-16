@@ -69,7 +69,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     if (card.inventory && typeof card.inventory === 'object') {
         var invItems = [];
         Object.keys(card.inventory).forEach(function (slot) {
-            invItems.push('<span class="ne-inv-slot">' + escapeHtml(slot) + ': ' + escapeHtml(String(card.inventory[slot])) + '</span>');
+            invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(slot) + '</span><span class="ne-inv-val">' + escapeHtml(String(card.inventory[slot])) + '</span></span>');
         });
         if (invItems.length > 0) {
             inventoryHtml = '<div class="ne-inventory-bar">' + invItems.join(' ') + '</div>';
@@ -98,7 +98,7 @@ function renderCharacterCard(name, card, schema, cardType) {
             psKeys.forEach(function (sk) {
                 var sv = card.power_slots[sk];
                 var svStr = (sv && typeof sv === 'object' && sv.level !== undefined) ? sv.level : (typeof sv === 'object' ? JSON.stringify(sv) : String(sv || ''));
-                html += '<span class="ne-ps-slot" title="' + escapeHtml(sk) + '">' + escapeHtml(sk) + ': ' + escapeHtml(svStr) + '</span>';
+                html += '<span class="ne-ps-slot" title="' + escapeHtml(sk) + '"><span class="ne-ps-key">' + escapeHtml(sk) + '</span><span class="ne-ps-val">' + escapeHtml(svStr) + '</span></span>';
             });
             html += '</div>';
         }
