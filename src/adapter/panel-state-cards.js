@@ -1181,15 +1181,27 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
 
     // Persist _scheme update — cascade same-template characters + current character
     var chatId = _getChatId();
-    if (!chatId) { busEmit('vault:updated', {}); }
+    console.log('[NE Scheme Save] chatId:', chatId, '| charName:', charName, '| protoName:', protoName, '| savedKey:', savedKey, '| dtKey:', dtKey);
+    if (!chatId) {
+        console.warn('[NE Scheme Save] chatId is null — state NOT persisted');
+        busEmit('vault:updated', {});
+    }
     else {
         readState(chatId).then(function(vault) {
-            if (!vault || !vault.content || !vault.content.state) return;
+            console.log('[NE Scheme Save] readState returned:', vault ? 'OK' : 'null', '| has content:', !!(vault && vault.content), '| has state:', !!(vault && vault.content && vault.content.state));
+            if (!vault || !vault.content || !vault.content.state) {
+                console.warn('[NE Scheme Save] vault structure invalid — aborting writeState');
+                return;
+            }
             var vs = vault.content.state;
-            if (!vs.characters) return;
+            if (!vs.characters) {
+                console.warn('[NE Scheme Save] vs.characters missing — aborting writeState. state keys:', Object.keys(vs));
+                return;
+            }
+            console.log('[NE Scheme Save] characters in state:', Object.keys(vs.characters), '| charName match:', !!vs.characters[charName]);
             // Cascade to same-template characters (skip locked ones)
-            cardConfig = cardConfig || loadCardConfigSync(protoName) || {};
-            var saveDt = cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[savedKey];
+            var freshConfig = loadCardConfigSync(protoName) || cardConfig || {};
+            var saveDt = freshConfig._dialogueTemplates && freshConfig._dialogueTemplates[savedKey];
             var tplId = saveDt && saveDt._templateId;
             if (tplId) {
                 Object.keys(vs.characters).forEach(function(name) {
@@ -1197,19 +1209,26 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
                     var c = vs.characters[name];
                     if (c._templateLocked) return;
                     var theirDtKey = c._scheme;
-                    var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
+                    var dt = theirDtKey && freshConfig._dialogueTemplates && freshConfig._dialogueTemplates[theirDtKey];
                     if (dt && dt._templateId === tplId) {
                         c._scheme = savedKey;
                     }
                 });
             }
             if (vs.characters[charName]) {
+                var oldScheme = vs.characters[charName]._scheme;
                 vs.characters[charName]._scheme = savedKey;
+                console.log('[NE Scheme Save] _scheme updated:', oldScheme, '->', savedKey);
+            } else {
+                console.warn('[NE Scheme Save] charName not in characters — _scheme NOT updated');
             }
+            console.log('[NE Scheme Save] calling writeState...');
             return writeState(chatId, vault);
         }).then(function() {
+            console.log('[NE Scheme Save] writeState completed, emitting vault:updated');
             busEmit('vault:updated', { getChatId: chatId });
-        }).catch(function() {
+        }).catch(function(err) {
+            console.error('[NE Scheme Save] ERROR in save chain:', err);
             busEmit('vault:updated', {});
         });
     }
