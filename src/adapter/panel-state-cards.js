@@ -615,22 +615,45 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     });
     html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
 
-    // Primary: list of copies/versions belonging to the current template
-    if (dtKey && dialogueTemplates[dtKey]) {
-        var swDt = dialogueTemplates[dtKey];
-        var swTplId = swDt._templateId || null;
-        if (swTplId) {
-            var swVersions = [];
-            Object.keys(dialogueTemplates).forEach(function(k) {
-                var d = dialogueTemplates[k];
-                if (d && d._templateId === swTplId) swVersions.push({ key: k, tpl: d });
+    // Primary: list of copies/versions — grouped by _templateId
+    var allDtKeys = Object.keys(dialogueTemplates);
+    if (allDtKeys.length > 0) {
+        // Determine current templateId (if any)
+        var curSwTplId = (dtKey && dialogueTemplates[dtKey]) ? dialogueTemplates[dtKey]._templateId : null;
+
+        // Group dialogueTemplates by _templateId
+        var swGroups = {};
+        allDtKeys.forEach(function(k) {
+            var d = dialogueTemplates[k];
+            if (!d || !d._templateId) return;
+            if (!swGroups[d._templateId]) swGroups[d._templateId] = [];
+            swGroups[d._templateId].push({ key: k, tpl: d });
+        });
+
+        var swGroupIds = Object.keys(swGroups);
+        if (swGroupIds.length > 0) {
+            // Sort groups: current template first, then by latest createdAt
+            swGroupIds.sort(function(a, b) {
+                if (a === curSwTplId) return -1;
+                if (b === curSwTplId) return 1;
+                var aMax = 0, bMax = 0;
+                swGroups[a].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > aMax) aMax = t; });
+                swGroups[b].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > bMax) bMax = t; });
+                return bMax - aMax;
             });
-            if (swVersions.length > 0) {
-                swVersions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
-                html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + swVersions.length + ')</div>';
-                html += '<div style="max-height:180px;overflow-y:auto;font-size:0.8em;">';
-                swVersions.forEach(function(ver) {
-                    var vActive = !!ver.tpl._active;
+
+            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + '</div>';
+            html += '<div style="max-height:240px;overflow-y:auto;font-size:0.8em;">';
+
+            swGroupIds.forEach(function(gid) {
+                var versions = swGroups[gid];
+                versions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
+                var gt = templates[gid];
+                var gName = (gt && gt.name) ? gt.name : gid;
+                var isCurGroup = (gid === curSwTplId);
+                html += '<div style="padding:4px 6px;font-weight:bold;color:var(--grey-50);border-bottom:1px solid var(--grey-20);background:var(--grey-10);">' + escapeHtml(gName) + (isCurGroup ? ' (' + escapeHtml(t('current')) + ')' : '') + '</div>';
+                versions.forEach(function(ver) {
+                    var vActive = !!ver.tpl._active && isCurGroup;
                     html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);' + (vActive ? 'background:var(--grey-10);' : '') + '">';
                     html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
                     var vSource = ver.tpl.source || 'user_created';
@@ -643,9 +666,14 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
                     }
                     html += '</div>';
                 });
-                html += '</div>';
-            }
+            });
+
+            html += '</div>';
+        } else {
+            html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
         }
+    } else {
+        html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
     }
 
     // Secondary: global template dropdown (switch to a different template entirely)
