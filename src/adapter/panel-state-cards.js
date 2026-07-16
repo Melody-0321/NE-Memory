@@ -991,6 +991,26 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
     }
 
     if (dtKey) {
+        // Default sentinels (_default_pc/_default_npc/...) are virtual — not in cardConfig._dialogueTemplates.
+        // Clone the corresponding DEFAULT_*_TEMPLATE to card-level first, then edit.
+        if (dtKey.indexOf('_default_') === 0 && (!cardConfig._dialogueTemplates || !cardConfig._dialogueTemplates[dtKey])) {
+            var defaultMap = {
+                '_default_pc': DEFAULT_PC_TEMPLATE,
+                '_default_npc': DEFAULT_NPC_TEMPLATE,
+                '_default_faction': DEFAULT_FACTION_TEMPLATE,
+                '_default_task': DEFAULT_TASK_TEMPLATE,
+                '_default_goal': DEFAULT_GOAL_TEMPLATE
+            };
+            var defaultTpl = defaultMap[dtKey];
+            if (defaultTpl) {
+                var clonedKey = cloneTemplateToCard(protoName, defaultTpl);
+                if (clonedKey) {
+                    dtKey = clonedKey;
+                    // Refresh cardConfig so editTemplateInCard can see the new clone
+                    cardConfig = loadCardConfigSync(protoName) || cardConfig;
+                }
+            }
+        }
         // Edit existing card-level template (immutable: creates new version)
         var oldDt = cardConfig && cardConfig._dialogueTemplates ? cardConfig._dialogueTemplates[dtKey] : null;
         var oldCustomRefs = oldDt ? (oldDt.customFieldRefs || []) : [];
