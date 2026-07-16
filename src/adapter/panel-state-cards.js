@@ -19,7 +19,7 @@ function _getChatId() {
 }
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
+import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole, resolveActiveTemplateFields } from '../core/vault/schema.js';
 import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 import { recordStateDelta } from '../core/vault/state-versions.js';
@@ -35,6 +35,23 @@ function getCharacterCardType(name, state) {
 
 function renderCharacterCard(name, card, schema, cardType) {
     var cardSchema = (schema && schema[cardType]) ? schema[cardType] : (schema && schema.npc ? schema.npc : null);
+
+    // Resolve actual template fields from character's _scheme instead of always using default schema
+    var schemeKey = (card && card._scheme) || null;
+    if (schemeKey) {
+        var protoName = _getCurrentCharName();
+        if (protoName) {
+            var resolvedFields = resolveActiveTemplateFields(protoName, schemeKey);
+            if (resolvedFields && Object.keys(resolvedFields).length > 0) {
+                // Build a cardSchema from resolved fields, preserving system fields
+                cardSchema = { fields: resolvedFields };
+                // Ensure name and status are present
+                if (!cardSchema.fields.name) cardSchema.fields.name = { type: 'string', max_length: 30, required: true, _system: true };
+                if (!cardSchema.fields.status) cardSchema.fields.status = { type: 'enum', values: ['活跃','非活跃','已死亡','已归隐','已离去'], required: true, _system: true };
+            }
+        }
+    }
+
     if (!cardSchema || !cardSchema.fields) return '';
 
     var rows = [];
