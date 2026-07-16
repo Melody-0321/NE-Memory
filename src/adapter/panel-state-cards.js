@@ -28,9 +28,6 @@ function renderCharacterCard(name, card, schema, cardType) {
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
 
-        // Skip empty non-required fields
-        if (!fieldDef.required && (val === undefined || val === null || val === '')) return;
-
         var displayVal;
         if (typeof val === 'object' && val !== null) {
             try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
