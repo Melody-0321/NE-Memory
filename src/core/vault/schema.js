@@ -497,21 +497,38 @@ export function rebuildPresentCharacters(state) {
 // ====== Template Resolution Helpers (N5 three-layer architecture) ======
 
 /**
- * Resolve NPC template fields using the three-layer fallback chain:
- *   1. cardConfig._dialogueTemplates -> getActiveVersion(schemeKey)
+ * Resolve character template fields using a lock-aware active-version chain:
+ *   1. cardConfig._dialogueTemplates:
+ *      - 若 schemeKey 直接命中副本：锁定角色钉在该副本；非锁定角色按其 _templateId
+ *        解析到当前 _active 主副本（跟随主本）。
+ *      - 若未直接命中（哨兵 _default_pc / _default_npc 或 KEY 已删除）：按 _templateId
+ *        取当前 _active 主副本。
  *   2. Global template library (getEffectiveTemplates)
- *   3. System default (DEFAULT_NPC_TEMPLATE)
+ *   3. System default by role (PC->DEFAULT_PC_TEMPLATE, NPC->DEFAULT_NPC_TEMPLATE)
  *
  * @param {string|null} stCharName - ST character card name for loading cardConfig
- * @param {string|null} schemeKey - Dialogue template key / scheme ID
+ * @param {string|null} schemeKey - Dialogue template key / scheme ID / sentinel
+ * @param {object} [charData] - Character state entry (for _templateLocked / _role)
  * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
  */
-export function resolveActiveTemplateFields(stCharName, schemeKey) {
+export function resolveActiveTemplateFields(stCharName, schemeKey, charData) {
+    charData = charData || {};
+    var isPC = charData._role === 'protagonist' || schemeKey === '_default_pc';
+    var locked = !!charData._templateLocked;
+
     if (stCharName) {
         var cardConfig = loadCardConfigSync(stCharName);
         if (cardConfig && cardConfig._dialogueTemplates && schemeKey) {
-            var tpl = cardConfig._dialogueTemplates[schemeKey];
-            if (tpl) return expandTemplateFields(tpl);
+            var dt = cardConfig._dialogueTemplates;
+            var direct = dt[schemeKey];
+            if (direct) {
+                if (locked) return expandTemplateFields(direct);
+                var tid = direct._templateId;
+                var active = (tid && getActiveVersion(dt, tid)) || direct;
+                return expandTemplateFields(active);
+            }
+            var sentinelActive = getActiveVersion(dt, schemeKey);
+            if (sentinelActive) return expandTemplateFields(sentinelActive);
         }
     }
     // Fallback 2: global template library lookup by schemeKey as global template ID
@@ -521,8 +538,8 @@ export function resolveActiveTemplateFields(stCharName, schemeKey) {
             return expandTemplateFields(effectiveTpls.templates[schemeKey]);
         }
     }
-    // Fallback 3: system default NPC template
-    return expandTemplateFields(DEFAULT_NPC_TEMPLATE);
+    // Fallback 3: system default by role
+    return expandTemplateFields(isPC ? DEFAULT_PC_TEMPLATE : DEFAULT_NPC_TEMPLATE);
 }
 
 /**
@@ -564,8 +581,8 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     if (isPC) {
         template = _characterSchema().protagonist.fields;
     } else {
-        // NPC: resolve template via cardConfig three-layer fallback chain
-        template = resolveActiveTemplateFields(stCharName, schemeKey);
+        // NPC: resolve template via lock-aware active-version chain
+        template = resolveActiveTemplateFields(stCharName, schemeKey, state.characters[name]);
     }
 
     // Backfill: if character already exists, add any missing template fields
@@ -763,7 +780,7 @@ export function mergeStateChanges(state, validatedChanges) {
 export function getNpcInjectionFields(state, name, stCharName) {
     var charData = (state && state.characters && state.characters[name]) || {};
     var schemeKey = charData._scheme || '_default';
-    var template = resolveActiveTemplateFields(stCharName, schemeKey);
+    var template = resolveActiveTemplateFields(stCharName, schemeKey, charData);
     return Object.keys(template).filter(function(k) { return k !== 'name'; });
 }
 
@@ -780,14 +797,11 @@ export function getCharacterInjectionFields(state, name, stCharName) {
     var isPC = (state && state.protagonist_name && name === state.protagonist_name) ||
         (charData._role === 'protagonist');
     if (!isPC) return getNpcInjectionFields(state, name, stCharName);
-    // PC: try cardConfig active dialogue template first, fall back to default
-    if (stCharName) {
-        var cardConfig = loadCardConfigSync(stCharName);
-        if (cardConfig && cardConfig._dialogueTemplates) {
-            var schemeKey = charData._scheme || '_default_pc';
-            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, schemeKey);
-            if (activeTemplate) return Object.keys(expandTemplateFields(activeTemplate)).filter(function(k) { return k !== 'name'; });
-        }
+    // PC: resolve via unified lock-aware resolver (sentinel _default_pc -> active main copy)
+    var pcSchemeKey = charData._scheme || '_default_pc';
+    var pcTpl = resolveActiveTemplateFields(stCharName, pcSchemeKey, charData);
+    if (pcTpl && Object.keys(pcTpl).length > 0) {
+        return Object.keys(pcTpl).filter(function(k) { return k !== 'name'; });
     }
     return Object.keys(_characterSchema().protagonist.fields).filter(function(k) { return k !== 'name'; });
 }
@@ -858,7 +872,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world, stCha
                     fieldDefs = _characterSchema().protagonist.fields;
                 } else {
                     var npcSchemeKey = item.card._scheme || '_default';
-                    fieldDefs = resolveActiveTemplateFields(stCharName, npcSchemeKey);
+                    fieldDefs = resolveActiveTemplateFields(stCharName, npcSchemeKey, item.card);
                 }
 
                 var label = isPC ? '[PC] ' : '[NPC] ';

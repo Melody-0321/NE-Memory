@@ -288,10 +288,10 @@ async function consumeNeCharBlocks(messageIndex, neId) {
             if (!chars[cb.name]) chars[cb.name] = {};
             chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : 'npc';
 
-            // N5: Resolve per-round field whitelist from cardConfig dialogue template (three-layer fallback)
+            // N5: Resolve per-round field whitelist via lock-aware active-version chain
             var schemeKey = chars[cb.name]._scheme || '_default_npc';
             if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
-            var resolvedFields = resolveActiveTemplateFields(cardName, schemeKey);
+            var resolvedFields = resolveActiveTemplateFields(cardName, schemeKey, chars[cb.name]);
             var perRoundFields = Object.keys(resolvedFields);
             var _tpl = _effTemplates[schemeKey];
             if (_tpl && _tpl.perRoundFields) {

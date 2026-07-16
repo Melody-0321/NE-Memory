@@ -36,12 +36,12 @@ function getCharacterCardType(name, state) {
 function renderCharacterCard(name, card, schema, cardType) {
     var cardSchema = (schema && schema[cardType]) ? schema[cardType] : (schema && schema.npc ? schema.npc : null);
 
-    // Resolve actual template fields from character's _scheme instead of always using default schema
+    // Resolve actual template fields from character's _scheme (incl. sentinels like _default_pc)
     var schemeKey = (card && card._scheme) || null;
-    if (schemeKey && schemeKey.indexOf('_default_') !== 0) {
+    if (schemeKey) {
         var protoName = _getCurrentCharName();
         if (protoName) {
-            var resolvedFields = resolveActiveTemplateFields(protoName, schemeKey);
+            var resolvedFields = resolveActiveTemplateFields(protoName, schemeKey, card);
             if (resolvedFields && Object.keys(resolvedFields).length > 0) {
                 // Build a cardSchema from resolved fields, preserving system fields
                 cardSchema = { fields: resolvedFields };
@@ -1054,14 +1054,17 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
         });
     }
 
-    // P9: Version switch buttons - use restoreTemplateVersion from store
+    // P9: Version switch buttons - same template = switch main copy (cascade), different template = switch template (current only)
     var switchBtns = cardEl.querySelectorAll('[data-switch-version]');
     for (var j = 0; j < switchBtns.length; j++) {
         switchBtns[j].addEventListener('click', function() {
             var versionKey = this.getAttribute('data-switch-version');
             if (!versionKey || !protoName) return;
+            var freshConfig = loadCardConfigSync(protoName) || cardConfig || {};
+            var dtMap = freshConfig._dialogueTemplates || {};
+            var targetTid = dtMap[versionKey] && dtMap[versionKey]._templateId;
             var chatId = _getChatId();
-            console.log('[NE Scheme Switch] versionKey:', versionKey, '| chatId:', chatId);
+            console.log('[NE Scheme Switch] versionKey:', versionKey, '| targetTid:', targetTid, '| chatId:', chatId);
             if (!chatId) {
                 console.warn('[NE Scheme Switch] chatId null — state NOT persisted');
                 restoreTemplateVersion(protoName, versionKey);
@@ -1078,16 +1081,32 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
                     return;
                 }
                 var state = vault.content.state;
-                var oldScheme = state.characters && state.characters[charName] && state.characters[charName]._scheme;
-                var ok = restoreTemplateVersion(protoName, versionKey, state);
-                console.log('[NE Scheme Switch] restoreTemplateVersion:', ok, '| old _scheme:', oldScheme);
-                if (!ok) {
-                    showToast(t('Save failed'), 'error', 3000);
-                    return;
+                var curScheme = state.characters && state.characters[charName] && state.characters[charName]._scheme;
+                var curTid = curScheme && dtMap[curScheme] && dtMap[curScheme]._templateId;
+                // Same _templateId → switch main copy (propagate to all non-locked users of this template)
+                if (targetTid && curTid && targetTid === curTid) {
+                    var oldScheme = curScheme;
+                    var ok = restoreTemplateVersion(protoName, versionKey, state);
+                    console.log('[NE Scheme Switch] restoreTemplateVersion (same template):', ok, '| old _scheme:', oldScheme);
+                    if (!ok) {
+                        showToast(t('Save failed'), 'error', 3000);
+                        return;
+                    }
+                    return writeState(chatId, vault).then(function() {
+                        console.log('[NE Scheme Switch] state persisted OK (main copy switched)');
+                        showToast(t('version_switched'), 'success', 2000);
+                        busEmit('vault:updated', { getChatId: chatId });
+                    });
                 }
-                console.log('[NE Scheme Switch] writing state back to vault...');
+                // Different _templateId → switch template: only current character, no cascade, no _active change
+                var activeKey = (targetTid && getActiveVersionKey(dtMap, targetTid)) || versionKey;
+                if (state.characters && state.characters[charName]) {
+                    var prevScheme = state.characters[charName]._scheme;
+                    state.characters[charName]._scheme = activeKey;
+                    console.log('[NE Scheme Switch] switch template (current only):', prevScheme, '->', activeKey);
+                }
                 return writeState(chatId, vault).then(function() {
-                    console.log('[NE Scheme Switch] state persisted OK');
+                    console.log('[NE Scheme Switch] state persisted OK (template switched)');
                     showToast(t('version_switched'), 'success', 2000);
                     busEmit('vault:updated', { getChatId: chatId });
                 });
@@ -1112,16 +1131,18 @@ function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
     var template = templates[globalTplId];
     if (!template) { showToast('Template not found', 'error', 3000); return; }
 
-    // Clone global template into card-level dialogue templates
-    var clonedKey = cloneTemplateToCard(protoName, template);
-    if (!clonedKey) { showToast(t('Save failed'), 'error', 3000); return; }
+    // Switch template (different _templateId): only affects current character, no cascade.
+    // If the global template already has a card-level copy, reuse its active main copy;
+    // otherwise pull (clone) it into card-level dialogue templates first.
+    var freshConfig = loadCardConfigSync(protoName) || cardConfig || {};
+    var dt = freshConfig._dialogueTemplates || {};
+    var activeKey = getActiveVersionKey(dt, globalTplId);
+    if (!activeKey) {
+        activeKey = cloneTemplateToCard(protoName, template);
+        if (!activeKey) { showToast(t('Save failed'), 'error', 3000); return; }
+    }
 
-    // Refresh cardConfig so it contains the new clone
-    cardConfig = loadCardConfigSync(protoName) || cardConfig;
-    var clonedDt = cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[clonedKey];
-    var tplId = clonedDt && clonedDt._templateId;
-
-    // Persist scheme update — cascade same-template characters + current character
+    // Persist scheme update — current character only (switch template does NOT cascade)
     var chatId = _getChatId();
     if (!chatId) { busEmit('vault:updated', {}); }
     else {
@@ -1129,21 +1150,8 @@ function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
             if (!vault || !vault.content || !vault.content.state) return;
             var vs = vault.content.state;
             if (!vs.characters) return;
-            // Cascade to same-template characters (skip locked ones)
-            if (tplId) {
-                Object.keys(vs.characters).forEach(function(name) {
-                    if (name === charName) return;
-                    var c = vs.characters[name];
-                    if (c._templateLocked) return;
-                    var theirDtKey = c._scheme;
-                    var dt = theirDtKey && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[theirDtKey];
-                    if (dt && dt._templateId === tplId) {
-                        c._scheme = clonedKey;
-                    }
-                });
-            }
             if (vs.characters[charName]) {
-                vs.characters[charName]._scheme = clonedKey;
+                vs.characters[charName]._scheme = activeKey;
             }
             return writeState(chatId, vault);
         }).then(function() {
