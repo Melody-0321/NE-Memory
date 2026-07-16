@@ -1232,6 +1232,11 @@ function _getCurrentState() {
     try {
         if (typeof window.__NE_CURRENT_VAULT_STATE !== 'undefined') return window.__NE_CURRENT_VAULT_STATE;
     } catch (e) {}
+    try {
+        if (_pendingInlineStorage && _pendingInlineStorage.vault && _pendingInlineStorage.vault.content) {
+            return _pendingInlineStorage.vault.content.state;
+        }
+    } catch (e) {}
     return null;
 }
 
