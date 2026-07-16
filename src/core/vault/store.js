@@ -1095,11 +1095,11 @@ export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
     var lockedNames = [];
     Object.keys(state.characters).forEach(function (name) {
         var charData = state.characters[name];
-        if (charData._templateKey === oldKey) {
+        if (charData._scheme === oldKey) {
             if (charData._templateLocked) {
                 lockedNames.push(name);
             } else {
-                charData._templateKey = newKey;
+                charData._scheme = newKey;
             }
         }
     });

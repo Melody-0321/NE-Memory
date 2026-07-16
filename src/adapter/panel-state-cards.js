@@ -1024,18 +1024,41 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
         switchBtns[j].addEventListener('click', function() {
             var versionKey = this.getAttribute('data-switch-version');
             if (!versionKey || !protoName) return;
-            // Use store-level restoreTemplateVersion to switch active version
-            var ok = restoreTemplateVersion(protoName, versionKey);
-            if (ok) {
+            var chatId = _getChatId();
+            console.log('[NE Scheme Switch] versionKey:', versionKey, '| chatId:', chatId);
+            if (!chatId) {
+                console.warn('[NE Scheme Switch] chatId null — state NOT persisted');
+                restoreTemplateVersion(protoName, versionKey);
                 showToast(t('version_switched'), 'success', 2000);
-                // Reload cardConfig and re-render editor
-                var state = _getCurrentState();
-                if (state) {
-                    enterSchemeEditMode(cardEl, charName, getCharacterCardType(charName, state));
-                }
-            } else {
-                showToast(t('Save failed'), 'error', 3000);
+                busEmit('vault:updated', {});
+                return;
             }
+            readState(chatId).then(function(vault) {
+                console.log('[NE Scheme Switch] readState:', vault ? 'OK' : 'null');
+                if (!vault || !vault.content || !vault.content.state) {
+                    console.warn('[NE Scheme Switch] vault invalid — state NOT persisted');
+                    restoreTemplateVersion(protoName, versionKey);
+                    busEmit('vault:updated', {});
+                    return;
+                }
+                var state = vault.content.state;
+                var oldScheme = state.characters && state.characters[charName] && state.characters[charName]._scheme;
+                var ok = restoreTemplateVersion(protoName, versionKey, state);
+                console.log('[NE Scheme Switch] restoreTemplateVersion:', ok, '| old _scheme:', oldScheme);
+                if (!ok) {
+                    showToast(t('Save failed'), 'error', 3000);
+                    return;
+                }
+                console.log('[NE Scheme Switch] writing state back to vault...');
+                return writeState(chatId, vault).then(function() {
+                    console.log('[NE Scheme Switch] state persisted OK');
+                    showToast(t('version_switched'), 'success', 2000);
+                    busEmit('vault:updated', { getChatId: chatId });
+                });
+            }).catch(function(err) {
+                console.error('[NE Scheme Switch] error:', err);
+                showToast(t('Save failed'), 'error', 3000);
+            });
         });
     }
 }
