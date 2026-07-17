@@ -61,6 +61,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     Object.keys(cardSchema.fields).forEach(function (key) {
         if (key === 'status') return; // shown in card header + grouping, redundant in body
         if (key.startsWith('_')) return; // skip system fields like _scheme, _templateLocked
+        if (key === 'inventory') return; // rendered separately as inventory bar
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
 
@@ -410,6 +411,10 @@ export function enterCardEditMode(editBtn) {
     var body = cardDiv.querySelector('.ne-char-card-body');
     if (!body) return;
 
+    // Hide inventory bar while editing (raw JSON is in the edit form)
+    var invBar = cardDiv.querySelector('.ne-inventory-bar');
+    if (invBar) { invBar.style.display = 'none'; cardDiv._neHadInvBar = true; }
+
     var table = body.querySelector('table');
     if (table) cardDiv._neOrigTableHTML = table.outerHTML;
 
@@ -421,7 +426,13 @@ export function enterCardEditMode(editBtn) {
         if (textVal === t('empty_value') || textVal === '(Not filled)') textVal = '';
 
         // object/array fields: read-only, not editable as plain text
-        if (fieldType === 'object') return;
+        // Exception: inventory — editable as JSON textarea
+        if (fieldType === 'object') {
+            if (td.getAttribute('data-field') !== 'inventory') return;
+            editor = '<textarea class="ne-char-edit" rows="4" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(textVal).replace(/"/g, '&quot;') + '</textarea>';
+            span.outerHTML = editor;
+            return;
+        }
 
         var editor;
         switch (fieldType) {
@@ -493,6 +504,9 @@ function saveCardFields(cardDiv) {
         var newVal;
         if (fieldType === 'number') {
             newVal = rawVal === '' ? null : Number(rawVal);
+        } else if (fieldType === 'object') {
+            // Parse JSON for object fields edited via textarea (e.g. inventory)
+            try { newVal = rawVal ? JSON.parse(rawVal) : null; } catch (e) { return; } // skip invalid JSON
         } else {
             newVal = rawVal === '' ? '' : rawVal;
         }
@@ -1426,6 +1440,13 @@ function exitCardEditMode(cardDiv) {
     if (saveBtn) saveBtn.outerHTML = cardDiv._neOrigEditBtnHTML || '';
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
     if (deleteBtn && deleteBtn.parentNode) deleteBtn.remove();
+
+    // Restore inventory bar if it was hidden during edit
+    if (cardDiv._neHadInvBar) {
+        var invBar = cardDiv.querySelector('.ne-inventory-bar');
+        if (invBar) invBar.style.display = '';
+        cardDiv._neHadInvBar = false;
+    }
 
     var restoredEditBtn = cardDiv.querySelector('.ne-card-edit-btn');
     if (restoredEditBtn) {
