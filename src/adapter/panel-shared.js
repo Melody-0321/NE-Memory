@@ -339,16 +339,25 @@ export function injectBottomDrawerCSS() {
         '.ne-field-label{color:var(--grey-50);width:90px;min-width:70px;text-align:right;white-space:nowrap;font-size:0.88em;padding-right:8px!important;}' +
         '.ne-char-val{word-break:break-word;line-height:1.5;}' +
         '.ne-empty-value{color:var(--grey-50);font-style:italic;opacity:0.5;}' +
-        // ── Inventory bar — chip style ──
-        '.ne-inventory-bar{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px;padding-top:6px;border-top:1px solid var(--black30a);}' +
-        '.ne-inv-slot{display:inline-flex;align-items:baseline;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.78em;background:var(--ne-info-bg);border:1px solid var(--ne-info-border);line-height:1.5;}' +
-        '.ne-inv-key{color:var(--ne-info);font-weight:bold;white-space:nowrap;}' +
-        '.ne-inv-val{color:var(--text);word-break:break-word;}' +
-        // ── Power slots — chip style ──
-        '.ne-power-slots{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}' +
-        '.ne-ps-slot{display:inline-flex;align-items:baseline;gap:4px;padding:2px 8px;border-radius:10px;font-size:0.78em;background:var(--ne-warning-bg);border:1px solid var(--ne-warning-border);line-height:1.5;}' +
-        '.ne-ps-key{color:var(--ne-warning);font-weight:bold;white-space:nowrap;}' +
-        '.ne-ps-val{color:var(--text);word-break:break-word;}' +
+        // ── Section header ──
+        '.ne-section-header{display:flex;align-items:center;gap:6px;margin-top:10px;padding:4px 0;font-size:0.82em;font-weight:600;color:var(--grey-70);text-transform:uppercase;letter-spacing:0.5px;}' +
+        '.ne-section-count{font-size:0.85em;font-weight:400;color:var(--grey-50);background:var(--black30a);padding:0 6px;border-radius:8px;line-height:1.4;}' +
+        // ── Inventory section ──
+        '.ne-inventory-section{display:flex;flex-direction:column;gap:0;margin-bottom:2px;}' +
+        '.ne-inv-item{padding:6px 8px;border-bottom:1px solid var(--black20a);}' +
+        '.ne-inv-item:last-child{border-bottom:none;}' +
+        '.ne-inv-item-header{display:flex;align-items:baseline;gap:6px;}' +
+        '.ne-inv-name{font-weight:600;color:var(--text);font-size:0.88em;}' +
+        '.ne-inv-rarity{font-size:0.72em;padding:0 5px;border-radius:3px;background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);line-height:1.5;white-space:nowrap;}' +
+        '.ne-inv-desc{font-size:0.78em;color:var(--grey-60);margin-top:2px;line-height:1.4;}' +
+        // ── Power slots section ──
+        '.ne-power-slots-section{display:flex;flex-direction:column;gap:0;}' +
+        '.ne-ps-item{padding:6px 8px;border-bottom:1px solid var(--black20a);}' +
+        '.ne-ps-item:last-child{border-bottom:none;}' +
+        '.ne-ps-item-header{display:flex;align-items:baseline;gap:6px;}' +
+        '.ne-ps-name{font-weight:600;color:var(--text);font-size:0.88em;}' +
+        '.ne-ps-level{font-size:0.72em;padding:0 5px;border-radius:3px;background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);line-height:1.5;white-space:nowrap;}' +
+        '.ne-ps-desc{font-size:0.78em;color:var(--grey-60);margin-top:2px;line-height:1.4;}' +
         // ── L2: Global State Block ──
         '.ne-state-global-block .ne-state-global-table td:first-child{color:var(--grey-50);width:90px;text-align:right;white-space:nowrap;}' +
         '.ne-state-global-block+.ne-state-global-block{margin-top:6px;}' +

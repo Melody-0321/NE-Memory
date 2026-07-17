@@ -102,22 +102,36 @@ function renderCharacterCard(name, card, schema, cardType) {
             card.inventory.forEach(function(item) {
                 if (item && typeof item === 'object') {
                     var itemName = item.name || '?';
-                    var parts = [];
-                    if (item.description) parts.push(item.description);
-                    if (item.rarity) parts.push(item.rarity);
-                    if (item.properties && item.properties !== '无') parts.push(item.properties);
-                    invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(itemName) + '</span><span class="ne-inv-val">' + escapeHtml(parts.join(' / ')) + '</span></span>');
-                } else {
-                    invItems.push('<span class="ne-inv-slot"><span class="ne-inv-val">' + escapeHtml(String(item)) + '</span></span>');
+                    var desc = item.description || '';
+                    var rarity = item.rarity || '';
+                    var rarityHtml = rarity ? '<span class="ne-inv-rarity">' + escapeHtml(rarity) + '</span>' : '';
+                    var descHtml = desc ? '<div class="ne-inv-desc">' + escapeHtml(desc) + '</div>' : '';
+                    invItems.push(
+                        '<div class="ne-inv-item">' +
+                        '<div class="ne-inv-item-header">' +
+                        '<span class="ne-inv-name">' + escapeHtml(itemName) + '</span>' +
+                        rarityHtml +
+                        '</div>' +
+                        descHtml +
+                        '</div>'
+                    );
                 }
             });
         } else {
             Object.keys(card.inventory).forEach(function (slot) {
-                invItems.push('<span class="ne-inv-slot"><span class="ne-inv-key">' + escapeHtml(slot) + '</span><span class="ne-inv-val">' + escapeHtml(String(card.inventory[slot])) + '</span></span>');
+                invItems.push(
+                    '<div class="ne-inv-item">' +
+                    '<div class="ne-inv-item-header">' +
+                    '<span class="ne-inv-name">' + escapeHtml(slot) + '</span>' +
+                    '</div>' +
+                    '<div class="ne-inv-desc">' + escapeHtml(String(card.inventory[slot])) + '</div>' +
+                    '</div>'
+                );
             });
         }
         if (invItems.length > 0) {
-            inventoryHtml = '<div class="ne-inventory-bar">' + invItems.join(' ') + '</div>';
+            inventoryHtml = '<div class="ne-section-header">' + t_field('inventory') + ' <span class="ne-section-count">' + invItems.length + '</span></div>' +
+                            '<div class="ne-inventory-section">' + invItems.join('') + '</div>';
         }
     }
 
@@ -139,13 +153,31 @@ function renderCharacterCard(name, card, schema, cardType) {
     if (card.power_slots && typeof card.power_slots === 'object') {
         var psKeys = Object.keys(card.power_slots);
         if (psKeys.length > 0) {
-            html += '<div class="ne-power-slots">';
+            var psItems = [];
             psKeys.forEach(function (sk) {
                 var sv = card.power_slots[sk];
-                var svStr = (sv && typeof sv === 'object' && sv.level !== undefined) ? sv.level : (typeof sv === 'object' ? JSON.stringify(sv) : String(sv || ''));
-                html += '<span class="ne-ps-slot" title="' + escapeHtml(sk) + '"><span class="ne-ps-key">' + escapeHtml(sk) + '</span><span class="ne-ps-val">' + escapeHtml(svStr) + '</span></span>';
+                var level = null;
+                var desc = '';
+                if (sv && typeof sv === 'object') {
+                    level = sv.level;
+                    desc = sv.description || '';
+                } else {
+                    level = sv;
+                }
+                var levelHtml = (level !== null && level !== undefined) ? '<span class="ne-ps-level">Lv.' + escapeHtml(String(level)) + '</span>' : '';
+                var descHtml = desc ? '<div class="ne-ps-desc">' + escapeHtml(desc) + '</div>' : '';
+                psItems.push(
+                    '<div class="ne-ps-item">' +
+                    '<div class="ne-ps-item-header">' +
+                    '<span class="ne-ps-name">' + escapeHtml(sk) + '</span>' +
+                    levelHtml +
+                    '</div>' +
+                    descHtml +
+                    '</div>'
+                );
             });
-            html += '</div>';
+            html += '<div class="ne-section-header">' + t_field('power_slots') + ' <span class="ne-section-count">' + psKeys.length + '</span></div>' +
+                    '<div class="ne-power-slots-section">' + psItems.join('') + '</div>';
         }
     }
 
@@ -411,9 +443,12 @@ export function enterCardEditMode(editBtn) {
     var body = cardDiv.querySelector('.ne-char-card-body');
     if (!body) return;
 
-    // Hide inventory bar while editing (raw JSON is in the edit form)
-    var invBar = cardDiv.querySelector('.ne-inventory-bar');
-    if (invBar) { invBar.style.display = 'none'; cardDiv._neHadInvBar = true; }
+    // Hide inventory & power slots sections while editing (raw JSON is in the edit form for inventory)
+    var sectionsToHide = cardDiv.querySelectorAll('.ne-inventory-section, .ne-power-slots-section, .ne-section-header');
+    for (var si = 0; si < sectionsToHide.length; si++) {
+        sectionsToHide[si].style.display = 'none';
+    }
+    if (sectionsToHide.length > 0) cardDiv._neHadSections = true;
 
     var table = body.querySelector('table');
     if (table) cardDiv._neOrigTableHTML = table.outerHTML;
@@ -1441,11 +1476,13 @@ function exitCardEditMode(cardDiv) {
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
     if (deleteBtn && deleteBtn.parentNode) deleteBtn.remove();
 
-    // Restore inventory bar if it was hidden during edit
-    if (cardDiv._neHadInvBar) {
-        var invBar = cardDiv.querySelector('.ne-inventory-bar');
-        if (invBar) invBar.style.display = '';
-        cardDiv._neHadInvBar = false;
+    // Restore inventory & power slots sections if they were hidden during edit
+    if (cardDiv._neHadSections) {
+        var hiddenSections = cardDiv.querySelectorAll('.ne-inventory-section, .ne-power-slots-section, .ne-section-header');
+        for (var hj = 0; hj < hiddenSections.length; hj++) {
+            hiddenSections[hj].style.display = '';
+        }
+        cardDiv._neHadSections = false;
     }
 
     var restoredEditBtn = cardDiv.querySelector('.ne-card-edit-btn');

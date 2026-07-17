@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-17 | 40 个文档 | 40% 完成
+> 自动生成 | 2026-07-17 | 41 个文档 | 41% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -19,6 +19,7 @@
 | `fix-rollback-force-rebuild-state.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 修复版本链回退后 State 未重建的 bug |
 | `fix-template-llm-and-world-context.md` | ❓ 未知 | — | — | 修复：Template LLM 触发 + World Context 填充 |
 | `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
+| `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -50,7 +51,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：16
+- ✅ 已完成：17
 - 🔄 进行中：7
 - ⏳ 未开始：3
 - ❓ 未标记：14
