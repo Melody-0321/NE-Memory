@@ -497,14 +497,8 @@ export function rebuildPresentCharacters(state) {
 // ====== Template Resolution Helpers (N5 three-layer architecture) ======
 
 /**
- * Resolve character template fields using a lock-aware active-version chain:
- *   1. cardConfig._dialogueTemplates:
- *      - 若 schemeKey 直接命中副本：锁定角色钉在该副本；非锁定角色按其 _templateId
- *        解析到当前 _active 主副本（跟随主本）。
- *      - 若未直接命中（哨兵 _default_pc / _default_npc 或 KEY 已删除）：按 _templateId
- *        取当前 _active 主副本。
- *   2. Global template library (getEffectiveTemplates)
- *   3. System default by role (PC->DEFAULT_PC_TEMPLATE, NPC->DEFAULT_NPC_TEMPLATE)
+ * Resolve character template fields using a lock-aware active-version chain.
+ * Thin wrapper over resolveActiveTemplateCopy + expandTemplateFields.
  *
  * @param {string|null} stCharName - ST character card name for loading cardConfig
  * @param {string|null} schemeKey - Dialogue template key / scheme ID / sentinel
@@ -512,6 +506,30 @@ export function rebuildPresentCharacters(state) {
  * @returns {Object<string, import('../../types.js').SchemaFieldDef>}
  */
 export function resolveActiveTemplateFields(stCharName, schemeKey, charData) {
+    var copy = resolveActiveTemplateCopy(stCharName, schemeKey, charData);
+    return expandTemplateFields(copy);
+}
+
+/**
+ * Resolve the active template COPY object (the single source of truth for
+ * "which template does this character currently use"). Lock-aware:
+ *   1. cardConfig._dialogueTemplates:
+ *      - schemeKey 直接命中副本：锁定角色钉在该副本；非锁定角色按其 _templateId
+ *        解析到当前 _active 主副本（跟随主本）。
+ *      - 未直接命中（哨兵 _default_pc / _default_npc 或 KEY 已删除）：按 _templateId
+ *        取当前 _active 主副本。
+ *   2. Global template library (getEffectiveTemplates) by schemeKey as global ID
+ *   3. System default by role (PC->DEFAULT_PC_TEMPLATE, NPC->DEFAULT_NPC_TEMPLATE)
+ *
+ * Returns a template-like object with presetFields/customFieldRefs. All UI/edit
+ * paths should use this instead of re-implementing sentinel/default lookups.
+ *
+ * @param {string|null} stCharName - ST character card name for loading cardConfig
+ * @param {string|null} schemeKey - Dialogue template key / scheme ID / sentinel
+ * @param {object} [charData] - Character state entry (for _templateLocked / _role)
+ * @returns {object|null} template-like object (presetFields/customFieldRefs/...)
+ */
+export function resolveActiveTemplateCopy(stCharName, schemeKey, charData) {
     charData = charData || {};
     var isPC = charData._role === 'protagonist' || schemeKey === '_default_pc';
     var locked = !!charData._templateLocked;
@@ -522,24 +540,24 @@ export function resolveActiveTemplateFields(stCharName, schemeKey, charData) {
             var dt = cardConfig._dialogueTemplates;
             var direct = dt[schemeKey];
             if (direct) {
-                if (locked) return expandTemplateFields(direct);
+                if (locked) return direct;
                 var tid = direct._templateId;
                 var active = (tid && getActiveVersion(dt, tid)) || direct;
-                return expandTemplateFields(active);
+                return active;
             }
             var sentinelActive = getActiveVersion(dt, schemeKey);
-            if (sentinelActive) return expandTemplateFields(sentinelActive);
+            if (sentinelActive) return sentinelActive;
         }
     }
     // Fallback 2: global template library lookup by schemeKey as global template ID
     if (schemeKey) {
         var effectiveTpls = getEffectiveTemplates();
         if (effectiveTpls && effectiveTpls.templates && effectiveTpls.templates[schemeKey]) {
-            return expandTemplateFields(effectiveTpls.templates[schemeKey]);
+            return effectiveTpls.templates[schemeKey];
         }
     }
     // Fallback 3: system default by role
-    return expandTemplateFields(isPC ? DEFAULT_PC_TEMPLATE : DEFAULT_NPC_TEMPLATE);
+    return isPC ? DEFAULT_PC_TEMPLATE : DEFAULT_NPC_TEMPLATE;
 }
 
 /**
