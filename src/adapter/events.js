@@ -17,6 +17,7 @@ import { buildStateInjectionTable, resolveActiveTemplateFields } from '../core/v
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
+import { adaptContextPostTrim, setAdaptiveCache } from '../core/engine/adaptive-context.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
@@ -66,6 +67,7 @@ var consecutiveFailures = 0;
 var _drainContinuationCount = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
 var _isInjecting = false;
+// Adaptive Context Control 缓存已抽取到 core/engine/adaptive-context.js，通过 setAdaptiveCache 同步
 const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 const PIPELINE_TIMEOUT_MS = 30000;
@@ -162,12 +164,21 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
     return Math.max(tokenPressure, turnPressure);
 }
 function adjustDialogWindow() {
+    // 自适应模式下不覆盖 maxContext（让 ST 默认 token-budget 截断生效）
+    var adaptive = false;
+    try { var rawAd = localStorage.getItem('ne_settings'); if (rawAd) { var sAd = JSON.parse(rawAd); adaptive = !!sAd.adaptiveContextControl; } } catch (eAd) {}
+    if (adaptive) return;
     var overrideEnabled = false;
     try { var raw2 = localStorage.getItem('ne_settings'); if (raw2) { var s2 = JSON.parse(raw2); overrideEnabled = !!s2.dialogOverrideEnabled; } } catch (e) {}
     if (overrideEnabled) {
         runtime.maxContext = Number.MAX_SAFE_INTEGER;
     }
 }
+
+/* ══════════════════ Adaptive Context Control — 已抽取到 core/engine/adaptive-context.js ══════════════════ */
+// 重新导出 adaptContextPostTrim，保持 index.js 的导入签名不变
+export { adaptContextPostTrim };
+
 export function notifyVaultChanged() {
     try {
         PD.dispatchEvent(new CustomEvent('ne:vault-changed'));
@@ -1051,7 +1062,22 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content, state.protagonist_name);
             if (stateTable) {
                 globalThis.__ne_debug_last_state_table = stateTable;
-                runtime.injectPrompt('ne_state_table', stateTable, 'in_chat', 2, 'system');
+                // Adaptive Context Control: 缓存原始内容供事后裁剪（同步到 adaptive-context.js 模块）
+                setAdaptiveCache({
+                    state: state,
+                    chatMessages: chatMessages,
+                    content: content,
+                    protagonistName: state.protagonist_name,
+                    stateTable: stateTable,
+                    stateTableTokens: countTokens(stateTable)
+                });
+                // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
+                var adaptiveEnabled = false;
+                try { var rawAd = localStorage.getItem('ne_settings'); if (rawAd) { var sAd = JSON.parse(rawAd); adaptiveEnabled = !!sAd.adaptiveContextControl; } } catch (eAd) {}
+                var markedStateTable = adaptiveEnabled
+                    ? '<!--NE:state_table-->' + stateTable + '<!--/NE:state_table-->'
+                    : stateTable;
+                runtime.injectPrompt('ne_state_table', markedStateTable, 'in_chat', 2, 'system');
             }
         }
 
@@ -1079,7 +1105,18 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     formatted = MEMORY_INJECTION_WRAPPER + '\n\n' + formatted;
                 }
                 globalThis.__ne_debug_last_injection = formatted;
-                runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 3, 'system');
+                // Adaptive Context Control: 缓存原始内容供事后裁剪（同步到 adaptive-context.js 模块）
+                setAdaptiveCache({
+                    memoryVault: formatted,
+                    memoryVaultTokens: countTokens(formatted)
+                });
+                // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
+                var adaptiveEnabledMv = false;
+                try { var rawAdMv = localStorage.getItem('ne_settings'); if (rawAdMv) { var sAdMv = JSON.parse(rawAdMv); adaptiveEnabledMv = !!sAdMv.adaptiveContextControl; } } catch (eAdMv) {}
+                var markedMemory = adaptiveEnabledMv
+                    ? '<!--NE:memory_vault-->' + formatted + '<!--/NE:memory_vault-->'
+                    : formatted;
+                runtime.injectPrompt('ne_memory_vault', markedMemory, 'in_chat', 3, 'system');
             }
             // State block instruction — Main LLM outputs pre-built banner HTML at reply start
             if (isStateSchemaEnabled()) {

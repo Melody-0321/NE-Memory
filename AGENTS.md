@@ -104,5 +104,5 @@ updated: 2026-07-09
 - 技术栈：JavaScript ES Modules → Rollup IIFE 构建
 - 核心模块风险分级：
   - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval
-  - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding, template-defs
+  - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding, template-defs, adaptive-context（自适应上下文裁剪，影响注入策略）
   - 🟢 低风险：panel-*.js, i18n.js, style.css, test-data, token-stats, telemetry

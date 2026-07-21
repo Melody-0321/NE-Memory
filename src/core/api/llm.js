@@ -1,7 +1,7 @@
 /**
  * api/llm.js — LLM 调用封装
  *
- * 优先级：localStorage 中的副 API 配置 → TavernHelper.generateRaw() 回退
+ * 优先级：副 API 配置 → 主 API 直接 fetch → TavernHelper.generateRaw() 回退
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
 import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
@@ -70,6 +70,31 @@ async function loadMemoryConfig() {
     return {};
 }
 
+/**
+ * Extract main API credentials from SillyTavern's globalThis.oai_settings as fallback config.
+ * Returns null if not available (e.g. non-OpenAI backends like text-generation-webui).
+ */
+function resolveMainApiFallbackConfig() {
+    if (typeof globalThis === 'undefined') return null;
+
+    // OpenAI-compatible
+    var oai = globalThis.oai_settings;
+    if (oai && oai.reverse_proxy && oai.api_key) {
+        var proxyUrl = oai.reverse_proxy || '';
+        // Bare domain: append standard path
+        if (proxyUrl && !/\/v1\//.test(proxyUrl) && !/\/llm\//.test(proxyUrl)) {
+            proxyUrl = proxyUrl.replace(/\/+$/, '') + '/v1/chat/completions';
+        }
+        return {
+            url: proxyUrl,
+            key: oai.api_key || '',
+            model: oai.model || oai.model_name || '',
+            _source: 'main_api_oai'
+        };
+    }
+    return null;
+}
+
 export async function callMemoryLLM(messages, options = {}) {
     var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig;
@@ -95,16 +120,51 @@ export async function callMemoryLLM(messages, options = {}) {
             _toolCalls = customResult.tool_calls || null;
             apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
         } catch (e) {
-            console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
-            console.warn('[NE]   URL:', secondaryConfig.url, ' Model:', secondaryConfig.model);
-            notifySecondaryApiFailure(e.message);
+            console.warn('[NE] Secondary API failed:', e.message);
+            // Preferred: use main API credentials for direct fetch (no race condition)
+            var mainFallback = resolveMainApiFallbackConfig();
+            if (mainFallback && mainFallback.url && mainFallback.model) {
+                try {
+                    console.log('[NE] Falling back to main API via direct fetch:', mainFallback.model);
+                    var fbResult = await callCustomAPI(mainFallback, messages, callOpts);
+                    response = fbResult.content;
+                    usage = fbResult.usage;
+                    apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+                } catch (e2) {
+                    console.warn('[NE] Main API fallback also failed:', e2.message);
+                    notifySecondaryApiFailure(e.message);
+                    response = await callTavernHelper(messages, options);
+                    apiSource = 'tavern';
+                }
+            } else {
+                console.warn('[NE] No main API fallback available, using TavernHelper');
+                notifySecondaryApiFailure(e.message);
+                response = await callTavernHelper(messages, options);
+                apiSource = 'tavern';
+            }
+        }
+    } else {
+        console.log('[NE] No secondary API configured, checking main API fallback...');
+        var mainFallback = resolveMainApiFallbackConfig();
+        if (mainFallback && mainFallback.url && mainFallback.model) {
+            try {
+                console.log('[NE] Using main API via direct fetch:', mainFallback.model);
+                var callOpts = Object.assign({}, options, { responseFormat: options.responseFormat || { type: "json_object" } });
+                var fbResult = await callCustomAPI(mainFallback, messages, callOpts);
+                response = fbResult.content;
+                usage = fbResult.usage;
+                _toolCalls = fbResult.tool_calls || null;
+                apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+            } catch (e2) {
+                console.warn('[NE] Main API fallback failed:', e2.message);
+                response = await callTavernHelper(messages, options);
+                apiSource = 'tavern';
+            }
+        } else {
+            console.log('[NE] No main API fallback available, using TavernHelper');
             response = await callTavernHelper(messages, options);
             apiSource = 'tavern';
         }
-    } else {
-        console.log('[NE] LLM call via TavernHelper (no secondary API configured)');
-        response = await callTavernHelper(messages, options);
-        apiSource = 'tavern';
     }
 
     var durationMs = Date.now() - startTime;

@@ -7,7 +7,7 @@ import { runtime } from '../core/runtime.js';
 import { readVault } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged, adaptContextPostTrim } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
@@ -21,6 +21,7 @@ import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, 
 import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
 import { neRestoreAll } from '../core/settings-adapter.js';
+import { applyChatCompletionPatch } from './chat-completion-patch.js';
 
 var _retryTimer = null;
 
@@ -239,6 +240,7 @@ async function init() {
 
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
+    try { await applyChatCompletionPatch(); } catch (e) { console.warn('[NE] ChatCompletion patch failed:', e.message); }
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
@@ -289,6 +291,15 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
             try { eventSource.on('message_received', onMessageReceived); } catch (e) { console.warn('[NE] message_received registration failed:', e); }
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
+            try { eventSource.on('CHAT_COMPLETION_PROMPT_READY', async (data) => {
+                try {
+                    var adaptive = false;
+                    try { var rawA = localStorage.getItem('ne_settings'); if (rawA) { var sA = JSON.parse(rawA); adaptive = !!sA.adaptiveContextControl; } } catch (eA) {}
+                    if (!adaptive) return;
+                    if (!data || !data.chat) return;
+                    await adaptContextPostTrim(data.chat, data.dryRun);
+                } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }
+            }); } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY registration failed:', e); }
             console.log('[NE] All string event listeners registered, onBeforeGenerate=' + typeof onBeforeGenerate);
             try { eventSource.on('chat_id_changed', async () => {
                 try {
@@ -321,6 +332,15 @@ function setupEventListeners(retryCount) {
             if (tavern_events.MESSAGE_SENT) TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
             if (tavern_events.MESSAGE_RECEIVED) TavernHelper._eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived);
             if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
+            if (tavern_events.CHAT_COMPLETION_PROMPT_READY) TavernHelper._eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async (data) => {
+                try {
+                    var adaptive = false;
+                    try { var rawA = localStorage.getItem('ne_settings'); if (rawA) { var sA = JSON.parse(rawA); adaptive = !!sA.adaptiveContextControl; } } catch (eA) {}
+                    if (!adaptive) return;
+                    if (!data || !data.chat) return;
+                    await adaptContextPostTrim(data.chat, data.dryRun);
+                } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }
+            });
             if (tavern_events.CHAT_CHANGED) {
                 TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
                     var chatId2b = getChatId();
@@ -359,7 +379,7 @@ function setupEventListeners(retryCount) {
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    console.log('[NE] Engine starting... build=' + 'NE v7.1.0');
+    console.log('[NE] Engine starting... build=' + 'NE v6.8.0');
 
     try {
         window.__ne_debug = _buildDebugApi();
@@ -382,8 +402,6 @@ function bootNE(retries) {
 
         var cwRounds = 10;
         try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
-        var minRounds = 6;
-        if (cwRounds < minRounds) cwRounds = minRounds;
 
         var rounds = 0;
         var prevRole = null;

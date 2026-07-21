@@ -42,18 +42,29 @@ export function renderSettingsTab() {
     var commonHtml = '<div class="ne-accordion" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + '</div>' +
         '<div class="ne-accordion-body">' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('dialog_round_injection_control') + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
-        '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.') + '</div>' +
-        '<div style="margin:0 0 8px;">' +
-            '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
-                '<input type="checkbox" id="nes_dialog_override_enabled" ' + (settings.dialogOverrideEnabled ? 'checked' : '') + '> ' + t('override_st_context_window_limit') +
+        // === Adaptive Context Control 开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_adaptive_context_control" ' + (settings.adaptiveContextControl ? 'checked' : '') + '> ' + t('adaptive_context_control') +
             '</label>' +
-            '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('adaptive_context_control_desc') + '</div>' +
         '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
-        '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
+        // === Dialog Rounds（两种模式都显示，描述文字切换）===
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span id="nes_dialog_rounds_label">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control')) + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
+        '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
+        '<div id="nes_dialog_rounds_desc" style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.')) + '</div>' +
+        // === 手动模式专属控件（自适应模式下隐藏）===
+        '<div class="ne-manual-controls" style="' + (settings.adaptiveContextControl ? 'display:none;' : '') + '">' +
+            '<div style="margin:0 0 8px;">' +
+                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
+                    '<input type="checkbox" id="nes_dialog_override_enabled" ' + (settings.dialogOverrideEnabled ? 'checked' : '') + '> ' + t('override_st_context_window_limit') +
+                '</label>' +
+                '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
+            '</div>' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
+            '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
+        '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">' +
             '<span>' + t('STM Extraction Batch') + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
@@ -273,6 +284,24 @@ export function renderSettingsTab() {
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
+    // Adaptive Context Control 开关：切换显隐 + 描述文字
+    var adaptiveEl = panelById('nes_adaptive_context_control');
+    if (adaptiveEl) {
+        adaptiveEl.onchange = function () {
+            var isOn = adaptiveEl.checked;
+            // 切换手动控件显隐
+            var manualControls = document.querySelectorAll('.ne-manual-controls');
+            for (var i = 0; i < manualControls.length; i++) {
+                manualControls[i].style.display = isOn ? 'none' : '';
+            }
+            // 切换 dialog rounds 标签和描述
+            var labelEl = panelById('nes_dialog_rounds_label');
+            if (labelEl) labelEl.textContent = isOn ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control');
+            var descEl = panelById('nes_dialog_rounds_desc');
+            if (descEl) descEl.textContent = isOn ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.');
+            saveSettingsTab();
+        };
+    }
     // Checkboxes — save on change
     // Auto toggles — save to params auto map and re-render
     var autoSb = panelById('nes_stm_batch_auto');
@@ -646,6 +675,8 @@ function saveSettingsTab() {
         settings.dialogWindowRounds = Number(panelById('nes_dialog_window_rounds').value);
     if (panelById('nes_dialog_override_enabled'))
         settings.dialogOverrideEnabled = panelById('nes_dialog_override_enabled').checked;
+    if (panelById('nes_adaptive_context_control'))
+        settings.adaptiveContextControl = panelById('nes_adaptive_context_control').checked;
     if (panelById('nes_api_channels_enabled'))
         settings.apiChannelsEnabled = channelsEnabled;
     var scInput2 = panelById('nes_stm_chunk_input');
