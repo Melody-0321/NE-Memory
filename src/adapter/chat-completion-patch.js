@@ -13,9 +13,15 @@ var _nePatched = false;
 export async function applyChatCompletionPatch() {
     if (_nePatched) return true;
     try {
-        var mod = await import('/scripts/openai.js');
+        // 用变量存储 URL 阻止 Rollup 将绝对路径转为相对路径
+        // NE-Memory 从 CDN 加载时，相对路径会解析到 CDN 而非 ST 本地服务器
+        var openaiUrl = '/scripts/openai.js';
+        var mod = await import(openaiUrl);
         var ChatCompletion = mod.ChatCompletion;
-        if (!ChatCompletion || !ChatCompletion.prototype) return false;
+        if (!ChatCompletion || !ChatCompletion.prototype) {
+            console.warn('[NE] ChatCompletion not found in openai.js module');
+            return false;
+        }
 
         var origCanAfford = ChatCompletion.prototype.canAfford;
         var origInsertAtStart = ChatCompletion.prototype.insertAtStart;
