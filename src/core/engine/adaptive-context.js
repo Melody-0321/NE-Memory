@@ -119,7 +119,10 @@ export function replaceNeMarkerInChat(chat, key, newContent) {
  */
 export async function compressLayers(chat, layers, totalTokens, totalBudget, dialogMsgIndices, ctx) {
     var spliceOffset = 0;
-    while (totalTokens > totalBudget) {
+    var maxIterations = 200;
+    var iter = 0;
+    while (totalTokens > totalBudget && iter < maxIterations) {
+        iter++;
         var maxSat = -Infinity, pick = null;
         for (var i = 0; i < layers.length; i++) {
             var l = layers[i];
@@ -130,6 +133,7 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
         if (!pick) break;
 
         if (pick.name === 'dialog') {
+            var didCompress = false;
             for (var j = 0; j < dialogMsgIndices.length - 1; j++) {
                 var idx = dialogMsgIndices[j] - spliceOffset;
                 if (idx < 0) continue;
@@ -141,8 +145,12 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                     spliceOffset += 2;
                     totalTokens -= removedTokens;
                     pick.current--;
+                    didCompress = true;
                     break;
                 }
+            }
+            if (!didCompress) {
+                pick.current = pick.floor;
             }
         } else {
             var newTarget = Math.max(pick.floor, Math.round(pick.current * 0.75));
@@ -175,7 +183,10 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
  * 当 totalTokens < lowerThreshold（黄金窗口下限）时触发。
  */
 export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ctx) {
-    while (totalTokens < lowerThreshold) {
+    var maxIterations = 100;
+    var iter = 0;
+    while (totalTokens < lowerThreshold && iter < maxIterations) {
+        iter++;
         var minSat = Infinity, pick = null;
         for (var i = 0; i < layers.length; i++) {
             var l = layers[i];
