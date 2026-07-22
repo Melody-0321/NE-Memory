@@ -16,16 +16,23 @@ export async function applyChatCompletionPatch() {
         // 用变量存储 URL 阻止 Rollup 将绝对路径转为相对路径
         // NE-Memory 从 CDN 加载时，相对路径会解析到 CDN 而非 ST 本地服务器
         var openaiUrl = '/scripts/openai.js';
+        console.log('[NE-DEBUG] applyChatCompletionPatch: attempting import(' + openaiUrl + ')');
         var mod = await import(openaiUrl);
         var ChatCompletion = mod.ChatCompletion;
+        console.log('[NE-DEBUG] import resolved. ChatCompletion:', typeof ChatCompletion);
         if (!ChatCompletion || !ChatCompletion.prototype) {
-            console.warn('[NE] ChatCompletion not found in openai.js module');
+            console.warn('[NE] ChatCompletion not found in openai.js module. Keys:', Object.keys(mod).join(','));
             return false;
         }
 
         var origCanAfford = ChatCompletion.prototype.canAfford;
         var origInsertAtStart = ChatCompletion.prototype.insertAtStart;
         var origSetTokenBudget = ChatCompletion.prototype.setTokenBudget;
+        console.log('[NE-DEBUG] prototype methods:', {
+            canAfford: typeof origCanAfford,
+            insertAtStart: typeof origInsertAtStart,
+            setTokenBudget: typeof origSetTokenBudget
+        });
 
         // hook setTokenBudget：每次生成前重置轮数计数标志
         // setTokenBudget 在 prepareOpenAIMessages 中调用，早于 populateChatHistory
@@ -77,6 +84,7 @@ export async function applyChatCompletionPatch() {
                 // 达到上限：设标志，不插入此消息
                 if (this._neRoundCount >= maxRounds) {
                     this._neRoundLimitReached = true;
+                    console.log('[NE-DEBUG] Round limit reached: count=' + this._neRoundCount + ' max=' + maxRounds + ', skipping ' + msgId);
                     return;
                 }
             }
@@ -87,7 +95,7 @@ export async function applyChatCompletionPatch() {
         console.log('[NE] ChatCompletion prototype patched for dialog window rounds');
         return true;
     } catch (e) {
-        console.warn('[NE] Failed to patch ChatCompletion:', e.message);
+        console.warn('[NE] Failed to patch ChatCompletion:', e.message, e.stack);
         return false;
     }
 }
