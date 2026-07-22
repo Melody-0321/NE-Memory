@@ -396,8 +396,7 @@ function bootNE(retries) {
     globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
         if (type === 'quiet') return;
 
-        var cwRounds = 10;
-        try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
+        var cwRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
 
         var rounds = 0;
         var prevRole = null;

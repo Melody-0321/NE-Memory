@@ -1,7 +1,12 @@
 /**
- * chat-completion-patch.js — Monkey-patch ChatCompletion.prototype
+ * chat-completion-patch.js - Monkey-patch ChatCompletion.prototype
  * 让对话轮数滑块在 dryRun（token 显示）路径也生效
+ *
+ * ST 的 populateChatHistory 是独立函数（非原型方法），无法直接 hook。
+ * 改为 hook setTokenBudget（原型方法，在 populateChatHistory 之前调用）来重置轮数计数标志。
  */
+
+import { readNeSetting } from '../core/settings.js';
 
 var _nePatched = false;
 
@@ -14,6 +19,18 @@ export async function applyChatCompletionPatch() {
 
         var origCanAfford = ChatCompletion.prototype.canAfford;
         var origInsertAtStart = ChatCompletion.prototype.insertAtStart;
+        var origSetTokenBudget = ChatCompletion.prototype.setTokenBudget;
+
+        // hook setTokenBudget：每次生成前重置轮数计数标志
+        // setTokenBudget 在 prepareOpenAIMessages 中调用，早于 populateChatHistory
+        if (origSetTokenBudget) {
+            ChatCompletion.prototype.setTokenBudget = function(context, response) {
+                this._neRoundLimitReached = false;
+                this._neRoundCount = 0;
+                this._nePrevRole = null;
+                return origSetTokenBudget.call(this, context, response);
+            };
+        }
 
         ChatCompletion.prototype.canAfford = function(message) {
             // 仅对 chatHistory 消息检查轮数限制标志
@@ -30,22 +47,26 @@ export async function applyChatCompletionPatch() {
                 // 已达上限，静默跳过
                 if (this._neRoundLimitReached) return;
 
-                // 读取滑块值
-                var maxRounds = 10;
-                try {
-                    var raw = localStorage.getItem('ne_settings');
-                    if (raw) {
-                        var s = JSON.parse(raw);
-                        maxRounds = Number(s.dialogWindowRounds) || 10;
-                    }
-                } catch (e) {}
-
-                // 计数 user→assistant 配对（一轮）
-                var role = message.role || 'assistant';
-                if (this._nePrevRole === 'user' && role === 'assistant') {
-                    this._neRoundCount = (this._neRoundCount || 0) + 1;
+                // 只处理真正的对话历史消息（identifier 以 'chatHistory-' 开头）
+                // 跳过 newMainChat、groupNudge 等非对话消息
+                var msgId = message.identifier;
+                if (typeof msgId !== 'string' || msgId.indexOf('chatHistory-') !== 0) {
+                    return origInsertAtStart.call(this, message, identifier);
                 }
-                this._nePrevRole = role;
+
+                // 读取滑块值
+                var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+
+                // 只对 user/assistant 角色计数，跳过 system(NARRATOR)/tool
+                var role = message.role;
+                if (role === 'user' || role === 'assistant') {
+                    // populateChatHistory 按倒序遍历（最新优先），
+                    // 倒序中 user->assistant 过渡标志着跨轮边界
+                    if (this._nePrevRole === 'user' && role === 'assistant') {
+                        this._neRoundCount = (this._neRoundCount || 0) + 1;
+                    }
+                    this._nePrevRole = role;
+                }
 
                 // 达到上限：设标志，不插入此消息
                 if (this._neRoundCount >= maxRounds) {
