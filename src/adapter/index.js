@@ -335,6 +335,70 @@ globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, ty
     }
 };
 
+var _neIgnoreSymbol = (typeof Symbol !== 'undefined' && Symbol.for) ? Symbol.for('ignore') : null;
+var _neIgnoredMsgIndices = [];
+
+function applyDialogWindowIgnore() {
+    _neIgnoredMsgIndices = [];
+    if (!_neIgnoreSymbol) return;
+
+    var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+    var chat = ctx && ctx.chat ? ctx.chat : [];
+    if (chat.length === 0) return;
+
+    var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+    if (maxRounds <= 0) return;
+
+    var rounds = 0;
+    var prevIsUser = null;
+    var cutoffIndex = -1;
+
+    for (var i = chat.length - 1; i >= 0; i--) {
+        var m = chat[i];
+        if (!m || m.is_system) continue;
+        var isUser = m.is_user ? true : false;
+
+        if (prevIsUser === true && isUser === false) {
+            rounds++;
+            if (rounds >= maxRounds) {
+                cutoffIndex = i;
+                break;
+            }
+        }
+        prevIsUser = isUser;
+    }
+
+    if (cutoffIndex > 0) {
+        for (var k = 0; k <= cutoffIndex; k++) {
+            var msg = chat[k];
+            if (!msg) continue;
+            if (!msg.extra) msg.extra = {};
+            if (!msg.extra[_neIgnoreSymbol]) {
+                msg.extra[_neIgnoreSymbol] = true;
+                _neIgnoredMsgIndices.push(k);
+            }
+        }
+        console.log('[NE] applyDialogWindowIgnore: marked ' + _neIgnoredMsgIndices.length + ' messages (maxRounds=' + maxRounds + ')');
+    }
+}
+
+function clearDialogWindowIgnore() {
+    if (_neIgnoredMsgIndices.length === 0) return;
+    var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+    var chat = ctx && ctx.chat ? ctx.chat : [];
+    var cleared = 0;
+    for (var i = 0; i < _neIgnoredMsgIndices.length; i++) {
+        var idx = _neIgnoredMsgIndices[i];
+        var msg = chat[idx];
+        if (msg && msg.extra && msg.extra[_neIgnoreSymbol]) {
+            delete msg.extra[_neIgnoreSymbol];
+            cleared++;
+        }
+    }
+    if (cleared > 0) console.log('[NE] clearDialogWindowIgnore: cleared ' + cleared + ' messages');
+    _neIgnoredMsgIndices = [];
+}
+
 function _tryRegisterBannerRegex(retryCount) {
     retryCount = retryCount || 0;
     var ok = registerGlobalBannerRegex();
@@ -367,7 +431,9 @@ function setupEventListeners(retryCount) {
             eventSource.__ne_bound = true;
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
             try { eventSource.on('message_received', onMessageReceived); } catch (e) { console.warn('[NE] message_received registration failed:', e); }
+            try { eventSource.on('GENERATION_AFTER_COMMANDS', function(type, options, dryRun) { applyDialogWindowIgnore(); }); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS (ignore) registration failed:', e); }
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
+            try { eventSource.on('generation_ended', function() { clearDialogWindowIgnore(); }); } catch (e) { console.warn('[NE] generation_ended registration failed:', e); }
             try { eventSource.on('chat_completion_prompt_ready', async (data) => {
                 try {
                     if (!data || !data.chat) return;
@@ -408,7 +474,11 @@ function setupEventListeners(retryCount) {
         try {
             if (tavern_events.MESSAGE_SENT) TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
             if (tavern_events.MESSAGE_RECEIVED) TavernHelper._eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived);
-            if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
+            if (tavern_events.GENERATION_AFTER_COMMANDS) {
+                TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, function(type, options, dryRun) { applyDialogWindowIgnore(); });
+                TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
+            }
+            if (tavern_events.GENERATION_ENDED) TavernHelper._eventOn(tavern_events.GENERATION_ENDED, function() { clearDialogWindowIgnore(); });
             if (tavern_events.CHAT_COMPLETION_PROMPT_READY) TavernHelper._eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async (data) => {
                 try {
                     if (!data || !data.chat) return;
