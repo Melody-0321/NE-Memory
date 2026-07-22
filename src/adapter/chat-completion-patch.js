@@ -13,10 +13,14 @@ var _nePatched = false;
 export async function applyChatCompletionPatch() {
     if (_nePatched) return true;
     try {
-        // NE-Memory 从 CDN 加载时，import() 的基 URL 是 CDN（脚本自身 URL），
-        // 而非 ST 服务器。必须用 window.location.origin 显式构造 ST 服务器的绝对 URL。
-        var openaiUrl = window.location.origin + '/scripts/openai.js';
-        console.log('[NE-DEBUG] applyChatCompletionPatch: attempting import(' + openaiUrl + ')');
+        // NE-Memory 从 CDN 加载时，import() 的基 URL 是 CDN（脚本自身 URL）。
+        // 必须构造 ST 服务器的绝对 URL。window.location.origin 在某些环境下返回 "null"，
+        // 改用 href 正则提取协议+主机部分。
+        var href = window.location.href || '';
+        var match = href.match(/^https?:\/\/[^/]+/);
+        var stOrigin = match ? match[0] : '';
+        var openaiUrl = stOrigin + '/scripts/openai.js';
+        console.log('[NE-DEBUG] applyChatCompletionPatch: href=' + href + ' origin=' + window.location.origin + ' stOrigin=' + stOrigin + ' url=' + openaiUrl);
         var mod = await import(openaiUrl);
         var ChatCompletion = mod.ChatCompletion;
         console.log('[NE-DEBUG] import resolved. ChatCompletion:', typeof ChatCompletion);
