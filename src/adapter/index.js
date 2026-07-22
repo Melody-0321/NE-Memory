@@ -291,7 +291,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
             try { eventSource.on('message_received', onMessageReceived); } catch (e) { console.warn('[NE] message_received registration failed:', e); }
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
-            try { eventSource.on('CHAT_COMPLETION_PROMPT_READY', async (data) => {
+            try { eventSource.on('chat_completion_prompt_ready', async (data) => {
                 try {
                     if (!data || !data.chat) return;
                     trimDialogRounds(data.chat);
