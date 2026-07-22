@@ -1,127 +1,18 @@
-import { read, appendSTMEntries, collectAllMsgIds } from '../vault/store.js';
+import { readMemory, readState, appendSTMEntries, collectAllMsgIds } from '../vault/store.js';
 import { isStateSchemaEnabled } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
+import { recordMemoryVersion, initializeMemoryChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
-import { saveVaultWithSnapshot, filterNewMessages } from './pipeline-shared.js';
+import { saveMemoryVault, filterNewMessages } from './pipeline-shared.js';
+import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 
-export function buildSTMUpdatePrompt(newMessages, vault, partials) {
+function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateVault, force) {
     var content = vault.content || {};
-    var lang = content.language === 'en' ? 'en' : 'zh';
-    var msgTexts = newMessages.map(function(m, i) {
-        var role = m.role === 'user' ? 'User' : 'Character';
-        var name = m.name ? m.name + ': ' : '';
-        return '[' + i + '] [' + role + '] ' + name + (m.content || '');
-    }).join('\n\n');
-
-    var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
-    }
-    if (!content.story_time && !content.story_date && !content.story_scene) {
-        currentStateSnapshot = 'story_day: Day 1\nstory_date: \nstory_scene: 未知\n';
-    }
-    if (isStateSchemaEnabled() && content.state && Object.keys(content.state).length > 0) {
-        var activeChars = [];
-        if (content.state.characters) {
-            Object.keys(content.state.characters).forEach(function (n) {
-                var c = content.state.characters[n];
-                if (c && (c.status === '活跃' || c.status === 'active')) activeChars.push(n);
-            });
-        }
-        if (activeChars.length > 0) {
-            currentStateSnapshot += 'Active characters: ' + activeChars.join(', ') + '\n';
-        }
-    }
-
-
-    // ── BM25 预分组 ──
-    var preGroupHint = '';
-    try {
-        var groups = preGroupItems(newMessages, {
-            tokenizer: null,
-            getText: function(m) { return m.content || ''; },
-            similarityThreshold: 0.3
-        });
-        preGroupHint = formatPreGroupHint(groups);
-    } catch(e) {}
-
-    // ── Partial 上下文 ──
-    var partialCtx = '';
-    if (partials && partials.length > 0) {
-        partialCtx = '\n## 上次未完成的事件（可能在本轮继续发展）：\n';
-        partials.forEach(function(p, i) {
-            var rangeStr = (p.msgRange ? p.msgRange.join('-') : '?');
-            partialCtx += '  ' + (i + 1) + '. stm:' + (p.id || '?') + ' [' + rangeStr + '] ' + (p.event || '') + '\n';
-        });
-        partialCtx += '如果本轮的对话能闭合上述事件，请创建新条目并在 "parent_partial" 中引用对应事件的 event 文本（精确匹配）。\n';
-    }
-
-    // ── msgRange + status 指令 ──
-    var msgRangeInstructionEn = '\n\nEach stm_entries item now also requires:\n' +
-        '- "msgRange": [start_idx, end_idx] — REQUIRED. The range of message indices (from the [idx] markers above) that this event covers.\n' +
-        '- "status": "closed" | "partial" — REQUIRED. "closed" = event complete. "partial" = event still developing, will continue in next batch.\n' +
-        '- "parent_partial": (optional) If this batch closes a pending partial event, include the exact "event" text of that partial.\n\n' +
-        'msgRange rules:\n' +
-        '- Ranges must be contiguous and cover ALL ' + newMessages.length + ' messages. No gaps, no overlaps.\n' +
-        '- Adjacent entries\' ranges should be end-to-end.\n' +
-        '- Casual chat with no narrative change may span multiple messages in one entry.\n' +
-        (preGroupHint ? '\n' + preGroupHint + '\n' : '');
-
-    var msgRangeInstructionZh = '\n\n每个 stm_entries 条目现在还需包含：\n' +
-        '- "msgRange": [start_idx, end_idx] — 必填。该事件覆盖的消息索引范围（对应上方消息 [idx] 标记）。\n' +
-        '- "status": "closed" | "partial" — 必填。closed=事件已完整，partial=事件未完成，后续对话会继续发展。\n' +
-        '- "parent_partial": （可选）如果本轮闭合了上次未完成的事件，填写对应事件的 event 文本（精确匹配）。\n\n' +
-        'msgRange 规则：\n' +
-        '- 范围必须连续覆盖所有 ' + newMessages.length + ' 条消息，不跳过、不重叠。\n' +
-        '- 相邻条目首尾相接。\n' +
-        '- 若为闲聊无实质叙事变化，可合并多条消息到一条。\n' +
-        (preGroupHint ? '\n' + preGroupHint + '\n' : '');
-
-    const userMsgEn = `New conversation messages:\n\n${msgTexts}\n\nExtract key events as JSON array.`;
-    const userMsgZh = `新对话消息：\n\n${msgTexts}\n\n提取关键事件为 JSON 数组。`;
-
-    if (lang === 'en') {
-        return {
-            system: currentStateSnapshot + partialCtx + 'You are a story memory extractor. Your task is to extract key events from the conversation into short-term memory entries.\n' +
-                '\nOutput a JSON object with an "stm_entries" array:\n' +
-                '{\n' +
-                '  "stm_entries": [...]\n' +
-                '}\n' +
-                '\nEach stm_entries item must have:\n' +
-                '- "event": what happened — REQUIRED. Be specific enough a reader understands what occurred (20-160 chars).\n' +
-                '- "time_label": optional — only set if the event\'s time differs from the implied time. Otherwise omit.\n' +
-                '- "translation": Chinese translation of the event (max 200 chars) for cross-lingual search. Provides key terms in Chinese for BM25 token matching.\n' +
-                
-                '\nNote: "period" and "scene" are NOT needed — do NOT include them in entries.\n' +
-                msgRangeInstructionEn +
-                '\nIf nothing of narrative significance happened, output {"stm_entries": []}.',
-            user: userMsgEn
-        };
-    }
-    return {
-        system: currentStateSnapshot + partialCtx + '你是故事记忆提取器。从对话中提取关键事件到短期记忆中。\n' +
-            '\n输出一个包含 "stm_entries" 数组的 JSON 对象：\n' +
-            '{\n' +
-            '  "stm_entries": [...]\n' +
-            '}\n' +
-            '\n每个 stm_entries 条目包含：\n' +
-            '- "event": 事件描述——必填。具体到让读者理解发生了什么（20-160字）。\n' +
-            '- "time_label": （可选）仅当事件时间与当前时间不同时填写，否则省略。\n' +
-            '- "translation": 事件的英文翻译（最长200字符），用于跨语言检索。提供英文关键词以供 BM25 词项匹配。\n' +
-            
-            '\n注意："period" 和 "scene" 条目中无需包含。\n' +
-        msgRangeInstructionZh +
-            '\n如果没有叙事意义的事件，输出 {"stm_entries": []}。',
-        user: userMsgZh
-    };
-}
-
-function buildCursorPrompt(windowItems, position, pendingPartials, vault, force) {
-    var content = vault.content || {};
+    var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
     // 格式化窗口消息
@@ -134,10 +25,10 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, force)
 
     // 当前状态摘要
     var currentStateSnapshot = '';
-    if (content.story_time || content.story_scene || content.story_date) {
-        currentStateSnapshot = 'story_day: ' + (content.story_time || '') + '\nstory_date: ' + (content.story_date || '') + '\nstory_scene: ' + (content.story_scene || '') + '\n';
+    if (stateContent.story_time || stateContent.story_scene || stateContent.story_date) {
+        currentStateSnapshot = 'story_day: ' + (stateContent.story_time || '') + '\nstory_date: ' + (stateContent.story_date || '') + '\nstory_scene: ' + (stateContent.story_scene || '') + '\n';
     }
-    var state = content.state || {};
+    var state = stateContent.state || {};
     var allChars = state.characters ? Object.keys(state.characters) : [];
     if (allChars.length > 0) {
         currentStateSnapshot += '已知角色: ' + allChars.join(', ') + '\n';
@@ -462,8 +353,9 @@ function computePerSegmentGuidance(segments, turns, ratio, lang) {
     });
 }
 
-function buildStmSummaryPrompt(segments, turns, vault, ratio) {
+function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio) {
     var content = vault.content || {};
+    var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var bannerMatched = globalThis.__ne_banner_matched;
     var _ratio = ratio || 0.05;
@@ -488,11 +380,11 @@ function buildStmSummaryPrompt(segments, turns, vault, ratio) {
         segmentsText += '\n';
     }
 
-    if (vault.content.story_date || vault.content.story_time || vault.content.story_scene) {
+    if (stateContent.story_date || stateContent.story_time || stateContent.story_scene) {
         segmentsText += '\n## 当前故事状态\n';
-        if (vault.content.story_date) segmentsText += '天数: ' + vault.content.story_date + '\n';
-        if (vault.content.story_time) segmentsText += '时间: ' + vault.content.story_time + '\n';
-        if (vault.content.story_scene) segmentsText += '场景: ' + vault.content.story_scene + '\n';
+        if (stateContent.story_date) segmentsText += '天数: ' + stateContent.story_date + '\n';
+        if (stateContent.story_time) segmentsText += '时间: ' + stateContent.story_time + '\n';
+        if (stateContent.story_scene) segmentsText += '场景: ' + stateContent.story_scene + '\n';
         segmentsText += '\n';
     } else {
         segmentsText += '\n## 当前故事状态\n（请从上文和近期记忆条目中推断当前的时间和场景）\n\n';
@@ -525,34 +417,31 @@ function buildStmSummaryPrompt(segments, turns, vault, ratio) {
 }
 
 export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
-    console.log('[NE-DIAG] executeIncrementalUpdate ENTER — msgCount=' + (newMessages ? newMessages.length : 0) + ', force=' + !!force);
-    const vault = await read(chatId);
+    _resetCheckChatTag();
+    _checkChatIntegrity('executeIncrementalUpdate:entry');
+    const memoryVault = await readMemory(chatId);
+    const stateVault = await readState(chatId);
 
-    // 给消息打绝对位置标记——使用消息在原始 chat 中的位置 (m.id) 而非 batch 循环下标
-    // m.id 在 processHistory 中设为原始 chat idx，在 onMessageSent/Received 中设为 ST 的 messageIndex
-    // 两者均为消息在完整 chat 数组中的位置，跨 run 一致
-    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? Number(newMessages[mi].id) : mi; }
+    initializeMemoryChain(chatId, memoryVault.content || {}).catch(function(err) {
+        console.warn('[NE] initializeMemoryChain failed:', err);
+    });
 
-    var processedIds = collectAllMsgIds(vault);
-    console.log('[NE-DIAG] executeIncrementalUpdate INNER — received ' + newMessages.length + ' messages, ids: [' + newMessages.map(function(m){return m.id;}).join(',') + '], processedIds.size=' + processedIds.size);
+    // 给消息打绝对位置标记——m.id 现在是 _ne_id = "idx isoDate"，parseInt 提取 idx
+    for (var mi = 0; mi < newMessages.length; mi++) { newMessages[mi]._absIdx = (newMessages[mi].id !== undefined) ? parseInt(newMessages[mi].id, 10) : mi; }
+
+    var processedIds = collectAllMsgIds(memoryVault);
     var filteredMessages = filterNewMessages(newMessages, processedIds);
-    console.log('[NE-DIAG] executeIncrementalUpdate — after filter: ' + filteredMessages.length + ' messages');
-    if (filteredMessages.length !== newMessages.length) {
-        var filteredIds = newMessages.filter(function(m){ return filteredMessages.indexOf(m) === -1; }).map(function(m){return m.id;});
-        console.log('[NE-DIAG] executeIncrementalUpdate — filtered OUT msg ids:', filteredIds.join(','));
-    }
     if (filteredMessages.length === 0 && !force) {
-        console.log('[NE-DIAG] executeIncrementalUpdate EXIT EARLY — no messages to process');
-        return { vault: vault, added: 0 };
+        return { vault: memoryVault, added: 0 };
     }
 
     console.log('[NE] STM pipeline starting — messages=' + filteredMessages.length);
     if (onProgress) onProgress({ processedTurns: 0, totalTurns: filteredMessages.length });
-    var cursorResult = { vault: vault, totalAdded: 0 };
+    var cursorResult = { vault: memoryVault, totalAdded: 0 };
     var newEntries = [];
     try {
         var turns = groupMessagesIntoTurns(filteredMessages);
-        var segments = await segmentTurns(turns, vault, callMemoryPipeline);
+        var segments = await segmentTurns(turns, memoryVault, callMemoryPipeline);
 
         var events = [];
 
@@ -573,9 +462,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
 
             for (var ci = 0; ci < chunks.length; ci++) {
                 var chunk = chunks[ci];
-                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, vault, stmRatio);
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio);
                 var responseText = '';
                 try {
+                    _checkChatIntegrity('executeIncrementalUpdate:beforeLLM');
                     responseText = await callMemoryPipeline([
                         { role: 'system', content: summaryPrompt.system },
                         { role: 'user', content: summaryPrompt.user }
@@ -584,11 +474,13 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     console.warn('[NE] Chunk ' + (ci+1) + '/' + chunks.length + ' LLM failed:', e);
                 }
 
+                _checkChatIntegrity('executeIncrementalUpdate:afterLLM');
+
                 if (!responseText && chunk.length > 1) {
                     console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
                     for (var si = 0; si < chunk.length; si++) {
                         var singleSeg = [chunk[si]];
-                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, vault, stmRatio);
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio);
                         try {
                             responseText = await callMemoryPipeline([
                                 { role: 'system', content: singlePrompt.system },
@@ -622,6 +514,11 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     }
                 }
             }
+
+            if (events.length === 0 && filteredMessages.length > 0) {
+                console.warn('[NE] STM pipeline: all LLM attempts failed, no events extracted');
+                recordTelemetry({ pipeline_task: 'stm_extract', error: 'all_attempts_failed', chunks: chunks.length }, chatId);
+            }
         }
 
         var beforeFilter = events.length;
@@ -650,13 +547,24 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         }
 
         if (events.length > 0) {
-            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, vault, filteredMessages.length);
+            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, memoryVault, filteredMessages.length);
             if (stmValidationErrors.length > 0) {
                 console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
                 recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
             }
-            postFillSTM({ stmEntries: events, stateChanges: {} }, vault);
-            appendSTMEntries(vault, events);
+            postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault);
+            var addedCount = appendSTMEntries(memoryVault, events);
+
+            var addedEntries = events.filter(function(e) { return e && e.id; });
+            if (addedEntries.length > 0) {
+                var messageDates = filteredMessages.map(function(m) { return m.id || ''; }).filter(Boolean);
+                recordMemoryVersion(chatId, {
+                    type: 'stm_batch',
+                    summary: 'STM batch: ' + addedEntries.length + '条新记忆',
+                    delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
+                    message_dates: messageDates
+                }).catch(function(err) { console.error('[NE] recordMemoryVersion (stm) failed for ' + chatId, err); });
+            }
         }
 
         cursorResult.totalAdded = events.length;
@@ -665,10 +573,12 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         globalThis.__ne_inner_thoughts_cache = {};
 
         // Persist — always save vault even with zero events to prevent infinite re-processing loop
-        vault._meta = vault._meta || {};
-        vault._meta.last_pipeline_task = 'stm_extract';
-        vault._meta.last_pipeline_time = new Date().toISOString();
-        try { await saveVaultWithSnapshot(chatId, vault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        memoryVault._meta = memoryVault._meta || {};
+        memoryVault._meta.last_pipeline_task = 'stm_extract';
+        memoryVault._meta.last_pipeline_time = new Date().toISOString();
+        _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
+        try { await saveMemoryVault(chatId, memoryVault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {
 
@@ -690,5 +600,5 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
     }
 
     if (onProgress) onProgress({ processedTurns: newEntries.length, totalTurns: newMessages.length });
-    return { vault: vault, added: newEntries.length };
+    return { vault: memoryVault, added: newEntries.length };
 }

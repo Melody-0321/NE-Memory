@@ -1,7 +1,8 @@
 /**
  * tools.js — Tool-calling 注册（通过 TH API）
  */
-import { read } from './vault/store.js';
+import { readVault } from './vault/store.js';
+import { findMessageInChat } from './engine/msg-id.js';
 import { isRetrievalEnabled } from './settings.js';
 import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery } from './vault/retrieval-filter.js';
 import { buildRetrievalMessagesLegacy } from './engine/retrieval.js';
@@ -22,17 +23,17 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
             var t0 = Date.now();
             try {
                 var chatId = getChatId ? getChatId() : 'default';
-                var vault = await read(chatId);
+                var vault = await readVault(chatId);
                 var content = vault.content || {};
                 var state = content.state || {};
 
                 // msg#95 or bare digit 95 → original message
                 if (ref.indexOf('msg#') === 0 || /^\d+$/.test(ref)) {
                     refType = 'msg';
-                    var msgId = parseInt(ref.replace('msg#', ''));
+                    var numId = parseInt(ref.replace('msg#', ''));
                     var chat = getChatMessages();
-                    var msg = chat.find(function(m) { return (m.id != null && m.id === msgId) || (m.mes_id != null && m.mes_id === msgId); });
-                    if (!msg) result = 'Message #' + msgId + ' not found.';
+                    var msg = findMessageInChat(chat, numId);
+                    if (!msg) result = 'Message #' + numId + ' not found.';
                     else {
                         var text = (msg.name ? msg.name + ': ' : '') + (typeof msg.mes === 'string' ? msg.mes : (msg.content || ''));
                         if (entities && entities.length > 0) {
@@ -253,7 +254,7 @@ function registerRecallMemory(getChatId) {
             try {
                 if (!args || !args.query) return 'Error: Missing query';
 
-                var vault = await read(chatId);
+                var vault = await readVault(chatId);
                 var content = vault.content || {};
                 allSTM = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
                 allLTM = content.ltm_entries || [];

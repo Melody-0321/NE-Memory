@@ -83,10 +83,11 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | # | 用例 | 状态 | 描述 |
 |---|------|------|------|
 | smartpush-14 | 全链路冒烟 | ⬜ | STM + LTM + SmartPush + 注入一次跑通 |
+| adaptive-compress | 自适应压缩冒烟 | ⬜ | 超预算触发 dialog 裁剪，验证 CHAT_COMPLETION_PROMPT_READY 事件链路 |
 
 ---
 
-## 二、单元测试覆盖（22 个文件）
+## 二、单元测试覆盖（23 个文件）
 
 以下纯逻辑层已由确定性单元测试（`test/*.test.js`）覆盖，运行 `npm test` 执行。
 这些单元测试**不依赖 LLM 调用**，可毫秒级验证核心算法的正确性。
@@ -94,6 +95,7 @@ await __ne_debug.runTestByName('smartpush-group-b')    // 组合用例
 | 测试文件 | 覆盖的关键逻辑 |
 |----------|--------------|
 | `schema.test.js` | State 字段校验、dot-path 解析、深度合并、PC/NPC 注入、好感度增量、quest legacy 重映射 |
+| `adaptive-context.test.js` | 自适应上下文控制：replaceNeMarkerInChat、trimMemoryVaultByKB、compressLayers dialog 路径、adaptContextPostTrim 守卫与完整路径 |
 | `json-fallback.test.js` | LLM JSON 5 阶段回退解析（thinking→code block→balanced scan→comma fix） |
 | `bm25-grouper.test.js` | LTM 预分组 BM25 相似度计算、分组格式化 |
 | `consolidate-core.test.js` | LTM open/closed 生命周期、append/close_and_new、硬上限逻辑 |
@@ -178,5 +180,6 @@ LLM 是不可靠的组件。任何 prompt 改动都可能破坏其输出格式�
 | LTM 合并 | 1 | `consolidate-*`, `ltm-validate`, `merge-story-period` |
 | State 管线 | 8 | `schema`, `context-window`, `pipeline-guard` |
 | Vault/Store | 2 | `ltm-rebatch-call-pattern` |
-| 集成 + 冒烟 | 2 | 全栈（依赖所有单元测试） |
-| **合计** | **23** | **22** |
+| 自适应上下文 | — | `adaptive-context` |
+| 集成 + 冒烟 | 3 | 全栈（依赖所有单元测试） |
+| **合计** | **24** | **23** |

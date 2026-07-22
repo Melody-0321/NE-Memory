@@ -120,6 +120,15 @@ function resolveTarget(collected, targetName) {
     case 'vector_used': return collected.vectorUsed;
     case 'vector_candidate_count': return collected.vectorCandidateCount;
     case 'bm25_candidate_count': return collected.bm25CandidateCount;
+    case 'adaptive_triggered': return collected.adaptiveResult ? collected.adaptiveResult.triggered : false;
+    case 'adaptive_action': return collected.adaptiveResult ? collected.adaptiveResult.action : '';
+    case 'adaptive_tokens_before': return collected.adaptiveResult ? collected.adaptiveResult.totalTokensBefore : 0;
+    case 'adaptive_tokens_after': return collected.adaptiveResult ? collected.adaptiveResult.totalTokensAfter : 0;
+    case 'adaptive_dialog_rounds_after': return collected.adaptiveResult ? collected.adaptiveResult.dialogRoundsAfter : 0;
+    case 'adaptive_budget': return collected.adaptiveResult ? collected.adaptiveResult.totalBudget : 0;
+    case 'adaptive_golden_tier': return collected.adaptiveResult ? collected.adaptiveResult.goldenTier : '';
+    case 'adaptive_golden_upper': return collected.adaptiveResult ? collected.adaptiveResult.goldenUpper : 0;
+    case 'adaptive_golden_lower': return collected.adaptiveResult ? collected.adaptiveResult.goldenLower : 0;
     default: return '';
     }
 }

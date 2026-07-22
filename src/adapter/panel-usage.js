@@ -144,7 +144,7 @@ export async function renderUsageTab() {
             }
 
             var bc = breakdown;
-            var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.sp) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
+            var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.state) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
             var bSum = bData[0] + bData[1] + bData[2] + bData[3] + bData[4];
 
             var emptyEl = panelById('ne-breakdown-empty');
@@ -161,10 +161,10 @@ export async function renderUsageTab() {
             _chartInstances.pie = new Chart(pieCtx, {
                 type: 'pie',
                 data: {
-                    labels: ['STM', 'LTM', 'SmartPush', 'Tool', t('User Chat')],
+                    labels: ['STM', 'LTM', 'State', 'Tool', t('User Chat')],
                     datasets: [{
                         data: bData,
-                        backgroundColor: ['#4CAF50', '#FF9800', '#2196F3', '#9C27B0', '#9E9E9E']
+                        backgroundColor: ['#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#9E9E9E']
                     }]
                 },
                 options: {
@@ -238,7 +238,7 @@ export async function renderUsageTab() {
             var labels = allDates.map(function(ds) { return ds; });  /* full YYYY-MM-DD */
             var stmData = allDates.map(function(ds) { return fill(ds).stm; });
             var ltmData = allDates.map(function(ds) { return fill(ds).ltm; });
-            var spData  = allDates.map(function(ds) { return fill(ds).sp; });
+            var stateData = allDates.map(function(ds) { return fill(ds).state; });
             var toolData = allDates.map(function(ds) { return fill(ds).tool; });
             var chatData = allDates.map(function(ds) { return fill(ds).chat; });
 
@@ -249,7 +249,7 @@ export async function renderUsageTab() {
                     datasets: [
                         { label: 'STM', data: stmData, backgroundColor: '#4CAF50' },
                         { label: 'LTM', data: ltmData, backgroundColor: '#FF9800' },
-                        { label: 'SmartPush', data: spData, backgroundColor: '#2196F3' },
+                        { label: 'State', data: stateData, backgroundColor: '#E91E63' },
                         { label: 'Tool', data: toolData, backgroundColor: '#9C27B0' },
                         { label: t('User Chat'), data: chatData, backgroundColor: '#9E9E9E' }
                     ]
@@ -299,4 +299,15 @@ export async function renderUsageTab() {
     } catch (e) {
         console.warn('[NE] Chart render failed:', e);
     }
+}
+
+// Renders usage content into a container element (used by slide panel)
+export function renderUsageIntoContainer(container) {
+    // Create a temporary #ne-usage-container inside the container
+    var inner = pdCreate('div');
+    inner.id = 'ne-usage-container';
+    container.innerHTML = '';
+    container.appendChild(inner);
+    // Call the existing render function
+    return renderUsageTab();
 }

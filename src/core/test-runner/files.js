@@ -2,6 +2,7 @@
  * test-runner/files.js — 测试用例 & 报告文件处理
  */
 import { __KNOWN_TESTS, __TEST_MARKDOWN } from './test-data.generated.js';
+import buildInfo from '../build-info.js';
 
 export function parseTestCase(raw) {
     var tc = {};
@@ -370,6 +371,16 @@ export function appendTraceRound(trace, roundData) {
             lines.push('  Jaccard vs 上轮: ' + d.jaccard);
         }
     }
+    if (roundData.templateDiscovery) {
+        var td = roundData.templateDiscovery;
+        var schemeKeys = td.schemes ? Object.keys(td.schemes) : [];
+        lines.push('- 模板发现 (scheme_discovery): ' + schemeKeys.length + ' schemes');
+        for (var ski = 0; ski < schemeKeys.length; ski++) {
+            var sk = schemeKeys[ski];
+            var fields = td.schemes[sk] && td.schemes[sk].fields ? Object.keys(td.schemes[sk].fields) : [];
+            lines.push('  - ' + sk + ': ' + fields.length + ' fields (' + fields.slice(0, 8).join(', ') + (fields.length > 8 ? '...' : '') + ')');
+        }
+    }
     lines.push('');
     lines.push('### 进度评估');
     lines.push(roundData.progressNote || '');
@@ -380,6 +391,7 @@ export function appendTraceRound(trace, roundData) {
 export function createReport(testCase, roundCount, totalDurationMs, structuralResults, semanticResults, tokenRounds, roundDataList) {
     var lines = [];
     lines.push('# ' + testCase.title + ' — 测试报告');
+    lines.push('Git 提交: `' + (buildInfo.hash || 'unknown') + '` | 构建: ' + (buildInfo.time || 'unknown'));
     lines.push('运行时间: ' + new Date().toISOString());
     lines.push('实际轮次: ' + roundCount);
     lines.push('总耗时: ' + formatDuration(totalDurationMs));

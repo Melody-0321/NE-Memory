@@ -8,6 +8,7 @@ var MIN_RESULTS_AUTO_NAME = 'minResults';
 var LTM_DIR_COUNT_AUTO_NAME = 'ltmDirCount';
 var CHAIN_DEPTH_AUTO_NAME = 'chainDepth';
 var CHAIN_RECENT_WINDOW_AUTO_NAME = 'chainRecentWindow';
+import { neSync } from './settings-adapter.js';
 
 function readTelemetry() {
     try {
@@ -18,6 +19,7 @@ function readTelemetry() {
 
 function writeTelemetry(data) {
     try { localStorage.setItem(TELEMETRY_KEY, JSON.stringify(data)); } catch (e) {}
+    try { neSync(TELEMETRY_KEY); } catch (e) {}
 }
 
 export function recordTelemetry(entry) {
@@ -46,6 +48,7 @@ function readAutoMap() {
 
 function writeAutoMap(map) {
     try { localStorage.setItem(AUTO_KEY, JSON.stringify(map)); } catch (e) {}
+    try { neSync(AUTO_KEY); } catch (e) {}
 }
 
 export function isAuto(paramName) {
@@ -71,11 +74,11 @@ export function computeStmBatch(turnsPerEvent) {
 }
 
 export function computeStmMaxTokens(stmBatch) {
-    return Math.max(400, Math.min(2500, Math.round(40 * stmBatch)));
+    return Math.max(400, Math.min(4096, Math.round(40 * stmBatch)));
 }
 
 export function computeTopK(totalSTM) {
-    return logScale(totalSTM, 15, 200, 15, 80);
+    return logScale(totalSTM, 15, 200, 10, 50);
 }
 
 export function computeChainDepth(chainLength) {

@@ -1,10 +1,8 @@
-import { read, collectAllMsgIds } from '../core/vault/store.js';
-import { loadVault } from '../core/auto-restore.js';
-import { listSnapshots, restoreSnapshot, deleteSnapshot } from '../core/vault/versions.js';
+import { readVault, collectAllMsgIds, getFieldFromLibrary } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { tryAcquire, releasePipeline, waitForPipelineTrackIdle, reset, getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
-import { runLtmConsolidation, getStmBatchSize } from './events.js';
+import { getState, onPipelineChange, offPipelineChange, enqueueStmWrite } from '../core/engine/pipeline-guard.js';
+import { runLtmConsolidation } from './events.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -13,21 +11,60 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   vaultLLMLog, lastVaultStateJson, closeVaultOverlay, _currentGetChatId,
   _vaultChangeBound, _updatingPopout, setCurrentGetChatId, setVaultChangeBound,
   busOn, busEmit,
-  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
+  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast,
+  openSlidePanel, closeSlidePanel, registerSlideRenderer } from './panel-shared.js';
 import { _currentChatIdForCollapse, _currentCollapseState,
   _lazyRendered, _pendingInlineStorage,
   saveCollapseState, loadCollapseState, navigateToAccordion,
-  setupAccordionHandlers, setupTabSwitching, renderMemoryButton,
+  setupAccordionHandlers, setupTabSwitching, setupSlidePanel, renderMemoryButton,
   saveSingleEntry, injectStateBanner, deleteSingleEntry,
   renderQuickIndex, setCurrentChatIdForCollapse,
   setupMobileGestureClose } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   enterCardEditMode } from './panel-state-cards.js';
 import { updateVaultViewerPopout } from './panel-content.js';
-import { initTestRunner } from './panel-tools.js';
-import { renderUsageTab } from './panel-usage.js';
-import { renderSettingsTab } from './panel-settings.js';
-import { renderHistory } from './panel-popout.js';
+import { renderUsageIntoContainer } from './panel-usage.js';
+import { renderSettingsIntoSlide } from './panel-settings.js';
+import { renderTemplatesIntoSlide } from './panel-templates.js';
+import { renderVersionHistoryPanel, initVersionNavButtons } from './panel-version-history.js';
+
+function _onVaultUpdated(payload) {
+    var gc = payload && payload.getChatId;
+    if (typeof gc === 'function') {
+        updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
+    } else if (typeof gc === 'string' && _currentGetChatId) {
+        updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
+    } else if (_currentGetChatId) {
+        updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
+    }
+}
+
+function _onVaultUpdatedVersionHistory() {
+    // Version history is now handled by panel-version-history.js (~state-versions)
+}
+
+var _pipelineUIHandler = null;
+function _updatePipelineUI(status) {
+    var el = panelById('ne_pipeline_status');
+    if (!el) return;
+    var dots = [
+        { key: 'state', label: t('State') },
+        { key: 'stm',   label: t('STM') },
+        { key: 'ltm',   label: t('LTM') }
+    ];
+    var activeCount = dots.filter(function(d) { return status[d.key] === 'active'; }).length;
+    if (activeCount === 0) {
+        el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
+        el.style.color = 'var(--grey-50)';
+    } else {
+        var parts = dots.map(function(d) {
+            var color = status[d.key] === 'active' ? 'var(--ne-success)' : 'var(--grey-50)';
+            return '<span style="color:' + color + ';" title="' + d.label + '">\u25CF</span>';
+        });
+        el.innerHTML = parts.join(' ') + ' <span style="font-size:0.85em;">' + activeCount + ' ' + t('active') + '</span>';
+        el.style.color = 'var(--grey-60)';
+    }
+}
 
 export async function renderVaultPanel(getChatId) {
     try {
@@ -46,30 +83,10 @@ export async function renderVaultPanel(getChatId) {
         }
 
         // ── StateBus subscribers: vault:updated triggers full UI refresh ──
-        busOn('vault:updated', function(payload) {
-            var gc = payload && payload.getChatId;
-            if (typeof gc === 'function') {
-                updateVaultViewerPopout(gc).finally(function () { setVaultActivity(false); });
-            } else if (typeof gc === 'string' && _currentGetChatId) {
-                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
-            } else if (_currentGetChatId) {
-                updateVaultViewerPopout(_currentGetChatId).finally(function () { setVaultActivity(false); });
-            }
-        });
-        busOn('vault:updated', function() {
-            var usageTab = panelQS('.ne-vault-tab.active[data-tab="usage"]');
-            if (usageTab) {
-                try { renderUsageTab(); } catch (e) { console.warn('[NE] Usage tab auto-refresh failed:', e); }
-            }
-        });
-        busOn('vault:updated', function() {
-            var historyAcc = panelById('ne-tool-history');
-            if (historyAcc && historyAcc.classList.contains('open')) {
-                try { renderHistory(_currentGetChatId); } catch (e) { console.warn('[NE] History auto-refresh failed:', e); }
-            }
-        });
+        busOn('vault:updated', _onVaultUpdated);
+        busOn('vault:updated', _onVaultUpdatedVersionHistory);
         setCurrentChatIdForCollapse(typeof getChatId === 'function' ? getChatId() : getChatId);
-        var vault = await loadVault(getChatId());
+        var vault = await readVault(getChatId());
         var c = vault.content || {};
         console.log('[NE-PANEL] renderVaultPanel chatId=' + getChatId() + ' vault.version=' + (vault.version) + ' stm=' + (c.unconsolidated_stm ? c.unconsolidated_stm.length : 0) + ' ltm=' + (c.ltm_entries ? c.ltm_entries.length : 0));
 
@@ -80,27 +97,66 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
+            '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;margin-left:6px;"></span>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
-            '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;"></span>' +
-            '<span id="narrative_vault_panel_scene" style="font-size:0.82em;color:var(--grey-60);margin:0 6px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:280px;"></span>' +
-            '<span id="narrative_secondary_api_status" style="display:inline-flex;align-items:center;gap:4px;font-size:0.75em;color:#888;cursor:help;" title="' + t('No secondary API configured') + '"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:currentColor;flex-shrink:0;"></span></span>' +
+            '<span id="ne_pin_templates" class="ne-pin-icon" title="' + t('template_library') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u{1F4CB}</span>' +
+            '<span id="ne_pin_usage" class="ne-pin-icon" title="' + t('Usage Statistics') + '" style="font-size:0.78em;color:var(--grey-60);cursor:pointer;white-space:nowrap;">\u{1F4CA} --</span>' +
+            '<span id="ne_pin_settings" class="ne-pin-icon" title="' + t('Settings & Data Management') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u2699</span>' +
             '</div></div>' +
             '<div class="ne-vault-tab-bar">' +
-            '<div class="ne-vault-tab active" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="tools">\u{1F527} ' + t('Tools') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="settings">\u2699 ' + t('Settings') + '</div>' +
-            '<div class="ne-vault-tab" data-tab="usage">\u{1F4CA} ' + t('Usage') + '</div>' +
+            '<div class="ne-vault-tab active" data-tab="state">\u{1F4CB} ' + t('State') + '</div>' +
+            '<div class="ne-vault-tab" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading"></div>' +
             '<div id="narrative_vault_panel_error" style="display:none;color:var(--ne-danger);"></div>' +
             '<div id="narrative_vault_panel_storage_warn" style="display:none;color:var(--ne-warning);font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
-            '<div id="tab-memory" class="ne-vault-tab-content active">' +
-            '<div id="ne-memory-search-bar" style="padding:4px 12px 6px;">' +
-            '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
+            // ── State tab ──
+            '<div id="tab-state" class="ne-vault-tab-content active">' +
+            '<div id="ne-state-search-bar" style="padding:4px 12px 6px;">' +
+            '<input type="text" id="ne-state-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '" style="width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
             '</div>' +
-            '<div id="ne-memory-version" style="padding:2px 12px 4px;font-size:0.75em;color:var(--grey-50);"></div>' +
+            '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
+            '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<span id="ne-state-scene" style="font-size:0.82em;color:var(--grey-60);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"></span>' +
+            '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
+            '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
+            '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-state-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '</div>' +
+            // State accordion: Characters / Quests / Factions
+            '<div class="ne-accordion open" id="ne-acc-characters">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne-state-template-entry" style="padding:2px 0 8px;font-size:0.82em;color:var(--grey-50);cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
+            '<div id="ne_character_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-quests">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_quest_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-factions">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_faction_block_container"></div>' +
+            '</div></div>' +
+            '</div>' +
+            // ── Memory tab ──
+            '<div id="tab-memory" class="ne-vault-tab-content">' +
+            '<div style="display:flex;align-items:center;padding:4px 12px 6px;gap:6px;">' +
+            '<input type="text" id="ne-memory-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '" style="flex:1;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.85em;">' +
+            '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Refresh') + '</button>' +
+            '<button class="narrative_btn_consolidate ne-btn-warning menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Consolidate') + '</button>' +
+            '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button" style="font-size:0.82em;padding:3px 8px;white-space:nowrap;flex-shrink:0;">' + t('Process History') + '</button>' +
+            '</div>' +
             '<div id="ne_quick_index" class="ne-quick-index"></div>' +
+            '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
+            '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
+            '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
+            '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-memory-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">' + '\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '</div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
             '<div class="ne-accordion-body">' +
@@ -121,63 +177,13 @@ export async function renderVaultPanel(getChatId) {
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
             '</div></div>' +
             '</div></div>' +
-            '<div class="ne-accordion open" id="ne-acc-state-board">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('State Board') + '</div>' +
-            '<div class="ne-accordion-body">' +
-            '<div class="ne-accordion" id="ne-acc-characters">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
-            '<div class="ne-accordion-body">' +
-            '<div id="ne_character_block_container"></div>' +
-            '</div></div>' +
-            '<div class="ne-accordion" id="ne-acc-quests">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
-            '<div class="ne-accordion-body">' +
-            '<div id="ne_quest_block_container"></div>' +
-            '</div></div>' +
-            '<div class="ne-accordion" id="ne-acc-factions">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
-            '<div class="ne-accordion-body">' +
-            '<div id="ne_faction_block_container"></div>' +
-            '</div></div>' +
-            '</div></div>' +
             '</div>' +
-            '<div id="tab-tools" class="ne-vault-tab-content">' +
-            '<div style="padding:4px 12px;">' +
-            '<div class="ne-tool-card">' +
-            '<div class="ne-tool-card-title">' + t('Operations') + '</div>' +
-            '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
-            '<button id="narrative_vault_panel_refresh" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Refresh') + '</button>' +
-            '<button class="narrative_btn_consolidate ne-btn-warning menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Consolidate') + '</button>' +
-            '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Process all past messages into memories') + '">' + t('Process History') + '</button>' +
-            '</div></div>' +
-            '<div class="ne-tool-card">' +
-            '<div class="ne-tool-card-title">' + t('Data') + '</div>' +
-            '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
-            '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Export JSON') + '</button>' +
-            '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;">' + t('Import JSON') + '</button>' +
-            '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Embed vault into chat_metadata so it travels with chat export/backup') + '">' + t('Embed into Chat') + '</button>' +
-            '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:0.85em;padding:2px 8px;white-space:nowrap;" title="' + t('Scan and remove IndexedDB data for deleted chats') + '">' + t('Clean Orphan Data') + '</button>' +
-            '</div></div>' +
-            '<div class="ne-tool-card">' +
-            '<div class="ne-tool-card-title">' + t('Diagnostics') + '</div>' +
-            '<div class="ne-accordion" id="ne-tool-history">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('History') + '</div>' +
-            '<div class="ne-accordion-body"><div id="narrative_vault_history_list" style="font-size:0.85em;"></div></div></div>' +
-            '<div class="ne-accordion" id="ne-tool-test-runner" style="' + (window.__NE_DEV_MODE ? '' : 'display:none;') + '">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> <span style="margin-right:6px;">\u2699</span> ' + t('Test Runner') + '</div>' +
-            '<div class="ne-accordion-body"><div id="ne-tr-container" class="ne-tr-container"></div></div></div>' +
-            '</div></div>' +
-            '</div>' +
-            '<div id="tab-settings" class="ne-vault-tab-content">' +
-            '<div class="ne-settings-section-card" style="margin-bottom:8px;">' +
-            '<div class="ne-settings-section-title">\u2605 ' + t('Common Settings') + '</div>' +
-            '<div id="ne_common_settings"></div></div>' +
-            '<div class="ne-settings-section-card">' +
-            '<div class="ne-settings-section-title">\u2697 ' + t('Advanced Settings') + '</div>' +
-            '<div id="ne_advanced_settings"></div></div>' +
-            '</div>' +
-            '<div id="tab-usage" class="ne-vault-tab-content">' +
-            '<div id="ne-usage-container"></div>' +
+            // ── Slide-in panel infrastructure ──
+            '<div id="ne-slide-backdrop" class="ne-slide-backdrop"></div>' +
+            '<div id="ne-slide-panel" class="ne-slide-panel">' +
+            '<div class="ne-slide-title" id="ne-slide-title">' + t('Settings') + '</div>' +
+            '<span class="ne-slide-close" id="ne-slide-close" title="' + t('Close') + '">\u2715</span>' +
+            '<div id="ne-slide-panel-content"></div>' +
             '</div>' +
             '</div></div>';
 
@@ -222,42 +228,98 @@ export async function renderVaultPanel(getChatId) {
 
         renderMemoryButton(getChatId);
         setupTabSwitching();
+        setupSlidePanel();
+
+        // Register slide-in panel renderers
+        registerSlideRenderer('usage', renderUsageIntoContainer);
+        registerSlideRenderer('settings', renderSettingsIntoSlide);
+        registerSlideRenderer('templates', renderTemplatesIntoSlide);
+        registerSlideRenderer('versions', function(container) {
+            var cid = typeof getChatId === 'function' ? getChatId() : getChatId;
+            renderVersionHistoryPanel(container, cid);
+        });
 
         var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
 
         setupAccordionHandlers(typeof getChatId === 'function' ? getChatId() : getChatId);
         setupMobileGestureClose();
-        // ── L3: Search / Filter ──
+        // ── State tab search (debounced) ──
+        var stateSearchDebounce = null;
+        var stateSearchInput = panelById('ne-state-search-input');
+        if (stateSearchInput) {
+            stateSearchInput.oninput = function() {
+                if (stateSearchDebounce) clearTimeout(stateSearchDebounce);
+                var q = this.value.trim().toLowerCase();
+                stateSearchDebounce = setTimeout(function() {
+                    var hasVisible = false;
+                    panelQSA('.ne-char-card, .ne-faction-card, .ne-quest-card').forEach(function(card) {
+                        var text = (card.textContent || '').toLowerCase();
+                        var visible = !q || text.indexOf(q) !== -1;
+                        card.classList.toggle('ne-search-hidden', !visible);
+                        if (visible) hasVisible = true;
+                    });
+                    var noMatch = panelById('ne-state-no-match');
+                    if (!hasVisible && q) {
+                        if (!noMatch) {
+                            var div = pdCreate('div');
+                            div.id = 'ne-state-no-match';
+                            div.className = 'ne-search-no-match';
+                            div.textContent = t('No matches found');
+                            var container = panelById('tab-state');
+                            if (container) {
+                                var quickIdx = panelById('ne_state_quick_index');
+                                if (quickIdx && quickIdx.nextSibling) quickIdx.nextSibling.before(div);
+                                else container.appendChild(div);
+                            }
+                        }
+                        if (noMatch) noMatch.style.display = '';
+                    } else {
+                        if (noMatch) noMatch.style.display = 'none';
+                    }
+                }, 200);
+            };
+        }
+        // ── Memory tab search (debounced) ──
+        var memSearchDebounce = null;
         var searchInput = panelById('ne-memory-search-input');
         if (searchInput) {
             searchInput.oninput = function() {
-                var query = this.value.trim().toLowerCase();
-                // Filter STM / LTM rows
-                panelQSA('#narrative_vault_panel_stm_body tr, #narrative_vault_panel_ltm_body tr').forEach(function(row) {
-                    var text = (row.textContent || '').toLowerCase();
-                    row.classList.toggle('ne-search-hidden', query && text.indexOf(query) === -1);
-                });
-                // Filter character cards
-                panelQSA('.ne-char-card').forEach(function(card) {
-                    var text = (card.textContent || '').toLowerCase();
-                    card.classList.toggle('ne-search-hidden', query && text.indexOf(query) === -1);
-                });
-                // Filter faction cards
-                panelQSA('.ne-faction-card').forEach(function(card) {
-                    var text = (card.textContent || '').toLowerCase();
-                    card.classList.toggle('ne-search-hidden', query && text.indexOf(query) === -1);
-                });
-                // Filter quest cards
-                panelQSA('.ne-quest-card').forEach(function(card) {
-                    var text = (card.textContent || '').toLowerCase();
-                    card.classList.toggle('ne-search-hidden', query && text.indexOf(query) === -1);
-                });
+                if (memSearchDebounce) clearTimeout(memSearchDebounce);
+                var q = this.value.trim().toLowerCase();
+                memSearchDebounce = setTimeout(function() {
+                    var hasVisible = false;
+                    panelQSA('#narrative_vault_panel_stm_body tr, #narrative_vault_panel_ltm_body tr').forEach(function(row) {
+                        var text = (row.textContent || '').toLowerCase();
+                        var visible = !q || text.indexOf(q) !== -1;
+                        row.classList.toggle('ne-search-hidden', !visible);
+                        if (visible) hasVisible = true;
+                    });
+                    var noMatch = panelById('ne-memory-no-match');
+                    if (!hasVisible && q) {
+                        if (!noMatch) {
+                            var div2 = pdCreate('div');
+                            div2.id = 'ne-memory-no-match';
+                            div2.className = 'ne-search-no-match';
+                            div2.textContent = t('No matches found');
+                            var container2 = panelById('tab-memory');
+                            if (container2) {
+                                var quickIdx2 = panelById('ne_quick_index');
+                                if (quickIdx2 && quickIdx2.nextSibling) quickIdx2.nextSibling.before(div2);
+                                else container2.appendChild(div2);
+                            }
+                        }
+                        if (noMatch) noMatch.style.display = '';
+                    } else {
+                        if (noMatch) noMatch.style.display = 'none';
+                    }
+                }, 200);
             };
         }
+        // Load collapse state for both tabs
         var savedState = loadCollapseState(typeof getChatId === 'function' ? getChatId() : getChatId);
         if (savedState) {
-            panelQSA('#tab-memory .ne-accordion').forEach(function(acc) {
+            panelQSA('#tab-memory .ne-accordion, #tab-state .ne-accordion').forEach(function(acc) {
                 if (acc.id && savedState[acc.id] === true) acc.classList.add('open');
                 else if (acc.id && savedState[acc.id] === false) acc.classList.remove('open');
             });
@@ -291,255 +353,82 @@ export async function renderVaultPanel(getChatId) {
             };
         }
 
+        // Process History
         var processHistoryBtn = panelById('narrative_vault_process_history');
         if (processHistoryBtn) {
-            processHistoryBtn.onclick = async function () {
+            processHistoryBtn.onclick = async function() {
                 if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
-
                 var prevText = processHistoryBtn.textContent;
-                var BATCH = await getStmBatchSize();
+                var PH_BATCH_CHARS = 4000;
+                try {
+                    var rs = localStorage.getItem('ne_settings');
+                    if (rs) { var ps = JSON.parse(rs); if (ps.phBatchChars) PH_BATCH_CHARS = Number(ps.phBatchChars); }
+                } catch (e) {}
                 var total = 0;
                 try {
                     var chatMessages = [];
                     try {
-                        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                        if (typeof window.parent.SillyTavern !== 'undefined' && window.parent.SillyTavern.getContext) {
+                            chatMessages = window.parent.SillyTavern.getContext().chat || [];
+                        } else if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
                             chatMessages = SillyTavern.getContext().chat || [];
                         }
                     } catch (e) {}
-
-                    if (chatMessages.length === 0) {
-                        alert(t('No messages found in chat.'));
-                        return;
-                    }
-
-                    // Filter to messages with actual content
+                    if (chatMessages.length === 0) { alert(t('No messages found in chat.')); return; }
                     var toProcess = [];
-                    chatMessages.forEach(function (msg, idx) {
+                    chatMessages.forEach(function(msg, idx) {
                         var content = msg.mes || '';
                         if (content.trim().length > 0) {
-                            toProcess.push({
-                                id: idx,
-                                is_user: !!msg.is_user,
-                                mes: content,
-                                name: msg.name || ''
-                            });
+                            toProcess.push({ id: idx, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
                         }
                     });
-
-                    if (toProcess.length === 0) {
-                        alert(t('No messages with content to process.'));
-                        return;
-                    }
-
-                    var vault = await read(getChatId());
+                    if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
+                    var vault = await readVault(_currentGetChatId);
                     var stmMsgIdSet = collectAllMsgIds(vault);
-                    console.log('[NE-DIAG] processHistory pre-filter — chatId=' + getChatId() + ', stmMsgIdSet.size=' + stmMsgIdSet.size + ', toProcessBefore=' + toProcess.length);
-                    var filteredOut = [];
-                    toProcess = toProcess.filter(function (msg) {
-                        var key = String(msg.id);
-                        var skip = stmMsgIdSet.has(key);
-                        if (skip) filteredOut.push(msg.id);
-                        return !skip;
-                    });
-                    if (filteredOut.length > 0) console.log('[NE-DIAG] processHistory pre-filter — removed msg ids:', filteredOut.join(','));
-                    console.log('[NE-DIAG] processHistory pre-filter — toProcessAfter=' + toProcess.length + ', remaining ids:', toProcess.map(function(m){return m.id;}).join(','));
-
-                    if (toProcess.length === 0) {
-                        alert(t('All messages have already been processed.'));
-                        return;
-                    }
-
+                    toProcess = toProcess.filter(function(msg) { return !stmMsgIdSet.has(String(msg.id)); });
+                    if (toProcess.length === 0) { alert(t('All messages have already been processed.')); return; }
                     processHistoryBtn.disabled = true;
                     total = toProcess.length;
                     processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
-
-                    var cpKey = 'ne_ph_' + getChatId();
+                    var cpKey = 'ne_ph_' + _currentGetChatId();
                     var processedCount = 0;
                     try {
                         var cp = localStorage.getItem(cpKey);
                         if (cp) {
                             var cpData = JSON.parse(cp);
-                            if (cpData.t && cpData.i >= total) {
-                                console.log('[NE] Process History checkpoint stale, resetting');
-                                try { localStorage.removeItem(cpKey); } catch (e2) {}
-                            } else if (cpData.t && cpData.i > 0) {
-                                processedCount = cpData.i;
-                                console.log('[NE] Resuming Process History from message', processedCount + 1, '/', total);
-                            }
+                            if (cpData.t && cpData.i >= total) { try { localStorage.removeItem(cpKey); } catch (e2) {} }
+                            else if (cpData.t && cpData.i > 0) { processedCount = cpData.i; }
                         }
                     } catch (e) {}
-
-                    var PIPELINE_TIMEOUT_MS = 60000;
-                    if (!tryAcquire('stm')) {
-                        console.log('[NE] processHistory: waiting for pipeline — state=' + getState());
-                        await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-                        if (!tryAcquire('stm')) {
-                            console.warn('[NE] processHistory: pipeline still blocked, forcing reset');
-                            reset();
-                            tryAcquire('stm');
-                        }
-                    }
-
-                    var accumTurns = processedCount;
-                    for (var i = processedCount; i < total; i += BATCH) {
-                        var batch = toProcess.slice(i, i + BATCH);
-                        processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
-                        var result = await executeIncrementalUpdate(getChatId(), batch, true, function(progress) {
-                            accumTurns = progress.processedTurns;
+                    await enqueueStmWrite(async function() {
+                    var accumTurns = processedCount, batchStart = processedCount, batchChars = 0;
+                    for (var i = processedCount; i < total; i++) {
+                        var msgLen = toProcess[i].mes.length;
+                        if (batchChars + msgLen > PH_BATCH_CHARS && i > batchStart) {
+                            var batch = toProcess.slice(batchStart, i);
                             processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
-                        }, true);
-                        accumTurns = Math.min(i + BATCH, total);
-                        if (result.added === 0 && batch.length > 0) {
-                            console.warn('[NE] Process History batch produced 0 STM entries — batch size=' + batch.length + ', check browser console for pipeline errors');
+                            await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
+                            accumTurns = i;
+                            try { localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: i })); } catch (e2) {}
+                            batchStart = i; batchChars = 0;
                         }
-                        var done = Math.min(i + BATCH, total);
-                        try {
-                            localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: done }));
-                        } catch (e2) {}
+                        batchChars += msgLen;
                     }
-                    try { localStorage.removeItem(cpKey); } catch (e3) {}
+                    if (batchStart < total) {
+                        var batch = toProcess.slice(batchStart, total);
+                        await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
+                        accumTurns = total;
+                        try { localStorage.removeItem(cpKey); } catch (e3) {}
+                    }
                     processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
+                    });
                 } catch (e) {
                     console.error('[NE] Process history failed:', e);
                     processHistoryBtn.textContent = t('Failed');
-                    processHistoryBtn.style.cssText += ';background:#e53935 !important;color:#fff !important;';
                     showToast(t('Process History') + ': ' + e.message, 'error', 6000);
                 } finally {
-                    releasePipeline();
-                    setTimeout(function () {
-                        processHistoryBtn.textContent = prevText;
-                        processHistoryBtn.disabled = false;
-                        processHistoryBtn.style.cssText = processHistoryBtn.style.cssText.replace(';background:#e53935 !important;color:#fff !important;', '');
-                    }, 2000);
-                    busEmit('vault:updated', { getChatId: getChatId });
-                }
-            };
-        }
-
-        var exportBtn = panelById('narrative_vault_export_json');
-        if (exportBtn) {
-            exportBtn.onclick = async function () {
-                try {
-                    var vault = await read(getChatId());
-                    var json = JSON.stringify(vault, null, 2);
-                    var blob = new Blob([json], { type: 'application/json' });
-                    var url = URL.createObjectURL(blob);
-                    var a = document.createElement('a');
-                    a.href = url;
-                    a.download = 'ne_vault_' + getChatId() + '.json';
-                    document.body.appendChild(a);
-                    a.click();
-                    document.body.removeChild(a);
-                    URL.revokeObjectURL(url);
-                } catch (e) {
-                    console.error('[NE] Export failed:', e);
-                    alert(t('Export JSON') + ' failed: ' + e.message);
-                }
-            };
-        }
-
-        var importBtn = panelById('narrative_vault_import_json');
-        if (importBtn) {
-            importBtn.onclick = function () {
-                var input = document.createElement('input');
-                input.type = 'file';
-                input.accept = '.json';
-                input.onchange = async function () {
-                    var file = input.files[0];
-                    if (!file) return;
-                    try {
-                        var text = await file.text();
-                        var vault = JSON.parse(text);
-                        if (!vault || !vault.content) {
-                            alert(t('Import JSON') + ' failed: invalid vault file');
-                            return;
-                        }
-                        await write(getChatId(), vault);
-                        busEmit('vault:updated', { getChatId: getChatId });
-                    } catch (e) {
-                        console.error('[NE] Import failed:', e);
-                        alert(t('Import JSON') + ' failed: ' + e.message);
-                    }
-                };
-                input.click();
-            };
-        }
-
-        var embedBtn = panelById('narrative_vault_embed_chat');
-        if (embedBtn) {
-            embedBtn.onclick = async function () {
-                try {
-                    var ctx = window.parent.SillyTavern && window.parent.SillyTavern.getContext ? window.parent.SillyTavern.getContext() : null;
-                    if (!ctx || !ctx.chatMetadata || typeof ctx.saveChat !== 'function') {
-                        alert(t('Embed into Chat') + ': Cannot access SillyTavern chat API.');
-                        return;
-                    }
-                    var vault = await loadVault(getChatId());
-                    ctx.chatMetadata.ne_vault = JSON.stringify(vault);
-                    await ctx.saveChat();
-                    alert(t('Embed into Chat') + ' ' + t('Done') + ' — ' + t('Vault is now embedded in chat_metadata. Export or backup will carry it.'));
-                } catch (e) {
-                    console.error('[NE] Embed failed:', e);
-                    alert(t('Embed into Chat') + ' failed: ' + e.message);
-                }
-            };
-        }
-
-        var cleanOrphansBtn = panelById('narrative_vault_clean_orphans');
-        if (cleanOrphansBtn) {
-            cleanOrphansBtn.onclick = async function () {
-                try {
-                    cleanOrphansBtn.disabled = true;
-                    cleanOrphansBtn.textContent = t('Scanning...');
-                    var results = await scanOrphans();
-                    cleanOrphansBtn.textContent = t('Clean Orphan Data');
-                    cleanOrphansBtn.disabled = false;
-
-                    var activeCount = 0;
-                    var aliveCount = 0;
-                    var orphans = [];
-                    for (var i = 0; i < results.length; i++) {
-                        var r = results[i];
-                        if (r.status === 'active') activeCount++;
-                        else if (r.status === 'alive') aliveCount++;
-                        else if (r.status === 'orphan') orphans.push(r);
-                    }
-
-                    if (orphans.length === 0) {
-                        alert(t('No orphan data found. All IndexedDB entries are linked to existing chats.') +
-                            '\n' + t('Active:') + ' ' + activeCount + ' | ' + t('Fingerprint matches:') + ' ' + aliveCount);
-                        return;
-                    }
-
-                    var msg = t('Orphan data scan results:') + '\n\n' +
-                        t('Active chats:') + ' ' + activeCount + '\n' +
-                        t('Fingerprint matches:') + ' ' + aliveCount + '\n' +
-                        t('Orphan entries:') + ' ' + orphans.length + '\n\n' +
-                        t('Orphan chat IDs:') + '\n';
-                    for (var j = 0; j < orphans.length; j++) {
-                        var o = orphans[j];
-                        msg += '  - ' + o.chat_id + ' (v' + o.version + ', stm=' + o.stm + ', ltm=' + o.ltm + ')\n';
-                    }
-                    msg += '\n' + t('Delete these orphan vaults and all their snapshots?');
-
-                    if (!await showConfirm(t('Delete orphan vaults?'), msg.split('\n').slice(0, -1).join('\n'), t('Delete'), t('Cancel'), true)) return;
-
-                    var cleanedCount = 0;
-                    for (var k = 0; k < orphans.length; k++) {
-                        await purgeOrphanChatData(orphans[k].chat_id);
-                        cleanedCount++;
-                    }
-                    alert(t('Cleaned') + ' ' + cleanedCount + ' ' + t('orphan entries') + '.');
-
-                    var currentId = getChatId();
-                    if (currentId) renderHistory(currentId);
-                } catch (e) {
-                    console.error('[NE] Clean orphans failed:', e);
-                    alert(t('Clean Orphan Data') + ' failed: ' + e.message);
-                    if (cleanOrphansBtn) {
-                        cleanOrphansBtn.textContent = t('Clean Orphan Data');
-                        cleanOrphansBtn.disabled = false;
-                    }
+                    setTimeout(function() { processHistoryBtn.textContent = prevText; processHistoryBtn.disabled = false; }, 2000);
+                    busEmit('vault:updated', { getChatId: _currentGetChatId });
                 }
             };
         }
@@ -620,6 +509,7 @@ export async function renderVaultPanel(getChatId) {
             if (!overlay) return;
             try {
                 var ro = new ResizeObserver(function(entries) {
+                    if (!overlay.classList.contains('open')) return;
                     var width = entries[0] && entries[0].contentRect ? entries[0].contentRect.width : 0;
                     if (width <= 600) {
                         overlay.classList.add('ne-mobile');
@@ -639,10 +529,8 @@ export async function renderVaultPanel(getChatId) {
         setVaultActivity(true);
         busEmit('vault:updated', { getChatId: getChatId });
 
-        // Initialize Test Runner UI
-        if (window.__NE_DEV_MODE) initTestRunner();
-
-        renderSettingsTab();
+        // Initialize Test Runner UI (lazy — only when settings slide opens)
+        // renderSettingsTab removed — now rendered via slide panel on demand
 
         // ── L3: Esc to close vault overlay ──
         pdAddEventListener('keydown', function(e) {
@@ -653,20 +541,32 @@ export async function renderVaultPanel(getChatId) {
             }
         });
 
-        // ── Pipeline status callback (no polling — push from pipeline-guard) ──
-        var _updatePipelineUI = function(phase) {
-            var el = panelById('ne_pipeline_status');
-            if (!el) return;
-            if (phase === 'idle') {
-                el.textContent = t('Idle');
-                el.style.color = 'var(--grey-50)';
-            } else {
-                el.textContent = t('Active:') + ' ' + t(phase === 'state' ? 'State Extraction' : phase === 'stm' ? 'STM Extraction' : 'LTM Consolidation');
-                el.style.color = 'var(--ne-warning)';
-            }
-        };
+        // ── Pipeline status callback (push from pipeline-guard) ──
+        if (_pipelineUIHandler) offPipelineChange(_pipelineUIHandler);
+        _pipelineUIHandler = _updatePipelineUI;
         onPipelineChange(_updatePipelineUI);
         _updatePipelineUI(getState());
+
+        // ── Pin row: templates, usage & settings icons ──
+        var tmplPin = panelById('ne_pin_templates');
+        if (tmplPin) tmplPin.onclick = function() { openSlidePanel('templates'); };
+        var stateTmplEntry = panelById('ne-state-template-entry');
+        if (stateTmplEntry) stateTmplEntry.onclick = function() { openSlidePanel('templates'); };
+        var usagePin = panelById('ne_pin_usage');
+        if (usagePin) usagePin.onclick = function() { openSlidePanel('usage'); };
+        var settingsPin = panelById('ne_pin_settings');
+        if (settingsPin) settingsPin.onclick = function() { openSlidePanel('settings'); };
+        var stateHistoryBtn = panelById('ne-state-history-btn');
+        if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+        var memHistoryBtn = panelById('ne-memory-history-btn');
+        if (memHistoryBtn) memHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+
+        var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
+        if (chatId) {
+            var vStateEls = { rollbackBtn: panelById('ne-state-rollback-btn'), restoreBtn: panelById('ne-state-restore-btn'), cursorInfo: panelById('ne-state-cursor-info') };
+            var vMemEls = { rollbackBtn: panelById('ne-mem-rollback-btn'), restoreBtn: panelById('ne-mem-restore-btn'), cursorInfo: panelById('ne-mem-cursor-info') };
+            initVersionNavButtons(chatId, vStateEls, vMemEls);
+        }
     } catch (e) {
         console.error('[NE] Vault panel render failed:', e);
     }

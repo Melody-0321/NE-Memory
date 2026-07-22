@@ -19,6 +19,7 @@ test-cases/**/*-report.md
 test-cases/**/*-trace.md
 test-cases/**/*-postmortem.md
 src/core/test-runner/test-data.generated.js
+src/core/build-info.js
 
 # One-off scripts
 scripts/extract-precise.cjs
@@ -30,3 +31,6 @@ dist/th-test.js
 # Legacy test configs
 testv4.*.json
 test5.*.json
+
+# Diagnostic export files (runtime snapshots for debugging)
+ne_diag_*.json

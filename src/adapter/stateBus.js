@@ -3,6 +3,7 @@ var _listeners = {};
 
 export function on(event, fn) {
     if (!_listeners[event]) _listeners[event] = [];
+    if (_listeners[event].indexOf(fn) !== -1) return;
     _listeners[event].push(fn);
 }
 

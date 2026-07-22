@@ -11,7 +11,7 @@
  *   - 非流式路径优先（MESSAGE_RECEIVED 在 addOneMessage 之前触发）
  */
 
-import { read } from '../vault/store.js'
+import { readVault } from '../vault/store.js'
 import { filterCandidates } from '../vault/retrieval-filter.js'
 import { callMemoryLLM } from '../api/llm.js'
 
@@ -28,7 +28,7 @@ export async function detectContradictions(chatId, aiMessage) {
 
     var vault
     try {
-        vault = await read(chatId)
+        vault = await readVault(chatId)
     } catch (e) {
         return { hasContradiction: false, contradictions: [], systemMessage: '' }
     }

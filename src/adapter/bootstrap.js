@@ -1,9 +1,9 @@
 import { runtime } from '../core/runtime.js';
-import { read, write } from '../core/vault/store.js';
+import { readState, writeState, readMemory, writeMemory, readVault, emptyStateVault, emptyMemoryVault } from '../core/vault/store.js';
 import { loadVault, persistVaultToChatFile } from '../core/auto-restore.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setStateSchemaEnabled, setDynamicStateMode } from '../core/vault/schema.js';
+import { setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection } from '../core/api/llm.js';
 import { restorePending } from './events.js';
@@ -31,7 +31,7 @@ export async function migrateVaultIfNeeded(chatId, currentVault) {
     if (chatId === 'default' || !chatId.startsWith('ne_')) return currentVault;
     if (currentVault && currentVault.version !== 0) return currentVault;
     try {
-        var defaultVault = await read('default');
+        var defaultVault = await readVault('default');
         if (!defaultVault || defaultVault.version === 0) return currentVault;
         var content = defaultVault.content || {};
         var hasData = (content.stm_entries && content.stm_entries.length > 0) ||
@@ -40,9 +40,9 @@ export async function migrateVaultIfNeeded(chatId, currentVault) {
         if (!hasData) return currentVault;
         console.log('[NE] Migrating vault from "default" to fingerprint: ' + chatId);
         defaultVault.chat_id = chatId;
-        await write(chatId, defaultVault);
+        await writeState(chatId, defaultVault);
         persistVaultToChatFile(defaultVault);
-        await write('default', { chat_id: 'default', version: -1, content: {} });
+        await writeState('default', { chat_id: 'default', version: -1, content: {} });
         console.log('[NE] Vault migration complete');
         return defaultVault;
     } catch (e) {
@@ -63,9 +63,13 @@ export async function bootstrapVault(chatId, locale, settings) {
     vault = await migrateVaultIfNeeded(chatId, vault);
     if (vault.version === 0 && !vault.content.language) {
         vault.content.language = locale.includes('zh') ? 'zh' : 'en';
-        vault.content.state_schema = (settings && settings.stateSchema) || DEFAULT_GLOBAL_SCHEMA;
-        vault.content.character_schema = (settings && settings.characterSchema) || DEFAULT_CHARACTER_SCHEMA;
-        await write(chatId, vault);
+
+        var initStateVault = emptyStateVault(chatId);
+        var initMemoryVault = emptyMemoryVault(chatId);
+        initMemoryVault.content.language = vault.content.language;
+        await writeState(chatId, initStateVault);
+        await writeMemory(chatId, initMemoryVault);
+
         persistVaultToChatFile(vault);
     }
 

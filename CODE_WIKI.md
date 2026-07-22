@@ -2,9 +2,9 @@
 
 > **SillyTavern 长对话结构化记忆管理引擎**
 >
-> 版本：v6.5.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
+> 版本：v7.1.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
 > 入口：`src/adapter/index.js` | 构建输出：`dist/index.js` (IIFE, 全局名 `NEMemoryEngine`)
-> 最后更新：2026-07-06（v6.5 STM Banner 回退推断 · 面板 CSS 修复 · 多通道 API）
+> 最后更新：2026-07-17（v7.1 字段推断填充 · 模板副本管理 · 自定义字段类型 · 方案持久化修复）
 
 ---
 
@@ -214,7 +214,7 @@ NE Memory Engine 是为 [SillyTavern](https://github.com/SillyTavern/SillyTavern
 | [panel-shared.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-shared.js) | 共享工具函数 — DOM 查询（`qs`/`qsa`/`byId`）、国际化包装、Vault 活动状态、CSS 注入、LLM 日志缓冲 |
 | [panel-drawer.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-drawer.js) | 抽屉面板 / 折叠面板 / 条目管理 — 折叠状态保存/加载、快速索引、Tab 切换、单条记忆保存/删除、状态横幅注入 |
 | [panel-init.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-init.js) | 面板入口 — `renderVaultPanel()` 主渲染函数 |
-| [panel-popout.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-popout.js) | 弹出层控制 — `createVaultPopout()` / `toggleVaultPanel()` / `renderHistory()` |
+| [panel-popout.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-popout.js) | 弹出层控制 — `createVaultPopout()` / `toggleVaultPanel()` |
 | [panel-content.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-content.js) | Vault 查看器内容渲染 — `updateVaultViewerPopout()` |
 | [panel-settings.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-settings.js) | 设置标签页 — `renderSettingsTab()` |
 | [panel-state-cards.js](file:///d:/SillyTavern/xm/ne-memory/src/adapter/panel-state-cards.js) | 角色/势力/任务卡片 + 记忆表格 + 内联编辑 — `renderCharacterPanelHTML()` / `renderFactionPanelHTML()` / `renderQuestPanelHTML()` / `enterCardEditMode()` / `renderMemoryTable()` / `saveCardFields()` |
@@ -352,7 +352,7 @@ callMemoryLLM(messages, options)
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `saveVaultWithSnapshot(chatId, vault)` | `(string, Object) → Promise<void>` | 原子写 vault + 快照（版本号+1） + 同步到 chat_metadata，并清理旧快照 |
+| `saveVault(chatId, vault)` | `(string, Object) → Promise<void>` | 写入 vault + 同步到 chat_metadata |
 | `ensureStateStructure(vault)` | `(Object) → void` | 初始化/迁移 vault state 结构，含 `state_css` 字段 |
 | `filterNewMessages(messages, processedIds)` | `(Array, Set) → Array` | 过滤已处理消息，返回新消息 |
 | `parseSTMResponse(llmResponse)` | `(string) → Object\|null` | 解析 LLM 返回的 STM JSON（委托给 `json-fallback.js`） |
@@ -650,12 +650,15 @@ callMemoryLLM(messages, options)
 
 #### 3.5.1 [store.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/store.js) — IndexedDB CRUD
 
-**职责**：记忆数据的持久化存储，每个 chat_id 对应 IndexedDB 中的一条记录。同时管理快照 store。
+**职责**：记忆数据的持久化存储，每个 chat_id 对应 IndexedDB 中的一条记录。
 
 **数据库结构**：
-- **Database**: `ne_memory_vaults` (v3)
+- **Database**: `ne_memory_vault` (v5)
 - **Store `vaults`**: `{ chat_id, vault, updated_at }`
-- **Store `snapshots`**: `{ id, chat_id, version, updated_at, data }`（索引：chat_id）
+- **Store `state_deltas`**: 增量 State 版本记录（索引：chat_id）
+- **Store `memory_versions`**: 增量 Memory 版本记录（索引：chat_id）
+- **Store `active_chains`**: 活跃版本链元信息（keyPath: chat_id）
+- **Store `orphaned_branches`**: 孤立分支记录（索引：chat_id）
 
 **关键函数**：
 
@@ -664,7 +667,6 @@ callMemoryLLM(messages, options)
 | `openDB()` | `() → Promise<IDBDatabase>` | 打开/创建 IndexedDB |
 | `read(chatId)` | `(string) → Promise<Object>` | 读取 vault（带迁移和格式化） |
 | `write(chatId, vault)` | `(string, Object) → Promise<void>` | 写入 vault |
-| `writeWithSnapshot(chatId, vault, snapshot)` | `(string, Object, Object) → Promise<void>` | 原子写 vault + 快照 |
 | `remove(chatId)` | `(string) → Promise<void>` | 删除 vault |
 | `emptyVault(chatId)` | `(string) → Object` | 创建空 vault 模板 |
 | `appendSTMEntries(vault, stmEntries)` | `(Object, Array) → Object` | 追加 STM 条目（自动去重） |
@@ -684,8 +686,6 @@ callMemoryLLM(messages, options)
 |------|------|
 | `DEFAULT_GLOBAL_SCHEMA` | 全局状态 Schema（characters, factions, quests, power_slots） |
 | `DEFAULT_CHARACTER_SCHEMA` | 角色卡 Schema（protagonist + npc 两个 block） |
-| `DEFAULT_FACTION_SCHEMA` | 势力 Schema（name, description, leader, relations 等） |
-| `DEFAULT_QUESTS_SCHEMA` | 任务/目标/事件 Schema（tasks, goals, events 三个子块） |
 | `POWER_SLOTS_TEMPLATES` | 战力槽模板（修仙: 修为/真气/境界、科幻: energy/shield、现代: stamina/morale） |
 | `DEFAULT_NPC_SCHEME` | 默认 NPC 字段方案（standard / complex 等） |
 
@@ -705,17 +705,26 @@ callMemoryLLM(messages, options)
 | `ensureCharacterTemplate(state, name, schemeKey)` | `(Object, string, string) → void` | 确保角色有完整模板字段 |
 | `getNpcInjectionFields(schemeName, state)` | `(string, Object) → Array` | 获取 NPC 注入字段 |
 
-#### 3.5.3 [versions.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/versions.js) — 版本快照管理
+#### 3.5.3 [state-versions.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/state-versions.js) — 增量版本链引擎
 
-**职责**：IndexedDB 中的快照存储，上限 30 个（自动裁剪旧版本）。支持回滚。
+**职责**：替代旧快照系统，以增量 delta 方式记录 State 和 Memory 的每次变更。支持版本回退、孤立分支恢复、自动压缩。
 
 **关键函数**：
 
 | 函数 | 签名 | 说明 |
 |------|------|------|
-| `pruneSnapshotsForChat(chatId, maxSnapshots)` | `(string, number) → Promise<void>` | 删除旧快照（默认保留 30 个） |
-| `rollbackByMsgIds(chatId, msgIds)` | `(string, Array) → Promise<void>` | 按 msg_id 回滚 Vault（消息删除时使用） |
-| `getVaultVersion(chatId)` | `(string) → Promise<number>` | 获取当前 Vault 版本号 |
+| `recordStateDelta(chatId, deltaData)` | `(string, Object) → Promise<number>` | 记录 State Delta，返回新 seq |
+| `recordMemoryVersion(chatId, versionData)` | `(string, Object) → Promise<number>` | 记录 Memory Version，返回新 seq |
+| `foldState(chatId, targetSeq)` | `(string, number?) → Promise<Object>` | fold 出完整 State 对象 |
+| `foldMemory(chatId, targetSeq)` | `(string, number?) → Promise<Object>` | fold 出完整 Memory 对象 |
+| `rollbackState(chatId, targetSeq)` | `(string, number) → Promise<void>` | 回退 State 到指定 seq |
+| `rollbackMemory(chatId, targetSeq)` | `(string, number) → Promise<void>` | 回退 Memory 到指定 seq |
+| `restoreBranch(chatId, branchId)` | `(string, string) → Promise<void>` | 恢复孤立分支到活跃链 |
+| `compact(chatId)` | `(string) → Promise<void>` | 压缩：fold 所有 delta 并写回 base 快照 |
+| `initializeChain(chatId, vaultContent)` | `(string, Object) → Promise<void>` | 从现有 vault 创建初始版本链（懒迁移） |
+| `getActiveChain(chatId)` | `(string) → Promise<Object\|null>` | 获取活跃链路信息 |
+| `listStateDeltas(chatId, limit)` | `(string, number?) → Promise<Object[]>` | UI 版本时间线数据 |
+| `listMemoryVersions(chatId, limit)` | `(string, number?) → Promise<Object[]>` | UI Memory 版本时间线数据 |
 
 #### 3.5.4 [retrieval-filter.js](file:///d:/SillyTavern/xm/ne-memory/src/core/vault/retrieval-filter.js) — BM25 检索过滤
 
@@ -741,7 +750,7 @@ callMemoryLLM(messages, options)
 |------|------|------|
 | `collectSTChatIds()` | `() → Set<string>` | 从 ST context 中收集所有现存的聊天 ID |
 | `scanOrphans()` | `() → Promise<Array>` | 扫描所有 vault，返回不在现存 chat ID 中的孤儿列表 |
-| `purgeOrphanChatData(chatId)` | `(string) → Promise<void>` | 删除单个孤儿 vault 及其对应的 snapshots |
+| `purgeOrphanChatData(chatId)` | `(string) → Promise<void>` | 删除单个孤儿 vault 的全部 IndexedDB + localStorage 数据 |
 | `listAllChatIds()` | `() → Promise<Array>` | 列出 IndexedDB 中的所有 chat_id |
 
 ---
@@ -768,7 +777,7 @@ callMemoryLLM(messages, options)
 | [i18n.js](file:///d:/SillyTavern/xm/ne-memory/src/core/i18n.js) | 三级翻译表：`NARRATIVE_I18N`（面板文本）、`CONFIG_I18N`（设置弹窗文本）、`STATE_FIELD_I18N`（状态字段名）三语翻译（zh-cn/zh-tw/en） |
 | [auto-restore.js](file:///d:/SillyTavern/xm/ne-memory/src/core/auto-restore.js) | Vault 自动恢复：`loadVault` 分层加载（聊天文件优先 → IndexedDB 兜底 → 自动回填）；`persistVaultToChatFile` 增量同步 |
 | [globals.d.ts](file:///d:/SillyTavern/xm/ne-memory/src/globals.d.ts) | IDE 类型声明文件，声明 iframe 中由 TH 注入的全局变量类型（`TavernHelper`、`ToolManager`、`SillyTavern` 等） |
-| [types.js](file:///d:/SillyTavern/xm/ne-memory/src/types.js) | 集中类型定义 — 25+ `@typedef` JSDoc 类型（Vault, VaultMeta, VaultContent, State, CharacterCard, Faction, QuestsState, STMEvent, LTMEntry, Entity, UnifiedEntry, ThreadRef, ThreadDef, Turn, Message, Snapshot, CursorState, ClosureSignals, LTMDecision, PipelineGuard, StateChanges, ValidationResult, SchemaFieldDef 等），零运行时开销 |
+| [types.js](file:///d:/SillyTavern/xm/ne-memory/src/types.js) | 集中类型定义 — 25+ `@typedef` JSDoc 类型（Vault, VaultMeta, VaultContent, State, CharacterCard, Faction, QuestsState, STMEvent, LTMEntry, Entity, UnifiedEntry, ThreadRef, ThreadDef, Turn, Message, CursorState, ClosureSignals, LTMDecision, PipelineGuard, StateChanges, ValidationResult, SchemaFieldDef 等），零运行时开销 |
 
 ---
 
@@ -840,7 +849,7 @@ onMessageSent() → 消息加入 pendingMessages[]
                ├──────────────────────────────────────┤
                │ 4. 收尾                               │
                │    releasePipeline() → idle           │
-               │    saveVaultWithSnapshot: 原子保存     │
+               │    saveVault: 写入 vault                                │
                │    persistVaultToChatFile: 同步到文件  │
                └──────────────────────────────────────┘
 ```
@@ -941,7 +950,7 @@ detectContradictions()
 ```javascript
 {
   chat_id: string,          // 对话标识
-  version: number,          // 递增版本号（每次 saveVaultWithSnapshot +1）
+  version: number,          // 递增版本号
   tokens: number,           // 累计 token 消耗
   updated_at: string,       // ISO 更新时间
   _meta: {
@@ -1229,7 +1238,7 @@ adapter/index.js (入口)
 
 | 位置 | Key / DB | 内容 |
 |------|----------|------|
-| IndexedDB | `ne_memory_vaults` | Vault 数据（`vaults` store） + 快照（`snapshots` store） |
+| IndexedDB | `ne_memory_vault` | Vault 数据（`vaults` store） + 版本链（`state_deltas` / `memory_versions` / `active_chains` / `orphaned_branches`） |
 | localStorage | `ne_settings` | 用户设置（stmBatch, contextWindowRounds, apiUrl 等） |
 | localStorage | `ne_chat_stats` | Per-chat 逐轮遥测统计数据 |
 | localStorage | `ne_stm_telemetry` | STM 提取遥测日志 |

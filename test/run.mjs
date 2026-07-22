@@ -24,8 +24,14 @@ var testMap = {
     'ltm-rebatch': 'ltm-rebatch.test.js',
     'smartpush-query': 'smartpush-query.test.js',
     'schema': 'schema.test.js',
+    'schema-new': 'schema-new.test.js',
+    'template-llm': 'template-llm.test.js',
+    'store': 'store.test.js',
+    'ne-system-msg': 'ne-system-msg.test.js',
     'json-fallback': 'json-fallback.test.js',
-    'bm25-grouper': 'bm25-grouper.test.js'
+    'bm25-grouper': 'bm25-grouper.test.js',
+    'msg-id': 'msg-id.test.js',
+    'adaptive-context': 'adaptive-context.test.js'
 };
 
 var batchMap = {

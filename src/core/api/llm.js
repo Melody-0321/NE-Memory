@@ -1,13 +1,46 @@
 /**
  * api/llm.js — LLM 调用封装
  *
- * 优先级：localStorage 中的副 API 配置 → TavernHelper.generateRaw() 回退
+ * 优先级：副 API 配置 → 主 API 直接 fetch → TavernHelper.generateRaw() 回退
  * 副 API Key 永远不到云端，存在浏览器本地。
  */
 import { POWER_SLOTS_TEMPLATES } from '../vault/schema.js';
 import { runtime } from '../runtime.js';
 import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
 import { recordDailyToken } from '../engine/token-stats.js';
+import { neSync } from '../settings-adapter.js';
+
+function getConfiguredTimeoutSec(fallbackSec) {
+    fallbackSec = fallbackSec || 120;
+    try {
+        var raw = localStorage.getItem('ne_settings');
+        if (raw) {
+            var settings = JSON.parse(raw);
+            if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
+                return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
+            }
+        }
+    } catch (e) {}
+    return fallbackSec;
+}
+
+export function validateApiKey(key) {
+    if (!key) return { valid: true, warning: null };
+    var issues = [];
+    if (/[^\x20-\x7E]/.test(key)) {
+        issues.push('API Key contains non-ASCII characters (e.g. Chinese punctuation, fullwidth spaces)');
+    }
+    if (key.startsWith('sk-') && key.length < 20) {
+        issues.push('API Key starts with sk- but seems too short (length < 20)');
+    }
+    if (key !== key.trim()) {
+        issues.push('API Key has leading/trailing spaces — auto-trimmed on save');
+    }
+    return {
+        valid: issues.length === 0,
+        warning: issues.length > 0 ? issues.join('; ') : null
+    };
+}
 import { countTokens } from '../engine/text-utils.js';
 
 export let telemetryBuffer = [];
@@ -37,6 +70,31 @@ async function loadMemoryConfig() {
     return {};
 }
 
+/**
+ * Extract main API credentials from SillyTavern's globalThis.oai_settings as fallback config.
+ * Returns null if not available (e.g. non-OpenAI backends like text-generation-webui).
+ */
+function resolveMainApiFallbackConfig() {
+    if (typeof globalThis === 'undefined') return null;
+
+    // OpenAI-compatible
+    var oai = globalThis.oai_settings;
+    if (oai && oai.reverse_proxy && oai.api_key) {
+        var proxyUrl = oai.reverse_proxy || '';
+        // Bare domain: append standard path
+        if (proxyUrl && !/\/v1\//.test(proxyUrl) && !/\/llm\//.test(proxyUrl)) {
+            proxyUrl = proxyUrl.replace(/\/+$/, '') + '/v1/chat/completions';
+        }
+        return {
+            url: proxyUrl,
+            key: oai.api_key || '',
+            model: oai.model || oai.model_name || '',
+            _source: 'main_api_oai'
+        };
+    }
+    return null;
+}
+
 export async function callMemoryLLM(messages, options = {}) {
     var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig;
@@ -49,6 +107,7 @@ export async function callMemoryLLM(messages, options = {}) {
     let response = null;
     let apiSource = 'tavern';
     let usage = null;
+    var _toolCalls = null;
 
     if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
         try {
@@ -58,36 +117,80 @@ export async function callMemoryLLM(messages, options = {}) {
             var customResult = await callCustomAPI(secondaryConfig, messages, callOpts);
             response = customResult.content;
             usage = customResult.usage;
+            _toolCalls = customResult.tool_calls || null;
             apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
         } catch (e) {
-            console.warn('[NE] Secondary API failed, falling back to TH:', e.message);
-            console.warn('[NE]   URL:', secondaryConfig.url, ' Model:', secondaryConfig.model);
-            notifySecondaryApiFailure(e.message);
+            console.warn('[NE] Secondary API failed:', e.message);
+            // Preferred: use main API credentials for direct fetch (no race condition)
+            var mainFallback = resolveMainApiFallbackConfig();
+            if (mainFallback && mainFallback.url && mainFallback.model) {
+                try {
+                    console.log('[NE] Falling back to main API via direct fetch:', mainFallback.model);
+                    var fbResult = await callCustomAPI(mainFallback, messages, callOpts);
+                    response = fbResult.content;
+                    usage = fbResult.usage;
+                    apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+                } catch (e2) {
+                    console.warn('[NE] Main API fallback also failed:', e2.message);
+                    notifySecondaryApiFailure(e.message);
+                    response = await callTavernHelper(messages, options);
+                    apiSource = 'tavern';
+                }
+            } else {
+                console.warn('[NE] No main API fallback available, using TavernHelper');
+                notifySecondaryApiFailure(e.message);
+                response = await callTavernHelper(messages, options);
+                apiSource = 'tavern';
+            }
+        }
+    } else {
+        console.log('[NE] No secondary API configured, checking main API fallback...');
+        var mainFallback = resolveMainApiFallbackConfig();
+        if (mainFallback && mainFallback.url && mainFallback.model) {
+            try {
+                console.log('[NE] Using main API via direct fetch:', mainFallback.model);
+                var callOpts = Object.assign({}, options, { responseFormat: options.responseFormat || { type: "json_object" } });
+                var fbResult = await callCustomAPI(mainFallback, messages, callOpts);
+                response = fbResult.content;
+                usage = fbResult.usage;
+                _toolCalls = fbResult.tool_calls || null;
+                apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+            } catch (e2) {
+                console.warn('[NE] Main API fallback failed:', e2.message);
+                response = await callTavernHelper(messages, options);
+                apiSource = 'tavern';
+            }
+        } else {
+            console.log('[NE] No main API fallback available, using TavernHelper');
             response = await callTavernHelper(messages, options);
             apiSource = 'tavern';
         }
-    } else {
-        console.log('[NE] LLM call via TavernHelper (no secondary API configured)');
-        response = await callTavernHelper(messages, options);
-        apiSource = 'tavern';
     }
 
     var durationMs = Date.now() - startTime;
 
     console.log('[NE] LLM call done — source=' + apiSource + ', dur=' + durationMs + 'ms, len=' + (response ? response.length : 0));
 
+    if (options._returnRaw) {
+        return { content: response || '', usage: usage, tool_calls: _toolCalls, source: apiSource, durationMs: durationMs };
+    }
+
     var chatId = options.chatId || null;
+
+    var TOKEN_OP_MAP = {
+        stm_extract: 'tok_stm',
+        ltm_decision: 'tok_ltm', ltm_decision_retry: 'tok_ltm', ltm_rebatch: 'tok_ltm',
+        state_extract: 'tok_state', faction_discovery: 'tok_state',
+        scheme_discovery: 'tok_tool', template_scheme: 'tok_tool', template_proposal: 'tok_tool',
+        access: 'tok_tool', recall_memory: 'tok_tool', init_power_slots: 'tok_tool'
+    };
 
     if (chatId) {
         recordChatStat(chatId, 'llm', 1);
         var totalTokens = usage ? (usage.total_tokens || 0) : 0;
         if (totalTokens > 0) {
             var op = options.operation || 'memory';
-            var tokenOp = (op === 'stm_extract') ? 'tok_stm'
-                : (op === 'ltm_decision') ? 'tok_ltm'
-                : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
-                : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
-                : 'tok';
+            var tokenOp = TOKEN_OP_MAP[op] || 'tok';
             recordChatToken(chatId, tokenOp, totalTokens);
             recordDailyToken(tokenOp, totalTokens);
         } else if (response) {
@@ -95,11 +198,7 @@ export async function callMemoryLLM(messages, options = {}) {
             var estimated = countTokens(responseText);
             if (estimated > 0) {
                 var op = options.operation || 'memory';
-                var tokenOp = (op === 'stm_extract') ? 'tok_stm'
-                    : (op === 'ltm_decision') ? 'tok_ltm'
-                    : (op === 'smartpush_retrieval' || op === 'retrieval') ? 'tok_sp'
-                    : (op === 'access' || op === 'recall_memory') ? 'tok_tool'
-                    : 'tok';
+                var tokenOp = TOKEN_OP_MAP[op] || 'tok';
                 recordChatToken(chatId, tokenOp, estimated);
                 recordDailyToken(tokenOp, estimated);
             }
@@ -129,7 +228,7 @@ export async function callMemoryLLM(messages, options = {}) {
         roundTag: callRoundTag
     });
 
-    if (globalThis.__NE_DEV_MODE) {
+    if (__NE_DEV_MODE) {
         globalThis.__ne_debug_all_pipeline_responses = (globalThis.__ne_debug_all_pipeline_responses || '') + (response || '') + '\n---\n';
     }
 
@@ -163,6 +262,41 @@ export async function callMemoryPipeline(messages, options = {}, chatId = null) 
     }));
 }
 
+/**
+ * callMemoryPipeline with optional function-calling tool loop support.
+ * If options.tools is present, the LLM call includes tool definitions.
+ * On tool_calls in the response, tools are processed and the loop continues
+ * for up to MAX_TOOL_ITERATIONS rounds.
+ *
+ * @param {Array<Object>} messages
+ * @param {Object} [options]
+ * @param {Array<Object>} [options.tools]
+ * @param {function(Array, Object, string):Promise<Object>} [options.processToolCalls]
+ * @param {number} [options.maxToolIterations]
+ * @param {string|null} [chatId]
+ * @returns {Promise<string>} — final text response (without tool_calls)
+ */
+export async function callMemoryPipelineWithTools(messages, options, chatId) {
+    options = options || {};
+    var tools = options.tools;
+    if (!tools || !tools.length) {
+        var textResp = await callMemoryPipeline(messages, options, chatId);
+        return { text: textResp, tool_calls: null };
+    }
+
+    var mc = await loadMemoryConfig();
+    var result = await callMemoryLLM(messages, Object.assign({}, options, {
+        _forcePipelineApi: true,
+        _returnRaw: true,
+        tool_choice: 'auto',
+        temperature: mc.extraction_temperature || mc.temperature || 0.2,
+        max_tokens: mc.stm_max_tokens,
+        chatId: chatId
+    }));
+
+    return { text: result.content || '', tool_calls: result.tool_calls || null };
+}
+
 
 export async function callMemoryRetrieval(messages, options = {}, chatId = null) {
     var mc = await loadMemoryConfig();
@@ -190,6 +324,8 @@ function resolvePipelineApi(operation) {
         channelKey = 'ne_ltm_api';
     } else if (operation === 'state_extract' || operation === 'scheme_discovery' || operation === 'faction_discovery') {
         channelKey = 'ne_state_api';
+    } else if (operation === 'template_scheme' || operation === 'template_proposal') {
+        channelKey = 'ne_template_api';
     }
 
     if (channelKey) {
@@ -217,6 +353,7 @@ export function loadSecondaryApiConfig() {
 export function saveSecondaryApiConfig(config) {
     if (config && config.url) config.url = normalizeApiUrl(config.url);
     localStorage.setItem('ne_secondary_api', JSON.stringify(config));
+    try { neSync('ne_secondary_api'); } catch (e) {}
 }
 
 
@@ -248,33 +385,149 @@ function notifySecondaryApiFailure(reason) {
     } catch (e) {}
 }
 
+function deriveModelsUrl(chatUrl) {
+    if (!chatUrl || typeof chatUrl !== 'string') return null;
+    var trimmed = chatUrl.trim().replace(/\/+$/, '');
+    if (/\/v1\/chat\/completions$/.test(trimmed)) {
+        return trimmed.replace(/\/chat\/completions$/, '/models');
+    }
+    if (/\/v1\/?$/.test(trimmed)) {
+        return trimmed.replace(/\/+$/, '') + '/models';
+    }
+    if (/^(https?:\/\/[^\/]+)\/?$/.test(trimmed)) {
+        return trimmed.replace(/\/+$/, '') + '/v1/models';
+    }
+    if (/\/llm\/chat$/.test(trimmed)) {
+        return trimmed.replace(/\/chat$/, '/models');
+    }
+    return null;
+}
+
+export async function fetchAvailableModels(config, timeoutSec) {
+    timeoutSec = timeoutSec || 5;
+    if (!config || !config.url) throw new Error('No URL configured');
+    var modelsUrl = deriveModelsUrl(config.url);
+    if (!modelsUrl) throw new Error('Cannot derive /v1/models URL from: ' + config.url);
+
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, timeoutSec * 1000);
+
+    function doFetch(targetUrl) {
+        return fetch(targetUrl, {
+            method: 'GET',
+            headers: config.key ? { 'Authorization': 'Bearer ' + config.key } : {},
+            signal: controller.signal
+        }).then(function (resp) {
+            clearTimeout(timer);
+            if (!resp.ok) throw new Error('API error: ' + resp.status);
+            return resp.json().then(function (data) {
+                if (!data || !Array.isArray(data.data)) throw new Error('Unexpected response format from /v1/models');
+                return data.data.map(function (m) { return m.id; });
+            });
+        }, function (e) {
+            clearTimeout(timer);
+            throw e;
+        });
+    }
+
+    function isNetErr(e) {
+        var msg = e.message || 'Unknown error';
+        return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
+    }
+
+    try {
+        return await doFetch(modelsUrl);
+    } catch (e) {
+        if (!isNetErr(e)) {
+            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
+            throw e;
+        }
+        console.warn('[NE] /v1/models direct fetch failed (' + e.message + '), trying ST proxy...');
+    }
+
+    try {
+        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(modelsUrl);
+        return await doFetch(proxyUrl);
+    } catch (e2) {
+        if (isNetErr(e2)) {
+            throw new Error('Cannot reach /v1/models — direct fetch blocked (CORS/mixed-content)');
+        }
+        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
+        throw e2;
+    }
+}
+
 export async function testSecondaryApiConnection(config) {
-    if (!config || !config.url) return { success: false, error: 'No URL configured' };
-    if (!config.model) return { success: false, error: 'No model configured' };
+    if (!config || !config.url) return { success: false, error: 'No URL configured', errorType: null };
+    if (!config.model) return { success: false, error: 'No model configured', errorType: null };
+
+    try {
+        var models = await fetchAvailableModels(config, 5);
+        if (models && models.length > 0) {
+            var modelInList = models.indexOf(config.model) !== -1;
+            return {
+                success: true,
+                connectionType: 'models',
+                models: models,
+                model: config.model,
+                modelInList: modelInList,
+                error: modelInList ? null : 'Model "' + config.model + '" not found in /v1/models list (API is reachable)',
+                errorType: null
+            };
+        }
+        return {
+            success: false,
+            connectionType: 'models',
+            models: models,
+            model: config.model,
+            modelInList: false,
+            error: '/v1/models returned empty list',
+            errorType: 'empty_list'
+        };
+    } catch (e) {
+        console.warn('[NE] /v1/models failed, falling back to chat ping:', e.message);
+    }
+
     try {
         var result = await callCustomAPI(config, [
             { role: 'system', content: 'Respond with OK only. No other text.' },
             { role: 'user', content: 'ping' }
-        ], { timeout: 10, temperature: 0, max_tokens: 64 });
+        ], { timeout: getConfiguredTimeoutSec(120), temperature: 0, max_tokens: 64 });
         if (!result.content || result.content.trim().length === 0) {
             console.warn('[NE] testSecondaryApiConnection — raw response:', JSON.stringify(result._raw).substring(0, 500));
-            return { success: false, error: 'API returned empty response. Check browser console (F12) for raw response data.' };
+            return { success: false, connectionType: 'ping', models: [], model: config.model, modelInList: null, error: 'API returned empty response. Check browser console (F12) for raw response data.', errorType: 'empty_response' };
         }
-        return { success: true, model: config.model || 'connected' };
+        return { success: true, connectionType: 'ping', models: [], model: config.model, modelInList: null, error: null, errorType: null };
     } catch (e) {
-        console.warn('[NE] testSecondaryApiConnection — error:', e.message);
-        return { success: false, error: e.message || 'Connection failed' };
+        console.warn('[NE] testSecondaryApiConnection — error:', e.message || e);
+        var errorType = 'unknown';
+        var msg = e.message || 'Connection failed';
+        if (e.name === 'AbortError') {
+            errorType = 'timeout';
+        } else if (/Load[_ ]?[Ff]ailed|NetworkError|Failed to fetch|TypeError: Failed to fetch/i.test(msg)) {
+            errorType = 'network';
+        } else if (/API error: 401|403/.test(msg)) {
+            errorType = 'auth';
+        } else if (/API error: 4\d\d/.test(msg)) {
+            errorType = 'http_4xx';
+        } else if (/API error: 5\d\d/.test(msg)) {
+            errorType = 'http_5xx';
+        }
+        return { success: false, connectionType: 'none', models: [], model: config.model, modelInList: null, error: msg, errorType: errorType };
     }
 }
 
 export async function sendSecondaryTestMessage(config) {
     if (!config || !config.url) throw new Error('No URL configured');
-    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: 15, temperature: 0.0, max_tokens: 128 });
+    var startMs = Date.now();
+    var timeoutSec = getConfiguredTimeoutSec(120);
+    var result = await callCustomAPI(config, [{ role: 'user', content: 'Hi' }], { timeout: timeoutSec, temperature: 0.0, max_tokens: 128 });
+    var latencyMs = Date.now() - startMs;
     if (!result.content || result.content.trim().length === 0) {
         console.warn('[NE] sendSecondaryTestMessage — raw response:', JSON.stringify(result._raw).substring(0, 500));
         throw new Error('API returned empty response. Check browser console (F12) for raw response data.');
     }
-    return result.content;
+    return { content: result.content, latencyMs: latencyMs };
 }
 
 var _proxyNotified = false;
@@ -288,11 +541,13 @@ async function callCustomAPI(config, messages, options) {
         model: config.model,
         messages: messages,
         temperature: options.temperature || 0.3,
-        max_tokens: options.max_tokens || 2048,
+        max_tokens: options.max_tokens || 4096,
         ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
-        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {})
+        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {}),
+        ...(options.tools ? { tools: options.tools } : {}),
+        ...(options.tool_choice ? { tool_choice: options.tool_choice } : {})
     });
-    const timeoutSec = options.timeout || 120;
+    const timeoutSec = options.timeout || getConfiguredTimeoutSec(120);
 
     // --- inner: attempt a single fetch ---
     function attemptFetch(targetUrl) {
@@ -310,10 +565,11 @@ async function callCustomAPI(config, messages, options) {
                 var msg = data.choices?.[0]?.message || {};
                 var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
                 var usage = data.choices?.[0]?.usage || data.usage || null;
-                if (!content) {
+                var toolCalls = msg.tool_calls || null;
+                if (!content && !toolCalls) {
                     console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
                 }
-                return { content: content, usage: usage, _raw: data };
+                return { content: content, usage: usage, tool_calls: toolCalls, _raw: data };
             });
         }, function (e) {
             clearTimeout(timer);
@@ -326,42 +582,72 @@ async function callCustomAPI(config, messages, options) {
         return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
     }
 
-    var proxyAttempted = false;
-
-    // 1. Try direct
-    try {
-        return await attemptFetch(config.url);
-    } catch (e) {
-        if (!isNetworkError(e)) {
-            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
-            throw e;
-        }
-        console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
-        proxyAttempted = true;
+    function shouldRetry(e) {
+        if (e.name === 'AbortError') return true;
+        var msg = e.message || '';
+        if (/NetworkError|Failed to fetch|Load[_ ]?[Ff]ailed/i.test(msg)) return true;
+        if (/API error: 5\d\d/.test(msg)) return true;
+        if (/API error: 401|403/.test(msg)) return false;
+        if (/API error: 4\d\d/.test(msg)) return false;
+        return false;
     }
 
-    // 2. Retry through ST CORS proxy
-    try {
-        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(config.url);
-        var result = await attemptFetch(proxyUrl);
-        result._viaProxy = true;
-        if (!_proxyNotified) {
-            _proxyNotified = true;
-            console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
+    var maxRetries = 2;
+    var retryDelayMs = 1000;
+    var proxyAttempted = false;
+
+    for (var attempt = 0; attempt <= maxRetries; attempt++) {
+        var lastError = null;
+
+        // 1. Try direct
+        try {
+            return await attemptFetch(config.url);
+        } catch (e) {
+            lastError = e;
+            if (!isNetworkError(e)) {
+                if (e.name === 'AbortError') lastError = new Error('Request timed out after ' + timeoutSec + 's');
+                if (!shouldRetry(lastError)) throw lastError;
+            } else {
+                console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
+                proxyAttempted = true;
+            }
         }
-        return result;
-    } catch (e2) {
-        if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
-            throw new Error(
-                'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content). ' +
-                'ST CORS proxy is disabled or unreachable. Enable it:\n' +
-                '1. Open SillyTavern/config.yaml\n' +
-                '2. Set enableCorsProxy: true\n' +
-                '3. Restart SillyTavern'
-            );
+
+        // 2. Retry through ST CORS proxy
+        try {
+            var origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'http://127.0.0.1:8000';
+            var proxyUrl = origin + '/proxy/' + encodeURIComponent(config.url);
+            var result = await attemptFetch(proxyUrl);
+            result._viaProxy = true;
+            if (!_proxyNotified) {
+                _proxyNotified = true;
+                console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
+            }
+            return result;
+        } catch (e2) {
+            lastError = e2;
+            if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
+                lastError = new Error(
+                    'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content) and ST CORS proxy is unreachable. ' +
+                    'Check:\n' +
+                    '1. SillyTavern is running (not just the config file)\n' +
+                    '2. config.yaml: enableCorsProxy: true\n' +
+                    '3. Restarted SillyTavern after changing config\n' +
+                    '4. URL is accessible from this machine (not behind VPN/firewall)\n' +
+                    'Proxy URL tried: ' + proxyUrl
+                );
+            } else if (e2.name === 'AbortError') {
+                lastError = new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
+            }
+
+            if (shouldRetry(lastError) && attempt < maxRetries) {
+                var delay = retryDelayMs * Math.pow(2, attempt);
+                console.warn('[NE] API call attempt ' + (attempt + 1) + ' failed, retrying in ' + delay + 'ms:', lastError.message);
+                await new Promise(function (r) { setTimeout(r, delay); });
+                continue;
+            }
+            throw lastError;
         }
-        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
-        throw e2;
     }
 }
 
@@ -369,13 +655,13 @@ async function callTavernHelper(messages, options) {
     // Note: TH API does not support AbortController. Promise.race timeout
     // rejects the caller's promise but the underlying HTTP request continues.
     // callCustomAPI correctly uses AbortController for the secondary API path.
-    var timeoutMs = (options.timeout || 120) * 1000;
+    var timeoutMs = (options.timeout || getConfiguredTimeoutSec(120)) * 1000;
 
     var raceWithTimeout = function(promise) {
         return Promise.race([
             promise,
             new Promise(function(_, reject) {
-                setTimeout(function() { reject(new Error('Timeout after ' + (options.timeout || 120) + 's')); }, timeoutMs);
+                setTimeout(function() { reject(new Error('Timeout after ' + (options.timeout || getConfiguredTimeoutSec(120)) + 's')); }, timeoutMs);
             })
         ]);
     };

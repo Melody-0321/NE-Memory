@@ -138,3 +138,11 @@ var output =
 
 fs.writeFileSync(OUTPUT_FILE, output, 'utf-8');
 console.log('[gen-test-data] OK — ' + Object.keys(markdownMap).length + ' test cases -> ' + OUTPUT_FILE);
+
+// Write build-info.json for runtime git hash injection
+var hash = 'unknown';
+try { hash = require('child_process').execSync('git rev-parse --short HEAD', { encoding: 'utf-8' }).trim(); } catch (e) {}
+var buildInfo = { hash: hash, time: new Date().toISOString() };
+var buildInfoJs = 'export default ' + JSON.stringify(buildInfo) + ';\n';
+fs.writeFileSync(path.join(__dirname, '..', 'src', 'core', 'build-info.js'), buildInfoJs, 'utf-8');
+console.log('[gen-test-data] build-info: ' + hash);

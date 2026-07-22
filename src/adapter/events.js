@@ -1,26 +1,50 @@
 /**
  * events.js — ST 事件绑定（通过 TH API）
  */
-import { executeIncrementalUpdate, extractStateChangesOnly, saveVaultWithSnapshot } from '../core/engine/update.js';
+import { executeIncrementalUpdate, extractStateChangesOnly } from '../core/engine/update.js';
+import { saveStateVault, saveMemoryVault } from '../core/engine/pipeline-shared.js';
 import { findOpenLtm, MAX_OPEN_STM_REFS, getEligibleStmIds, applyBatchLtmDecision, createMinimalLtm } from '../core/engine/consolidate.js';
 import { runBatchLtmDecision } from '../core/engine/ltm-pipeline.js';
-import { read, write, rollbackByMsgIds } from '../core/vault/store.js';
+import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters, getEffectiveTemplates } from '../core/vault/store.js';
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
-import { showToast, PD } from './panel-shared.js';
+import { showToast, PD, busEmit } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
-import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
-import { buildStateInjectionTable } from '../core/vault/schema.js';
+import { buildStateInjectionTable, resolveActiveTemplateFields } from '../core/vault/schema.js';
+import { computeWindowStartMsgId } from '../core/engine/context-window.js';
+import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
+import { adaptContextPostTrim, setAdaptiveCache } from '../core/engine/adaptive-context.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
-import { tryAcquire, transitionTo, releasePipeline, isIdle, getPipelinePhase, getState, reset, waitForPipelineTrackIdle } from '../core/engine/pipeline-guard.js';
+import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
+import { neSync } from '../core/settings-adapter.js';
+import { readNeSetting, readNeSettingsObject } from '../core/settings.js';
+
+var _neCheckTag = '';
+
+function _neCheckChatIntegrity(tag) {
+    try {
+        var chat = getChatMessagesFn && getChatMessagesFn();
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                if (!_neCheckTag) _neCheckTag = tag;
+                return;
+            }
+        }
+    } catch (e) {}
+}
+import { setToolResultNotifier } from '../core/engine/template-llm.js';
+import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
+import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆，按实体分链组织。]',
@@ -44,6 +68,7 @@ var consecutiveFailures = 0;
 var _drainContinuationCount = 0;
 var retroCapturedChatId = null; // 追捕开场白只执行一次
 var _isInjecting = false;
+// Adaptive Context Control 缓存已抽取到 core/engine/adaptive-context.js，通过 setAdaptiveCache 同步
 const MAX_DRAIN_CONTINUATIONS = 3;
 const MIN_GENERATION_INTERVAL_MS = 500;
 const PIPELINE_TIMEOUT_MS = 30000;
@@ -71,6 +96,15 @@ export function restorePending() {
             localStorage.removeItem('ne_inflight');
         }
     } catch (e) { console.warn('[NE] restorePending error:', e); }
+    setToolResultNotifier(function(level, text, options) {
+        if (level === 'error') {
+            sendNeNotification(null, text, { level: 'error', durationMs: 8000 });
+        } else if (level === 'warn') {
+            sendNeNotification(null, text, { level: 'warn', durationMs: 6000 });
+        } else {
+            sendNeNotification(null, text, { level: 'info', durationMs: 4000 });
+        }
+    });
 }
 
 export async function getStmBatchSize() {
@@ -131,25 +165,18 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
     return Math.max(tokenPressure, turnPressure);
 }
 function adjustDialogWindow() {
-    var cwRounds = 10;
-    try { var raw = localStorage.getItem('ne_settings'); if (raw) { var s = JSON.parse(raw); cwRounds = Number(s.dialogWindowRounds) || 10; } } catch (e) {}
-    var minRounds = 6;
-    if (cwRounds < minRounds) cwRounds = minRounds;
-
-    var chat = runtime.getChat ? runtime.getChat() : [];
-    if (!chat || chat.length === 0) return;
-
-    var overrideEnabled = false;
-    try { var raw2 = localStorage.getItem('ne_settings'); if (raw2) { var s2 = JSON.parse(raw2); overrideEnabled = !!s2.dialogOverrideEnabled; } } catch (e) {}
-    if (overrideEnabled) {
+    // 自适应模式下不覆盖 maxContext（让 ST 默认 token-budget 截断生效）
+    var s = readNeSettingsObject();
+    if (s.adaptiveContextControl) return;
+    if (s.dialogOverrideEnabled) {
         runtime.maxContext = Number.MAX_SAFE_INTEGER;
     }
-
-    var windowStartIdx = computeWindowStartMsgId(chat, cwRounds);
-    if (windowStartIdx <= 0) return;
-
-    chat.splice(0, windowStartIdx + 1);
 }
+
+/* ══════════════════ Adaptive Context Control — 已抽取到 core/engine/adaptive-context.js ══════════════════ */
+// 重新导出 adaptContextPostTrim，保持 index.js 的导入签名不变
+export { adaptContextPostTrim };
+
 export function notifyVaultChanged() {
     try {
         PD.dispatchEvent(new CustomEvent('ne:vault-changed'));
@@ -180,16 +207,16 @@ export function onMessageSent(messageIndex) {
                 retroCapturedChatId = currentChatId;
                 for (var i = 0; i < chat.length; i++) {
                     var earlyMsg = chat[i];
-                    var earlyId = earlyMsg.id || earlyMsg.mes_id;
-                    if (earlyId === messageIndex) break;
-                    if (earlyId !== undefined) {
-                        pendingMessages.push({
-                            role: earlyMsg.is_user ? 'user' : 'assistant',
-                            content: earlyMsg.mes || '',
-                            id: earlyId,
-                            timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
-                        });
-                    }
+                    earlyMsg._ne_id = earlyMsg._ne_id || buildMsgId(earlyMsg, i);
+                    if (i === messageIndex) break;
+                    pendingMessages.push({
+                        role: earlyMsg.is_user ? 'user' : 'assistant',
+                        name: earlyMsg.name || '',
+                        content: earlyMsg.mes || '',
+                        id: earlyMsg._ne_id,
+                        _slotIdx: i,
+                        timestamp: earlyMsg.send_date ? new Date(earlyMsg.send_date).getTime() : Date.now()
+                    });
                 }
                 if (pendingMessages.length > 0) {
                     persistPending();
@@ -201,7 +228,9 @@ export function onMessageSent(messageIndex) {
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
-            pendingMessages.push({ role: 'user', content: message.mes || '', id: messageIndex, timestamp: Date.now() });
+            _neCheckChatIntegrity('onMessageReceived:beforeNeCharStrip');
+            message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
+            pendingMessages.push({ role: 'user', name: message.name || '', content: message.mes || '', id: message._ne_id, _slotIdx: messageIndex, timestamp: Date.now() });
             persistPending();
             console.log('[NE] onMessageSent: pending=' + pendingMessages.length);
         } else {
@@ -212,51 +241,93 @@ export function onMessageSent(messageIndex) {
     }
 }
 
-async function consumeNeCharBlocks(messageIndex) {
+async function consumeNeCharBlocks(messageIndex, neId) {
     var pending = globalThis.__ne_pending_char_blocks;
     if (!pending || pending.length === 0) return;
     globalThis.__ne_pending_char_blocks = null;
     try {
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
-        var vault = await read(chatId);
+        var vault = await readVault(chatId);
         if (!vault || !vault.content) {
-            console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks: vault empty, skip');
             return;
         }
+        await initializeStateChain(chatId, vault.content || {});
         var charState = vault.content.state || {};
         var charBefore = charState.characters || {};
         var affectedKeys = Object.keys(charBefore);
         var summaryBefore = {};
+        var allCharChanges = [];
+        var _effTemplates = getEffectiveTemplates().templates || {};
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             var c = charBefore[cb.name];
             summaryBefore[cb.name] = c ? JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts }) : 'NEW';
         });
-        console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
-            ' | charState keys=' + affectedKeys.join(',') +
-            ' | before=' + JSON.stringify(summaryBefore));
+        if (__NE_DEV_MODE) {
+            console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
+                ' | charState keys=' + affectedKeys.join(',') +
+                ' | before=' + JSON.stringify(summaryBefore));
+        }
+
+        // 后处理兜底：查被锁模板的角色，跳过其 NE-CHAR 变更
+        var lockedChars = [];
+        var cardName = charState.protagonist_name || '';
+        if (cardName) {
+            try {
+                var cardCfg = loadCardConfigSync(cardName);
+                lockedChars = getLockedTemplateCharacters(cardCfg, charState);
+            } catch (e) { /* silent */ }
+        }
+        if (lockedChars.length > 0) {
+            console.log('[NE-CHAR] post-process guard: locked template chars = ' + lockedChars.join(', '));
+        }
 
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
+            if (lockedChars.indexOf(cb.name) !== -1) {
+                console.log('[NE-CHAR] post-process: skip locked-template character ' + cb.name);
+                return;
+            }
             var chars = charState.characters || {};
             if (!chars[cb.name]) {
-                var schemeLookup = charState._character_schemes && charState._character_schemes[cb.name];
-                var schemeKey = schemeLookup ? schemeLookup._scheme : null;
-                ensureCharacterTemplate(charState, cb.name, schemeKey);
+                ensureCharacterTemplate(charState, cb.name, null, charState.protagonist_name);
                 chars = charState.characters;
-                chars[cb.name]._role = (cb.name === charState.protagonist_name || (schemeLookup && schemeLookup._role === 'protagonist')) ? 'protagonist' : ((schemeLookup && schemeLookup._role) || 'npc');
-                if (schemeLookup && schemeLookup._scheme) chars[cb.name]._scheme = schemeLookup._scheme;
             }
             if (!chars[cb.name]) chars[cb.name] = {};
+            chars[cb.name]._role = (cb.name === charState.protagonist_name) ? 'protagonist' : 'npc';
 
-            ['current_mood', 'inner_thoughts'].forEach(function(fk) {
+            // N5: Resolve per-round field whitelist via lock-aware active-version chain
+            var schemeKey = chars[cb.name]._scheme || '_default_npc';
+            if (chars[cb.name]._role === 'protagonist') schemeKey = '_default_pc';
+            var resolvedFields = resolveActiveTemplateFields(cardName, schemeKey, chars[cb.name]);
+            var perRoundFields = Object.keys(resolvedFields);
+            var _tpl = _effTemplates[schemeKey];
+            if (_tpl && _tpl.perRoundFields) {
+                _tpl.perRoundFields.forEach(function(fk) {
+                    if (perRoundFields.indexOf(fk) === -1) perRoundFields.push(fk);
+                });
+            }
+            if (perRoundFields.length === 0) perRoundFields = ['current_mood', 'inner_thoughts'];
+
+            var charChanges = [];
+            perRoundFields.forEach(function(fk) {
                 if (cb.fields[fk] !== undefined && cb.fields[fk] !== '') {
+                    var oldVal = chars[cb.name][fk] || '';
                     chars[cb.name][fk] = cb.fields[fk];
+                    charChanges.push({
+                        path: 'characters.' + cb.name + '.' + fk,
+                        old: oldVal,
+                        new: cb.fields[fk]
+                    });
                 }
             });
+            if (charChanges.length > 0) {
+                allCharChanges = allCharChanges.concat(charChanges);
+            }
 
             chars[cb.name].status = chars[cb.name].status || '活跃';
-            console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
         });
 
         if (messageIndex !== undefined) {
@@ -271,13 +342,21 @@ async function consumeNeCharBlocks(messageIndex) {
         }
         charState.characters = charState.characters;
         vault.content.state = charState;
-        await saveVaultWithSnapshot(chatId, vault);
+        if (allCharChanges.length > 0) {
+            await recordStateDelta(chatId, {
+                source: 'ne_char_update',
+                summary: allCharChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
+                changes: allCharChanges,
+                message_dates: neId ? [neId] : []
+            });
+        }
+        await saveStateVault(chatId, vault);
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
             summaryAfter[n] = JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts });
         });
-        console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
     } catch (e) {
         console.warn('[NE-CHAR] consumeNeCharBlocks failed:', e && e.message);
     }
@@ -286,22 +365,26 @@ async function consumeNeCharBlocks(messageIndex) {
 export async function onMessageReceived(messageIndex) {
     try {
         if (!getChatMessagesFn) return;
+        _neCheckChatIntegrity('onMessageReceived:entry');
         var chatId = getChatIdFn ? getChatIdFn() : 'default';
         const chat = getChatMessagesFn();
         var message = chat[messageIndex];
         if (!message) { message = chat.find(function (m) { return m.mes_id === messageIndex; }); }
         if (message) {
+            message._ne_id = message._ne_id || buildMsgId(message, messageIndex);
 
             var rawMes = message.mes || '';
             var hasNeChar = rawMes.indexOf('<!--NE-CHAR') !== -1;
             var hasNeBanner = rawMes.indexOf('<!--NE-BANNER') !== -1;
-            console.log('[NE-DEBUG] onMessageReceived msgId=' + (message.mes_id || messageIndex) +
-                ' | len=' + rawMes.length +
-                ' | hasNE-CHAR=' + hasNeChar +
-                ' | hasNE-BANNER=' + hasNeBanner +
-                ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
+            if (__NE_DEV_MODE) {
+                console.log('[NE-DEBUG] onMessageReceived msgId=' + message._ne_id +
+                    ' | len=' + rawMes.length +
+                    ' | hasNE-CHAR=' + hasNeChar +
+                    ' | hasNE-BANNER=' + hasNeBanner +
+                    ' | raw_preview=' + JSON.stringify(rawMes.substring(0, 200)));
+            }
 
-            var assistantMsg = { role: 'assistant', content: rawMes, id: messageIndex, timestamp: Date.now() };
+            var assistantMsg = { role: 'assistant', content: rawMes, id: message._ne_id, _slotIdx: messageIndex, timestamp: Date.now() };
 
             // 提取 Main LLM 开头的状态栏（管道分隔：场景|时间|天数|事件|角色）
             var stateBlockMatch = rawMes.match(
@@ -316,33 +399,44 @@ export async function onMessageReceived(messageIndex) {
                     event: (stateBlockMatch[4] || '').trim(),
                     present: (stateBlockMatch[5] || '').trim().split(/[、，,\s]+/).filter(Boolean)
                 };
-                console.log('[NE-DEBUG] stateBlock EXTRACTED: scene=' + stateBlockMatch[1] +
-                    ' time=' + stateBlockMatch[2] + ' day=' + stateBlockMatch[3] +
-                    ' event=' + stateBlockMatch[4] + ' present=' + stateBlockMatch[5]);
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] stateBlock EXTRACTED: scene=' + stateBlockMatch[1] +
+                        ' time=' + stateBlockMatch[2] + ' day=' + stateBlockMatch[3] +
+                        ' event=' + stateBlockMatch[4] + ' present=' + stateBlockMatch[5]);
+                }
             } else {
-                console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] stateBlock NOT matched (hasNE-BANNER=' + hasNeBanner + ')');
             }
 
-            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>(\{[\s\S]*?\})<!--\/NE-CHAR-->/g;
+            var charBlockRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>([\s\S]*?)<!--\/NE-CHAR-->/g;
             var charBlockMatch;
             var newCharBlocks = [];
             while ((charBlockMatch = charBlockRegex.exec(rawMes)) !== null) {
                 var charName = (charBlockMatch[1] || '').trim();
-                var charJson = (charBlockMatch[2] || '').trim();
+                var charContent = (charBlockMatch[2] || '').trim();
+                var charData = null;
                 try {
-                    var charData = JSON.parse(charJson);
+                    charData = JSON.parse(charContent);
+                } catch (e1) {
+                    try {
+                        charData = JSON.parse('{' + charContent + '}');
+                    } catch (e2) {}
+                }
+                if (charData) {
                     newCharBlocks.push({ name: charName, fields: charData });
-                    console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
-                } catch (e) {
-                    console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' json=' + charJson.substring(0, 200) + ' error=' + e.message);
+                    if (__NE_DEV_MODE) console.log('[NE-DEBUG] charBlock EXTRACTED: name=' + charName + ' fields=' + JSON.stringify(charData));
+                } else {
+                    if (__NE_DEV_MODE) console.warn('[NE-DEBUG] charBlock regex matched but JSON parse FAILED: name=' + charName + ' content=' + charContent.substring(0, 200));
                 }
             }
-            console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
-                ' | extracted=' + newCharBlocks.length +
-                ' | regex_matches=' + ((rawMes.match(/<!--NE-CHAR/g) || []).length) +
-                ' | raw block preview=' + JSON.stringify(rawMes.substring(
-                    Math.max(0, rawMes.indexOf('<!--NE-CHAR') - 10),
-                    Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
+            if (__NE_DEV_MODE) {
+                console.log('[NE-DEBUG] charBlock extraction summary: hasNE-CHAR=' + hasNeChar +
+                    ' | extracted=' + newCharBlocks.length +
+                    ' | regex_matches=' + ((rawMes.match(/<!--NE-CHAR/g) || []).length) +
+                    ' | raw block preview=' + JSON.stringify(rawMes.substring(
+                        Math.max(0, rawMes.indexOf('<!--NE-CHAR') - 10),
+                        Math.min(rawMes.length, rawMes.indexOf('<!--NE-CHAR') + 120))));
+            }
             if (newCharBlocks.length > 0) {
                 globalThis.__ne_pending_char_blocks = (globalThis.__ne_pending_char_blocks || []).concat(newCharBlocks);
                 globalThis.__ne_char_fallback_needed = false;
@@ -367,7 +461,7 @@ export async function onMessageReceived(messageIndex) {
             }
 
             // ── NE-CHAR 剥离监测：在 ST 全局正则之前自行剥离并记录 ──
-            var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>\{[\s\S]*?\}<!--\/NE-CHAR-->/g;
+            var stripRegex = /<!--NE-CHAR:([^-]+?)-{2,3}>[\s\S]*?<!--\/NE-CHAR-->/g;
             var stripCount = 0;
             var strippedNames = [];
             var strippedMes = rawMes.replace(stripRegex, function(match, name) {
@@ -377,12 +471,52 @@ export async function onMessageReceived(messageIndex) {
             });
             if (stripCount > 0) {
                 message.mes = strippedMes;
+                if (message.swipes && message.swipes.length > 0) {
+                    message.swipes[message.swipe_id || 0] = strippedMes;
+                }
                 assistantMsg.content = strippedMes;
-                console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
-                    ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
+                _neCheckChatIntegrity('onMessageReceived:afterNeCharStrip');
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] stripped ' + stripCount + ' NE-CHAR block(s): ' + strippedNames.join(', ') +
+                        ' | original rawMes NE-CHAR tags=' + (rawMes.match(/<!--NE-CHAR/g) || []).length);
+                }
             }
 
-            await consumeNeCharBlocks(messageIndex);
+            // P0-3: reroll 回退检测（排入 stm 队列串行化，在 consumeNeCharBlocks 之前）
+            // 普通新消息 → 无缺失 msg_id → no-op；reroll → 旧 msg_id 缺失 → 回退旧提取
+            // 必须在 consumeNeCharBlocks 前执行，否则回退会覆盖 NE-CHAR 新写入
+            try {
+                var rbChat = runtime.getChat ? runtime.getChat() : (getChatMessagesFn ? getChatMessagesFn() : []);
+                var rbResult = null;
+                await enqueueStmWrite(async function() {
+                    var rbVault = await readVault(chatId);
+                    rbResult = await _detectAndRollback(chatId, rbChat, rbVault);
+                    if (rbResult.degraded) {
+                        await saveMemoryVault(chatId, rbVault);
+                    } else if (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0) {
+                        await saveMemoryVault(chatId, rbVault);
+                    }
+                });
+                if (rbResult && (rbResult.rolledBackState > 0 || rbResult.rolledBackMem > 0)) {
+                    pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== messageIndex; });
+                    console.log('[NE] onMessageReceived: reroll/switch detected, rolled back state=' + rbResult.rolledBackState + ' mem=' + rbResult.rolledBackMem);
+                    notifyVaultChanged();
+                }
+            } catch (e) { console.warn('[NE] reroll detect failed:', e); }
+
+            await consumeNeCharBlocks(messageIndex, message._ne_id);
+
+            // P1-2: UI 延迟回退标记无条件执行（解开批次门槛，原嵌在 pending>2 / shouldRunPipeline 内）
+            var psRb = globalThis.__ne_pending_state_rollback;
+            if (psRb && psRb.chatId === chatId) {
+                try { await rollbackState(chatId, psRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
+                globalThis.__ne_pending_state_rollback = null;
+            }
+            var pmRb = globalThis.__ne_pending_mem_rollback;
+            if (pmRb && pmRb.chatId === chatId) {
+                try { await rollbackMemory(chatId, pmRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
+                globalThis.__ne_pending_mem_rollback = null;
+            }
 
             pendingMessages.push(assistantMsg);
             persistPending();
@@ -394,7 +528,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && pendingMessages.length > 2) {
+            if (isStateSchemaEnabled() && (pendingMessages.length >= 2 || (rbResult && rbResult.rolledBackState > 0))) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
@@ -428,107 +562,140 @@ export async function runLtmConsolidation(chatId) {
     var MAX_LTM_BATCHES = 5;
     var ranLtm = false;
     for (var batchPass = 0; batchPass < MAX_LTM_BATCHES; batchPass++) {
-        var postStmVault = await read(chatId);
-        if (!postStmVault || !postStmVault.content) return;
+        await enqueueLtmWrite(async function() {
+            var postStmVault = await readVault(chatId);
+            if (!postStmVault || !postStmVault.content) return;
 
-        var eligibleIds = getEligibleStmIds(postStmVault);
-        if (eligibleIds.length === 0) {
-            if (batchPass === 0) {
-                var uncCount = ((postStmVault.content || {}).unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; }).length;
-                var threshold2 = (function() { try { var r = localStorage.getItem('ne_settings'); if (r) { var s2 = JSON.parse(r); return Number(s2.stmMaxUnconsolidated) || 5; } } catch(e) {} return 5; })();
-                console.log('[NE] LTM: no eligible STM — unconsolidated=' + uncCount + ' threshold=' + threshold2);
-            }
-            break;
-        }
-
-        if (!tryAcquire('ltm')) {
-            console.log('[NE] LTM batch ' + (batchPass+1) + ': waiting for pipeline track — state=' + getState());
-            await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-            if (!tryAcquire('ltm')) {
-                console.log('[NE] LTM: guard still blocked, deferring remaining batches');
-                break;
-            }
-        }
-        console.log('[NE-GUARD] acquire ltm (idle → ltm) — batch ' + (batchPass+1) + ', eligible=' + eligibleIds.length);
-
-        ranLtm = true;
-        var decisionGroups = [];
-        try {
-            decisionGroups = await runBatchLtmDecision(postStmVault, eligibleIds, callMemoryPipeline);
-            console.log('[NE] LTM batch: got ' + (decisionGroups || []).length + ' decision groups for ' + eligibleIds.length + ' STMs');
-        } catch (e) {
-            console.warn('[NE] LTM batch decision failed:', e);
-        }
-
-        if (decisionGroups && decisionGroups.length > 0) {
-            applyBatchLtmDecision(postStmVault, decisionGroups);
-            try { await saveVaultWithSnapshot(chatId, postStmVault); } catch (e) {
-                console.warn('[NE] LTM save failed, rolling back vault');
-                postStmVault = await read(chatId);
-            }
-            globalThis.__ne_debug_last_ltm_decision = {
-                batch: true,
-                groups: decisionGroups.length,
-                stmCount: eligibleIds.length,
-                pass: batchPass + 1,
-                time: new Date().toISOString()
-            };
-            console.log('[NE] LTM: batch decision applied — groups=' + decisionGroups.length + ', stms=' + eligibleIds.length);
-            notifyVaultChanged();
-        } else {
-            console.warn('[NE] LTM batch: no decision returned, applying per-STM fallback');
-            for (var fi = 0; fi < eligibleIds.length; fi++) {
-                var fallbackDecision = createMinimalLtm(postStmVault, eligibleIds[fi]);
-                if (fallbackDecision) {
-                    var refreshed = await read(chatId);
-                    applyBatchLtmDecision(refreshed, [fallbackDecision]);
-                    try { await saveVaultWithSnapshot(chatId, refreshed); } catch (e) {
-                        console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
-                    }
-                } else {
-                    console.warn('[NE] LTM fallback also failed for ' + eligibleIds[fi] + ', skipping');
+            var eligibleIds = getEligibleStmIds(postStmVault);
+            if (eligibleIds.length === 0) {
+                if (batchPass === 0) {
+                    var uncCount = ((postStmVault.content || {}).unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === undefined; }).length;
+                    var threshold2 = (function() { try { var r = localStorage.getItem('ne_settings'); if (r) { var s2 = JSON.parse(r); return Number(s2.stmMaxUnconsolidated) || 5; } } catch(e) {} return 5; })();
+                    console.log('[NE] LTM: no eligible STM — unconsolidated=' + uncCount + ' threshold=' + threshold2);
                 }
+                return;
             }
-            notifyVaultChanged();
-        }
+            console.log('[NE] LTM batch ' + (batchPass+1) + ': eligible=' + eligibleIds.length);
 
-        releasePipeline();
-        console.log('[NE-GUARD] release pipeline (ltm → idle) — batch ' + (batchPass+1));
+            ranLtm = true;
+            var decisionGroups = [];
+            try {
+                decisionGroups = await runBatchLtmDecision(postStmVault, eligibleIds, callMemoryPipeline);
+                console.log('[NE] LTM batch: got ' + (decisionGroups || []).length + ' decision groups for ' + eligibleIds.length + ' STMs');
+            } catch (e) {
+                console.warn('[NE] LTM batch decision failed:', e);
+            }
 
-        var checkVault = await read(chatId);
+            if (decisionGroups && decisionGroups.length > 0) {
+                var snapBefore = {
+                    ltm_entries: JSON.parse(JSON.stringify(postStmVault.content.ltm_entries || [])),
+                    stm_entries: JSON.parse(JSON.stringify(postStmVault.content.stm_entries || [])),
+                    unconsolidated_stm: JSON.parse(JSON.stringify(postStmVault.content.unconsolidated_stm || []))
+                };
+                applyBatchLtmDecision(postStmVault, decisionGroups);
+                try { await saveMemoryVault(chatId, postStmVault); } catch (e) {
+                    console.warn('[NE] LTM save failed, rolling back vault');
+                    postStmVault = await readVault(chatId);
+                }
+
+                var content = postStmVault.content || {};
+                var beforeLtmIds = new Set(snapBefore.ltm_entries.map(function(e) { return e.id; }));
+                var ltmAdded = (content.ltm_entries || []).filter(function(e) { return !beforeLtmIds.has(e.id); });
+                var beforeStmEntryIds = new Set(snapBefore.stm_entries.map(function(e) { return e.id; }));
+                var stmMoved = (content.stm_entries || []).filter(function(e) { return !beforeStmEntryIds.has(e.id); });
+                var ltmModified = [];
+                var snapLtmMap = {};
+                for (var si = 0; si < snapBefore.ltm_entries.length; si++) {
+                    snapLtmMap[snapBefore.ltm_entries[si].id] = snapBefore.ltm_entries[si];
+                }
+                (content.ltm_entries || []).forEach(function(curr) {
+                    var prev = snapLtmMap[curr.id];
+                    if (prev) {
+                        var prevStr = JSON.stringify(prev);
+                        var currStr = JSON.stringify(curr);
+                        if (prevStr !== currStr) {
+                            var changes = {};
+                            for (var k in curr) {
+                                var cv = JSON.stringify(curr[k]);
+                                var pv = JSON.stringify(prev[k]);
+                                if (cv !== pv) {
+                                    changes[k] = { old: prev[k], new: curr[k] };
+                                }
+                            }
+                            ltmModified.push({ ltm_id: curr.id, changes: changes });
+                        }
+                    }
+                });
+
+                if (ltmAdded.length > 0 || stmMoved.length > 0 || ltmModified.length > 0) {
+                    var chain = await getActiveChain(chatId);
+                    var stmVerSeq = chain ? chain.mem_head_seq : null;
+                    // P1-4: 汇总本次巩固涉及 STM 的 msg_ids，让版本链回退能正向命中 LTM 版本
+                    var ltmMsgDates = [];
+                    stmMoved.forEach(function(e) { (e.msg_ids || []).forEach(function(mid) { if (ltmMsgDates.indexOf(mid) === -1) ltmMsgDates.push(mid); }); });
+                    recordMemoryVersion(chatId, {
+                        type: 'ltm_consolidation',
+                        summary: 'LTM 巩固: ' + (ltmAdded.length ? ltmAdded.length + '个新arc' : '') + (stmMoved.length ? ' ' + stmMoved.length + '条STM已巩固' : ''),
+                        delta: {
+                            stm_moved: stmMoved.map(function(e) { return e.id; }),
+                            ltm_added: ltmAdded.map(function(e) { return JSON.parse(JSON.stringify(e)); }),
+                            ltm_modified: ltmModified
+                        },
+                        message_dates: ltmMsgDates,
+                        derived_from_stm_version: stmVerSeq
+                    }).catch(function(err) { console.error('[NE] recordMemoryVersion (ltm) failed for ' + chatId, err); });
+                }
+                globalThis.__ne_debug_last_ltm_decision = {
+                    batch: true,
+                    groups: decisionGroups.length,
+                    stmCount: eligibleIds.length,
+                    pass: batchPass + 1,
+                    time: new Date().toISOString()
+                };
+                console.log('[NE] LTM: batch decision applied — groups=' + decisionGroups.length + ', stms=' + eligibleIds.length);
+                notifyVaultChanged();
+            } else {
+                console.warn('[NE] LTM batch: no decision returned, applying per-STM fallback');
+                for (var fi = 0; fi < eligibleIds.length; fi++) {
+                    var fallbackDecision = createMinimalLtm(postStmVault, eligibleIds[fi]);
+                    if (fallbackDecision) {
+                        var refreshed = await readVault(chatId);
+                        applyBatchLtmDecision(refreshed, [fallbackDecision]);
+                        try { await saveMemoryVault(chatId, refreshed); } catch (e) {
+                            console.warn('[NE] LTM fallback save failed for ' + eligibleIds[fi] + ', skipping');
+                        }
+                    } else {
+                        console.warn('[NE] LTM fallback also failed for ' + eligibleIds[fi] + ', skipping');
+                    }
+                }
+                notifyVaultChanged();
+            }
+        });
+
+        var checkVault = await readVault(chatId);
         if (getEligibleStmIds(checkVault).length === 0) break;
     }
 
     try {
-        var rebatchVault = await read(chatId);
-        var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
-        if (orphans.length > 0 && ranLtm && tryAcquire('ltm')) {
+        await enqueueLtmWrite(async function() {
+            var rebatchVault = await readVault(chatId);
+            var orphans = (rebatchVault.content.unconsolidated_stm || []).filter(function(s) { return s.parent_ltm === null; });
+            if (orphans.length === 0 || !ranLtm) return;
             console.log('[NE] LTM rebatch: ' + orphans.length + ' orphan STMs');
             var rebatchResult = await runLtmRebatch(rebatchVault, callMemoryPipeline);
             if (rebatchResult.consumed > 0) {
-                await saveVaultWithSnapshot(chatId, rebatchVault);
+                await saveMemoryVault(chatId, rebatchVault);
                 notifyVaultChanged();
                 console.log('[NE] LTM rebatch completed — consumed ' + rebatchResult.consumed + ' STMs');
             }
-            releasePipeline();
-        }
+        });
     } catch (e) {
         console.warn('[NE] LTM rebatch failed:', e);
-        releasePipeline();
     }
 }
 
 async function flushPendingMessages() {
-    if (!tryAcquire('stm')) {
-        console.log('[NE] flushPendingMessages: waiting for state pipeline — state=' + getState());
-        await waitForPipelineTrackIdle(PIPELINE_TIMEOUT_MS);
-        if (!tryAcquire('stm')) {
-            console.log('[NE] flushPendingMessages: guard still blocked after wait, deferring');
-            return;
-        }
-        console.log('[NE] flushPendingMessages: state pipeline done, proceeding');
-    }
-    try {
+    return enqueueStmWrite(async function() {
     if (pendingMessages.length === 0) return;
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var chatMessages = runtime.getChat ? runtime.getChat() : [];
@@ -552,7 +719,6 @@ async function flushPendingMessages() {
             recordTelemetry({ turns: batch.length, events: result.added });
         }
 
-        // Record vault size snapshot
         var content = latestVault && latestVault.content ? latestVault.content : {};
         var stmCount = ((content.unconsolidated_stm || []).concat(content.stm_entries || [])).length;
         var ltmCount = (content.ltm_entries || []).length;
@@ -575,31 +741,28 @@ async function flushPendingMessages() {
             persistPending();
         }
     }
-    } finally {
-        console.log('[NE] Pipeline: releasing guard pipeline (stm)');
-        releasePipeline();
-        persistPending();
 
-        runLtmConsolidation(chatId).catch(function(e) { console.warn('[NE] LTM BG pipeline failed:', e); });
+    persistPending();
+    try { await runLtmConsolidation(chatId); } catch(e) { console.warn('[NE] LTM pipeline failed:', e); }
 
-        if (pendingMessages.length > 0) {
-            (async function() {
-                var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
-                var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
-                var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
-                if ((pendingMessages.length >= await getStmBatchSize()
-                    || (pressureVal >= 0.50 && pressureVal > 0))
-                    && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
-                    _drainContinuationCount++;
-                    console.log('[NE] Continuation drain #' + _drainContinuationCount + ' — pending=' + pendingMessages.length);
-                    flushPendingMessages().catch(function(e) {
-                        console.warn('[NE] Continuation drain failed:', e);
-                    });
-                }
-                _drainContinuationCount = 0;
-            })().catch(function(e) { console.warn('[NE] Drain check failed:', e); });
-        }
+    if (pendingMessages.length > 0) {
+        (async function() {
+            var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
+            var chatMessagesDr = runtime.getChat ? runtime.getChat() : [];
+            var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessagesDr);
+            if ((pendingMessages.length >= await getStmBatchSize()
+                || (pressureVal >= 0.50 && pressureVal > 0))
+                && _drainContinuationCount < MAX_DRAIN_CONTINUATIONS) {
+                _drainContinuationCount++;
+                console.log('[NE] Continuation drain #' + _drainContinuationCount + ' — pending=' + pendingMessages.length);
+                flushPendingMessages().catch(function(e) {
+                    console.warn('[NE] Continuation drain failed:', e);
+                });
+            }
+            _drainContinuationCount = 0;
+        })().catch(function(e) { console.warn('[NE] Drain check failed:', e); });
     }
+    });
 }
 
 function triggerPerRoundExtraction(assistantMsg) {
@@ -607,18 +770,37 @@ function triggerPerRoundExtraction(assistantMsg) {
         console.log('[NE] State: skipped (State Schema disabled — enable in NE Memory settings)');
         return;
     }
-    if (!tryAcquire('state')) {
-        console.log('[NE] State: skipped (pipeline guard busy, state=' + getState() + ')');
-        return;
-    }
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
-    extractStateChangesOnly(chatId, userMsg, assistantMsg).then(function(stateResult) {
-        if (stateResult && stateResult.vault) notifyVaultChanged();
-    }).catch(function(e) {
-        console.warn('[NE] Per-round state pipeline failed:', e);
-    }).finally(function() {
-        releasePipeline();
+    _neCheckChatIntegrity('triggerPerRoundExtraction:before');
+    enqueueStateWrite(async function() {
+        try {
+            _neCheckChatIntegrity('enqueueStateWrite:entry');
+            var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+            if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
+                var sig = stateResult.vault.content._templateInitSignal;
+                var schemeCount = (sig.schemes && sig.schemes.length) || 0;
+                if (schemeCount > 0) {
+                    var schemesStr = sig.schemes.join(', ');
+                    sendNeInteraction(null,
+                        '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr,
+                        {
+                            buttons: [{ text: '\u67E5\u770B\u6A21\u677F\u5E93', key: 'open_templates' }],
+                            timeoutMs: 15000,
+                            onConfirm: function(key) {
+                                if (key === 'open_templates') {
+                                    try { PD.navigate('templates'); } catch(e) {}
+                                }
+                            }
+                        }
+                    );
+                }
+                delete stateResult.vault.content._templateInitSignal;
+            }
+            busEmit('vault:updated', { getChatId: getChatIdFn });
+        } catch (e) {
+            console.warn('[NE] Per-round state pipeline failed:', e);
+        }
     });
 }
 
@@ -667,7 +849,7 @@ function registerGlobalBannerRegex() {
             '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
             '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
             '```\n';
-        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>\\\\{[\\\\s\\\\S]*?\\\\}<!--\\\\/NE-CHAR-->)/g';
+        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>[\\\\s\\\\S]*?<!--\\\\/NE-CHAR-->)/g';
 
         var BANNER_DISPLAY_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
         var PROMPT_PATTERN = /^(?:ne-state-banner-prompt(?:-v\d+)?|ne-state-prompt(?:-v\d+)?|ne-char-block-prompt(?:-v\d+)?)$/;
@@ -743,7 +925,7 @@ function registerGlobalBannerRegex() {
             updatedCount++;
         }
 
-        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>\\{[\\s\\S]*?\\}<!--\\/NE-CHAR-->/g';
+        var CHAR_FIND = '/<!--NE-CHAR:[^-]+-{2,3}>[\\s\\S]*?<!--\\/NE-CHAR-->/g';
         var CHAR_DISPLAY_ID = 'ne-char-block-display';
         var CHAR_DISPLAY_NAME = 'NE Character Block Strip (Display)';
         var CHAR_VERSION = '1.3';
@@ -812,34 +994,36 @@ export { registerGlobalBannerRegex };
 
 export async function onBeforeGenerate(type, _options, dryRun) {
     var entryNow = Date.now();
-    console.log('[NE-DEBUG] onBeforeGenerate ENTRY type=' + type + ' dryRun=' + dryRun + ' _isInjecting=' + _isInjecting +
-        ' lastKnownChatId=' + lastKnownChatId + ' lastGenerationTime=' + lastGenerationTime +
-        ' elapsed=' + (entryNow - lastGenerationTime) + 'ms');
+    if (__NE_DEV_MODE) {
+        console.log('[NE-DEBUG] onBeforeGenerate ENTRY type=' + type + ' dryRun=' + dryRun + ' _isInjecting=' + _isInjecting +
+            ' lastKnownChatId=' + lastKnownChatId + ' lastGenerationTime=' + lastGenerationTime +
+            ' elapsed=' + (entryNow - lastGenerationTime) + 'ms');
+    }
     // ST 的 PromptManager 在页面加载/config变更时调用 Generate(type, {}, true)
     // 做 dry run 以获取 token 计数。dry run 走完整 prompt 组装但不调 API，
     // 但会触发 GENERATION_AFTER_COMMANDS 事件。各扩展应检测并跳过，避免副作用。
     if (dryRun) {
-        console.log('[NE-DEBUG] onBeforeGenerate EXIT: dry run');
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: dry run');
         return;
     }
     // 重入守卫：generateRaw/generateQuietPrompt 内部会调用 ST 的 Generate()，
     // 从而触发新的 GENERATION_AFTER_COMMANDS → onBeforeGenerate，形成级联。
     // 此守卫拦截所有重入调用，斩断级联链。
     if (_isInjecting) {
-        console.log('[NE-DEBUG] onBeforeGenerate EXIT: re-entrant blocked (_isInjecting=true)');
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: re-entrant blocked (_isInjecting=true)');
         return;
     }
     _isInjecting = true;
     try {
         // Skip non-content generations: impersonate (AI帮答), quiet, continue
         if (type && (type === 'impersonate' || type === 'quiet' || type === 'continue')) {
-            console.log('[NE-DEBUG] onBeforeGenerate EXIT: type=' + type);
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: type=' + type);
             return;
         }
-        if (!lastKnownChatId) { console.log('[NE-DEBUG] onBeforeGenerate EXIT: no lastKnownChatId'); return; }
+        if (!lastKnownChatId) { if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: no lastKnownChatId'); return; }
         var now = Date.now();
         if (now - lastGenerationTime < MIN_GENERATION_INTERVAL_MS) {
-            console.log('[NE-DEBUG] onBeforeGenerate EXIT: debounce — elapsed=' + (now - lastGenerationTime) + 'ms < ' + MIN_GENERATION_INTERVAL_MS + 'ms');
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: debounce - elapsed=' + (now - lastGenerationTime) + 'ms < ' + MIN_GENERATION_INTERVAL_MS + 'ms');
             return;
         }
         lastGenerationTime = now;
@@ -849,10 +1033,10 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             lastKnownChatId = chatId;
             pendingMessages = [];
         }
-        const vault = await read(chatId);
+        const vault = await readVault(chatId);
         if (!vault || !vault.content) { console.log('[NE] onBeforeGenerate skipped: no vault content'); return; }
         incrementChatTurn(chatId);
-        console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection — ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
+        if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate PASSED guards, proceeding to injection - ts=' + now + ' stm=' + ((vault.content.stm_entries || []).length + (vault.content.unconsolidated_stm || []).length) + ', ltm=' + (vault.content.ltm_entries || []).length);
         var chatMessages = runtime.getChat ? runtime.getChat() : [];
         adjustDialogWindow();
         var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
@@ -862,6 +1046,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             if (!stateProtoName && ctxName1) {
                 vault.content.state.protagonist_name = ctxName1;
                 stateProtoName = ctxName1;
+                try { await saveStateVault(chatId, vault); } catch (e) {}
             }
         }
         var protagonistName = stateProtoName || ctxName1;
@@ -872,10 +1057,24 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         if (isStateSchemaEnabled()) {
             var content = vault.content || {};
             var state = content.state || {};
-            var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content);
+            var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content, state.protagonist_name);
             if (stateTable) {
                 globalThis.__ne_debug_last_state_table = stateTable;
-                runtime.injectPrompt('ne_state_table', stateTable, 'in_chat', 2, 'system');
+                // Adaptive Context Control: 缓存原始内容供事后裁剪（同步到 adaptive-context.js 模块）
+                setAdaptiveCache({
+                    state: state,
+                    chatMessages: chatMessages,
+                    content: content,
+                    protagonistName: state.protagonist_name,
+                    stateTable: stateTable,
+                    stateTableTokens: countTokens(stateTable)
+                });
+                // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
+                var adaptiveEnabled = !!readNeSetting('adaptiveContextControl', false);
+                var markedStateTable = adaptiveEnabled
+                    ? '<!--NE:state_table-->' + stateTable + '<!--/NE:state_table-->'
+                    : stateTable;
+                runtime.injectPrompt('ne_state_table', markedStateTable, 'in_chat', 2, 'system');
             }
         }
 
@@ -903,7 +1102,17 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     formatted = MEMORY_INJECTION_WRAPPER + '\n\n' + formatted;
                 }
                 globalThis.__ne_debug_last_injection = formatted;
-                runtime.injectPrompt('ne_memory_vault', formatted, 'in_chat', 3, 'system');
+                // Adaptive Context Control: 缓存原始内容供事后裁剪（同步到 adaptive-context.js 模块）
+                setAdaptiveCache({
+                    memoryVault: formatted,
+                    memoryVaultTokens: countTokens(formatted)
+                });
+                // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
+                var adaptiveEnabledMv = !!readNeSetting('adaptiveContextControl', false);
+                var markedMemory = adaptiveEnabledMv
+                    ? '<!--NE:memory_vault-->' + formatted + '<!--/NE:memory_vault-->'
+                    : formatted;
+                runtime.injectPrompt('ne_memory_vault', markedMemory, 'in_chat', 3, 'system');
             }
             // State block instruction — Main LLM outputs pre-built banner HTML at reply start
             if (isStateSchemaEnabled()) {
@@ -927,23 +1136,41 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     '- 仅包含本轮消息中明确有台词或动作的角色。提及≠出场（"听说张三来过"不算）。';
                 runtime.injectPrompt('ne_state_block', stateBlockInstr, 'in_chat', 0, 'system');
                 globalThis.__ne_debug_last_state_block_instruction = stateBlockInstr;
-                console.log('[NE-DEBUG] onBeforeGenerate: ne_state_block injected, dayInfo=' + dayInfo + ' scene=' + (sceneInfo || '(none)') + ' time=' + (timePreview || '') + ' isSchemaEnabled=true');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_state_block injected, dayInfo=' + dayInfo + ' scene=' + (sceneInfo || '(none)') + ' time=' + (timePreview || '') + ' isSchemaEnabled=true');
 
                 var protagonistName = (vault.content.state && vault.content.state.protagonist_name) || '';
 
-                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
-    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
-    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: current_mood, inner_thoughts\n' +
+                var cardConfig = loadCardConfigSync(getChatIdFn ? getChatIdFn() : 'default');
+                var templates = getEffectiveTemplates().templates || {};
+                var pcTemplateId = (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.pc) || '_default_pc';
+                var pcTemplate = templates[pcTemplateId] || templates['_default_pc'] || {};
+                var pcPerRoundFields = (pcTemplate.perRoundFields && pcTemplate.perRoundFields.length > 0) ? pcTemplate.perRoundFields : ['current_mood', 'inner_thoughts'];
+                var pcFieldsStr = pcPerRoundFields.join(', ');
+
+                var npcPoolIds = (cardConfig && cardConfig._templateConfig && cardConfig._templateConfig.npc) || ['_default_npc'];
+                var npcPerRoundFields = {};
+                npcPoolIds.forEach(function(id) {
+                    var t = templates[id];
+                    if (t && t.perRoundFields) {
+                        t.perRoundFields.forEach(function(f) { npcPerRoundFields[f] = true; });
+                    }
+                });
+                if (Object.keys(npcPerRoundFields).length === 0) npcPerRoundFields = { current_mood: true, inner_thoughts: true };
+                var npcFieldsStr = Object.keys(npcPerRoundFields).sort().join(', ');
+
+                var charBlockInstr = '\u5728\u672c\u8f6e\u56de\u590d\u672b\u5c3e\u5fc5\u987b\u8f93\u51fa\u6d3b\u8dc3\u89d2\u8272\uff08\u672c\u8f6e\u6709\u53f0\u8bcd\u6216\u4e92\u52a8\u7684\u89d2\u8272\uff09\u7684\u5185\u5fc3\u72b6\u6001\uff1a\n' +
+    '\n- PC\uff08\u4f60\u626e\u6f14\u7684\u4e3b\u89d2\uff09' + (protagonistName ? ': ' + protagonistName : '') + ' \u2014 \u53ef\u7528\u5b57\u6bb5: ' + pcFieldsStr + '\n' +
+    '- NPC\uff08\u5176\u4ed6\u89d2\u8272\uff09\u2014 \u53ef\u7528\u5b57\u6bb5: ' + npcFieldsStr + '\n' +
     '\n\u683c\u5f0f\uff1a\n' +
     '  <!--NE-CHAR:\u89d2\u8272\u540d-->{"current_mood":"\u2026","inner_thoughts":"\u2026"}<!--/NE-CHAR-->\n' +
     '\n\u89c4\u5219\uff1a\n' +
-    '- \u53ea\u6709\u672c\u8f6e\u5b9e\u9645\u53d1\u751f\u4e86\u53d8\u5316\u7684\u89d2\u8272\u624d\u8f93\u51fa NE-CHAR \u5757\u3002\u65e0\u53d8\u5316\u7684\u89d2\u8272\u8df3\u8fc7\u3002\n' +
+    '- \u6bcf\u4e2a\u672c\u8f6e\u51fa\u73b0\u7684\u6d3b\u8dc3\u89d2\u8272\u90fd\u5fc5\u987b\u8f93\u51fa NE-CHAR \u5757\u3002\n' +
     '- current_mood: \u89d2\u8272\u5f53\u524d\u5fc3\u60c5/\u60c5\u7eea\u3002\n' +
     '- inner_thoughts: \u89d2\u8272\u5185\u5fc3\u60f3\u6cd5\u3002\n' +
     '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
     '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
-                console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? countTokens(formatted) : 0;
@@ -962,38 +1189,369 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     }
 }
 
-export async function onMessageDeleted(messageId) {
-    if (!getChatIdFn) return;
-    const chatId = getChatIdFn();
+/* ──────── 消息删除 / Swipe / 更新 — 记忆协调 ──────── */
+
+/**
+ * _detectAndRollback - 检测旧 msg_id 缺失并回退 State + Memory 版本链
+ *
+ * 用 findMessageInChat（send_date+role 锚定，带 idx 漂移兜底）判定 vault 中的
+ * msg_id 是否已从当前 chat 消失。覆盖删除、reroll（send_date 变更）、swipe-switch。
+ * 沿 Pipeline Log 反查受影响版本，利用 Delta 版本链回退；降级到 reconcileOrphanedStm。
+ *
+ * 匹配策略：
+ * - deletedIds 来自 vault STM 条目的 msg_ids（格式：idx_send_date_role）
+ * - Pipeline Log 的 message_dates 可能是 send_date 或完整 msg_id
+ * - 提取 send_date 部分（最后一个 _ 前的第二段）做松匹配
+ *
+ * @param {string} chatId
+ * @param {object[]} chatMessages — 当前 SillyTavern 聊天消息数组
+ * @param {object} currentVault — 当前 vault（用于降级路径）
+ * @returns {Promise<{rolledBackState: number, rolledBackMem: number, degraded: boolean}>}
+ */
+async function _detectAndRollback(chatId, chatMessages, currentVault) {
     try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
+    var chain = await getActiveChain(chatId);
+    if (!chain || (chain.state_head_seq === 0 && chain.mem_head_seq === 0)) {
+        reconcileOrphanedStm(currentVault, chatMessages);
+        return { rolledBackState: 0, rolledBackMem: 0, degraded: true, affectedMsgIds: [] };
+    }
+
+    function _msgGone(md) {
+        if (md == null) return false;
+        return findMessageInChat(chatMessages, md) == null;
+    }
+
+    var stateDeltas = await listStateDeltas(chatId, 200);
+    var memVersions = await listMemoryVersions(chatId, 200);
+
+    var affectedStateSeqs = [];
+    for (var si = 0; si < stateDeltas.length; si++) {
+        var sd = stateDeltas[si];
+        if (!sd || !sd.message_dates) continue;
+        if (sd.message_dates.some(_msgGone)) affectedStateSeqs.push(sd.seq);
+    }
+
+    var affectedMemSeqs = [];
+    for (var mi = 0; mi < memVersions.length; mi++) {
+        var mv = memVersions[mi];
+        if (!mv || !mv.message_dates) continue;
+        if (mv.message_dates.some(_msgGone)) affectedMemSeqs.push(mv.seq);
+        if (mv.derived_from_stm_version != null && affectedMemSeqs.indexOf(mv.derived_from_stm_version) !== -1) {
+            if (affectedMemSeqs.indexOf(mv.seq) === -1) affectedMemSeqs.push(mv.seq);
+        }
+    }
+
+    var rolledBackState = 0;
+    var rolledBackMem = 0;
+    var targetStateSeq = 0;
+
+    if (affectedStateSeqs.length > 0) {
+        var earliestStateSeq = Math.min.apply(null, affectedStateSeqs);
+        if (earliestStateSeq > 0) {
+            targetStateSeq = earliestStateSeq - 1;
+            await enqueueStateWrite(async function() {}); // drain state queue to avoid lost writes
+            await rollbackState(chatId, targetStateSeq);
+            rolledBackState = affectedStateSeqs.length;
+        }
+    }
+
+    if (affectedMemSeqs.length > 0) {
+        var earliestMemSeq = Math.min.apply(null, affectedMemSeqs);
+        if (earliestMemSeq > 0) {
+            await rollbackMemory(chatId, earliestMemSeq - 1);
+            rolledBackMem = affectedMemSeqs.length;
+        }
+    }
+
+    reconcileOrphanedStm(currentVault, chatMessages);
+
+    return { rolledBackState: rolledBackState, rolledBackMem: rolledBackMem, degraded: false, _targetStateSeq: targetStateSeq, affectedMsgIds: [] };
     } catch (e) {
-        console.warn('[NE] Rollback on message delete failed:', e);
+        console.error('[NE] _detectAndRollback failed:', e);
+        return { rolledBackState: 0, rolledBackMem: 0, degraded: true, affectedMsgIds: [] };
     }
 }
 
-export async function onMessageSwiped(messageId) {
-    const chatId = runtime.getChatId();
+/**
+ * _handleMessageRollback — 统一的消息删除/swipe/更新回滚入口
+ *
+ * @param {string} chatId
+ */
+function _handleMessageRollback(chatId, opts) {
+    opts = opts || {};
+    enqueueStmWrite(async function() {
+        try {
+            var vault = await readVault(chatId);
+            var chatMessages = opts.chat || (getChatMessagesFn ? getChatMessagesFn() : []);
+            chatMessages = Array.isArray(chatMessages) ? chatMessages : (chatMessages && chatMessages.messages ? chatMessages.messages : []);
+
+            // 改动 2: 清理 pendingMessages 中已消失的消息（避免后续 batch 提取陈旧内容）
+            var beforeLen = pendingMessages.length;
+            pendingMessages = pendingMessages.filter(function(e) {
+                if (e.id == null) return true;
+                return findMessageInChat(chatMessages, e.id) != null;
+            });
+            if (pendingMessages.length < beforeLen) {
+                persistPending();
+                console.log('[NE] _handleMessageRollback: purged ' + (beforeLen - pendingMessages.length) + ' deleted msg(s) from pending');
+            }
+
+            var result = await _detectAndRollback(chatId, chatMessages, vault);
+
+            if (result.degraded) {
+                await saveMemoryVault(chatId, vault);
+            } else if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
+                await saveMemoryVault(chatId, vault);
+            }
+
+            if (result.rolledBackState > 0 || result.rolledBackMem > 0) {
+                console.log('[NE] Rollback: state versions=' + result.rolledBackState +
+                    ', memory versions=' + result.rolledBackMem +
+                    (result.degraded ? ' (degraded to full scan)' : ' (Pipeline Log)'));
+                if (opts.reextractSlotIdx != null && chatMessages[opts.reextractSlotIdx]) {
+                    _reextractSlot(chatMessages, opts.reextractSlotIdx);
+                }
+            }
+
+            notifyVaultChanged();
+        } catch (e) {
+            console.warn('[NE] Rollback failed:', e);
+        }
+    });
+}
+
+/**
+ * _reextractSlot - 把指定槽位消息重入 pending 以便重新提取
+ *
+ * 用于 swipe-switch：回退旧变体提取后，把当前活跃变体重新排队，
+ * 让下次 pipeline batch 基于活跃变体内容重新提取。
+ * 按 _slotIdx 去重，避免同槽多次入队。
+ *
+ * @param {object[]} chatMessages
+ * @param {number} idx
+ */
+function _reextractSlot(chatMessages, idx) {
+    var m = chatMessages[idx];
+    if (!m) return;
     try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
+        var role = (m.is_user || m.role === 'user') ? 'user' : 'assistant';
+        m._ne_id = m._ne_id || buildMsgId(m, idx);
+        pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== idx; });
+        pendingMessages.push({
+            role: role,
+            name: m.name || '',
+            content: m.mes || '',
+            id: m._ne_id,
+            _slotIdx: idx,
+            timestamp: m.send_date ? new Date(m.send_date).getTime() : Date.now()
+        });
+        persistPending();
+        console.log('[NE] reextractSlot: re-queued slot ' + idx + ' for re-extraction (pending=' + pendingMessages.length + ')');
     } catch (e) {
-        console.warn('[NE] Rollback on message swipe failed:', e);
+        console.warn('[NE] reextractSlot failed:', e);
     }
+}
+
+/**
+ * reconcileOrphanedStm — 协调孤儿 STM
+ *
+ * 对比 vault 中的 msg_ids 与当前 chat，移除所有关联消息已消失的 STM 条目，
+ * 并级联清理 LTM stm_refs。
+ *
+ * @param {object} vault — 完整 vault 对象（会被原地修改）
+ * @param {object[]} chatMessages — 当前 SillyTavern 聊天消息数组
+ * @returns {{ removedSTM: number, removedLTM: number }}
+ */
+function reconcileOrphanedStm(vault, chatMessages) {
+    const content = vault.content || {};
+
+    const filterList = function(list) {
+        return (list || []).filter(function(stm) {
+            return (stm.msg_ids || []).every(function(mid) {
+                return findMessageInChat(chatMessages, mid) !== null;
+            });
+        });
+    };
+
+    const beforeStmCount = ((content.unconsolidated_stm || []).length + (content.stm_entries || []).length);
+    content.unconsolidated_stm = filterList(content.unconsolidated_stm);
+    content.stm_entries = filterList(content.stm_entries);
+    const afterStmCount = ((content.unconsolidated_stm || []).length + (content.stm_entries || []).length);
+    const removedSTM = beforeStmCount - afterStmCount;
+
+    var removedLTM = 0;
+    const keptLTM = [];
+    (content.ltm_entries || []).forEach(function(ltm) {
+        const refs = (ltm.stm_refs || []).filter(function(stmId) {
+            var idx = (vault.stm_index || {})[stmId];
+            if (!idx) return false;
+            return (idx.msg_ids || []).every(function(mid) {
+                return findMessageInChat(chatMessages, mid) !== null;
+            });
+        });
+        if (refs.length === 0) {
+            removedLTM++;
+        } else {
+            ltm.stm_refs = refs;
+            keptLTM.push(ltm);
+        }
+    });
+    content.ltm_entries = keptLTM;
+
+    if (removedSTM > 0) {
+        console.log('[NE] reconcileOrphanedStm: removed ' + removedSTM + ' orphan STM, ' + removedLTM + ' LTM');
+    }
+    return { removedSTM: removedSTM, removedLTM: removedLTM };
+}
+
+/**
+ * _purgeStmByMsgId - 按 msg_id 强制清除 STM 条目（编辑场景专用）
+ *
+ * 编辑不改 send_date -> msg_id 不变 -> reconcileOrphanedStm 不会移除其 STM。
+ * 本函数直接移除 msg_ids 含指定 msgId 的 STM 条目，并级联清理 LTM stm_refs。
+ *
+ * @param {object} vault - 完整 vault 对象（原地修改）
+ * @param {string} msgId - 被编辑消息的 _ne_id
+ * @returns {{ removedSTM: number, removedLTM: number }}
+ */
+function _purgeStmByMsgId(vault, msgId) {
+    var content = vault.content || {};
+    var removedStmIds = new Set();
+    var filterList = function(list) {
+        return (list || []).filter(function(stm) {
+            var has = (stm.msg_ids || []).indexOf(msgId) !== -1;
+            if (has && stm.id != null) removedStmIds.add(stm.id);
+            return !has;
+        });
+    };
+    content.unconsolidated_stm = filterList(content.unconsolidated_stm);
+    content.stm_entries = filterList(content.stm_entries);
+
+    var removedLTM = 0;
+    var keptLTM = [];
+    (content.ltm_entries || []).forEach(function(ltm) {
+        var refs = (ltm.stm_refs || []).filter(function(sid) { return !removedStmIds.has(sid); });
+        if (refs.length === 0) {
+            removedLTM++;
+        } else {
+            ltm.stm_refs = refs;
+            keptLTM.push(ltm);
+        }
+    });
+    content.ltm_entries = keptLTM;
+    var removedSTM = removedStmIds.size;
+    if (removedSTM > 0) {
+        console.log('[NE] _purgeStmByMsgId: removed ' + removedSTM + ' STM, ' + removedLTM + ' LTM for ' + msgId);
+    }
+    return { removedSTM: removedSTM, removedLTM: removedLTM };
+}
+
+export async function onMessageDeleted(messageId) {
+    if (!getChatIdFn) return;
+    _handleMessageRollback(getChatIdFn());
+}
+
+export async function onMessageSwiped(messageId) {
+    if (!getChatIdFn) return;
+    var chatId = getChatIdFn();
+    var chat = getChatMessagesFn ? getChatMessagesFn() : [];
+    chat = Array.isArray(chat) ? chat : (chat && chat.messages ? chat.messages : []);
+    // P0-5: 位置守卫 - 中间消息 swipe/reroll 无法干净修复（尾部提取链无法重建）
+    if (typeof messageId === 'number' && chat.length > 0 && messageId < chat.length - 1) {
+        try { toastr.warning('中间消息的 swipe/reroll 不受支持，记忆未变更。请对最新消息操作。'); } catch (e) {}
+        return;
+    }
+    // P0-4: switch 场景 send_date 已被 syncSwipeToMes 改写 -> 旧 msg_id 缺失 -> 回退 + 重入 pending；
+    //       生成场景 send_date 未变 -> no-op（留给 MESSAGE_RECEIVED 处理）
+    _handleMessageRollback(chatId, { reextractSlotIdx: messageId, chat: chat });
 }
 
 export async function onMessageUpdated(messageId) {
     if (!getChatIdFn) return;
-    const chatId = getChatIdFn();
+    var chatId = getChatIdFn();
+    var chat = getChatMessagesFn ? getChatMessagesFn() : [];
+    chat = Array.isArray(chat) ? chat : (chat && chat.messages ? chat.messages : []);
+    // P0-5: 位置守卫 - 中间消息编辑无法干净修复
+    if (typeof messageId === 'number' && chat.length > 0 && messageId < chat.length - 1) {
+        try { toastr.warning('中间消息的编辑不受支持，记忆未变更。请对最新消息操作。'); } catch (e) {}
+        return;
+    }
+    var m = chat[messageId];
+    if (!m) return;
+    m._ne_id = m._ne_id || buildMsgId(m, messageId);
+    var editedMsgId = m._ne_id;
+    // P1-3: 编辑不改 send_date -> msg_id 不变 -> 按 msg_id 正向定位受影响版本并回退
+    enqueueStmWrite(async function() {
+        try {
+            var vault = await readVault(chatId);
+            var stateDeltas = await listStateDeltas(chatId, 200);
+            var memVersions = await listMemoryVersions(chatId, 200);
+            var affectedStateSeqs = [];
+            for (var si = 0; si < stateDeltas.length; si++) {
+                var sd = stateDeltas[si];
+                if (sd && sd.message_dates && sd.message_dates.indexOf(editedMsgId) !== -1) {
+                    affectedStateSeqs.push(sd.seq);
+                }
+            }
+            var affectedMemSeqs = [];
+            for (var mi = 0; mi < memVersions.length; mi++) {
+                var mv = memVersions[mi];
+                if (mv && mv.message_dates && mv.message_dates.indexOf(editedMsgId) !== -1) {
+                    affectedMemSeqs.push(mv.seq);
+                }
+            }
+            var targetStateSeq = 0;
+            if (affectedStateSeqs.length > 0) {
+                var earliestState = Math.min.apply(null, affectedStateSeqs);
+                if (earliestState > 0) {
+                    targetStateSeq = earliestState - 1;
+                    await rollbackState(chatId, targetStateSeq);
+                }
+            }
+            if (affectedMemSeqs.length > 0) {
+                var earliestMem = Math.min.apply(null, affectedMemSeqs);
+                if (earliestMem > 0) {
+                    await rollbackMemory(chatId, earliestMem - 1);
+                }
+            }
+            if (affectedStateSeqs.length > 0 || affectedMemSeqs.length > 0) {
+                _purgeStmByMsgId(vault, editedMsgId);
+                await saveMemoryVault(chatId, vault);
+                _reextractSlot(chat, messageId);
+                console.log('[NE] onMessageUpdated: edit rollback state=' + affectedStateSeqs.length + ' mem=' + affectedMemSeqs.length + ' -> re-extract slot ' + messageId);
+                notifyVaultChanged();
+            } else {
+                // 该消息尚无提取记录（未进过 pipeline）-> 无需回退，直接重入 pending 以便首次提取
+                _reextractSlot(chat, messageId);
+                console.log('[NE] onMessageUpdated: no prior extraction for ' + editedMsgId + ' -> re-extract slot ' + messageId);
+            }
+        } catch (e) {
+            console.warn('[NE] onMessageUpdated rollback failed:', e);
+        }
+    });
+}
+
+export async function onChatDeleted(chatId) {
+    if (!chatId) return;
     try {
-        const vault = await read(chatId);
-        rollbackByMsgIds(vault, [messageId]);
-        await write(chatId, vault);
+        await remove(chatId);
+        try {
+            var statsKey = 'ne_chat_stats';
+            var raw = localStorage.getItem(statsKey);
+            if (raw) {
+                var stats = JSON.parse(raw);
+                if (stats && stats[chatId]) {
+                    delete stats[chatId];
+                    localStorage.setItem(statsKey, JSON.stringify(stats));
+                    try { neSync(statsKey); } catch (e) {}
+                }
+            }
+        } catch (e) {}
+        try { localStorage.removeItem('ne_ph_' + chatId); } catch (e) {}
+        try { localStorage.removeItem('ne_collapse_' + chatId); } catch (e) {}
+        console.log('[NE] Chat deleted, cleaned up:', chatId);
     } catch (e) {
-        console.warn('[NE] Rollback on message update failed:', e);
+        console.warn('[NE] Chat delete cleanup failed for', chatId, ':', e.message);
     }
 }
 

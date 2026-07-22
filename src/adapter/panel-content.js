@@ -1,19 +1,20 @@
-import { read, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
-import { loadVault } from '../core/auto-restore.js';
+import { readVault, write, isStorageBlocked, collectAllMsgIds, sortStmByMsgOrder } from '../core/vault/store.js';
+import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versions.js';
 import { splitStmsIntoContiguousGroups } from '../core/engine/consolidate.js';
-import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
-  panelById, panelQS, panelQSA, showConfirm, emptyStateHtml } from './panel-shared.js';
+  panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml, getPanelRoot } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
-  renderMemoryTable, enterCardEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
+  renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
+    var _overlay = byId('ne_vault_bottom_overlay');
+    if (_overlay && _overlay.style.display === 'none') return;
     if (typeof getChatId !== 'function') {
         console.error('[NE-VAULT] updateVaultViewerPopout called with non-function getChatId (type=' + typeof getChatId + ')', getChatId);
         return;
@@ -37,9 +38,31 @@ export async function updateVaultViewerPopout(getChatId) {
         console.error('[NE-VAULT] Stack:', e.stack);
     }
 
+    // ── Refresh protection: skip rebuild if user is editing ──
+    try {
+        var root = getPanelRoot();
+        var ae = root ? root.activeElement : document.activeElement;
+        if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell'))) {
+            showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
+            setUpdatingPopout(false);
+            return;
+        }
+    } catch (e) {}
+
+    // ── Save scroll position + open accordions for restore ──
+    var _savedAccordions = [];
+    var _savedScrollTop = 0;
+    try {
+        var scrollArea = panelQS('.ne-vault-scroll-area');
+        if (scrollArea) _savedScrollTop = scrollArea.scrollTop;
+        panelQSA('.ne-accordion.open').forEach(function(acc) {
+            if (acc.id) _savedAccordions.push(acc.id);
+        });
+    } catch (e) {}
+
     var vault, c;
     try {
-        vault = await loadVault(getChatId());
+        vault = await readVault(getChatId());
         c = vault.content || {};
         console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
         setPendingInlineStorage({ vault: vault, getChatId: getChatId });
@@ -51,51 +74,19 @@ export async function updateVaultViewerPopout(getChatId) {
         return;
     }
 
-    // ── Section A: Header (pipeline status + API status) ──
+    // ── Section A: Scene info (State tab) ──
     try {
-        var verEl = panelById('ne-memory-version');
-        if (verEl) {
-            var verText = t('Version:') + ' ' + (vault.version || 0);
-            var ts = formatLocalTime(vault.updated_at);
-            if (ts) verText += ' \u00b7 ' + ts;
-            verEl.textContent = verText;
-        }
-        var sceneEl = panelById('narrative_vault_panel_scene');
+        var sceneEl = panelById('ne-state-scene');
         if (sceneEl) {
             var sceneParts = [];
             if (c.story_time) sceneParts.push(c.story_time);
             if (c.story_scene) sceneParts.push(c.story_scene);
             if (c.story_date) sceneParts.push(c.story_date);
-            if (c.state && c.state.main_event) sceneParts.push(c.state.main_event);
-            sceneEl.textContent = sceneParts.join(' ─ ');
-        }
-        var apiStatus = panelById('narrative_secondary_api_status');
-        if (apiStatus) {
-            try {
-                var raw = localStorage.getItem('ne_secondary_api');
-                var secondaryConfig = raw ? JSON.parse(raw) : null;
-                var titleLines = [];
-                if (secondaryConfig && secondaryConfig.url && secondaryConfig.model) {
-                    apiStatus.style.color = '#4caf50';
-                    titleLines.push(t('Secondary API') + ': ' + secondaryConfig.model);
-                } else {
-                    apiStatus.style.color = '#888';
-                    titleLines.push(t('No secondary API configured'));
-                }
-                try {
-                    var rawS = localStorage.getItem('ne_settings'), rawE = localStorage.getItem('ne_embedding_api');
-                    var stg = rawS ? JSON.parse(rawS) : {}, embCfg = rawE ? JSON.parse(rawE) : null;
-                    if (stg.enableVectorSearch && embCfg && embCfg.url && embCfg.model) {
-                        titleLines.push(t('Vector API') + ': ' + embCfg.model);
-                    }
-                } catch (e) {}
-                apiStatus.title = titleLines.join('\n');
-            } catch (e) { apiStatus.style.color = '#888'; }
+            sceneEl.textContent = sceneParts.join(' \u2500 ');
         }
     } catch (e) { _logSection('header', e); }
 
-    var panelBody = verEl ? verEl.parentElement : null;
-    if (!panelBody) { setUpdatingPopout(false); return; }
+    if (!panelById('tab-memory')) { setUpdatingPopout(false); return; }
 
     // 修复区域中嵌套 Accordion 面板的显示状态，将所有子 accordion-content 统一标记
     panelQSA('.narrative_state_block').forEach(function (el) { el.remove(); });
@@ -121,6 +112,42 @@ export async function updateVaultViewerPopout(getChatId) {
                         enterCardEditMode(this);
                     };
                 });
+                var schemeBtns = block.querySelectorAll('.ne-card-scheme-btn');
+                for (var i = 0; i < schemeBtns.length; i++) {
+                    schemeBtns[i].addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var card = this.closest('.ne-char-card');
+                        var charName = this.getAttribute('data-char');
+                        var cardType = this.getAttribute('data-cardtype') || 'npc';
+                        enterSchemeEditMode(card, charName, cardType);
+                    });
+                }
+                var lockBtns = block.querySelectorAll('.ne-card-lock-btn');
+                for (var j = 0; j < lockBtns.length; j++) {
+                    lockBtns[j].addEventListener('click', async function(e) {
+                        e.stopPropagation();
+                        var name = this.getAttribute('data-char');
+                        var chatId = _currentGetChatId ? _currentGetChatId() : null;
+                        if (!chatId) { showToast('No active chat', 'warn', 2000); return; }
+                        var vault = await readVault(chatId);
+                        if (!vault || !vault.content || !vault.content.state) { showToast('No state data', 'warn', 2000); return; }
+                        var state = vault.content.state;
+                        if (!state.characters) state.characters = {};
+                        if (!state.characters[name]) state.characters[name] = {};
+                        var isLocked = !state.characters[name]._templateLocked;
+                        state.characters[name]._templateLocked = isLocked;
+                        await write(chatId, vault);
+                        recordStateDelta(chatId, { source: 'manual_edit', summary: '切换模板锁定 ' + name, changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
+                        if (isLocked) {
+                            this.classList.add('locked');
+                            this.textContent = '\u{1F512}';
+                        } else {
+                            this.classList.remove('locked');
+                            this.textContent = '\u{1F513}';
+                        }
+                        showToast((isLocked ? t('locked') : t('unlock')) + ': ' + name, 'info', 2000);
+                    });
+                }
             }, 50);
         }
     } catch (e) { _logSection('char-block', e); }
@@ -157,6 +184,7 @@ export async function updateVaultViewerPopout(getChatId) {
             c.stm_entries = stmEntries.concat(misplacedEntries);
             c.unconsolidated_stm = unconsolidatedRaw.filter(function (e) { return !e.parent_ltm; });
             await write(getChatId(), vault);
+            recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: 'STM 自愈迁移 ' + misplacedEntries.length + ' 条', delta: {}, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
             stmIndexMap = {};
             var stmEntries2 = Array.isArray(c.stm_entries) ? c.stm_entries : [];
             var unconsolidatedRaw2 = Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm : [];
@@ -247,6 +275,7 @@ export async function updateVaultViewerPopout(getChatId) {
                     var json = ta ? JSON.parse(ta.value) : {};
                     c.state = json;
                     await write(getChatId(), vault);
+                    recordStateDelta(getChatId(), { source: 'manual_edit', summary: 'JSON 编辑 state', changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                     await updateVaultViewerPopout(getChatId);
                 } catch(e) { alert(t('Invalid JSON') + ': ' + e.message); }
             };
@@ -258,6 +287,7 @@ export async function updateVaultViewerPopout(getChatId) {
                     if (await showConfirm(t('Clear all state?'), t('LLM will regenerate from character card and world book on next turn.'), t('Clear'), t('Cancel'), true)) {
                         c.state = {};
                         await write(getChatId(), vault);
+                        recordStateDelta(getChatId(), { source: 'manual_edit', summary: '清空 state', changes: [], message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
                         await updateVaultViewerPopout(getChatId);
                     }
                 } catch (e) {
@@ -266,6 +296,20 @@ export async function updateVaultViewerPopout(getChatId) {
             };
         });
     } catch (e) { _logSection('event-handlers', e); }
+
+    // ── Restore scroll position + accordion states ──
+    try {
+        if (_savedAccordions.length > 0 || _savedScrollTop > 0) {
+            requestAnimationFrame(function() {
+                _savedAccordions.forEach(function(id) {
+                    var acc = panelById(id);
+                    if (acc) acc.classList.add('open');
+                });
+                var sa = panelQS('.ne-vault-scroll-area');
+                if (sa && _savedScrollTop > 0) sa.scrollTop = _savedScrollTop;
+            });
+        }
+    } catch (e) {}
 
     setUpdatingPopout(false);
 }

@@ -126,6 +126,7 @@ export async function runTestLoop(testCase, hostDoc) {
         globalThis.__ne_tr_currentRound = round;
         await sendMessageAndWait(userMessage, doc, testCase.timeoutPerRound);
         await __ne_waitForPipelineDrain(testCase.timeoutPerRound * 3);
+        _testCheckChatIntegrity('runTestLoop:afterPipelineDrain');
 
         var roundData = collectRoundData(round, round);
         lastAiReply = getLastAiReply();
@@ -419,11 +420,7 @@ function getLastAiReply() {
         var chat = SillyTavern.getContext().chat || [];
         for (var i = chat.length - 1; i >= 0; i--) {
             if (!chat[i].is_user && chat[i].mes) {
-                var reasoning = chat[i].extra ? chat[i].extra.reasoning : '';
-                if (reasoning && reasoning.length > 0) {
-                    return chat[i].mes + '\n\n[思考过程]\n' + reasoning;
-                }
-                return chat[i].mes;
+                return stripFormatTags(chat[i].mes);
             }
         }
     } catch (e) {}
@@ -583,6 +580,21 @@ async function sendMessageAndWait(message, doc, timeout) {
     var btn = doc.getElementById('send_but');
     if (btn) btn.click();
     await __ne_waitUntilReply(timeout, doc);
+    _testCheckChatIntegrity('sendMessageAndWait:afterReply');
+}
+
+function _testCheckChatIntegrity(tag) {
+    try {
+        var ctx = SillyTavern.getContext();
+        var chat = ctx && ctx.chat;
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                return;
+            }
+        }
+    } catch (e) {}
 }
 
 function __ne_waitUntilReply(maxMs, doc) {
@@ -602,7 +614,13 @@ function __ne_waitUntilReply(maxMs, doc) {
 }
 
 async function callMainApi(systemPrompt, userPrompt) {
+    _testCheckChatIntegrity('callMainApi:beforeGenerateQuietPrompt');
     var ctx = SillyTavern.getContext();
+    if (ctx.chat && ctx.chat.length) {
+        while (ctx.chat.length > 0 && ctx.chat[ctx.chat.length - 1] === undefined) {
+            ctx.chat.length = ctx.chat.length - 1;
+        }
+    }
     if (ctx.generateQuietPrompt) {
         var fullPrompt = systemPrompt + '\n\n---\n\n' + userPrompt;
         var resp = await ctx.generateQuietPrompt({ quietPrompt: fullPrompt, removeReasoning: true });

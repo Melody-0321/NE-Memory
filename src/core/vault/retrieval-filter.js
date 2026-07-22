@@ -14,8 +14,82 @@ import { tokenize } from '../engine/text-utils.js';
 import { isVectorSearchEnabled, computeEmbedding, loadEmbeddingApiConfig } from '../engine/embedding.js';
 import { ensureVectorIndex, vectorSearch, rrfFuse, getVectorIndex } from '../engine/retrieval-fusion.js';
 
-import { buildSearchableText } from '../engine/retrieval-text.js';
+import { buildSearchableText, buildSearchableBaseText, buildAliasText } from '../engine/retrieval-text.js';
 export { buildSearchableText };
+
+// ─── Module-level BM25 index cache (per chatId) ───
+var _cache = {
+    chatId: null,
+    knownMap: {},
+    docFreq: {},
+    totalTokens: 0,
+    totalDocs: 0
+};
+
+function _fingerprint(entry) {
+    return [entry.period, entry.time_range, entry.time_label,
+            entry.scene, entry.event, entry.translation].join('\x00');
+}
+
+function _addToIndex(entry) {
+    var baseText = buildSearchableBaseText(entry);
+    var baseTokens = tokenize(baseText);
+    _cache.knownMap[entry.id] = { baseTokens: baseTokens, fingerprint: _fingerprint(entry) };
+    var seen = {};
+    for (var j = 0; j < baseTokens.length; j++) {
+        var t = baseTokens[j];
+        if (!seen[t]) { seen[t] = true; _cache.docFreq[t] = (_cache.docFreq[t] || 0) + 1; }
+    }
+    _cache.totalTokens += baseTokens.length;
+    _cache.totalDocs++;
+}
+
+function _removeFromIndex(id) {
+    var cached = _cache.knownMap[id];
+    if (!cached) return;
+    var seen = {};
+    for (var j = 0; j < cached.baseTokens.length; j++) {
+        var t = cached.baseTokens[j];
+        if (!seen[t]) {
+            seen[t] = true;
+            _cache.docFreq[t] = (_cache.docFreq[t] || 0) - 1;
+            if (_cache.docFreq[t] <= 0) delete _cache.docFreq[t];
+        }
+    }
+    _cache.totalTokens -= cached.baseTokens.length;
+    _cache.totalDocs--;
+    delete _cache.knownMap[id];
+}
+
+function _syncCache(allSTM) {
+    var currentIds = {};
+    for (var i = 0; i < allSTM.length; i++) {
+        var stm = allSTM[i];
+        if (!stm || !stm.id) continue;
+        currentIds[stm.id] = true;
+        var fp = _fingerprint(stm);
+        var cached = _cache.knownMap[stm.id];
+        if (!cached) {
+            _addToIndex(stm);
+        } else if (cached.fingerprint !== fp) {
+            _removeFromIndex(stm.id);
+            _addToIndex(stm);
+        }
+    }
+    var staleIds = [];
+    for (var id in _cache.knownMap) {
+        if (!currentIds[id]) staleIds.push(id);
+    }
+    for (var k = 0; k < staleIds.length; k++) _removeFromIndex(staleIds[k]);
+}
+
+export function _resetRetrievalCache() {
+    _cache.chatId = null;
+    _cache.knownMap = {};
+    _cache.docFreq = {};
+    _cache.totalTokens = 0;
+    _cache.totalDocs = 0;
+}
 
 /**
  * @param {string[]} queryTokens
@@ -245,12 +319,24 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
 
     var entries = [];
 
+    if (chatId !== _cache.chatId) {
+        _cache.chatId = chatId;
+        _cache.knownMap = {};
+        _cache.docFreq = {};
+        _cache.totalTokens = 0;
+        _cache.totalDocs = 0;
+    }
+    _syncCache(allSTM);
+
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
         if (!stm || !stm.id) continue;
-        var text = buildSearchableText(stm, aliasesMap);
+        var cached = _cache.knownMap[stm.id];
+        if (!cached) continue;
+        var aliasTokens = tokenize(buildAliasText(stm, aliasesMap));
+        var mergedTokens = cached.baseTokens.concat(aliasTokens);
         entries.push({
-            _tokens: tokenize(text),
+            _tokens: mergedTokens,
             _entry: stm,
             _type: 'stm',
             _id: stm.id
@@ -289,27 +375,11 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         return allResults;
     }
 
-    var docFreq = {};
-    var totalTokens = 0;
-
-    for (var i = 0; i < entries.length; i++) {
-        var tokens = entries[i]._tokens;
-        totalTokens += tokens.length;
-        var seen = {};
-        for (var j = 0; j < tokens.length; j++) {
-            var term = tokens[j];
-            if (!seen[term]) {
-                seen[term] = true;
-                docFreq[term] = (docFreq[term] || 0) + 1;
-            }
-        }
-    }
-
-    var avgDocLen = totalDocs > 0 ? totalTokens / totalDocs : 1;
+    var avgDocLen = _cache.totalDocs > 0 ? _cache.totalTokens / _cache.totalDocs : 1;
     var queryTokens = tokenize(query);
 
     for (var i = 0; i < entries.length; i++) {
-        entries[i]._score = bm25Score(queryTokens, entries[i]._tokens, avgDocLen, totalDocs, docFreq);
+        entries[i]._score = bm25Score(queryTokens, entries[i]._tokens, avgDocLen, totalDocs, _cache.docFreq);
     }
 
     entries.sort(function (a, b) { return b._score - a._score; });
@@ -341,7 +411,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         }
         var result;
         if (e._entry != null) {
-            try { result = JSON.parse(JSON.stringify(e._entry)); } catch (_) { result = e._entry; }
+            try { result = Object.assign({}, e._entry); } catch (_) { result = e._entry; }
         } else {
             result = { id: e._id || 'unknown', event: '(data missing)' };
         }

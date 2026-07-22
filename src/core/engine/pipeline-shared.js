@@ -1,26 +1,65 @@
-import { writeWithSnapshot } from '../vault/store.js';
-import { pruneSnapshotsForChat } from '../vault/versions.js';
-import { persistVaultToChatFile } from '../auto-restore.js';
+import { writeState, writeMemory, STATE_CONTENT_FIELDS } from '../vault/store.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 
-export async function saveVaultWithSnapshot(chatId, vault) {
-    vault.version = (vault.version || 0) + 1;
-    vault.updated_at = new Date().toISOString();
+var _checkChatTag = '';
+
+export function _checkChatIntegrity(tag) {
     try {
-        var snapshotEntry = {
-            id: chatId + '_v' + vault.version,
-            chat_id: chatId,
-            version: vault.version,
-            updated_at: vault.updated_at,
-            data: JSON.parse(JSON.stringify(vault))
-        };
-        await writeWithSnapshot(chatId, vault, snapshotEntry);
-        // Prune snapshots beyond limit 30 (oldest first)
-        try { await pruneSnapshotsForChat(chatId); } catch (e) { console.warn('[NE] pruneSnapshots error:', e); }
-        persistVaultToChatFile(vault);
+        var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        var chat = ctx && ctx.chat;
+        if (!chat || !Array.isArray(chat)) return;
+        for (var i = 0; i < chat.length; i++) {
+            if (chat[i] === undefined || chat[i] === null) {
+                if (!_checkChatTag) {
+                    _checkChatTag = tag;
+                    console.error('[NE-CHECK] chat[] corrupted at index ' + i + ' @ ' + tag + ' (total length=' + chat.length + ')');
+                }
+                return;
+            }
+        }
+    } catch (e) {}
+}
+
+export function _resetCheckChatTag() { _checkChatTag = ''; }
+
+export async function saveStateVault(chatId, stateVault) {
+    stateVault.version = (stateVault.version || 0) + 1;
+    stateVault.updated_at = new Date().toISOString();
+    try {
+        await writeState(chatId, stateVault);
     } catch (e) {
-        console.error('[NE] saveVaultWithSnapshot failed:', e);
+        console.error('[NE] saveStateVault failed:', e);
+        throw e;
+    }
+}
+
+
+
+function _stripStateFieldsForMemory(vault) {
+    var content = vault && vault.content;
+    if (!content) return vault;
+    var hasStateField = false;
+    for (var i = 0; i < STATE_CONTENT_FIELDS.length; i++) {
+        if (content[STATE_CONTENT_FIELDS[i]] !== undefined) { hasStateField = true; break; }
+    }
+    if (!hasStateField) return vault;
+    var cleanContent = {};
+    Object.keys(content).forEach(function (k) {
+        if (STATE_CONTENT_FIELDS.indexOf(k) === -1) cleanContent[k] = content[k];
+    });
+    return Object.assign({}, vault, { content: cleanContent });
+}
+
+export async function saveMemoryVault(chatId, memoryVault) {
+    var clean = _stripStateFieldsForMemory(memoryVault);
+    clean.version = (clean.version || 0) + 1;
+    clean.updated_at = new Date().toISOString();
+    try {
+        await writeMemory(chatId, clean);
+    } catch (e) {
+        console.error('[NE] saveMemoryVault failed:', e);
+        throw e;
     }
 }
 
@@ -55,6 +94,15 @@ export function ensureStateStructure(vault) {
                         else ch[fk] = '';
                     }
                 });
+            });
+
+            var activeChars = vault.content._active_characters || [];
+            Object.keys(state.characters).forEach(function (name) {
+                var ch = state.characters[name];
+                if (!ch || typeof ch !== 'object') return;
+                if (!ch.status && activeChars.indexOf(name) !== -1) {
+                    ch.status = '\u6D3B\u8DC3';
+                }
             });
         }
     }

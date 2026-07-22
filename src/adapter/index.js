@@ -4,16 +4,15 @@
  * 植入：注入 SillyTavern 实现到 Core runtime，然后启动 Core bootstrap。
  */
 import { runtime } from '../core/runtime.js';
-import { read, write } from '../core/vault/store.js';
+import { readVault } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged, adaptContextPostTrim } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
-import { DEFAULT_GLOBAL_SCHEMA, DEFAULT_CHARACTER_SCHEMA, setDynamicStateMode } from '../core/vault/schema.js';
-import { loadVault } from '../core/auto-restore.js';
-import { setRetrievalEnabled } from '../core/settings.js';
+import { DEFAULT_GLOBAL_SCHEMA, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, setDynamicStateMode } from '../core/vault/schema.js';
+import { setRetrievalEnabled, readNeSetting } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner.js';
@@ -21,7 +20,8 @@ import { getTestCaseMetadata } from '../core/test-runner/files.js';
 import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, getChatBreakdown, getAvailableMonths, getMonthlyStats } from '../core/engine/token-stats.js';
 import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
-window.__NE_DEV_MODE = window.__NE_DEV_MODE !== undefined ? window.__NE_DEV_MODE : true;
+import { neRestoreAll } from '../core/settings-adapter.js';
+import { applyChatCompletionPatch } from './chat-completion-patch.js';
 
 var _retryTimer = null;
 
@@ -230,6 +230,7 @@ function loadSettings() {
 async function init() {
     var locale = getLocale();
     var settings = loadSettings();
+    neRestoreAll();
     var chatId = getChatId();
 
     setContextFns(getChatId, getChatMessages);
@@ -239,6 +240,7 @@ async function init() {
 
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
+    try { await applyChatCompletionPatch(); } catch (e) { console.warn('[NE] ChatCompletion patch failed:', e.message); }
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
@@ -256,6 +258,44 @@ function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
 }
 
 var _bannerRegexRetryTimer = null;
+
+/**
+ * 在 CHAT_COMPLETION_PROMPT_READY 事件中裁剪对话轮数。
+ * data.chat 是 ST getChat() 输出的扁平数组，每条消息有 role 属性。
+ * 从末尾向前计数 user->assistant 配对，删除超出限制的旧消息。
+ */
+function trimDialogRounds(chat) {
+    if (!chat || chat.length === 0) return;
+    var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+    if (maxRounds <= 0) return;
+
+    var rounds = 0;
+    var prevRole = null;
+    var cutoffIndex = -1;
+
+    for (var i = chat.length - 1; i >= 0; i--) {
+        var m = chat[i];
+        if (!m) continue;
+        var role = m.role;
+        if (role !== 'user' && role !== 'assistant') continue;
+
+        if (prevRole === 'user' && role === 'assistant') {
+            rounds++;
+            if (rounds >= maxRounds) {
+                cutoffIndex = i;
+                break;
+            }
+        }
+        prevRole = role;
+    }
+
+    if (cutoffIndex > 0) {
+        var removed = cutoffIndex;
+        chat.splice(0, cutoffIndex);
+        console.log('[NE] trimDialogRounds: removed ' + removed + ' messages (maxRounds=' + maxRounds + ')');
+    }
+}
+
 function _tryRegisterBannerRegex(retryCount) {
     retryCount = retryCount || 0;
     var ok = registerGlobalBannerRegex();
@@ -289,6 +329,15 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_sent', onMessageSent); } catch (e) { console.warn('[NE] message_sent registration failed:', e); }
             try { eventSource.on('message_received', onMessageReceived); } catch (e) { console.warn('[NE] message_received registration failed:', e); }
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
+            try { eventSource.on('chat_completion_prompt_ready', async (data) => {
+                try {
+                    if (!data || !data.chat) return;
+                    trimDialogRounds(data.chat);
+                    if (readNeSetting('adaptiveContextControl', false)) {
+                        await adaptContextPostTrim(data.chat, data.dryRun);
+                    }
+                } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY handler failed:', e); }
+            }); } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY registration failed:', e); }
             console.log('[NE] All string event listeners registered, onBeforeGenerate=' + typeof onBeforeGenerate);
             try { eventSource.on('chat_id_changed', async () => {
                 try {
@@ -298,7 +347,7 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await loadVault(chatId2);
+                    var vault = await readVault(chatId2);
                     await migrateVaultIfNeeded(chatId2, vault);
                     notifyVaultChanged();
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
@@ -306,6 +355,8 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('message_deleted', onMessageDeleted); } catch (e) {}
             try { eventSource.on('message_swiped', onMessageSwiped); } catch (e) {}
             try { eventSource.on('message_updated', onMessageUpdated); } catch (e) {}
+            try { eventSource.on('chat_deleted', onChatDeleted); } catch (e) {}
+            try { eventSource.on('group_chat_deleted', onChatDeleted); } catch (e) {}
             _tryRegisterBannerRegex(0);
             console.log('[NE] Event listeners registered via eventSource');
         }
@@ -319,6 +370,15 @@ function setupEventListeners(retryCount) {
             if (tavern_events.MESSAGE_SENT) TavernHelper._eventOn(tavern_events.MESSAGE_SENT, onMessageSent);
             if (tavern_events.MESSAGE_RECEIVED) TavernHelper._eventOn(tavern_events.MESSAGE_RECEIVED, onMessageReceived);
             if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
+            if (tavern_events.CHAT_COMPLETION_PROMPT_READY) TavernHelper._eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async (data) => {
+                try {
+                    if (!data || !data.chat) return;
+                    trimDialogRounds(data.chat);
+                    if (readNeSetting('adaptiveContextControl', false)) {
+                        await adaptContextPostTrim(data.chat, data.dryRun);
+                    }
+                } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY handler failed:', e); }
+            });
             if (tavern_events.CHAT_CHANGED) {
                 TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
                     var chatId2b = getChatId();
@@ -327,7 +387,7 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await loadVault(chatId2b);
+                    var vault = await readVault(chatId2b);
                     await migrateVaultIfNeeded(chatId2b, vault);
                     notifyVaultChanged();
                 });
@@ -357,7 +417,7 @@ function setupEventListeners(retryCount) {
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    console.log('[NE] Engine starting... build=' + 'NE v1.0.0');
+    console.log('[NE] Engine starting... build=' + 'NE v6.8.0');
 
     try {
         window.__ne_debug = _buildDebugApi();
@@ -375,6 +435,35 @@ function bootNE(retries) {
     };
     window.__ne_llm_hook = globalThis.__ne_llm_hook;
 
+    globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
+        if (type === 'quiet') return;
+
+        var cwRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+
+        var rounds = 0;
+        var prevRole = null;
+        var cutoffIndex = -1;
+
+        for (var i = coreChat.length - 1; i >= 0; i--) {
+            var m = coreChat[i];
+            if (!m || m.is_system) continue;
+            var role = (m.role === 'user' || m.is_user) ? 'user' : 'assistant';
+
+            if (prevRole === 'user' && role === 'assistant') {
+                rounds++;
+                if (rounds >= cwRounds) {
+                    cutoffIndex = i;
+                    break;
+                }
+            }
+            prevRole = role;
+        }
+
+        if (cutoffIndex > 0) {
+            coreChat.splice(0, cutoffIndex + 1);
+        }
+    };
+
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
     });
@@ -382,14 +471,14 @@ function bootNE(retries) {
 
 function _buildDebugApi() {
     var hostDoc = window.__NE_EXTENSION_MODE ? document : (window.parent && window.parent !== window ? window.parent.document : document);
-    return {
+    var api = {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
-            try { var v = await read(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
+            try { var v = await readVault(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
         },
         getVaultSummary: async function() {
             try {
-                var v = await read(getChatId());
+                var v = await readVault(getChatId());
                 if (!v || !v.content) return null;
                 return { stmCount: (v.content.unconsolidated_stm || []).length + (v.content.stm_entries || []).length, ltmCount: (v.content.ltm_entries || []).length, unconsolidatedCount: (v.content.unconsolidated_stm || []).length };
             } catch (e) { return null; }
@@ -402,7 +491,7 @@ function _buildDebugApi() {
         getCursor: function() { return globalThis.__ne_debug_last_cursor || null; },
         getSmartpushPrompt: function() { return globalThis.__ne_debug_last_smartpush_prompt || null; },
         dumpVault: async function() {
-            try { var v = await read(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content)); } catch (e) { return null; }
+            try { var v = await readVault(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content)); } catch (e) { return null; }
         },
         getFactionSummary: function() {
             try {
@@ -457,10 +546,6 @@ function _buildDebugApi() {
             await this._waitUntilReply(120000);
         },
         getLastReport: function() { return globalThis.__ne_debug._lastTestReport; },
-        runTest: async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } },
-        runTestByName: async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } },
-        listTests: function() { return listTests(); },
-        getTestCaseMetadata: function(name) { return getTestCaseMetadata(name); },
         getUsageOverview: function() { return getUsageOverview(getAllChatStats); },
         getDailyStats: function(days) { return getDailyStats(days || 30); },
         getAllChatUsage: function() { return getAllChatUsage(getAllChatStats); },
@@ -469,7 +554,6 @@ function _buildDebugApi() {
         getAvailableMonths: function() { return getAvailableMonths(); },
         getMonthlyStats: function(month) { return getMonthlyStats(month); },
         getCurrentChatId: function() { return getChatId(); },
-        setReportsDir: async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } },
         waitForPipelineIdle: async function(timeout) { return waitForPipelineIdle(timeout); },
         dumpVaultKeys: async function() {
             try { return await _dumpVaultKeys(); } catch (e) { return 'Error: ' + e.message; }
@@ -477,19 +561,14 @@ function _buildDebugApi() {
         findMyVault: async function() {
             try {
                 var data = await _dumpVaultKeys();
-                var keys = data.vaults || data; // fallback for old format
-                var snaps = data.snapshots || [];
+                var keys = data.vaults || data;
                 var currentId = getChatId();
-                console.log('[NE-DEBUG] Current chatId:', currentId);
-                console.log('[NE-DEBUG] Vaults:');
-                console.table(keys);
-                if (snaps.length > 0) {
-                    console.log('[NE-DEBUG] Snapshots (' + snaps.length + ' total):');
-                    console.table(snaps);
-                } else {
-                    console.log('[NE-DEBUG] No snapshots found in IndexedDB.');
+                if (__NE_DEV_MODE) {
+                    console.log('[NE-DEBUG] Current chatId:', currentId);
+                    console.log('[NE-DEBUG] Vaults:');
+                    console.table(keys);
                 }
-                return { currentChatId: currentId, allKeys: keys, snapshots: snaps };
+                return { currentChatId: currentId, allKeys: keys };
             } catch (e) { return 'Error: ' + e.message; }
         },
         resetVectorIndex: async function(chatId) { try { return await resetVectorIndex(chatId); } catch (e) { return 'Error: ' + e.message; } },
@@ -497,6 +576,14 @@ function _buildDebugApi() {
         gc: async function() { try { return await scanOrphans(); } catch (e) { return 'Error: ' + e.message; } },
         purgeChat: async function(chatId) { try { return await purgeOrphanChatData(chatId); } catch (e) { return 'Error: ' + e.message; } },
     };
+    if (__NE_DEV_MODE) {
+        api.runTest = async function(config) { try { return await runTest(config, hostDoc); } catch (e) { return { error: e.message }; } };
+        api.runTestByName = async function(name, maxRoundsOverride) { try { return await runTestByName(name, hostDoc, maxRoundsOverride); } catch (e) { return { error: e.message }; } };
+        api.listTests = function() { return listTests(); };
+        api.getTestCaseMetadata = function(name) { return getTestCaseMetadata(name); };
+        api.setReportsDir = async function() { try { return await setReportsDir(); } catch (e) { return 'Error: ' + e.message; } };
+    }
+    return api;
 }
 
 function _dumpVaultKeys() {
@@ -508,8 +595,6 @@ function _dumpVaultKeys() {
             var vaultStore = vaultTx.objectStore('vaults');
             var keys = [];
             var vaultDone = false;
-            var snapDone = false;
-            var snapKeys = [];
 
             vaultStore.openCursor().onsuccess = function(e) {
                 var cursor = e.target.result;
@@ -525,33 +610,14 @@ function _dumpVaultKeys() {
                     cursor.continue();
                 } else {
                     vaultDone = true;
-                    if (snapDone) finish();
+                    finish();
                 }
             };
             vaultTx.onerror = function() { db.close(); reject(vaultTx.error); };
 
-            var snapTx = db.transaction('snapshots', 'readonly');
-            var snapStore = snapTx.objectStore('snapshots');
-            snapStore.openCursor().onsuccess = function(e) {
-                var cursor = e.target.result;
-                if (cursor) {
-                    var s = cursor.value;
-                    snapKeys.push({
-                        chat_id: s.chat_id || '(unknown)',
-                        version: s.version,
-                        id: cursor.key
-                    });
-                    cursor.continue();
-                } else {
-                    snapDone = true;
-                    if (vaultDone) finish();
-                }
-            };
-            snapTx.onerror = function() { snapDone = true; if (vaultDone) finish(); };
-
             function finish() {
                 db.close();
-                resolve({ vaults: keys, snapshots: snapKeys });
+                resolve({ vaults: keys });
             }
         };
         req.onerror = function() { reject(req.error); };
