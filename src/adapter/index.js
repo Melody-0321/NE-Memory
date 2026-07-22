@@ -296,6 +296,45 @@ function trimDialogRounds(chat) {
     }
 }
 
+/**
+ * generate_interceptor: ST 在 Generate() 中调用，在 setOpenAIMessages 之前修改 coreChat。
+ * 必须在模块顶层赋值给 globalThis，避免 Rollup ES module tree-shaking。
+ * manifest.json 中的 "generate_interceptor": "ne_generation_interceptor" 让 ST 发现此函数。
+ */
+globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
+    if (type === 'quiet') return;
+
+    var cwRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+    console.log('[NE] ne_generation_interceptor called: type=' + type + ' coreChat.length=' + (coreChat ? coreChat.length : 'null') + ' maxRounds=' + cwRounds);
+
+    var rounds = 0;
+    var prevRole = null;
+    var cutoffIndex = -1;
+
+    for (var i = coreChat.length - 1; i >= 0; i--) {
+        var m = coreChat[i];
+        if (!m || m.is_system) continue;
+        var role = (m.role === 'user' || m.is_user) ? 'user' : 'assistant';
+
+        if (prevRole === 'user' && role === 'assistant') {
+            rounds++;
+            if (rounds >= cwRounds) {
+                cutoffIndex = i;
+                break;
+            }
+        }
+        prevRole = role;
+    }
+
+    if (cutoffIndex > 0) {
+        var removed = cutoffIndex + 1;
+        coreChat.splice(0, cutoffIndex + 1);
+        console.log('[NE] ne_generation_interceptor: removed ' + removed + ' messages, remaining=' + coreChat.length);
+    } else {
+        console.log('[NE] ne_generation_interceptor: no trim needed (rounds=' + rounds + ' maxRounds=' + cwRounds + ')');
+    }
+};
+
 function _tryRegisterBannerRegex(retryCount) {
     retryCount = retryCount || 0;
     var ok = registerGlobalBannerRegex();
@@ -434,35 +473,6 @@ function bootNE(retries) {
         offPipelineLLMCall: offPipelineLLMCall
     };
     window.__ne_llm_hook = globalThis.__ne_llm_hook;
-
-    globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
-        if (type === 'quiet') return;
-
-        var cwRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
-
-        var rounds = 0;
-        var prevRole = null;
-        var cutoffIndex = -1;
-
-        for (var i = coreChat.length - 1; i >= 0; i--) {
-            var m = coreChat[i];
-            if (!m || m.is_system) continue;
-            var role = (m.role === 'user' || m.is_user) ? 'user' : 'assistant';
-
-            if (prevRole === 'user' && role === 'assistant') {
-                rounds++;
-                if (rounds >= cwRounds) {
-                    cutoffIndex = i;
-                    break;
-                }
-            }
-            prevRole = role;
-        }
-
-        if (cutoffIndex > 0) {
-            coreChat.splice(0, cutoffIndex + 1);
-        }
-    };
 
     $(async function () {
         try { await init(); } catch (e) { console.error('[NE] Init failed:', e); }
