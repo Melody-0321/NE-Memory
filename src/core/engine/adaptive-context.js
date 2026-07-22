@@ -159,9 +159,19 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                 var charMax = Math.max(1, Math.min(8, Math.round(newTarget / 150)));
                 var maxItems = { characters: charMax, factions: Math.max(0, Math.floor(charMax / 2)), quests: Math.max(0, Math.floor(charMax / 2)) };
                 newContent = buildStateInjectionTable(_neCachedState, _neCachedChatMessages, maxItems, _neCachedContent, _neCachedProtagonistName);
+                var compressedTokens = countTokens(newContent);
+                if (compressedTokens >= pick.current) {
+                    pick.current = pick.floor;
+                    continue;
+                }
                 _neCachedStateTable = newContent;
             } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
                 newContent = trimMemoryVaultByKB(_neCachedMemoryVault, newTarget);
+                var vaultTokens = countTokens(newContent);
+                if (vaultTokens >= pick.current) {
+                    pick.current = pick.floor;
+                    continue;
+                }
                 _neCachedMemoryVault = newContent;
             }
             if (newContent) {
@@ -171,7 +181,6 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                 );
                 pick.current = countTokens(newContent);
             } else {
-                // 无缓存或不可重建，标记为触底避免死循环
                 pick.current = pick.floor;
             }
         }
@@ -203,9 +212,13 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
             var charMax = Math.max(1, Math.min(8, Math.round(newTarget / 150)));
             var maxItems = { characters: charMax, factions: Math.max(0, Math.floor(charMax / 2)), quests: Math.max(0, Math.floor(charMax / 2)) };
             newContent = buildStateInjectionTable(_neCachedState, _neCachedChatMessages, maxItems, _neCachedContent, _neCachedProtagonistName);
+            var newTokens = countTokens(newContent);
+            if (newTokens <= pick.current) {
+                pick.current = pick.ceiling;
+                continue;
+            }
             _neCachedStateTable = newContent;
         } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
-            // memoryVault 无法重建更大内容（无原数据），标记为触顶避免无限循环
             pick.current = pick.ceiling;
             continue;
         }
