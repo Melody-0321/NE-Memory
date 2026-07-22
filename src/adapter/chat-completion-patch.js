@@ -13,9 +13,9 @@ var _nePatched = false;
 export async function applyChatCompletionPatch() {
     if (_nePatched) return true;
     try {
-        // 用变量存储 URL 阻止 Rollup 将绝对路径转为相对路径
-        // NE-Memory 从 CDN 加载时，相对路径会解析到 CDN 而非 ST 本地服务器
-        var openaiUrl = '/scripts/openai.js';
+        // NE-Memory 从 CDN 加载时，import() 的基 URL 是 CDN（脚本自身 URL），
+        // 而非 ST 服务器。必须用 window.location.origin 显式构造 ST 服务器的绝对 URL。
+        var openaiUrl = window.location.origin + '/scripts/openai.js';
         console.log('[NE-DEBUG] applyChatCompletionPatch: attempting import(' + openaiUrl + ')');
         var mod = await import(openaiUrl);
         var ChatCompletion = mod.ChatCompletion;
