@@ -340,14 +340,14 @@ var _neIgnoredMsgIndices = [];
 
 function applyDialogWindowIgnore() {
     _neIgnoredMsgIndices = [];
-    if (!_neIgnoreSymbol) return;
+    if (!_neIgnoreSymbol) { console.log('[NE] applyDialogWindowIgnore: SKIP (no Symbol.for)'); return; }
 
     var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
     var chat = ctx && ctx.chat ? ctx.chat : [];
-    if (chat.length === 0) return;
+    if (chat.length === 0) { console.log('[NE] applyDialogWindowIgnore: SKIP (chat empty)'); return; }
 
     var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
-    if (maxRounds <= 0) return;
+    if (maxRounds <= 0) { console.log('[NE] applyDialogWindowIgnore: SKIP (maxRounds<=0)'); return; }
 
     var rounds = 0;
     var prevIsUser = null;
@@ -367,6 +367,8 @@ function applyDialogWindowIgnore() {
         }
         prevIsUser = isUser;
     }
+
+    console.log('[NE] applyDialogWindowIgnore: chat.length=' + chat.length + ' maxRounds=' + maxRounds + ' rounds=' + rounds + ' cutoffIndex=' + cutoffIndex);
 
     if (cutoffIndex > 0) {
         for (var k = 0; k <= cutoffIndex; k++) {
