@@ -1,14 +1,18 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-17 | 41 个文档 | 41% 完成
+> 自动生成 | 2026-07-22 | 46 个文档 | 43% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
+| `adaptive-context-control-plan.md` | ✅ 已完成 | 2026-07-17 | 2026-07-22 | 自适应上下文控制（Plan C 重构）— 事后裁剪方案 |
+| `adaptive-context-integration-test.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 自适应上下文控制集成测试改造计划 |
 | `add-ability-and-outfit-fields.md` | ❓ 未知 | — | — | 预设字段扩展：技能/能力 + 即时着装 |
 | `api-connection-model-dropdown-plan.md` | ✅ 已完成 | 2026-06-24 | 2026-07-02 | Plan 1：API 连接检测重构 + 模型下拉改造 |
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
 | `audit-consistency.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 全量审计 — 重复造轮子 & 一致性修复 |
+| `chat-completion-round-limit-patch.md` | 🔄 进行中 | 2026-07-17 | 2026-07-17 | ChatCompletion Prototype Patch — 让对话轮数滑块在 token 显示中生效 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
+| `dialog-round-trim-via-chat-completion-event.md` | 🔄 进行中 | 2026-07-22 | 2026-07-22 | 对话轮数控制：从无效的 import() patch 迁移到 CHAT_COMPLETION_PROMPT_READY 事件裁剪 |
 | `doc-management-optimization-plan.md` | ✅ 已完成 | 2026-07-09 | 2026-07-09 | NE-Memory 文档管理优化计划 |
 | `extend-templates-to-faction-quest.md` | ✅ 已完成 | 2026-07-09 | 2026-07-13 | 模板系统扩展：势力 + 任务/事件 + NE-CHAR 动态字段 |
 | `fix-cross-type-field-leak.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 修复 LLM 跨类型字段写入：validate 拒绝 + prompt 限定 |
@@ -19,6 +23,7 @@
 | `fix-rollback-force-rebuild-state.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 修复版本链回退后 State 未重建的 bug |
 | `fix-template-llm-and-world-context.md` | ❓ 未知 | — | — | 修复：Template LLM 触发 + World Context 填充 |
 | `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
+| `golden-context-window.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 上下文黄金窗口（Golden Context Window）实现计划 |
 | `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -51,7 +56,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：17
-- 🔄 进行中：7
+- ✅ 已完成：20
+- 🔄 进行中：9
 - ⏳ 未开始：3
 - ❓ 未标记：14
