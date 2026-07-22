@@ -128,6 +128,7 @@ export function collectRoundData(roundTag, round) {
         vectorUsed: globalThis.__ne_debug_vector_used || false,
         vectorCandidateCount: globalThis.__ne_debug_vector_candidate_count || 0,
         bm25CandidateCount: globalThis.__ne_debug_bm25_candidate_count || 0,
+        adaptiveResult: globalThis.__ne_debug_last_adaptive || null,
         diversity: diversity,
         vault: null,
         timestamp: new Date().toISOString()

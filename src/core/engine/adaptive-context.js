@@ -11,6 +11,14 @@
  */
 import { countTokens } from './text-utils.js';
 import { buildStateInjectionTable } from '../vault/schema.js';
+import { readNeSetting } from '../settings.js';
+
+// 黄金窗口分档比例（基于 Lost in the Middle / RULER / Many-Shot ICL 学术依据）
+var GOLDEN_TIERS = {
+    quality:  { upper: 0.60, lower: 0.42 },
+    balanced: { upper: 0.50, lower: 0.30 },
+    cost:     { upper: 0.40, lower: 0.24 }
+};
 
 // === 模块级缓存（由 events.js 在 NE 注入时通过 setAdaptiveCache 同步）===
 var _neCachedVault = null;
@@ -25,12 +33,11 @@ var _neCachedMemoryVaultTokens = 0;
 
 /**
  * 部分更新缓存。仅更新传入字段，其他字段保持不变。
- * @param {Object} cache - { vault, state, chatMessages, content, protagonistName,
+ * @param {Object} cache - { state, chatMessages, content, protagonistName,
  *                           stateTable, memoryVault, stateTableTokens, memoryVaultTokens }
  */
 export function setAdaptiveCache(cache) {
     if (!cache) return;
-    if ('vault' in cache) _neCachedVault = cache.vault;
     if ('state' in cache) _neCachedState = cache.state;
     if ('chatMessages' in cache) _neCachedChatMessages = cache.chatMessages;
     if ('content' in cache) _neCachedContent = cache.content;
@@ -42,7 +49,6 @@ export function setAdaptiveCache(cache) {
 }
 
 export function resetAdaptiveCache() {
-    _neCachedVault = null;
     _neCachedState = null;
     _neCachedChatMessages = null;
     _neCachedContent = null;
@@ -166,10 +172,10 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
 
 /**
  * 按饱和度轮转摊薄扩充（对话历史跳过，只扩充 stateTable/memoryVault）。
- * 当 totalTokens < 70% 预算时触发。
+ * 当 totalTokens < lowerThreshold（黄金窗口下限）时触发。
  */
-export async function expandLayers(chat, layers, totalTokens, totalBudget, ctx) {
-    while (totalTokens < totalBudget * 0.7) {
+export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ctx) {
+    while (totalTokens < lowerThreshold) {
         var minSat = Infinity, pick = null;
         for (var i = 0; i < layers.length; i++) {
             var l = layers[i];
@@ -188,8 +194,9 @@ export async function expandLayers(chat, layers, totalTokens, totalBudget, ctx) 
             newContent = buildStateInjectionTable(_neCachedState, _neCachedChatMessages, maxItems, _neCachedContent, _neCachedProtagonistName);
             _neCachedStateTable = newContent;
         } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
-            // memoryVault 不主动重建（无原数据），直接用缓存原值
-            newContent = _neCachedMemoryVault;
+            // memoryVault 无法重建更大内容（无原数据），标记为触顶避免无限循环
+            pick.current = pick.ceiling;
+            continue;
         }
         if (newContent) {
             replaceNeMarkerInChat(chat, pick.name, newContent);
@@ -219,12 +226,22 @@ export async function adaptContextPostTrim(chat, dryRun) {
     var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
     if (!ctx || !ctx.getTokenCountAsync) return;
 
+    // 重置调试暴露点（每轮开始时清空，便于测试用例判断是否触发）
+    globalThis.__ne_debug_last_adaptive = null;
+
     var maxContext = ctx.maxContext || 32000;
     var genReserve = (ctx.chatCompletionSettings && ctx.chatCompletionSettings.openai_max_tokens) || 300;
-    var totalBudget = maxContext - genReserve;
+    var usableBase = Math.max(2000, maxContext - genReserve);
 
-    var dialogCeiling = 10;
-    try { var rawS = localStorage.getItem('ne_settings'); if (rawS) { var sS = JSON.parse(rawS); dialogCeiling = Number(sS.dialogWindowRounds) || 10; } } catch (eS) {}
+    // 黄金窗口：绕过 maxContext 100% 阈值，按分档比例在质量退化前压缩
+    var goldenTier = readNeSetting('goldenContextTier', 'balanced');
+    if (!GOLDEN_TIERS[goldenTier]) goldenTier = 'balanced';
+
+    var ratios = GOLDEN_TIERS[goldenTier];
+    var goldenUpper = Math.max(1500, Math.round(usableBase * ratios.upper));
+    var goldenLower = Math.max(800, Math.round(usableBase * ratios.lower));
+
+    var dialogCeiling = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
 
     // 统计对话历史轮数和消息索引
     var dialogRounds = 0;
@@ -246,15 +263,60 @@ export async function adaptContextPostTrim(chat, dryRun) {
     var allText = chat.map(function(m) { return m.content || ''; }).join('\n');
     var totalTokens = await ctx.getTokenCountAsync(allText);
 
+    // 记录压缩前快照（供调试暴露）
+    var totalTokensBefore = totalTokens;
+    var dialogRoundsBefore = dialogRounds;
+    var chatLengthBefore = chat.length;
+
     var layers = [
         { name: 'dialog', current: dialogRounds, floor: 4, ceiling: dialogCeiling },
         { name: 'state_table', current: _neCachedStateTableTokens, floor: 150, ceiling: 3000 },
         { name: 'memory_vault', current: _neCachedMemoryVaultTokens, floor: 150, ceiling: 2000 },
     ];
 
-    if (totalTokens > totalBudget) {
-        await compressLayers(chat, layers, totalTokens, totalBudget, dialogMsgIndices, ctx);
-    } else if (totalTokens < totalBudget * 0.7) {
-        await expandLayers(chat, layers, totalTokens, totalBudget, ctx);
+    var action = 'none';
+    if (totalTokens > goldenUpper) {
+        action = 'compress';
+        await compressLayers(chat, layers, totalTokens, goldenUpper, dialogMsgIndices, ctx);
+    } else if (totalTokens < goldenLower) {
+        action = 'expand';
+        await expandLayers(chat, layers, totalTokens, goldenLower, ctx);
     }
+
+    // 压缩/扩充后重新测量（供测试断言 + 排查）
+    var allTextAfter = chat.map(function(m) { return m.content || ''; }).join('\n');
+    var totalTokensAfter = await ctx.getTokenCountAsync(allTextAfter);
+
+    // 重新统计压缩后对话轮数
+    var dialogRoundsAfter = 0;
+    var prevRoleAfter = null;
+    for (var j = 0; j < chat.length; j++) {
+        var roleA = chat[j].role;
+        var contentA = chat[j].content || '';
+        var hasNeMarkerA = contentA.indexOf('<!--NE:') !== -1;
+        if ((roleA === 'user' || roleA === 'assistant') && !hasNeMarkerA) {
+            if (prevRoleAfter === 'user' && roleA === 'assistant') {
+                dialogRoundsAfter++;
+            }
+        }
+        prevRoleAfter = roleA;
+    }
+
+    // 暴露调试数据（供 monitor.js collectRoundData 收集 → assertions.js 断言）
+    globalThis.__ne_debug_last_adaptive = {
+        triggered: true,
+        action: action,
+        totalTokensBefore: totalTokensBefore,
+        totalTokensAfter: totalTokensAfter,
+        totalBudget: goldenUpper,
+        goldenTier: goldenTier,
+        goldenUpper: goldenUpper,
+        goldenLower: goldenLower,
+        dialogRoundsBefore: dialogRoundsBefore,
+        dialogRoundsAfter: dialogRoundsAfter,
+        chatLengthBefore: chatLengthBefore,
+        chatLengthAfter: chat.length,
+        layers: layers.map(function(l) { return { name: l.name, current: l.current, floor: l.floor, ceiling: l.ceiling }; }),
+        timestamp: Date.now()
+    };
 }

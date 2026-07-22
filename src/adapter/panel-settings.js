@@ -53,6 +53,16 @@ export function renderSettingsTab() {
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span id="nes_dialog_rounds_label">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control')) + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
         '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
         '<div id="nes_dialog_rounds_desc" style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.')) + '</div>' +
+        // === Golden Context Tier（自适应模式专属）===
+        '<div class="ne-adaptive-only" style="' + (settings.adaptiveContextControl ? '' : 'display:none;') + '">' +
+            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('golden_context_tier') + '</span></div>' +
+            '<select id="nes_golden_context_tier" style="width:100%;">' +
+                '<option value="quality" ' + (settings.goldenContextTier === 'quality' ? 'selected' : '') + '>' + t('golden_tier_quality') + '</option>' +
+                '<option value="balanced" ' + (settings.goldenContextTier === 'balanced' || !settings.goldenContextTier ? 'selected' : '') + '>' + t('golden_tier_balanced') + '</option>' +
+                '<option value="cost" ' + (settings.goldenContextTier === 'cost' ? 'selected' : '') + '>' + t('golden_tier_cost') + '</option>' +
+            '</select>' +
+            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('golden_context_tier_desc') + '</div>' +
+        '</div>' +
         // === 手动模式专属控件（自适应模式下隐藏）===
         '<div class="ne-manual-controls" style="' + (settings.adaptiveContextControl ? 'display:none;' : '') + '">' +
             '<div style="margin:0 0 8px;">' +
@@ -284,6 +294,8 @@ export function renderSettingsTab() {
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
+    var gtEl = panelById('nes_golden_context_tier');
+    if (gtEl) { gtEl.onchange = function () { saveSettingsTab(); }; }
     // Adaptive Context Control 开关：切换显隐 + 描述文字
     var adaptiveEl = panelById('nes_adaptive_context_control');
     if (adaptiveEl) {
@@ -293,6 +305,11 @@ export function renderSettingsTab() {
             var manualControls = document.querySelectorAll('.ne-manual-controls');
             for (var i = 0; i < manualControls.length; i++) {
                 manualControls[i].style.display = isOn ? 'none' : '';
+            }
+            // 切换自适应专属控件显隐（黄金窗口档位）
+            var adaptiveOnly = document.querySelectorAll('.ne-adaptive-only');
+            for (var k = 0; k < adaptiveOnly.length; k++) {
+                adaptiveOnly[k].style.display = isOn ? '' : 'none';
             }
             // 切换 dialog rounds 标签和描述
             var labelEl = panelById('nes_dialog_rounds_label');
@@ -677,6 +694,8 @@ function saveSettingsTab() {
         settings.dialogOverrideEnabled = panelById('nes_dialog_override_enabled').checked;
     if (panelById('nes_adaptive_context_control'))
         settings.adaptiveContextControl = panelById('nes_adaptive_context_control').checked;
+    if (panelById('nes_golden_context_tier'))
+        settings.goldenContextTier = panelById('nes_golden_context_tier').value;
     if (panelById('nes_api_channels_enabled'))
         settings.apiChannelsEnabled = channelsEnabled;
     var scInput2 = panelById('nes_stm_chunk_input');

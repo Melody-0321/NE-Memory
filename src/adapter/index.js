@@ -12,7 +12,7 @@ import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
 import { DEFAULT_GLOBAL_SCHEMA, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, setDynamicStateMode } from '../core/vault/schema.js';
-import { setRetrievalEnabled } from '../core/settings.js';
+import { setRetrievalEnabled, readNeSetting } from '../core/settings.js';
 import { testSecondaryApiConnection, onPipelineLLMCall, offPipelineLLMCall } from '../core/api/llm.js';
 import { resetVectorIndex, getVectorIndex } from '../core/engine/retrieval-fusion.js';
 import { runTest, runTestByName, listTests, setReportsDir } from './test-runner.js';
@@ -293,9 +293,7 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
             try { eventSource.on('CHAT_COMPLETION_PROMPT_READY', async (data) => {
                 try {
-                    var adaptive = false;
-                    try { var rawA = localStorage.getItem('ne_settings'); if (rawA) { var sA = JSON.parse(rawA); adaptive = !!sA.adaptiveContextControl; } } catch (eA) {}
-                    if (!adaptive) return;
+                    if (!readNeSetting('adaptiveContextControl', false)) return;
                     if (!data || !data.chat) return;
                     await adaptContextPostTrim(data.chat, data.dryRun);
                 } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }
@@ -334,9 +332,7 @@ function setupEventListeners(retryCount) {
             if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
             if (tavern_events.CHAT_COMPLETION_PROMPT_READY) TavernHelper._eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async (data) => {
                 try {
-                    var adaptive = false;
-                    try { var rawA = localStorage.getItem('ne_settings'); if (rawA) { var sA = JSON.parse(rawA); adaptive = !!sA.adaptiveContextControl; } } catch (eA) {}
-                    if (!adaptive) return;
+                    if (!readNeSetting('adaptiveContextControl', false)) return;
                     if (!data || !data.chat) return;
                     await adaptContextPostTrim(data.chat, data.dryRun);
                 } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }

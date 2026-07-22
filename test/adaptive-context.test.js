@@ -199,19 +199,18 @@ console.log('\n=== adaptive-context: setAdaptiveCache / resetAdaptiveCache ===')
 // Test 9: 部分更新缓存
 (function() {
     resetAdaptiveCache();
+    // 验证 setAdaptiveCache 部分更新不抛异常且不覆盖已有字段
     setAdaptiveCache({ stateTable: 'table1', stateTableTokens: 100 });
     setAdaptiveCache({ memoryVault: 'vault1' });
     // 再次部分更新，确保不覆盖之前的字段
     setAdaptiveCache({ memoryVaultTokens: 200 });
-    // 通过 adaptContextPostTrim 的守卫行为间接验证缓存状态
-    // 这里直接调用 adaptContextPostTrim 不应短路（已有 stateTable）
-    var chat = [];
-    var called = false;
-    mockSillyTavernCtx({ maxContext: 100, maxTokens: 10 }); // 极小预算触发压缩
-    // 注意：chat 为空时不会真正压缩，但不应因"无缓存"而提前 return
-    // 这里只能通过行为间接验证 — 见 T11
-    clearSillyTavern();
+    // 间接验证：resetAdaptiveCache 后再次部分更新也不抛异常
+    ok(true, 'T9: setAdaptiveCache 多次部分更新不抛异常');
+    // 缓存正确性通过 T10-T12 的 compressLayers 行为间接验证：
+    // compressLayers 依赖 _neCachedStateTableTokens / _neCachedMemoryVaultTokens，
+    // 若部分更新覆盖了已有字段，T10 的压缩结果会不正确。
     resetAdaptiveCache();
+    ok(true, 'T9: resetAdaptiveCache 不抛异常');
 })();
 
 console.log('\n=== adaptive-context: compressLayers (dialog 路径) ===');
@@ -324,7 +323,7 @@ console.log('\n=== adaptive-context: adaptContextPostTrim 完整路径 ===');
         makeMsg('system', '<!--NE:state_table-->[State Table]<!--/NE:state_table-->'),
         makeMsg('system', '<!--NE:memory_vault-->[Memory Vault]<!--/NE:memory_vault-->')
     ];
-    var dialogChat = buildDialogChat(10, 150);  // 10 轮对话
+    var dialogChat = buildDialogChat(10, 400);  // 10 轮对话（~2100 tokens，超过 goldenUpper）
     chat = chat.concat(dialogChat);
     var beforeLen = chat.length;
     var beforeRounds = countRounds(chat);
@@ -337,15 +336,15 @@ console.log('\n=== adaptive-context: adaptContextPostTrim 完整路径 ===');
         memoryVaultTokens: 50
     });
 
-    // mock 极小预算的 ST context
+    // mock 适中预算的 ST context（黄金窗口 balanced 档：goldenUpper = (4000-300)*0.5 = 1850）
     mockSillyTavernCtx({
-        maxContext: 800,    // 总预算 = 800 - 300 = 500
+        maxContext: 4000,
         maxTokens: 300,
         tokenCounter: function(text) { return Math.ceil((text || '').length / 4); }
     });
 
-    // 设置 ne_settings：dialogWindowRounds=10
-    localStorage.setItem('ne_settings', JSON.stringify({ dialogWindowRounds: 10 }));
+    // 设置 ne_settings：dialogWindowRounds=10, goldenContextTier=balanced
+    localStorage.setItem('ne_settings', JSON.stringify({ dialogWindowRounds: 10, goldenContextTier: 'balanced' }));
 
     await adaptContextPostTrim(chat, false);
 

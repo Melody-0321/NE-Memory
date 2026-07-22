@@ -25,6 +25,7 @@ import { callMemoryPipeline } from '../core/api/llm.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
 import { neSync } from '../core/settings-adapter.js';
+import { readNeSetting, readNeSettingsObject } from '../core/settings.js';
 
 var _neCheckTag = '';
 
@@ -165,12 +166,9 @@ function computeContextPressure(pendingTokenCount, pendingMessages, chatMessages
 }
 function adjustDialogWindow() {
     // 自适应模式下不覆盖 maxContext（让 ST 默认 token-budget 截断生效）
-    var adaptive = false;
-    try { var rawAd = localStorage.getItem('ne_settings'); if (rawAd) { var sAd = JSON.parse(rawAd); adaptive = !!sAd.adaptiveContextControl; } } catch (eAd) {}
-    if (adaptive) return;
-    var overrideEnabled = false;
-    try { var raw2 = localStorage.getItem('ne_settings'); if (raw2) { var s2 = JSON.parse(raw2); overrideEnabled = !!s2.dialogOverrideEnabled; } } catch (e) {}
-    if (overrideEnabled) {
+    var s = readNeSettingsObject();
+    if (s.adaptiveContextControl) return;
+    if (s.dialogOverrideEnabled) {
         runtime.maxContext = Number.MAX_SAFE_INTEGER;
     }
 }
@@ -1072,8 +1070,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     stateTableTokens: countTokens(stateTable)
                 });
                 // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
-                var adaptiveEnabled = false;
-                try { var rawAd = localStorage.getItem('ne_settings'); if (rawAd) { var sAd = JSON.parse(rawAd); adaptiveEnabled = !!sAd.adaptiveContextControl; } } catch (eAd) {}
+                var adaptiveEnabled = !!readNeSetting('adaptiveContextControl', false);
                 var markedStateTable = adaptiveEnabled
                     ? '<!--NE:state_table-->' + stateTable + '<!--/NE:state_table-->'
                     : stateTable;
@@ -1111,8 +1108,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     memoryVaultTokens: countTokens(formatted)
                 });
                 // 自适应模式下用 NE 标记包裹（便于事后裁剪定位）
-                var adaptiveEnabledMv = false;
-                try { var rawAdMv = localStorage.getItem('ne_settings'); if (rawAdMv) { var sAdMv = JSON.parse(rawAdMv); adaptiveEnabledMv = !!sAdMv.adaptiveContextControl; } } catch (eAdMv) {}
+                var adaptiveEnabledMv = !!readNeSetting('adaptiveContextControl', false);
                 var markedMemory = adaptiveEnabledMv
                     ? '<!--NE:memory_vault-->' + formatted + '<!--/NE:memory_vault-->'
                     : formatted;
