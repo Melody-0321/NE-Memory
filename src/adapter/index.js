@@ -340,14 +340,14 @@ var _neIgnoredMsgIndices = [];
 
 function applyDialogWindowIgnore() {
     _neIgnoredMsgIndices = [];
-    if (!_neIgnoreSymbol) { console.log('[NE] applyDialogWindowIgnore: SKIP (no Symbol.for)'); return; }
+    if (!_neIgnoreSymbol) return;
 
     var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
     var chat = ctx && ctx.chat ? ctx.chat : [];
-    if (chat.length === 0) { console.log('[NE] applyDialogWindowIgnore: SKIP (chat empty)'); return; }
+    if (chat.length === 0) return;
 
     var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
-    if (maxRounds <= 0) { console.log('[NE] applyDialogWindowIgnore: SKIP (maxRounds<=0)'); return; }
+    if (maxRounds <= 0) return;
 
     var rounds = 0;
     var prevIsUser = null;
@@ -367,8 +367,6 @@ function applyDialogWindowIgnore() {
         }
         prevIsUser = isUser;
     }
-
-    console.log('[NE] applyDialogWindowIgnore: chat.length=' + chat.length + ' maxRounds=' + maxRounds + ' rounds=' + rounds + ' cutoffIndex=' + cutoffIndex);
 
     if (cutoffIndex > 0) {
         for (var k = 0; k <= cutoffIndex; k++) {
@@ -528,7 +526,7 @@ function setupEventListeners(retryCount) {
 function bootNE(retries) {
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
-    console.log('[NE] Engine starting... build=' + 'NE v6.8.0');
+    console.log('[NE] Engine starting... build=' + 'NE v7.2.0');
 
     try {
         window.__ne_debug = _buildDebugApi();

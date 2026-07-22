@@ -1,3 +1,19 @@
+# NE-Memory v7.2.0 更新日志
+
+## 新功能
+
+- **自适应上下文窗口（Golden Context Window）**：根据 token 预算动态选择传入 LLM 的记忆条目，优先高相关性内容，避免超长上下文导致的 token 溢出
+- **对话轮数裁剪**：通过 CHAT_COMPLETION_PROMPT_READY 事件在 API 层裁剪对话轮数，控制发送给 LLM 的历史长度；dryRun UI 与 Prompt Manager 同步显示裁剪结果（IGNORE_SYMBOL 机制）
+- **物品栏/技能栏 UI 重设计**：分区卡片式布局，独立分区标题 + 两行条目（名称/徽章 + 描述），编辑模式分区整体隐藏
+
+## Bug 修复
+
+- **import() URL 解析**：多级 fallback（location.origin -> href regex -> 硬编码）解决 ST 服务器返回 null origin 导致动态 import 失败；阻止 Rollup 将绝对路径转为相对路径
+- **chat-completion 拦截器稳定性**：修正 hook 目标与 NARRATOR/newMainChat 过滤；修复事件名大小写不匹配；移至模块顶层防止 ES tree-shaking 丢失
+- **inventory 双重显示**：非编辑模式不显示原始 JSON，编辑模式只显示可编辑 JSON
+
+---
+
 # NE-Memory v7.1.0 更新日志
 
 ## 新功能
