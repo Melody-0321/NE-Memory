@@ -293,10 +293,12 @@ function setupEventListeners(retryCount) {
             try { eventSource.on('GENERATION_AFTER_COMMANDS', onBeforeGenerate); } catch (e) { console.warn('[NE] GENERATION_AFTER_COMMANDS registration failed:', e); }
             try { eventSource.on('CHAT_COMPLETION_PROMPT_READY', async (data) => {
                 try {
-                    if (!readNeSetting('adaptiveContextControl', false)) return;
                     if (!data || !data.chat) return;
-                    await adaptContextPostTrim(data.chat, data.dryRun);
-                } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }
+                    trimDialogRounds(data.chat);
+                    if (readNeSetting('adaptiveContextControl', false)) {
+                        await adaptContextPostTrim(data.chat, data.dryRun);
+                    }
+                } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY handler failed:', e); }
             }); } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY registration failed:', e); }
             console.log('[NE] All string event listeners registered, onBeforeGenerate=' + typeof onBeforeGenerate);
             try { eventSource.on('chat_id_changed', async () => {
@@ -332,10 +334,12 @@ function setupEventListeners(retryCount) {
             if (tavern_events.GENERATION_AFTER_COMMANDS) TavernHelper._eventOn(tavern_events.GENERATION_AFTER_COMMANDS, onBeforeGenerate);
             if (tavern_events.CHAT_COMPLETION_PROMPT_READY) TavernHelper._eventOn(tavern_events.CHAT_COMPLETION_PROMPT_READY, async (data) => {
                 try {
-                    if (!readNeSetting('adaptiveContextControl', false)) return;
                     if (!data || !data.chat) return;
-                    await adaptContextPostTrim(data.chat, data.dryRun);
-                } catch (e) { console.warn('[NE] adaptContextPostTrim failed:', e); }
+                    trimDialogRounds(data.chat);
+                    if (readNeSetting('adaptiveContextControl', false)) {
+                        await adaptContextPostTrim(data.chat, data.dryRun);
+                    }
+                } catch (e) { console.warn('[NE] CHAT_COMPLETION_PROMPT_READY handler failed:', e); }
             });
             if (tavern_events.CHAT_CHANGED) {
                 TavernHelper._eventOn(tavern_events.CHAT_CHANGED, async () => {
@@ -392,6 +396,44 @@ function bootNE(retries) {
         offPipelineLLMCall: offPipelineLLMCall
     };
     window.__ne_llm_hook = globalThis.__ne_llm_hook;
+
+    /**
+     * 在 CHAT_COMPLETION_PROMPT_READY 事件中裁剪对话轮数。
+     * data.chat 是 ST getChat() 输出的扁平数组，每条消息有 role 属性。
+     * 从末尾向前计数 user->assistant 配对，删除超出限制的旧消息。
+     */
+    function trimDialogRounds(chat) {
+        if (!chat || chat.length === 0) return;
+        var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
+        if (maxRounds <= 0) return;
+
+        var rounds = 0;
+        var prevRole = null;
+        var cutoffIndex = -1;
+
+        for (var i = chat.length - 1; i >= 0; i--) {
+            var m = chat[i];
+            if (!m) continue;
+            var role = m.role;
+            // 只对 user/assistant 计数，跳过 system/tool
+            if (role !== 'user' && role !== 'assistant') continue;
+
+            if (prevRole === 'user' && role === 'assistant') {
+                rounds++;
+                if (rounds >= maxRounds) {
+                    cutoffIndex = i;
+                    break;
+                }
+            }
+            prevRole = role;
+        }
+
+        if (cutoffIndex > 0) {
+            var removed = cutoffIndex;
+            chat.splice(0, cutoffIndex);
+            console.log('[NE] trimDialogRounds: removed ' + removed + ' messages (maxRounds=' + maxRounds + ')');
+        }
+    }
 
     globalThis.ne_generation_interceptor = function(coreChat, contextSize, abort, type) {
         if (type === 'quiet') return;
