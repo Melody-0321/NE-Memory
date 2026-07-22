@@ -14,13 +14,44 @@ export async function applyChatCompletionPatch() {
     if (_nePatched) return true;
     try {
         // NE-Memory 从 CDN 加载时，import() 的基 URL 是 CDN（脚本自身 URL）。
-        // 必须构造 ST 服务器的绝对 URL。window.location.origin 在某些环境下返回 "null"，
-        // 改用 href 正则提取协议+主机部分。
-        var href = window.location.href || '';
-        var match = href.match(/^https?:\/\/[^/]+/);
-        var stOrigin = match ? match[0] : '';
-        var openaiUrl = stOrigin + '/scripts/openai.js';
-        console.log('[NE-DEBUG] applyChatCompletionPatch: href=' + href + ' origin=' + window.location.origin + ' stOrigin=' + stOrigin + ' url=' + openaiUrl);
+        // 必须构造 ST 服务器的绝对 URL。
+        // window.location.origin 在某些环境下返回 "null"，需要多重 fallback。
+        var openaiUrl = null;
+
+        // 方法1: 从 document.scripts 中查找 ST 自身加载的脚本，提取 origin
+        var scripts = document.getElementsByTagName('script');
+        for (var si = 0; si < scripts.length; si++) {
+            var sSrc = scripts[si].src;
+            if (sSrc && sSrc.indexOf('jsdelivr') === -1 && sSrc.indexOf('cdn') === -1 && sSrc.indexOf('chrome-extension') === -1) {
+                try {
+                    var parsed = new URL(sSrc);
+                    if (parsed.origin && parsed.origin !== 'null') {
+                        openaiUrl = parsed.origin + '/scripts/openai.js';
+                        break;
+                    }
+                } catch (eS) {}
+            }
+        }
+
+        // 方法2: window.location.origin（标准本地部署通常有效）
+        if (!openaiUrl && window.location.origin && window.location.origin !== 'null') {
+            openaiUrl = window.location.origin + '/scripts/openai.js';
+        }
+
+        // 方法3: protocol + host fallback
+        if (!openaiUrl && window.location.protocol && window.location.host) {
+            openaiUrl = window.location.protocol + '//' + window.location.host + '/scripts/openai.js';
+        }
+
+        console.log('[NE-DEBUG] applyChatCompletionPatch: openaiUrl=' + openaiUrl +
+            ' | location.origin=' + window.location.origin +
+            ' | location.protocol=' + window.location.protocol +
+            ' | location.host=' + window.location.host);
+        if (!openaiUrl) {
+            console.warn('[NE] Could not determine ST server URL for openai.js import');
+            return false;
+        }
+
         var mod = await import(openaiUrl);
         var ChatCompletion = mod.ChatCompletion;
         console.log('[NE-DEBUG] import resolved. ChatCompletion:', typeof ChatCompletion);
