@@ -19,8 +19,9 @@ export function validateSTMOutput(parsed, vault, messageCount) {
     return errors;
 }
 
-export function postFillSTM(parsed, vault) {
+export function postFillSTM(parsed, vault, stateVault) {
     var content = vault && vault.content || {};
+    var stateContent = stateVault && stateVault.content || {};
     var stmEntries = parsed.stmEntries || [];
 
     if (!content.story_time) {
@@ -43,10 +44,10 @@ export function postFillSTM(parsed, vault) {
     if (!content.story_scene) { content.story_scene = '未知'; }
 
     // entities 后处理：NE-BANNER seed + 文本匹配兜底
-    var state = content.state || {};
+    var state = stateContent.state || {};
     var characters = state.characters || {};
     var factions = state.factions || {};
-    var activeChars = content._active_characters || [];
+    var activeChars = stateContent._active_characters || [];
     var allKnownNames = Object.keys(characters).concat(Object.keys(factions));
     if (allKnownNames.length > 0 || activeChars.length > 0) {
         stmEntries.forEach(function(e) {

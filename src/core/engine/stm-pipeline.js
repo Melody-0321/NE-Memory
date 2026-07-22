@@ -552,7 +552,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
                 recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
             }
-            postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault);
+            postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault, stateVault);
             var addedCount = appendSTMEntries(memoryVault, events);
 
             var addedEntries = events.filter(function(e) { return e && e.id; });
