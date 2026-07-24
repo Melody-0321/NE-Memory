@@ -20,12 +20,14 @@ export async function lookupEntityChains(content, entityNames) {
         var name = entityNames[ni];
         var chainEntries = [];
         allSTM.forEach(function(e) {
-            if (e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
+            var present = e.present_characters || e.entities;
+            if (present && present.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
                 chainEntries.push(e);
             }
         });
         allLTM.forEach(function(e) {
-            if (e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
+            var present = e.present_characters || e.entities;
+            if (present && present.some(function(en) { return (typeof en === 'string' ? en : en.name) === name; })) {
                 chainEntries.push(e);
             }
         });
@@ -87,8 +89,9 @@ export function extractEntityNames(query, content) {
 
     // Also collect from STM entity annotations
     allSTM.forEach(function(e) {
-        if (e.entities) {
-            e.entities.forEach(function(en) {
+        var present = e.present_characters || e.entities;
+        if (present) {
+            present.forEach(function(en) {
                 var n = typeof en === 'string' ? en : en.name;
                 if (n && knownNames.indexOf(n) === -1) knownNames.push(n);
             });
@@ -136,8 +139,9 @@ export function groupCandidatesByEntity(map, threadIndex) {
 
     allEntries.forEach(function(e) {
         var entityNames = [];
-        if (e.entry.entities && Array.isArray(e.entry.entities)) {
-            e.entry.entities.forEach(function(en) {
+        var present = e.entry.present_characters || e.entry.entities;
+        if (present && Array.isArray(present)) {
+            present.forEach(function(en) {
                 var n = typeof en === 'string' ? en : en.name;
                 if (n) entityNames.push(n);
             });

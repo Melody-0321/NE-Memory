@@ -86,5 +86,33 @@ var isoVault = { content: {} };
 var result3 = postFillSTM({ stmEntries: [{ period: '2025-06-01·下午', event: 'test' }] }, isoVault);
 eq(isoVault.content.story_date, '2025-06-01', 'postFillSTM extracts ISO date from period');
 
+// --- validateSTMOutput: present_characters 非数组 ---
+var badPresent = { event: 'test', present_characters: '不是数组' };
+var presentErrors = validateSTMOutput({ stmEntries: [badPresent] }, { content: {} });
+gt(presentErrors.length, 0, 'non-array present_characters produces errors');
+
+// --- validateSTMOutput: character_psyche 非对象 ---
+var badPsyche = { event: 'test', character_psyche: '不是对象' };
+var psycheErrors = validateSTMOutput({ stmEntries: [badPsyche] }, { content: {} });
+gt(psycheErrors.length, 0, 'non-object character_psyche produces errors');
+
+// --- validateSTMOutput: 合法新字段不报错 ---
+var goodNew = {
+    event: 'test',
+    present_characters: ['角色A', '角色B'],
+    character_psyche: { '角色A': { current_mood: '开心', inner_thoughts: '今天真好' } }
+};
+var goodNewErrors = validateSTMOutput({ stmEntries: [goodNew] }, { content: {} });
+eq(goodNewErrors.length, 0, 'valid present_characters/character_psyche produces no errors');
+
+// --- postFillSTM: 默认初始化新字段 ---
+var initVault = { content: {} };
+var initResult = postFillSTM({ stmEntries: [{ event: 'test' }] }, initVault);
+var initEntry = initResult.stmEntries[0];
+eq(Array.isArray(initEntry.present_characters), true, 'postFillSTM initializes present_characters to array');
+eq(initEntry.present_characters.length, 0, 'postFillSTM initializes present_characters to empty array');
+eq(typeof initEntry.character_psyche, 'object', 'postFillSTM initializes character_psyche to object');
+eq(Object.keys(initEntry.character_psyche).length, 0, 'postFillSTM initializes character_psyche to empty object');
+
 console.log('\n--- stm-validate: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

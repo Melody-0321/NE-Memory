@@ -7,7 +7,14 @@ export function validateSTMOutput(parsed, vault, messageCount) {
         if (!e.event || !String(e.event).trim()) {
             errors.push('stm_entries[' + i + '].event is REQUIRED');
         }
-        if (!Array.isArray(e.entities)) e.entities = [];
+        // present_characters: optional but if present must be string array
+        if (e.present_characters !== undefined && !Array.isArray(e.present_characters)) {
+            errors.push('stm_entries[' + i + '].present_characters must be an array of strings');
+        }
+        // character_psyche: optional but if present must be an object
+        if (e.character_psyche !== undefined && (typeof e.character_psyche !== 'object' || Array.isArray(e.character_psyche) || e.character_psyche === null)) {
+            errors.push('stm_entries[' + i + '].character_psyche must be an object');
+        }
     }
 
     // 新增：msgRange 验证
@@ -21,7 +28,6 @@ export function validateSTMOutput(parsed, vault, messageCount) {
 
 export function postFillSTM(parsed, vault, stateVault) {
     var content = vault && vault.content || {};
-    var stateContent = stateVault && stateVault.content || {};
     var stmEntries = parsed.stmEntries || [];
 
     if (!content.story_time) {
@@ -43,54 +49,14 @@ export function postFillSTM(parsed, vault, stateVault) {
     }
     if (!content.story_scene) { content.story_scene = '未知'; }
 
-    // entities 后处理：NE-BANNER seed + 文本匹配兜底
-    var state = stateContent.state || {};
-    var characters = state.characters || {};
-    var factions = state.factions || {};
-    var activeChars = stateContent._active_characters || [];
-    var allKnownNames = Object.keys(characters).concat(Object.keys(factions));
-    if (allKnownNames.length > 0 || activeChars.length > 0) {
-        stmEntries.forEach(function(e) {
-            var entities = [];
-
-            // NE-BANNER 在场角色 seed
-            activeChars.forEach(function(name) {
-                if (entities.indexOf(name) === -1) entities.push(name);
-            });
-
-            // 文本匹配兜底
-            var eventText = (e.event || '') + (e.scene || '') + (e.summary || '');
-            allKnownNames.forEach(function(name) {
-                if (entities.indexOf(name) === -1 && eventText.indexOf(name) !== -1) {
-                    entities.push(name);
-                }
-            });
-
-            e.entities = entities;
-
-            var innerCache = globalThis.__ne_inner_thoughts_cache;
-            if (innerCache && e.msgRange && e.msgRange.length === 2) {
-                var rangeStart = e.msgRange[0];
-                var rangeEnd = e.msgRange[1];
-                var thoughts = {};
-                entities.forEach(function(name) {
-                    var charThoughts = innerCache[name];
-                    if (charThoughts) {
-                        var matched = [];
-                        charThoughts.forEach(function(t) {
-                            if (t.msgIdx >= rangeStart && t.msgIdx <= rangeEnd) {
-                                matched.push(t.content);
-                            }
-                        });
-                        if (matched.length > 0) thoughts[name] = matched;
-                    }
-                });
-                if (Object.keys(thoughts).length > 0) e._inner_thoughts = thoughts;
-            }
-        });
-    } else {
-        stmEntries.forEach(function(e) { e.entities = []; });
-    }
+    // present_characters / character_psyche 由 LLM 直接输出，不再后置填充。
+    // 仅为缺失字段提供默认空值，保证下游一致性。
+    stmEntries.forEach(function(e) {
+        if (!Array.isArray(e.present_characters)) e.present_characters = [];
+        if (!e.character_psyche || typeof e.character_psyche !== 'object' || Array.isArray(e.character_psyche)) {
+            e.character_psyche = {};
+        }
+    });
 
     return parsed;
 }

@@ -353,6 +353,36 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
         var scene = e.entry.scene || '';
         var event = e.entry.event || e.entry.summary || '';
         var line = (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
+
+        // 新增：在场角色（兼容旧 entities）
+        var present = e.entry.present_characters || e.entry.entities || [];
+        if (present && present.length > 0) {
+            var presentNames = present.map(function(p) { return typeof p === 'string' ? p : p.name; });
+            line += ' | 在场: ' + presentNames.join('、');
+        }
+
+        // 新增：角色心理（兼容旧 _inner_thoughts）
+        var psyche = e.entry.character_psyche;
+        var oldThoughts = e.entry._inner_thoughts;
+        if (psyche && Object.keys(psyche).length > 0) {
+            Object.keys(psyche).forEach(function(name) {
+                var p = psyche[name] || {};
+                var mood = p.current_mood || '';
+                var thoughts = p.inner_thoughts || '';
+                if (mood || thoughts) {
+                    line += '\n   > ' + name + (mood ? ' [' + mood + ']' : '') + (thoughts ? ': ' + thoughts : '');
+                }
+            });
+        } else if (oldThoughts && Object.keys(oldThoughts).length > 0) {
+            // 旧数据兼容：_inner_thoughts 是 {角色名: [想法1, 想法2]}
+            Object.keys(oldThoughts).forEach(function(name) {
+                var thoughtsArr = oldThoughts[name] || [];
+                if (thoughtsArr.length > 0) {
+                    line += '\n   > ' + name + ' 内心: ' + thoughtsArr.join(' → ');
+                }
+            });
+        }
+
         if (e._originalText) {
             line += '\n   > ' + e._originalText.replace(/\n/g, '\n   > ');
         }

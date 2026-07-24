@@ -20,8 +20,9 @@ export function buildSearchableBaseText(entry) {
  */
 export function buildAliasText(entry, aliasesMap) {
     var parts = [];
-    if (entry.entities && Array.isArray(entry.entities)) {
-        entry.entities.forEach(function(en) {
+    var present = entry.present_characters || entry.entities;
+    if (present && Array.isArray(present)) {
+        present.forEach(function(en) {
             var n = typeof en === 'string' ? en : en.name;
             if (n) {
                 parts.push(n);

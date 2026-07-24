@@ -284,6 +284,7 @@ export function injectBottomDrawerCSS() {
         '.ne-stm-thoughts-row{margin-top:4px;padding:4px 6px;background:var(--ne-warning-bg);border-left:2px solid var(--ne-warning-border);border-radius:2px;font-size:0.78em;}' +
         '.ne-stm-thought-item{color:var(--grey-60);padding:1px 0;}' +
         '.ne-thought-char{color:var(--grey-40);font-weight:bold;}' +
+        '.ne-psyche-mood{color:var(--ne-warning,#f0ad4e);font-size:0.85em;font-style:italic;margin-left:2px;}' +
         '.ne-state-banner{margin:0 0 8px 0;padding:8px 12px;border-radius:6px;background:linear-gradient(135deg,rgba(125,73,64,.06),rgba(125,73,64,.02));border:1px solid rgba(125,73,64,.12);font-size:13px;line-height:1.6;}' +
         '.ne-state-banner-top{display:flex;gap:16px;align-items:baseline;}' +
         '.ne-state-scene{font-weight:600;color:var(--SmartThemeBodyColor,#c1b9ad);}' +

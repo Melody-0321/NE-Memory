@@ -48,12 +48,14 @@ function collectKnownEntities(state, content) {
     entities.forEach(function(e) { seenNames[e.name] = true })
 
     allSTM.concat(allLTM).forEach(function(e) {
-        if (e.entities) {
-            e.entities.forEach(function(en) {
-                if (en.name && !seenNames[en.name]) {
-                    seenNames[en.name] = true
+        var present = e.present_characters || e.entities;
+        if (present) {
+            present.forEach(function(en) {
+                var enName = typeof en === 'string' ? en : en.name;
+                if (enName && !seenNames[enName]) {
+                    seenNames[enName] = true
                     entities.push({
-                        name: en.name,
+                        name: enName,
                         type: en.type || 'character',
                         occupations: [],
                         description: ''

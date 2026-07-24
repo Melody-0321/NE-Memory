@@ -83,10 +83,10 @@ export function getEligibleStmIds(vault) {
 export function computeClosureSignals(openLtm, newStmEvents) {
     if (!openLtm) return null;
 
-    var openEntities = (openLtm.entities || []).map(function(e) { return typeof e === 'string' ? e : e.name; });
+    var openEntities = (openLtm.present_characters || openLtm.entities || []).map(function(e) { return typeof e === 'string' ? e : e.name; });
     var newEntityNames = [];
     (newStmEvents || []).forEach(function(ev) {
-        (ev.entities || []).forEach(function(e) {
+        (ev.present_characters || ev.entities || []).forEach(function(e) {
             var n = typeof e === 'string' ? e : e.name;
             if (newEntityNames.indexOf(n) === -1) newEntityNames.push(n);
         });
@@ -113,7 +113,7 @@ export function computeClosureSignals(openLtm, newStmEvents) {
         else timeGap = '同日';
     }
 
-    var openScene = openLtm.scene || (openLtm.entities && openLtm.entities.length > 0 ? openLtm.entities[0].scene : '') || '';
+    var openScene = openLtm.scene || (openLtm.present_characters && openLtm.present_characters.length > 0 ? openLtm.present_characters[0].scene : '') || '';
     var newScene = (newStmEvents && newStmEvents.length > 0) ? (newStmEvents[0].scene || '') : '';
     var sceneChange = openScene && newScene && openScene !== newScene;
 
@@ -228,7 +228,7 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
                 title: updatedTitle || '',
                 event: updatedEvent || '',
                 period: '',
-                entities: [],
+                present_characters: [],
                 timestamp: Date.now()
             };
             content.ltm_entries = content.ltm_entries || [];
@@ -257,17 +257,17 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
 
         var ltmEntities = [];
         var seen = {};
-        (openLtm.entities || []).forEach(function(e) {
+        (openLtm.present_characters || openLtm.entities || []).forEach(function(e) {
             var n = typeof e === 'string' ? e : e.name;
             if (!seen[n]) { ltmEntities.push(n); seen[n] = true; }
         });
         sourceSTM.forEach(function(s) {
-            (s.entities || []).forEach(function(e) {
+            (s.present_characters || s.entities || []).forEach(function(e) {
                 var n = typeof e === 'string' ? e : e.name;
                 if (!seen[n]) { ltmEntities.push(n); seen[n] = true; }
             });
         });
-        openLtm.entities = ltmEntities;
+        openLtm.present_characters = ltmEntities;
 
         consumedStmIds.forEach(function(stmId) {
             if (vault.stm_index && vault.stm_index[stmId]) {
@@ -379,7 +379,7 @@ export async function runLtmRebatch(vault, callMemoryPipeline) {
             title: (parsed.title || '').substring(0, 60),
             event: (parsed.event || '').substring(0, 200),
             period: '',
-            entities: [],
+            present_characters: [],
             timestamp: Date.now()
         };
 
@@ -401,12 +401,12 @@ export async function runLtmRebatch(vault, callMemoryPipeline) {
         ltm.time_range = deriveTimeRange(sourceStm);
         var entities = [];
         sourceStm.forEach(function(s) {
-            (s.entities || []).forEach(function(e) {
+            (s.present_characters || s.entities || []).forEach(function(e) {
                 var n = typeof e === 'string' ? e : e.name;
                 if (entities.indexOf(n) === -1) entities.push(n);
             });
         });
-        ltm.entities = entities;
+        ltm.present_characters = entities;
 
         content.ltm_entries = content.ltm_entries || [];
         content.ltm_entries.push(ltm);

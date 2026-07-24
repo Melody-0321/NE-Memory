@@ -330,16 +330,8 @@ async function consumeNeCharBlocks(messageIndex, neId) {
             if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks MERGED: ' + cb.name + ' -> ' + JSON.stringify(cb.fields));
         });
 
-        if (messageIndex !== undefined) {
-            var cache = globalThis.__ne_inner_thoughts_cache || {};
-            pending.forEach(function(cb) {
-                if (!cb.name || !cb.fields || !cb.fields.inner_thoughts) return;
-                var thoughts = cache[cb.name] || [];
-                thoughts.push({ msgIdx: messageIndex, content: cb.fields.inner_thoughts });
-                cache[cb.name] = thoughts;
-            });
-            globalThis.__ne_inner_thoughts_cache = cache;
-        }
+        // 注：__ne_inner_thoughts_cache 已移除。STM 提取阶段由 LLM 直接输出 character_psyche，
+        // 不再需要从 NE-CHAR 后置填充 inner_thoughts 到 STM 条目。
         charState.characters = charState.characters;
         vault.content.state = charState;
         if (allCharChanges.length > 0) {

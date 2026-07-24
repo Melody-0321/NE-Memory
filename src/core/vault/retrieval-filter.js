@@ -280,7 +280,7 @@ function denoiseResults(results, minResults) {
     var light = [];
     for (var i = 0; i < results.length; i++) {
         var e = results[i];
-        var entities = e.entities || [];
+        var entities = e.present_characters || e.entities || [];
         var isTransition = entities.length <= 1;
         if (e.event) {
             var ev = e.event;

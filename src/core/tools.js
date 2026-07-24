@@ -63,9 +63,9 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                         if (entry.scene) lines.push('Scene: ' + entry.scene);
                         if (entry.title) lines.push('Title: ' + entry.title);
                         if (entry.event) lines.push('Event: ' + entry.event);
-                        if (entry.entities && entry.entities.length > 0) {
-                            var prefixMap = {character:'@', item:'$', faction:'&', concept:'#', location:'~', event:'!'};
-                            lines.push('Entities: ' + entry.entities.map(function(e) { return (prefixMap[e.type] || '?') + e.name; }).join(', '));
+                        var entryPresent = entry.present_characters || entry.entities;
+                        if (entryPresent && entryPresent.length > 0) {
+                            lines.push('Characters: ' + entryPresent.map(function(e) { return typeof e === 'string' ? e : e.name; }).join(', '));
                         }
                         if (refType === 'ltm' && entry.stm_refs && entry.stm_refs.length > 0) {
                             lines.push('Children: ' + entry.stm_refs.map(function(id) { return '→stm_' + id; }).join(', '));
@@ -83,7 +83,8 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                     var entityName = ref.replace('chain.', '');
                     var allSTM2 = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
                     var chainEntries = allSTM2.filter(function(e) {
-                        return e.entities && e.entities.some(function(en) { return (typeof en === 'string' ? en : en.name) === entityName; });
+                        var present = e.present_characters || e.entities;
+                        return present && present.some(function(en) { return (typeof en === 'string' ? en : en.name) === entityName; });
                     });
                     if (chainEntries.length === 0) result = 'No narrative chain found for: ' + entityName;
                     else {

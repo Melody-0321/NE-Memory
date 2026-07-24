@@ -1517,11 +1517,47 @@ function toggleInlineEdit(row, entryId, entryType) {
     if (cells.length < 4) return;
     var origPeriod = (cells[1].textContent || '').trim();
     var origScene = (cells[2].textContent || '').trim();
-    // New column layout: [0]No. [1]Period [2]Scene [3]MsgIDs [4]Event [5]Edit
-    // Old column layout: [0]No. [1]Period [2]Scene [3]Event [4]Edit
+    // 新 8 列布局: [0]No [1]Period [2]Scene [3]MsgIDs [4]Event [5]Present [6]Psyche [7]Edit
+    // 旧 6 列布局: [0]No [1]Period [2]Scene [3]MsgIDs [4]Event [5]Edit
     var hasIdColumn = cells.length > 5;
     var origEvent = (cells[hasIdColumn ? 4 : 3].textContent || '').trim();
     var origIds = hasIdColumn ? (cells[3].textContent || '').trim() : '';
+
+    // 新增：从 Present 列（index 5）反解在场角色数组
+    var presentCellIdx = hasIdColumn ? 5 : 4;
+    var origPresent = '';
+    if (cells[presentCellIdx]) {
+        var pills = cells[presentCellIdx].querySelectorAll('.ne-entity-pill');
+        if (pills.length > 0) {
+            var names = [];
+            pills.forEach(function(p) { names.push((p.textContent || '').trim()); });
+            origPresent = names.join(', ');
+        } else {
+            origPresent = (cells[presentCellIdx].textContent || '').trim();
+        }
+    }
+
+    // 新增：从 Psyche 列（index 6）反解角色心理 → 序列化为 textarea 文本
+    var psycheCellIdx = hasIdColumn ? 6 : 5;
+    var origPsycheText = '';
+    if (cells[psycheCellIdx]) {
+        var items = cells[psycheCellIdx].querySelectorAll('.ne-stm-thought-item');
+        var pLines = [];
+        items.forEach(function(item) {
+            var charSpan = item.querySelector('.ne-thought-char');
+            var moodSpan = item.querySelector('.ne-psyche-mood');
+            var pName = charSpan ? (charSpan.textContent || '').trim() : '';
+            var pMood = moodSpan ? (moodSpan.textContent || '').replace(/^\[|\]$/g, '').trim() : '';
+            var fullText = (item.textContent || '').trim();
+            var pThoughts = fullText;
+            if (pName && pThoughts.indexOf(pName) === 0) pThoughts = pThoughts.substring(pName.length).trim();
+            if (pMood && pThoughts.indexOf('[' + pMood + ']') === 0) pThoughts = pThoughts.substring(('[' + pMood + ']').length).trim();
+            pThoughts = pThoughts.replace(/^[:\s]+/, '').trim();
+            pLines.push(pName + '|' + pMood + '|' + pThoughts);
+        });
+        origPsycheText = pLines.join('\n');
+    }
+
     row.classList.add('ne-inline-row');
     var savedHTML = row.innerHTML;
     row._neOrigHTML = savedHTML;
@@ -1545,12 +1581,16 @@ function toggleInlineEdit(row, entryId, entryType) {
         ? '<td style="font-size:0.75em;max-width:180px;color:var(--ne-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(origIds) + '">' + escapeHtml(origIds) + '</td>'
         : '';
     var eventCellTarget = hasIdColumn ? 5 : 4;
+    var presentCellTarget = hasIdColumn ? 6 : 5;
+    var psycheCellTarget = hasIdColumn ? 7 : 6;
 
     row.innerHTML = '<td style="text-align:center;width:2em;">' + cells[0].innerHTML + '</td>' +
         '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
         '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
         idColumnCell +
         '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
+        '<td><input class="ne-inline-present" value="' + escapeHtml(origPresent) + '" placeholder="角色A, 角色B" style="width:100%;font-size:0.85em;"></td>' +
+        '<td><textarea class="ne-inline-psyche" rows="2" placeholder="角色名|情绪|内心想法（每行一个）" style="width:100%;font-size:0.85em;">' + escapeHtml(origPsycheText) + '</textarea></td>' +
         '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
         '<button class="ne-inline-cancel" style="background:var(--grey-40);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2190</button>' +
         '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:2px;" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
@@ -1558,8 +1598,32 @@ function toggleInlineEdit(row, entryId, entryType) {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
         var event = row.querySelector('.ne-inline-event').value;
+        var presentRaw = row.querySelector('.ne-inline-present').value;
+        var psycheRaw = row.querySelector('.ne-inline-psyche').value;
+
+        // 解析 present_characters: "角色A, 角色B" → ["角色A", "角色B"]
+        var presentCharacters = presentRaw.split(/[,，]/).map(function(s) { return s.trim(); }).filter(Boolean);
+
+        // 解析 character_psyche: "角色名|情绪|想法" → {角色名: {current_mood, inner_thoughts}}
+        var characterPsyche = {};
+        psycheRaw.split('\n').forEach(function(line) {
+            line = line.trim();
+            if (!line) return;
+            var parts = line.split('|');
+            var cName = (parts[0] || '').trim();
+            var cMood = (parts[1] || '').trim();
+            var cThoughts = (parts[2] || '').trim();
+            if (cName) characterPsyche[cName] = { current_mood: cMood, inner_thoughts: cThoughts };
+        });
+
         try {
-            await saveSingleEntry(entryType, entryId, { period: period, scene: scene, event: event });
+            await saveSingleEntry(entryType, entryId, {
+                period: period,
+                scene: scene,
+                event: event,
+                present_characters: presentCharacters,
+                character_psyche: characterPsyche
+            });
         } catch (err) {
             showToast(t('Save failed:') + ' ' + err.message, 'error', 4000);
             return;
@@ -1569,6 +1633,31 @@ function toggleInlineEdit(row, entryId, entryType) {
         row.querySelector('td:nth-child(2)').textContent = period;
         row.querySelector('td:nth-child(3)').textContent = scene;
         row.querySelector('td:nth-child(' + eventCellTarget + ')').innerHTML = escapeHtml(event);
+        // 重建 Present 列内容
+        var presentCell = row.querySelector('td:nth-child(' + presentCellTarget + ')');
+        if (presentCell) {
+            presentCell.innerHTML = presentCharacters.length > 0
+                ? '<div class="ne-stm-entities-row">' + presentCharacters.map(function(n) {
+                    return '<span class="ne-entity-pill">' + escapeHtml(n) + '</span>';
+                  }).join('') + '</div>'
+                : '';
+        }
+        // 重建 Psyche 列内容
+        var psycheCell = row.querySelector('td:nth-child(' + psycheCellTarget + ')');
+        if (psycheCell) {
+            var psycheLinesHtml = [];
+            Object.keys(characterPsyche).forEach(function(cName) {
+                var cp = characterPsyche[cName];
+                var cLine = '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(cName) + '</span>';
+                if (cp.current_mood) cLine += ' <span class="ne-psyche-mood">[' + escapeHtml(cp.current_mood) + ']</span>';
+                if (cp.inner_thoughts) cLine += ': ' + escapeHtml(cp.inner_thoughts);
+                cLine += '</div>';
+                psycheLinesHtml.push(cLine);
+            });
+            psycheCell.innerHTML = psycheLinesHtml.length > 0
+                ? '<div class="ne-stm-thoughts-row">' + psycheLinesHtml.join('') + '</div>'
+                : '';
+        }
         row._neOrigPeriod = period;
         row._neOrigScene = scene;
         row._neOrigEvent = event;
@@ -1611,30 +1700,56 @@ function renderStmRow(stm, opts) {
         ? '<td><button class="ne-inline-edit-btn" data-entry-id="' + stm.id + '" data-entry-type="stm" aria-label="' + t('Edit') + '">\u270E</button></td>'
         : '<td></td>';
     var eventHtml = escapeHtml(stm.event || stm.summary || '');
-    var entities = stm.entities || [];
-    if (entities.length > 0) {
-        eventHtml += '<div class="ne-stm-entities-row">';
-        entities.forEach(function(en) {
-            eventHtml += '<span class="ne-entity-pill">' + escapeHtml(en) + '</span>';
+
+    // 在场角色列（兼容旧 entities 字段）
+    var presentChars = stm.present_characters || stm.entities || [];
+    var presentHtml = '';
+    if (presentChars.length > 0) {
+        presentHtml = '<div class="ne-stm-entities-row">';
+        presentChars.forEach(function(en) {
+            var name = typeof en === 'string' ? en : en.name;
+            presentHtml += '<span class="ne-entity-pill">' + escapeHtml(name) + '</span>';
         });
-        eventHtml += '</div>';
+        presentHtml += '</div>';
     }
-    var innerThoughts = stm._inner_thoughts;
-    if (innerThoughts && Object.keys(innerThoughts).length > 0) {
-        eventHtml += '<div class="ne-stm-thoughts-row">';
-        Object.keys(innerThoughts).forEach(function(name) {
-            var thoughts = innerThoughts[name] || [];
-            var joined = thoughts.join(' \u2192 ');
-            eventHtml += '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(name) + '</span>: ' + escapeHtml(joined) + '</div>';
+
+    // 心理状态列（兼容旧 _inner_thoughts 字段）
+    var psyche = stm.character_psyche;
+    var psycheHtml = '';
+    if (!psyche || Object.keys(psyche).length === 0) {
+        // 兼容旧 _inner_thoughts 数据
+        var oldThoughts = stm._inner_thoughts;
+        if (oldThoughts && Object.keys(oldThoughts).length > 0) {
+            psycheHtml = '<div class="ne-stm-thoughts-row">';
+            Object.keys(oldThoughts).forEach(function(name) {
+                var thoughts = oldThoughts[name] || [];
+                var joined = thoughts.join(' \u2192 ');
+                psycheHtml += '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(name) + '</span>: ' + escapeHtml(joined) + '</div>';
+            });
+            psycheHtml += '</div>';
+        }
+    } else {
+        psycheHtml = '<div class="ne-stm-thoughts-row">';
+        Object.keys(psyche).forEach(function(name) {
+            var p = psyche[name] || {};
+            var mood = p.current_mood || '';
+            var thoughts = p.inner_thoughts || '';
+            var line = '<span class="ne-thought-char">' + escapeHtml(name) + '</span>';
+            if (mood) line += ' <span class="ne-psyche-mood">[' + escapeHtml(mood) + ']</span>';
+            if (thoughts) line += ': ' + escapeHtml(thoughts);
+            psycheHtml += '<div class="ne-stm-thought-item">' + line + '</div>';
         });
-        eventHtml += '</div>';
+        psycheHtml += '</div>';
     }
+
     return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + '>'
         + '<td style="text-align:center;color:#888;width:2em;font-size:' + fs + ';">' + no + '</td>'
         + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
         + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'
         + '<td style="font-size:' + fs + ';max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td>'
         + '<td style="font-size:' + fs + ';">' + eventHtml + '</td>'
+        + '<td style="font-size:' + fs + ';max-width:160px;">' + presentHtml + '</td>'
+        + '<td style="font-size:' + fs + ';max-width:200px;">' + psycheHtml + '</td>'
         + editCell
         + '</tr>';
 }
@@ -1643,7 +1758,7 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = panelQS(tbodyId);
     if (!tbody) return;
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="6" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
     var entryMap = {};
     entries.forEach(function(e) { if (e && e.id) entryMap[e.id] = e; });
 

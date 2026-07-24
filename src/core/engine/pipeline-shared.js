@@ -213,7 +213,8 @@ export function parseSTMResponse(llmResponse) {
         if (!e.msgRange || e.msgRange.length !== 2) {
             e.msgRange = [i, i];
         }
-        e.entities = [];
+        if (!Array.isArray(e.present_characters)) e.present_characters = [];
+        if (!e.character_psyche || typeof e.character_psyche !== 'object') e.character_psyche = {};
     }
 
     return { stmEntries: stmEntries, stateChanges: stateChanges };

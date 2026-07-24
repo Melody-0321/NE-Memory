@@ -17,7 +17,7 @@ function buildLtmDecisionPrompt(vault, newStmEntries, forceClose) {
         ltmCtx += 'title: ' + (openLtm.title || '') + '\n';
         ltmCtx += 'event: ' + (openLtm.event || '').substring(0, 200) + '\n';
         ltmCtx += 'period: ' + (openLtm.period || '') + '\n';
-        ltmCtx += 'entities: ' + ((openLtm.entities || []).map(function(e) { return e.name; }).join(', ') || '') + '\n';
+        ltmCtx += 'entities: ' + ((openLtm.present_characters || openLtm.entities || []).map(function(e) { return typeof e === 'string' ? e : e.name; }).join(', ') || '') + '\n';
         ltmCtx += 'stm_refs 数量: ' + ((openLtm.stm_refs || []).length) + '\n';
     } else {
         ltmCtx += '(无)\n';
