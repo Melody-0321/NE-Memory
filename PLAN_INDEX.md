@@ -1,11 +1,12 @@
 # 计划文档索引
 
-> 自动生成 | 2026-07-24 | 48 个文档 | 44% 完成
+> 自动生成 | 2026-07-24 | 49 个文档 | 45% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
 | `adaptive-context-control-plan.md` | ✅ 已完成 | 2026-07-17 | 2026-07-22 | 自适应上下文控制（Plan C 重构）— 事后裁剪方案 |
 | `adaptive-context-integration-test.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 自适应上下文控制集成测试改造计划 |
+| `adaptive-dryrun-chat-history.md` | ✅ 已完成 | 2026-07-24 | 2026-07-24 | 自适应压缩 DryRun 支持 — 让 ST Chat History 反映压缩结果 |
 | `add-ability-and-outfit-fields.md` | ❓ 未知 | — | — | 预设字段扩展：技能/能力 + 即时着装 |
 | `api-connection-model-dropdown-plan.md` | ✅ 已完成 | 2026-06-24 | 2026-07-02 | Plan 1：API 连接检测重构 + 模型下拉改造 |
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
@@ -58,7 +59,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：21
+- ✅ 已完成：22
 - 🔄 进行中：10
 - ⏳ 未开始：3
 - ❓ 未标记：14

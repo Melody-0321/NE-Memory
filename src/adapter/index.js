@@ -7,7 +7,7 @@ import { runtime } from '../core/runtime.js';
 import { readVault } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
-import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged, adaptContextPostTrim } from './events.js';
+import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged, adaptContextPostTrim, getLastDialogRoundsAfter } from './events.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
 import { showToast } from './panel-shared.js';
@@ -268,6 +268,15 @@ function trimDialogRounds(chat) {
     if (!chat || chat.length === 0) return;
     var maxRounds = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
     if (maxRounds <= 0) return;
+
+    // 自适应模式：用压缩后实际轮数覆盖硬上限
+    if (readNeSetting('adaptiveContextControl', false)) {
+        var adaptiveRounds = getLastDialogRoundsAfter();
+        if (adaptiveRounds > 0 && adaptiveRounds < maxRounds) {
+            console.log('[NE] applyDialogWindowIgnore: using adaptive rounds=' + adaptiveRounds + ' (was ceiling=' + maxRounds + ')');
+            maxRounds = adaptiveRounds;
+        }
+    }
 
     var rounds = 0;
     var prevRole = null;

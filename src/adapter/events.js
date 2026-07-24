@@ -17,7 +17,7 @@ import { buildStateInjectionTable, resolveActiveTemplateFields } from '../core/v
 import { computeWindowStartMsgId } from '../core/engine/context-window.js';
 import { buildMsgId, findMessageInChat } from '../core/engine/msg-id.js';
 import { countTokens } from '../core/engine/text-utils.js';
-import { adaptContextPostTrim, setAdaptiveCache } from '../core/engine/adaptive-context.js';
+import { adaptContextPostTrim, setAdaptiveCache, getLastDialogRoundsAfter } from '../core/engine/adaptive-context.js';
 import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../core/params.js';
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
@@ -175,7 +175,7 @@ function adjustDialogWindow() {
 
 /* ══════════════════ Adaptive Context Control — 已抽取到 core/engine/adaptive-context.js ══════════════════ */
 // 重新导出 adaptContextPostTrim，保持 index.js 的导入签名不变
-export { adaptContextPostTrim };
+export { adaptContextPostTrim, getLastDialogRoundsAfter };
 
 export function notifyVaultChanged() {
     try {

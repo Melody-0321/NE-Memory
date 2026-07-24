@@ -30,6 +30,7 @@ var _neCachedStateTable = null;
 var _neCachedMemoryVault = null;
 var _neCachedStateTableTokens = 0;
 var _neCachedMemoryVaultTokens = 0;
+var _neLastDialogRoundsAfter = 0;
 
 /**
  * 部分更新缓存。仅更新传入字段，其他字段保持不变。
@@ -117,7 +118,7 @@ export function replaceNeMarkerInChat(chat, key, newContent) {
  * @param {Array} dialogMsgIndices - 对话消息在 chat 中的索引列表
  * @param {Object} ctx - ST context（需有 getTokenCountAsync）
  */
-export async function compressLayers(chat, layers, totalTokens, totalBudget, dialogMsgIndices, ctx) {
+export async function compressLayers(chat, layers, totalTokens, totalBudget, dialogMsgIndices, ctx, dryRun) {
     var spliceOffset = 0;
     var maxIterations = 200;
     var iter = 0;
@@ -164,7 +165,7 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                     pick.current = pick.floor;
                     continue;
                 }
-                _neCachedStateTable = newContent;
+                if (!dryRun) _neCachedStateTable = newContent;
             } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
                 newContent = trimMemoryVaultByKB(_neCachedMemoryVault, newTarget);
                 var vaultTokens = countTokens(newContent);
@@ -172,7 +173,7 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                     pick.current = pick.floor;
                     continue;
                 }
-                _neCachedMemoryVault = newContent;
+                if (!dryRun) _neCachedMemoryVault = newContent;
             }
             if (newContent) {
                 replaceNeMarkerInChat(chat, pick.name, newContent);
@@ -191,7 +192,7 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
  * 按饱和度轮转摊薄扩充（对话历史跳过，只扩充 stateTable/memoryVault）。
  * 当 totalTokens < lowerThreshold（黄金窗口下限）时触发。
  */
-export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ctx) {
+export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ctx, dryRun) {
     var maxIterations = 100;
     var iter = 0;
     while (totalTokens < lowerThreshold && iter < maxIterations) {
@@ -217,7 +218,7 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
                 pick.current = pick.ceiling;
                 continue;
             }
-            _neCachedStateTable = newContent;
+            if (!dryRun) _neCachedStateTable = newContent;
         } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
             pick.current = pick.ceiling;
             continue;
@@ -244,14 +245,13 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
  * @param {boolean} dryRun - dryRun 模式（token 显示预览）跳过
  */
 export async function adaptContextPostTrim(chat, dryRun) {
-    if (dryRun) return;
     if (!_neCachedStateTable && !_neCachedMemoryVault) return;
 
     var ctx = typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
     if (!ctx || !ctx.getTokenCountAsync) return;
 
     // 重置调试暴露点（每轮开始时清空，便于测试用例判断是否触发）
-    globalThis.__ne_debug_last_adaptive = null;
+    if (!dryRun) globalThis.__ne_debug_last_adaptive = null;
 
     var maxContext = ctx.maxContext || 32000;
     var genReserve = (ctx.chatCompletionSettings && ctx.chatCompletionSettings.openai_max_tokens) || 300;
@@ -301,10 +301,10 @@ export async function adaptContextPostTrim(chat, dryRun) {
     var action = 'none';
     if (totalTokens > goldenUpper) {
         action = 'compress';
-        await compressLayers(chat, layers, totalTokens, goldenUpper, dialogMsgIndices, ctx);
+        await compressLayers(chat, layers, totalTokens, goldenUpper, dialogMsgIndices, ctx, dryRun);
     } else if (totalTokens < goldenLower) {
         action = 'expand';
-        await expandLayers(chat, layers, totalTokens, goldenLower, ctx);
+        await expandLayers(chat, layers, totalTokens, goldenLower, ctx, dryRun);
     }
 
     // 压缩/扩充后重新测量（供测试断言 + 排查）
@@ -327,20 +327,27 @@ export async function adaptContextPostTrim(chat, dryRun) {
     }
 
     // 暴露调试数据（供 monitor.js collectRoundData 收集 → assertions.js 断言）
-    globalThis.__ne_debug_last_adaptive = {
-        triggered: true,
-        action: action,
-        totalTokensBefore: totalTokensBefore,
-        totalTokensAfter: totalTokensAfter,
-        totalBudget: goldenUpper,
-        goldenTier: goldenTier,
-        goldenUpper: goldenUpper,
-        goldenLower: goldenLower,
-        dialogRoundsBefore: dialogRoundsBefore,
-        dialogRoundsAfter: dialogRoundsAfter,
-        chatLengthBefore: chatLengthBefore,
-        chatLengthAfter: chat.length,
-        layers: layers.map(function(l) { return { name: l.name, current: l.current, floor: l.floor, ceiling: l.ceiling }; }),
-        timestamp: Date.now()
-    };
+    if (!dryRun) {
+        globalThis.__ne_debug_last_adaptive = {
+            triggered: true,
+            action: action,
+            totalTokensBefore: totalTokensBefore,
+            totalTokensAfter: totalTokensAfter,
+            totalBudget: goldenUpper,
+            goldenTier: goldenTier,
+            goldenUpper: goldenUpper,
+            goldenLower: goldenLower,
+            dialogRoundsBefore: dialogRoundsBefore,
+            dialogRoundsAfter: dialogRoundsAfter,
+            chatLengthBefore: chatLengthBefore,
+            chatLengthAfter: chat.length,
+            layers: layers.map(function(l) { return { name: l.name, current: l.current, floor: l.floor, ceiling: l.ceiling }; }),
+            timestamp: Date.now()
+        };
+        _neLastDialogRoundsAfter = dialogRoundsAfter;
+    }
+}
+
+export function getLastDialogRoundsAfter() {
+    return _neLastDialogRoundsAfter;
 }

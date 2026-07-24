@@ -286,7 +286,7 @@ console.log('\n=== adaptive-context: adaptContextPostTrim 守卫 ===');
     // 不需要 mock SillyTavern（dryRun 应在访问 ctx 前就 return）
     clearSillyTavern();
     await adaptContextPostTrim(chat, true);
-    eq(chat.length, beforeLen, 'T13 dryRun 时 chat 不变');
+    eq(chat.length, beforeLen, 'T13 dryRun 无 ctx 时 chat 不变（因 getTokenCountAsync 不可用而提前返回）');
     resetAdaptiveCache();
 })();
 
