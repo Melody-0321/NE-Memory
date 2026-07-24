@@ -18,12 +18,12 @@ export function evaluateStructural(collected, assertion) {
 
     switch (op) {
     case 'min_length':
-        var len = typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1);
-        return { op: op, passed: len >= value, label: label, detail: '实际长度=' + len + ' (要求>=' + value + ')' };
+        var len = typeof target === 'number' ? target : (typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1));
+        return { op: op, passed: len >= value, label: label, detail: '实际=' + len + ' (要求>=' + value + ')' };
 
     case 'max_length':
-        var len2 = typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1);
-        return { op: op, passed: len2 <= value, label: label, detail: '实际长度=' + len2 + ' (要求<=' + value + ')' };
+        var len2 = typeof target === 'number' ? target : (typeof target === 'string' ? target.length : (Array.isArray(target) ? target.length : -1));
+        return { op: op, passed: len2 <= value, label: label, detail: '实际=' + len2 + ' (要求<=' + value + ')' };
 
     case 'contains':
         if (typeof target !== 'string') return { op: op, passed: false, label: label, detail: 'target 不是字符串' };
