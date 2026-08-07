@@ -9,7 +9,7 @@
  */
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
-  loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock, isDialogueTemplateLocked,
+  loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock,
   editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, deleteTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
   loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
@@ -457,6 +457,17 @@ function _renderTemplateCardHTML(tpl, id, cardConfig, mode) {
 // Config card (bottom half)
 // ─────────────────────────────────────
 
+// UIP-2: 基于已读入的 cardConfig 判断对话模板锁定态（避免每卡重复 loadCardConfigSync）
+function _tplConfigLocked(cardConfig, globalTemplateId) {
+    if (!cardConfig || !cardConfig._dialogueTemplates) return false;
+    var dtKeys = Object.keys(cardConfig._dialogueTemplates);
+    for (var i = 0; i < dtKeys.length; i++) {
+        var dt = cardConfig._dialogueTemplates[dtKeys[i]];
+        if (dt._templateId === globalTemplateId && dt._locked) return true;
+    }
+    return false;
+}
+
 function _renderConfigCardHTML(tpl, id, cardConfig, roleType) {
     if (!tpl) return '';
     var name = tpl.name || id;
@@ -470,7 +481,7 @@ function _renderConfigCardHTML(tpl, id, cardConfig, roleType) {
     var stateClass = dtState === 'forked' ? 'state-forked' : (dtState === 'orphaned' ? 'state-orphaned' : 'state-synced');
     var stateLabel = dtState === 'forked' ? t('forked') : (dtState === 'orphaned' ? t('orphaned') : t('version_synced'));
     var stateTooltip = dtState === 'forked' ? t('forked_tooltip') : (dtState === 'orphaned' ? t('orphaned_tooltip') : t('synced_tooltip'));
-    var dtLocked = isDialogueTemplateLocked(_getCurrentCharName(), id);
+    var dtLocked = _tplConfigLocked(cardConfig, id);
     var activeDtKey = _getActiveDialogueTemplateKey(cardConfig, id);
 
     var html = '<div class="ne-config-card ' + stateClass + '" data-template-id="' + escapeHtml(id) + '" data-role-type="' + escapeHtml(roleType) + '">';
@@ -1441,7 +1452,7 @@ function _saveCardLevelEditor(container, charName, cardDtKey, cardConfig, templa
     }
     // Read custom fields
     var customFieldRefs = [];
-    var customItems = container.querySelectorAll('.ne-custom-field-item span');
+    var customItems = container.querySelectorAll('.ne-custom-field-item > span:first-child');
     for (var j = 0; j < customItems.length; j++) {
         customFieldRefs.push(customItems[j].textContent);
     }
@@ -1488,7 +1499,7 @@ function _saveTemplateFromEditor(container, templateId, isNew, templates, order)
     }
 
     var customFieldRefs = [];
-    var customItems = container.querySelectorAll('.ne-custom-field-item span');
+    var customItems = container.querySelectorAll('.ne-custom-field-item > span:first-child');
     for (var i = 0; i < customItems.length; i++) {
         customFieldRefs.push(customItems[i].textContent);
     }
@@ -1553,7 +1564,7 @@ function _addCustomFieldToEditor(container) {
     }
     var listEl = container.querySelector('#ne-editor-custom-fields');
     if (!listEl) return;
-    var existing = listEl.querySelectorAll('.ne-custom-field-item span');
+    var existing = listEl.querySelectorAll('.ne-custom-field-item > span:first-child');
     for (var i = 0; i < existing.length; i++) {
         if (existing[i].textContent === fieldName) return;
     }

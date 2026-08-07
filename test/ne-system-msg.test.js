@@ -63,6 +63,34 @@ sendNePopup('test_chat', 'Critical warning', {
 
 await new Promise(function(r) { setTimeout(r, 50); });
 
+// ====== sendNeInteraction: ST degraded path (UI-8) ======
+// 注入 mock ST context（带 sendSystemMessage），验证假按钮降级为自然文本
+console.log('\n=== ne-system-msg: sendNeInteraction (ST degraded) ===');
+
+var sentMessages = [];
+var degradedDismissed = false;
+var degradedResult = null;
+var mockCtx = {
+    sendSystemMessage: function(chatId, text) { sentMessages.push(text); }
+};
+globalThis.SillyTavern = { getContext: function() { return mockCtx; } };
+
+sendNeInteraction('test_chat', '引导提示', {
+    buttons: [{ text: '查看模板库', key: 'open_templates' }],
+    timeoutMs: 10,
+    onDismiss: function() { degradedDismissed = true; }
+}).then(function(result) {
+    degradedResult = result;
+    var msg = sentMessages.join('\n');
+    assert(msg.indexOf('[') === -1, 'degraded path sends no "[text]" fake buttons');
+    assert(msg.indexOf('查看模板库') !== -1, 'button text appears as natural text');
+    assert(degradedDismissed, 'degraded path calls onDismiss immediately');
+    assert(degradedResult === 'dismiss', 'degraded path resolves with "dismiss"');
+});
+
+await new Promise(function(r) { setTimeout(r, 50); });
+delete globalThis.SillyTavern;
+
 // Restore console.log
 console.log = originalLog;
 

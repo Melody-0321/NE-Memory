@@ -162,7 +162,7 @@ export async function listAllChatIds() {
     var db = await openDB();
     return new Promise(function(resolve, reject) {
         try {
-            var stores = ['vaults', 'state_vaults', 'active_chains'];
+            var stores = ['vaults', 'state_vaults', 'memory_vaults', 'active_chains'];
             var remaining = stores.length;
             var idSet = {};
             for (var si = 0; si < stores.length; si++) {

@@ -50,7 +50,9 @@ export function tokenize(text) {
 export function vocabularyOverlap(textA, textB) {
     var tokensA = tokenize(textA);
     var tokensB = tokenize(textB);
-    var setA = {}, setB = {};
+    // P1-10: 普通对象字面量会命中 Object.prototype（constructor/toString/valueOf），
+    // 用无原型对象避免误判 token 相似度虚高。
+    var setA = Object.create(null), setB = Object.create(null);
     for (var ti = 0; ti < tokensA.length; ti++) setA[tokensA[ti]] = true;
     for (var ti = 0; ti < tokensB.length; ti++) setB[tokensB[ti]] = true;
     var overlap = 0, total = 0;

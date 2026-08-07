@@ -401,6 +401,14 @@ export function validateField(value, fieldSchema) {
         if (!Array.isArray(fieldSchema.values) || fieldSchema.values.indexOf(value) === -1) {
             return { ok: false, value: value, error: 'Value not in enum: ' + JSON.stringify(fieldSchema.values) };
         }
+    } else if (type === 'object') {
+        // P1-7: object 类型原零校验（任意值放行），补类型检查；子字段校验由
+        // resolveSchemaPath 的 item_schema 步进 + 扁平化 changes 的独立路径完成
+        if (value === null || value === undefined) {
+            value = {};
+        } else if (typeof value !== 'object' || Array.isArray(value)) {
+            return { ok: false, value: value, error: 'Expected object, got: ' + (Array.isArray(value) ? 'array' : typeof value) };
+        }
     }
 
     return { ok: true, value: value };
@@ -416,9 +424,17 @@ export function resolveSchemaPath(stateSchema, dotPath) {
     if (!stateSchema) return null;
     var parts = dotPath.split('.');
     var current = stateSchema;
+    var inItemSchema = false;
     for (var i = 0; i < parts.length; i++) {
         var part = parts[i];
         if (!current) return null;
+        if (current.type === 'object' && current.item_schema) {
+            // P1-7: map 容器（abilities/inventory）——动态键层（技能名/物品名）不参与
+            // schema 匹配，丢弃后进入 item_schema 模板，下一段按字段名匹配
+            current = current.item_schema;
+            inItemSchema = true;
+            continue;
+        }
         if (current.type === 'object' && current.fields) {
             current = current.fields[part] || current.fields['*'] || null;
         } else if (current.type === 'object' && current.schema) {
@@ -429,6 +445,10 @@ export function resolveSchemaPath(stateSchema, dotPath) {
             }
         } else if (current.fields) {
             current = current.fields[part] || null;
+        } else if (inItemSchema) {
+            // item_schema 裸字段 map（无 type/fields 包装）：part 直接作为字段名。
+            // 注意不能靠 !current.type 判断——item_schema 里可能存在名为 type 的字段定义
+            current = current[part] || null;
         } else {
             return null;
         }
@@ -444,6 +464,10 @@ export function resolveSchemaPath(stateSchema, dotPath) {
 export function validateStateChanges(stateSchema, changes) {
     var validated = {};
     var warnings = [];
+
+    function isEmptyValue(v) {
+        return v === undefined || v === null || v === '' || (typeof v === 'number' && isNaN(v));
+    }
 
     Object.keys(changes).forEach(function (path) {
         var fieldSchema = resolveSchemaPath(stateSchema, path);
@@ -465,7 +489,12 @@ export function validateStateChanges(stateSchema, changes) {
 
         var result = validateField(changes[path], fieldSchema);
         if (result.ok) {
-            validated[path] = result.value;
+            // P1-7: required 字段空值 → 拒绝写入 + warning（保留旧值，避免空值覆盖质量数据）
+            if (fieldSchema.required && isEmptyValue(result.value)) {
+                warnings.push({ path: path, warning: 'Required field cannot be empty: ' + path });
+            } else {
+                validated[path] = result.value;
+            }
         } else {
             warnings.push({ path: path, warning: result.error });
         }
@@ -639,6 +668,11 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     }
 }
 
+// P1-6: 原型链保留键 —— __proto__/constructor/prototype path 可触发原型污染或校验绕过，写入前一律拦截
+function isReservedKey(key) {
+    return key === '__proto__' || key === 'constructor' || key === 'prototype';
+}
+
 // mergeStateChanges — 按 dot-path 深度合并到状态对象
 // 每次合并后自动重建 present_characters
 /**
@@ -739,6 +773,7 @@ export function mergeStateChanges(state, validatedChanges) {
         if (parts[0] === 'characters' && parts.length >= 2) {
             var charName = parts[1];
             if (charName && charName !== '*') {
+                if (isReservedKey(charName)) return; // P1-6: 拦截 characters.__proto__ 等路径，防止 ensureCharacterTemplate 设置原型
                 ensureCharacterTemplate(newState, charName, null, newState.protagonist_name);
             }
         }
@@ -752,6 +787,7 @@ export function mergeStateChanges(state, validatedChanges) {
         var current = newState;
 
         for (var i = 0; i < parts.length - 1; i++) {
+            if (isReservedKey(parts[i])) return; // P1-6: 拦截原型链保留键路径
             if (current[parts[i]] === undefined || current[parts[i]] === null || typeof current[parts[i]] !== 'object') {
                 current[parts[i]] = {};
             }
@@ -759,12 +795,15 @@ export function mergeStateChanges(state, validatedChanges) {
         }
 
         var lastKey = parts[parts.length - 1];
-        if (lastKey === 'affection' && flattened[path] && typeof flattened[path] === 'object' && flattened[path].__inc) {
+        if (isReservedKey(lastKey)) return; // P1-6: 拦截原型链保留键路径
+        if (flattened[path] && typeof flattened[path] === 'object' && flattened[path].__inc) {
+            // P1-8: 增量语法对任意 number 字段生效（原只对 affection 特判），affection 保留 0-100 clamp
             var delta = flattened[path].delta;
-            var currentAffection = Number(current[lastKey]) || 0;
-            var newAffection = Math.max(0, Math.min(100, currentAffection + delta));
-            current[lastKey] = newAffection;
-            capturedChanges.push({ path: path, old: currentAffection, new: newAffection });
+            var curVal = Number(current[lastKey]) || 0;
+            var nextVal = curVal + delta;
+            if (lastKey === 'affection') nextVal = Math.max(0, Math.min(100, nextVal));
+            current[lastKey] = nextVal;
+            capturedChanges.push({ path: path, old: curVal, new: nextVal });
             hasChanges = true;
             return;
         }

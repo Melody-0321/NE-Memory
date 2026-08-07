@@ -1,6 +1,6 @@
 import { sortStmByMsgOrder } from '../vault/store.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
-import { extractEntityNames, mergePipelines, groupCandidatesByEntity } from './retrieval.js';
+import { extractEntityNames, lookupEntityChains, mergePipelines, groupCandidatesByEntity } from './retrieval.js';
 import { resolveAmbiguousReferences } from './ambiguity.js';
 import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
@@ -176,7 +176,9 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     } catch (e) {}
 
     var entityNames = extractEntityNames(query, content);
-    var entityChains = {};
+    // P1-18: 实体链从事件指针（present_characters）实时构建——此前初始化为空对象后从未赋值，
+    // mergePipelines 预取 / 场景外链块 / compileRetrievalBudget 三个消费点全部空转
+    var entityChains = await lookupEntityChains(content, entityNames);
 
     var smartPushStart = Date.now();
     var bm25Start = Date.now();

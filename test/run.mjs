@@ -16,6 +16,8 @@ var testMap = {
     'time-filter': 'time-filter.test.js',
     'turn-segmenter': 'turn-segmenter.test.js',
     'stm-validate': 'stm-validate.test.js',
+    'stm-chunking': 'stm-chunking.test.js',
+    'entity-chain': 'entity-chain.test.js',
     'ltm-validate': 'ltm-validate.test.js',
     'consolidate-core': 'consolidate-core.test.js',
     'consolidate-apply': 'consolidate-apply.test.js',
@@ -31,7 +33,8 @@ var testMap = {
     'json-fallback': 'json-fallback.test.js',
     'bm25-grouper': 'bm25-grouper.test.js',
     'msg-id': 'msg-id.test.js',
-    'adaptive-context': 'adaptive-context.test.js'
+    'adaptive-context': 'adaptive-context.test.js',
+    'banner-regex': 'banner-regex.test.js'
 };
 
 var batchMap = {

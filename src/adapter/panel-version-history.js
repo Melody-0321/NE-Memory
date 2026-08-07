@@ -364,26 +364,37 @@ export async function renderVersionHistoryPanel(container, chatId) {
     };
 
     var stateSlider = container.querySelector('#ne-state-limit-slider');
-    if (stateSlider) stateSlider.oninput = function() {
-        var v = parseInt(stateSlider.value, 10);
-        container.querySelector('#ne-state-limit-value').textContent = v;
-        var cfg = getConfig();
-        cfg[STATE_VERSION_LIMIT_KEY] = v;
-        saveConfig(cfg);
-        var info = container.querySelector('#vt-pane-state .ne-version-limit-info');
-        if (info) info.textContent = '\u4FDD\u7559\u8FD1 ' + v + ' \u4E2A\u7248\u672C';
-    };
+    if (stateSlider) {
+        // UIS-6: oninput 只更新即时显示，onchange（拖动结束）才落盘，避免每事件写 localStorage + neSync
+        stateSlider.oninput = function() {
+            var v = parseInt(stateSlider.value, 10);
+            container.querySelector('#ne-state-limit-value').textContent = v;
+            var info = container.querySelector('#vt-pane-state .ne-version-limit-info');
+            if (info) info.textContent = '\u4FDD\u7559\u8FD1 ' + v + ' \u4E2A\u7248\u672C';
+        };
+        stateSlider.onchange = function() {
+            var v = parseInt(stateSlider.value, 10);
+            var cfg = getConfig();
+            cfg[STATE_VERSION_LIMIT_KEY] = v;
+            saveConfig(cfg);
+        };
+    }
 
     var memSlider = container.querySelector('#ne-mem-limit-slider');
-    if (memSlider) memSlider.oninput = function() {
-        var v = parseInt(memSlider.value, 10);
-        container.querySelector('#ne-mem-limit-value').textContent = v;
-        var cfg = getConfig();
-        cfg[MEM_VERSION_LIMIT_KEY] = v;
-        saveConfig(cfg);
-        var info = container.querySelector('#vt-pane-memory .ne-version-limit-info');
-        if (info) info.textContent = '\u4FDD\u7559\u8FD1 ' + v + ' \u4E2A\u7248\u672C';
-    };
+    if (memSlider) {
+        memSlider.oninput = function() {
+            var v = parseInt(memSlider.value, 10);
+            container.querySelector('#ne-mem-limit-value').textContent = v;
+            var info = container.querySelector('#vt-pane-memory .ne-version-limit-info');
+            if (info) info.textContent = '\u4FDD\u7559\u8FD1 ' + v + ' \u4E2A\u7248\u672C';
+        };
+        memSlider.onchange = function() {
+            var v = parseInt(memSlider.value, 10);
+            var cfg = getConfig();
+            cfg[MEM_VERSION_LIMIT_KEY] = v;
+            saveConfig(cfg);
+        };
+    }
 }
 
 function _updateCursorInfo(container, type) {

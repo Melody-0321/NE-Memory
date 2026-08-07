@@ -583,7 +583,9 @@ async function callCustomAPI(config, messages, options) {
     }
 
     function shouldRetry(e) {
-        if (e.name === 'AbortError') return true;
+        // P1-4: AbortError（超时）直接抛出不重试——重试只会等满更多 timeout，且超时往往
+        // 意味着请求本身慢/网络卡，重复请求加剧延迟与 token 浪费
+        if (e.name === 'AbortError') return false;
         var msg = e.message || '';
         if (/NetworkError|Failed to fetch|Load[_ ]?[Ff]ailed/i.test(msg)) return true;
         if (/API error: 5\d\d/.test(msg)) return true;

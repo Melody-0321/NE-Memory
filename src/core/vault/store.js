@@ -52,6 +52,9 @@ function _migrateVaultsToSplit(db) {
                     var afterMem = afterTx.objectStore(MEMORY_STORE);
                     var checks = verifyHashes.length;
                     var done = 0;
+                    // P0-2: verifyHashes 为空时 forEach 回调一次不执行，done >= checks 永不成立，
+                    // Promise 永不 settle → openDB await 永久挂起。空数据直接完成迁移。
+                    if (checks === 0) { resolve(migrated); return; }
                     var allOk = true;
                     verifyHashes.forEach(function(h) {
                         var sReq = afterState.get(h.chat_id);
@@ -956,17 +959,6 @@ export function setDialogueTemplateLock(charName, globalTemplateId, locked) {
         config._dialogueTemplates[foundKey]._locked = locked;
         saveCardConfig(charName, config);
         return true;
-    }
-    return false;
-}
-
-export function isDialogueTemplateLocked(charName, globalTemplateId) {
-    var config = loadCardConfigSync(charName);
-    if (!config || !config._dialogueTemplates) return false;
-    var dtKeys = Object.keys(config._dialogueTemplates);
-    for (var i = 0; i < dtKeys.length; i++) {
-        var dt = config._dialogueTemplates[dtKeys[i]];
-        if (dt._templateId === globalTemplateId && dt._locked) return true;
     }
     return false;
 }

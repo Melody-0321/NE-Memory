@@ -1,4 +1,4 @@
-export function validateSTMOutput(parsed, vault, messageCount) {
+export function validateSTMOutput(parsed, vault, messageCount, windowStart, windowEnd) {
     var errors = [];
     var stmEntries = parsed.stmEntries || [];
 
@@ -19,7 +19,7 @@ export function validateSTMOutput(parsed, vault, messageCount) {
 
     // 新增：msgRange 验证
     if (stmEntries.length > 0 && messageCount !== undefined && messageCount > 0) {
-        var rangeErrors = validateMsgRanges(stmEntries, messageCount);
+        var rangeErrors = validateMsgRanges(stmEntries, messageCount, windowStart, windowEnd);
         errors = errors.concat(rangeErrors);
     }
 
@@ -75,9 +75,13 @@ export function validateLtmDecision(result) {
 
 // ─── msgRange 验证 ───
 
-export function validateMsgRanges(stmEntries, messageCount) {
+export function validateMsgRanges(stmEntries, messageCount, windowStart, windowEnd) {
     var errors = [];
     if (stmEntries.length === 0) return errors;
+    // P0-4: msgRange 是全局绝对消息索引，校验基准改为"本次输入窗口"的全局区间；
+    // 默认 0..messageCount-1 保持旧签名（局部消息数场景）兼容。
+    if (windowStart === undefined) windowStart = 0;
+    if (windowEnd === undefined) windowEnd = messageCount - 1;
 
     // 收集所有 range 并排序
     var ranges = [];
@@ -88,8 +92,8 @@ export function validateMsgRanges(stmEntries, messageCount) {
             errors.push('stm_entries[' + i + '].msgRange 缺失或格式错误');
             continue;
         }
-        if (range[0] < 0 || range[1] >= messageCount) {
-            errors.push('stm_entries[' + i + '].msgRange 越界: ' + range[0] + '-' + range[1] + ' (共' + messageCount + '条)');
+        if (range[0] < windowStart || range[1] > windowEnd) {
+            errors.push('stm_entries[' + i + '].msgRange 越界: ' + range[0] + '-' + range[1] + ' (窗口 ' + windowStart + '-' + windowEnd + ')');
         }
         if (range[0] > range[1]) {
             errors.push('stm_entries[' + i + '].msgRange 起始 > 结束');
@@ -99,28 +103,20 @@ export function validateMsgRanges(stmEntries, messageCount) {
 
     if (ranges.length === 0) return errors;
 
-    // Check coverage: every message index 0..messageCount-1 must be covered
+    // 连续性检查：按窗口边界锚定，要求 LLM 输出无空洞覆盖本次输入窗口
     ranges.sort(function(a, b) { return a.start - b.start; });
-    var covered = new Array(messageCount);
-    for (var k = 0; k < messageCount; k++) covered[k] = false;
-    for (var i = 0; i < ranges.length; i++) {
-        for (var j = ranges[i].start; j <= ranges[i].end && j < messageCount; j++) {
-            covered[j] = true;
-        }
+    if (ranges[0].start !== windowStart) {
+        errors.push('未覆盖的消息索引: ' + windowStart + '-' + (ranges[0].start - 1) + ' (窗口起点 ' + windowStart + ' 未被覆盖)');
     }
-    var uncovered = [];
-    for (var i = 0; i < messageCount; i++) {
-        if (!covered[i]) uncovered.push(i);
-    }
-    if (uncovered.length > 0) {
-        errors.push('未覆盖的消息索引: ' + uncovered.join(','));
-    }
-
-    // Check no overlap
     for (var i = 1; i < ranges.length; i++) {
         if (ranges[i].start <= ranges[i - 1].end) {
             errors.push('stm_entries[' + ranges[i].i + '] 的 msgRange 与上一条重叠');
+        } else if (ranges[i].start > ranges[i - 1].end + 1) {
+            errors.push('未覆盖的消息索引: ' + (ranges[i - 1].end + 1) + '-' + (ranges[i].start - 1));
         }
+    }
+    if (ranges[ranges.length - 1].end !== windowEnd) {
+        errors.push('未覆盖的消息索引: ' + (ranges[ranges.length - 1].end + 1) + '-' + windowEnd + ' (窗口终点 ' + windowEnd + ' 未被覆盖)');
     }
 
     return errors;

@@ -114,5 +114,43 @@ eq(initEntry.present_characters.length, 0, 'postFillSTM initializes present_char
 eq(typeof initEntry.character_psyche, 'object', 'postFillSTM initializes character_psyche to object');
 eq(Object.keys(initEntry.character_psyche).length, 0, 'postFillSTM initializes character_psyche to empty object');
 
+// --- P0-4: 全局窗口场景——增量更新不误报 ---
+var winFull = [
+    { id: 's1', event: 'e1', msgRange: [42, 43] },
+    { id: 's2', event: 'e2', msgRange: [44, 45] }
+];
+var winFullErrors = validateMsgRanges(winFull, 4, 42, 45);
+eq(winFullErrors.length, 0, 'window [42,45] fully covered produces no errors (P0-4 no false positive)');
+
+// --- P0-4: 窗口越界 ---
+var winOob = [
+    { id: 's1', event: 'e1', msgRange: [40, 45] }
+];
+var winOobErrors = validateMsgRanges(winOob, 4, 42, 45);
+gt(winOobErrors.length, 0, 'range below window start reports out-of-bounds');
+
+// --- P0-4: 窗口终点未覆盖 ---
+var winGap = [
+    { id: 's1', event: 'e1', msgRange: [42, 44] }
+];
+var winGapErrors = validateMsgRanges(winGap, 4, 42, 45);
+gt(winGapErrors.length, 0, 'window end uncovered reports missing messages');
+
+// --- P0-4: 窗口内重叠 ---
+var winOverlap = [
+    { id: 's1', event: 'e1', msgRange: [42, 43] },
+    { id: 's2', event: 'e2', msgRange: [43, 45] }
+];
+var winOverlapErrors = validateMsgRanges(winOverlap, 4, 42, 45);
+gt(winOverlapErrors.length, 0, 'overlapping ranges inside window report overlap');
+
+// --- P0-4: validateSTMOutput 透传窗口 ---
+var stmWinParsed = { stmEntries: [
+    { event: 'e1', msgRange: [42, 43] },
+    { event: 'e2', msgRange: [44, 45] }
+] };
+var stmWinErrors = validateSTMOutput(stmWinParsed, { content: {} }, 4, 42, 45);
+eq(stmWinErrors.length, 0, 'validateSTMOutput passes window through (no false positive)');
+
 console.log('\n--- stm-validate: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

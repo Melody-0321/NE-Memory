@@ -21,7 +21,6 @@
  *       "total_tok_tool": 80,
  *       "total_tok_chat": 0,
  *       "total_errors": 0,
- *       "total_smartpush_injections": 2,
  *       "total_pipeline_duration_ms": 2700
  *     }
  *   }
@@ -156,7 +155,6 @@ function rebuildAggregates(turns) {
         total_tok_tool: 0,
         total_tok_chat: 0,
         total_errors: 0,
-        total_smartpush_injections: 0,
         total_pipeline_duration_ms: 0
     };
 
@@ -181,9 +179,6 @@ function rebuildAggregates(turns) {
         agg.total_errors += t.err || 0;
         agg.total_pipeline_duration_ms += t.dur || 0;
     }
-
-    // SmartPush 注入次数 ≈ LLM 调用中 smartpush 类型（保守估计）
-    agg.total_smartpush_injections = agg.total_turns;
 
     return agg;
 }

@@ -207,14 +207,14 @@ export async function renderUsageTab() {
                 /* For future dates, show 0; for past dates without data, also 0 */
                 var entry = dataMap[dateStr];
                 if (entry) return entry;
-                return { date: dateStr, stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+                return { date: dateStr, stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
             };
 
             /* Check if all values are zero */
             var allZero = true;
             for (var dz = 0; dz < allDates.length; dz++) {
                 var ez = fill(allDates[dz]);
-                if (ez.stm || ez.ltm || ez.sp || ez.tool || ez.chat) { allZero = false; break; }
+                if (ez.stm || ez.ltm || ez.state || ez.tool || ez.chat) { allZero = false; break; }
             }
 
             var emptyEl = panelById('ne-daily-bar-empty');

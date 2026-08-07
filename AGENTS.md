@@ -96,6 +96,19 @@ updated: 2026-07-09
 - `INDEX.md` 由 `npm run build:doc-index` 脚本自动从 frontmatter 生成，挂载在 `.githooks/pre-commit` 中。**不要手动编辑 INDEX.md。**
 - 查看所有计划的状态汇总：打开项目根目录下的 `PLAN_INDEX.md`。
 
+## Fix-Rule：修复追踪
+
+修复 `算法优化分析报告.md`（审计产出）或用户反馈的任何缺陷后，**必须同步更新两处文档**，且每次修复都如此：
+
+1. `CHANGELOG.md` 顶部 **Unreleased 块**：追加一条修复记录（现象 → 修复方式，一句话；含根因提交编号如有）
+2. `算法优化分析报告.md` 的**修复状态追踪表**（文件最前"〇"节）：将该条目状态改为 ✅ 已修复，注明修复方式、涉及文件、验证结果
+
+规则细则：
+
+- 报告表中不存在对应条目时，在表中新增一行
+- 发版时（release-rules.md 流程）Unreleased 块随版本号升级为正式版本块，无需额外整理
+- 纯 UI/交互修复同样入 Unreleased 块；BUGS.md 仅在有编号 bug 追踪时被动引用
+
 ## 项目上下文
 
 - 项目名称：NE Memory Engine

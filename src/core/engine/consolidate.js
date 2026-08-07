@@ -113,7 +113,8 @@ export function computeClosureSignals(openLtm, newStmEvents) {
         else timeGap = '同日';
     }
 
-    var openScene = openLtm.scene || (openLtm.present_characters && openLtm.present_characters.length > 0 ? openLtm.present_characters[0].scene : '') || '';
+    // P1-16: present_characters 是字符串数组，无 .scene 字段，该 fallback 恒为 '' 死代码
+    var openScene = openLtm.scene || '';
     var newScene = (newStmEvents && newStmEvents.length > 0) ? (newStmEvents[0].scene || '') : '';
     var sceneChange = openScene && newScene && openScene !== newScene;
 

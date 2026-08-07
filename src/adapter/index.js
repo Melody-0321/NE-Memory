@@ -236,11 +236,13 @@ async function init() {
     setContextFns(getChatId, getChatMessages);
     setGetContextBudgetFn(getContextBudget);
 
-    await _bootstrapVault(chatId, locale, settings);
-
+    // UI-10: 先绑事件再 bootstrap——bootstrap（loadVault + 迁移 + 渲染面板）为耗时操作，
+    // 原顺序下初始化期间到达的首轮消息（message_received/sent）无人监听而永久漏记
     setupEventListeners();
     registerToolsWithRetry(getChatId, getChatMessages, 0);
     try { await applyChatCompletionPatch(); } catch (e) { console.warn('[NE] ChatCompletion patch failed:', e.message); }
+
+    await _bootstrapVault(chatId, locale, settings);
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
@@ -533,8 +535,10 @@ function setupEventListeners(retryCount) {
 
 
 function bootNE(retries) {
+    if (window.__ne_booted) return;
     if (retries > 10) return console.error('[NE] Boot failed after 10 retries: jQuery never loaded');
     if (typeof $ === 'undefined') return setTimeout(function () { bootNE((retries || 0) + 1); }, 300);
+    window.__ne_booted = true;
     console.log('[NE] Engine starting... build=' + 'NE v7.2.0');
 
     try {

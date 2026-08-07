@@ -295,7 +295,7 @@ function splitIntraSegment(seg, turns, maxChars) {
     return subSegments;
 }
 
-function chunkSegmentsForLLM(segments, turns, maxChars) {
+export function chunkSegmentsForLLM(segments, turns, maxChars) {
     var chunks = [];
     var currentChunk = [];
     var currentChars = 0;
@@ -307,7 +307,14 @@ function chunkSegmentsForLLM(segments, turns, maxChars) {
         var segText = formatTurnsText(turns, segTurns);
         var segChars = segText.length;
 
-        if (segChars > maxChars && currentChunk.length === 0) {
+        if (segChars > maxChars) {
+            // P1-1: 超长 segment 无论是否为首位置都先拆分（原仅 currentChunk 为空时拆分，
+            // 导致累积场景下超长 chunk 整段提交给 LLM）
+            if (currentChunk.length > 0) {
+                chunks.push(currentChunk);
+                currentChunk = [];
+                currentChars = 0;
+            }
             var subSegments = splitIntraSegment(seg, turns, maxChars);
             for (var si = 0; si < subSegments.length; si++) {
                 chunks.push([subSegments[si]]);
@@ -329,14 +336,41 @@ function chunkSegmentsForLLM(segments, turns, maxChars) {
     return chunks;
 }
 
-function mapEventData(event, seg, turns, allSegments) {
+export function mapEventData(event, seg, turns, allSegments, windowMessages) {
+    // P1-2: 优先使用 LLM 返回的事件自带 msgRange（窗口内消息下标）定位实际消息区间。
+    // 事件 msgRange 是窗口内下标，先经 windowMessages（filteredMessages）转换为全局消息下标，
+    // 再与 turns 相交得到覆盖轮次——避免 LLM 少输出时按数组下标一一映射造成全量错位。
+    var globalRange = null;
+    if (event.msgRange && Array.isArray(event.msgRange) && event.msgRange.length === 2) {
+        var es = Number(event.msgRange[0]);
+        var ee = Number(event.msgRange[1]);
+        if (!isNaN(es) && !isNaN(ee) && es >= 0 && ee >= es && windowMessages && windowMessages.length > 0) {
+            var wmS = windowMessages[es];
+            var wmE = windowMessages[ee];
+            var gs = wmS ? (wmS._absIdx !== undefined ? wmS._absIdx : es) : es;
+            var ge = wmE ? (wmE._absIdx !== undefined ? wmE._absIdx : ee) : ee;
+            if (ge >= gs) globalRange = [gs, ge];
+        }
+    }
+
     var turnIndices = [];
-    for (var ti = seg[0]; ti <= seg[1]; ti++) turnIndices.push(ti);
+    if (globalRange) {
+        for (var ti = 0; ti < turns.length; ti++) {
+            if (turns[ti].msgEnd >= globalRange[0] && turns[ti].msgStart <= globalRange[1]) {
+                turnIndices.push(ti);
+            }
+        }
+    }
+    if (turnIndices.length === 0) {
+        for (var tj = seg[0]; tj <= seg[1]; tj++) turnIndices.push(tj);
+    }
+
     event.msg_ids = collectMsgIdsFromTurns(turns, turnIndices);
-    event.absMsgStart = turns[seg[0]].msgStart;
-    event.absMsgEnd = turns[seg[1]].msgEnd;
-    event.msgRange = [turns[seg[0]].msgStart, turns[seg[1]].msgEnd];
-    event.status = 'closed';
+    event.absMsgStart = turns[turnIndices[0]].msgStart;
+    event.absMsgEnd = turns[turnIndices[turnIndices.length - 1]].msgEnd;
+    event.msgRange = [turns[turnIndices[0]].msgStart, turns[turnIndices[turnIndices.length - 1]].msgEnd];
+    // P1-17: 保留 LLM 输出的 partial 语义（窗口内容不足以形成完整事件），仅缺失/非法值归 closed
+    event.status = event.status === 'partial' ? 'partial' : 'closed';
 }
 
 function computePerSegmentGuidance(segments, turns, ratio, lang) {
@@ -496,7 +530,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                             var chunkParsed = safeJsonParse(responseText);
                             if (chunkParsed && chunkParsed.events) {
                                 for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
-                                    mapEventData(chunkParsed.events[ei], chunk[si], turns, segments);
+                                    mapEventData(chunkParsed.events[ei], chunk[si], turns, segments, filteredMessages);
                                     events.push(chunkParsed.events[ei]);
                                 }
                             }
@@ -510,7 +544,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     if (chunkParsed) {
                         var chunkEvents = chunkParsed.events || [];
                         for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
-                            mapEventData(chunkEvents[ei], chunk[ei], turns, segments);
+                            mapEventData(chunkEvents[ei], chunk[ei], turns, segments, filteredMessages);
                             events.push(chunkEvents[ei]);
                         }
                     }
@@ -549,7 +583,10 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         }
 
         if (events.length > 0) {
-            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, memoryVault, filteredMessages.length);
+            // P0-4: msgRange 是全局绝对索引，校验基准传本次输入窗口（turns 首末条全局下标）
+            var winStart = turns.length > 0 ? turns[0].msgStart : 0;
+            var winEnd = turns.length > 0 ? turns[turns.length - 1].msgEnd : 0;
+            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, memoryVault, filteredMessages.length, winStart, winEnd);
             if (stmValidationErrors.length > 0) {
                 console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
                 recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);

@@ -42,7 +42,7 @@ export async function updateVaultViewerPopout(getChatId) {
     try {
         var root = getPanelRoot();
         var ae = root ? root.activeElement : document.activeElement;
-        if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell'))) {
+        if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell') || ae.closest('.ne-inline-row') || ae.closest('.ne-char-edit'))) {
             showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
             setUpdatingPopout(false);
             return;
@@ -64,7 +64,7 @@ export async function updateVaultViewerPopout(getChatId) {
     try {
         vault = await readVault(getChatId());
         c = vault.content || {};
-        console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
+        if (__NE_DEV_MODE) console.log('[NE-PANEL] updateVaultViewerPopout chatId=' + getChatId() + ' version=' + (vault.version) + ' stm=' + (Array.isArray(c.unconsolidated_stm) ? c.unconsolidated_stm.length : 0) + ' ltm=' + (Array.isArray(c.ltm_entries) ? c.ltm_entries.length : 0));
         setPendingInlineStorage({ vault: vault, getChatId: getChatId });
         setLastVaultStateJson(c.state ? JSON.stringify(c.state, null, 2) : '{}');
     } catch (e) {
@@ -96,23 +96,27 @@ export async function updateVaultViewerPopout(getChatId) {
     panelQSA('.narrative_quest_block').forEach(function (el) { el.remove(); });
 
     // ── Section C: Character block ──
+    var _anyBlockChanged = false;
     try {
         var charContainer = panelById('ne_character_block_container');
         if (charContainer) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
-            charContainer.innerHTML = charHtml || emptyStateHtml('\u{1F464}', t('No character data'), t('Send a message to start tracking'));
-            setTimeout(function() {
-                var block = panelById('ne_character_block_container');
-                if (!block) return;
-                var buttons = block.querySelectorAll('.ne-card-edit-btn');
+            var charFinalHtml = charHtml || emptyStateHtml('\u{1F464}', t('No character data'), t('Send a message to start tracking'));
+            var charChanged = charFinalHtml !== _renderCache.char;
+            if (charChanged) {
+                charContainer.innerHTML = charFinalHtml;
+                _renderCache.char = charFinalHtml;
+                _anyBlockChanged = true;
+                // 同步绑定（innerHTML 赋值后 DOM 已就绪，无需 setTimeout 50ms）
+                var buttons = charContainer.querySelectorAll('.ne-card-edit-btn');
                 buttons.forEach(function(btn) {
                     btn.onclick = function(e) {
                         e.stopPropagation();
                         enterCardEditMode(this);
                     };
                 });
-                var schemeBtns = block.querySelectorAll('.ne-card-scheme-btn');
+                var schemeBtns = charContainer.querySelectorAll('.ne-card-scheme-btn');
                 for (var i = 0; i < schemeBtns.length; i++) {
                     schemeBtns[i].addEventListener('click', function(e) {
                         e.stopPropagation();
@@ -122,7 +126,7 @@ export async function updateVaultViewerPopout(getChatId) {
                         enterSchemeEditMode(card, charName, cardType);
                     });
                 }
-                var lockBtns = block.querySelectorAll('.ne-card-lock-btn');
+                var lockBtns = charContainer.querySelectorAll('.ne-card-lock-btn');
                 for (var j = 0; j < lockBtns.length; j++) {
                     lockBtns[j].addEventListener('click', async function(e) {
                         e.stopPropagation();
@@ -148,7 +152,7 @@ export async function updateVaultViewerPopout(getChatId) {
                         showToast((isLocked ? t('locked') : t('unlock')) + ': ' + name, 'info', 2000);
                     });
                 }
-            }, 50);
+            }
         }
     } catch (e) { _logSection('char-block', e); }
 
@@ -157,7 +161,12 @@ export async function updateVaultViewerPopout(getChatId) {
         var factionContainer = panelById('ne_faction_block_container');
         if (factionContainer) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
-            factionContainer.innerHTML = factionHtml || emptyStateHtml('\u2691', t('No faction data'), t('Faction state will appear when detected'));
+            var factionFinalHtml = factionHtml || emptyStateHtml('\u2691', t('No faction data'), t('Faction state will appear when detected'));
+            if (factionFinalHtml !== _renderCache.faction) {
+                factionContainer.innerHTML = factionFinalHtml;
+                _renderCache.faction = factionFinalHtml;
+                _anyBlockChanged = true;
+            }
         }
     } catch (e) { _logSection('faction-block', e); }
 
@@ -166,7 +175,12 @@ export async function updateVaultViewerPopout(getChatId) {
         var questContainer = panelById('ne_quest_block_container');
         if (questContainer) {
             var questHtml = renderQuestPanelHTML(c.state || {});
-            questContainer.innerHTML = questHtml || emptyStateHtml('\u{1F4DC}', t('No quest data'), t('Quest progress will be tracked automatically'));
+            var questFinalHtml = questHtml || emptyStateHtml('\u{1F4DC}', t('No quest data'), t('Quest progress will be tracked automatically'));
+            if (questFinalHtml !== _renderCache.quest) {
+                questContainer.innerHTML = questFinalHtml;
+                _renderCache.quest = questFinalHtml;
+                _anyBlockChanged = true;
+            }
         }
     } catch (e) { _logSection('quest-block', e); }
 
@@ -220,13 +234,25 @@ export async function updateVaultViewerPopout(getChatId) {
     });
 
     var ltmCount = ltmEntries.length;
-    var stmCount = sortStmByMsgOrder(freshSTM).length;
+    var stmView = sortStmByMsgOrder(freshSTM);
+    var stmCount = stmView.length;
 
+    // ── UIP-1: tbody 输入签名缓存（JSON 序列化覆盖全部渲染字段，安全失效） ──
+    var ltmSig = JSON.stringify(mergedList);
+    var stmSig = JSON.stringify(stmView);
     try {
-        renderMemoryTable('#narrative_vault_panel_ltm_body', mergedList, 'ltm', stmIndexMap);
+        if (ltmSig !== _renderCache.ltm) {
+            renderMemoryTable('#narrative_vault_panel_ltm_body', mergedList, 'ltm', stmIndexMap);
+            _renderCache.ltm = ltmSig;
+            _anyBlockChanged = true;
+        }
     } catch (e) { _logSection('render-ltm-table', e); }
     try {
-        renderMemoryTable('#narrative_vault_panel_stm_body', sortStmByMsgOrder(freshSTM), 'stm');
+        if (stmSig !== _renderCache.stm) {
+            renderMemoryTable('#narrative_vault_panel_stm_body', stmView, 'stm');
+            _renderCache.stm = stmSig;
+            _anyBlockChanged = true;
+        }
     } catch (e) { _logSection('render-stm-table', e); }
 
     // ── Section H: Counts + quick index ──
@@ -254,7 +280,9 @@ export async function updateVaultViewerPopout(getChatId) {
         renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, c.state && Object.keys(c.state).length > 0, chatId);
     } catch (e) { _logSection('counts+quickindex', e); }
 
-    // ── Section I: Event handlers ──
+    // ── Section I: Event handlers + scroll/accordion restore ──
+    // UIP-1: 所有区块均未变化时 DOM 未动，跳过重绑与恢复（旧绑定依然有效）
+    if (_anyBlockChanged) {
     try {
         panelQSA('.ne-inline-state-edit-btn').forEach(function(btn) {
             btn.onclick = function() {
@@ -310,6 +338,7 @@ export async function updateVaultViewerPopout(getChatId) {
             });
         }
     } catch (e) {}
+    }
 
     setUpdatingPopout(false);
 }

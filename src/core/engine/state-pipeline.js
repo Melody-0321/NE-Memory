@@ -5,7 +5,7 @@ import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from
 import { safeJsonParse } from './json-fallback.js';
 import { neSync } from '../settings-adapter.js';
 import { runtime } from '../runtime.js';
-import { recordStateDelta, buildStateDeltaSummary, initializeStateChain, pruneOrphanedBranches } from '../vault/state-versions.js';
+import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
 import { processToolCalls } from './template-llm.js';
 
 function buildCharacterCardSection(vault) {
@@ -267,12 +267,14 @@ function buildFactionKeywords(factions) {
 
 function scanMessageForFactions(text, factionKeywords, state) {
     if (!text || !factionKeywords) return;
+    // P1-14: 统一小写比较，避免 alias 大小写变体（如 Order/order）匹配不到
+    var lower = text.toLowerCase();
     Object.keys(factionKeywords).forEach(function(name) {
         var faction = state.factions && state.factions[name];
         if (faction && !faction._hidden) return;
         var keywords = factionKeywords[name];
         for (var i = 0; i < keywords.length; i++) {
-            if (text.indexOf(keywords[i]) !== -1) {
+            if (lower.indexOf(String(keywords[i]).toLowerCase()) !== -1) {
                 if (faction) {
                     faction._hidden = false;
                 } else {
@@ -888,7 +890,6 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
                     console.error('[NE] recordStateDelta failed for ' + chatId, err,
                         '\n  changes:', JSON.stringify(mergeResult.changes).substring(0, 200));
                 });
-                pruneOrphanedBranches(chatId).catch(function(e) {});
             }
         }
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {

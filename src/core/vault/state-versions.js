@@ -8,12 +8,9 @@
  *   state_deltas      keyPath: "id"
  *   memory_versions   keyPath: "id"
  *   active_chains     keyPath: "chat_id"
- *   orphaned_branches keyPath: "id"
  */
 
 import { openDB, readState, writeState, readMemory, writeMemory } from './store.js';
-
-var BRANCH_TTL_MS = 24 * 60 * 60 * 1000;
 
 var COMPACT_THRESHOLD = 100;
 var MAX_ACTIVE_VERSIONS = 500;
@@ -118,17 +115,25 @@ function _emptyChain(chatId) {
     return { chat_id: chatId, state_head_seq: 0, state_base_seq: 0, state_active: [0], mem_head_seq: 0, mem_base_seq: 0, mem_active: [0], _global_state_seq: 0, _global_mem_seq: 0 };
 }
 
+// P1-6: 原型链保留键，防止 __proto__/constructor/prototype path 触发原型污染
+function _isReservedKey(key) {
+    return key === '__proto__' || key === 'constructor' || key === 'prototype';
+}
+
 function _setByPath(obj, path, value) {
     var parts = path.split('.');
     var current = obj;
     for (var i = 0; i < parts.length - 1; i++) {
         var key = parts[i];
+        if (_isReservedKey(key)) return;
         if (current[key] === undefined || current[key] === null || typeof current[key] !== 'object') {
             current[key] = {};
         }
         current = current[key];
     }
-    current[parts[parts.length - 1]] = value;
+    var lastKey = parts[parts.length - 1];
+    if (_isReservedKey(lastKey)) return;
+    current[lastKey] = value;
 }
 
 function _getByPath(obj, path) {
@@ -136,6 +141,7 @@ function _getByPath(obj, path) {
     var current = obj;
     for (var i = 0; i < parts.length; i++) {
         if (current === undefined || current === null) return undefined;
+        if (_isReservedKey(parts[i])) return undefined;
         current = current[parts[i]];
     }
     return current;
@@ -612,64 +618,6 @@ export async function rebuildMemoryVault(chatId, targetSeq) {
     await writeMemory(chatId, memVault);
 }
 
-export async function pruneOrphanedBranches(chatId) {
-    var db = await openDB();
-    var branches = await _tx(db, ['orphaned_branches'], 'readonly', function (tx) {
-        return tx.objectStore('orphaned_branches').getAll();
-    });
-    var relevant = branches.filter(function (b) { return b.chat_id === chatId && b.type === 'state'; });
-    if (relevant.length === 0) return;
-
-    var stateDeltas = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-        return tx.objectStore('state_deltas').getAll();
-    });
-
-    var toDelete = [];
-    relevant.forEach(function (branch) {
-        var aiCount = 0;
-        stateDeltas.forEach(function (sd) {
-            if (sd.chat_id === chatId && sd.source === 'ai_update' && sd.seq > branch.fork_point_seq) aiCount++;
-        });
-        if (aiCount >= 2) toDelete.push(branch.id);
-    });
-
-    if (toDelete.length > 0) {
-        await _tx(db, ['orphaned_branches'], 'readwrite', function (tx) {
-            toDelete.forEach(function (id) { tx.objectStore('orphaned_branches').delete(id); });
-        });
-    }
-}
-
-/**
- * 恢复孤立分支
- *
- * @param {string} chatId
- * @param {string} branchId
- * @returns {Promise<void>}
- */
-export async function restoreBranch(chatId, branchId) {
-    var db = await openDB();
-    var branch = await _tx(db, ['orphaned_branches'], 'readonly', function (tx) {
-        return tx.objectStore('orphaned_branches').get(branchId);
-    });
-    if (!branch) return;
-
-    var chain = await _getOrCreateChain(chatId);
-
-    if (branch.type === 'state') {
-        chain.state_active = chain.state_active.concat(branch.versions);
-        chain.state_head_seq = branch.versions[branch.versions.length - 1] || chain.state_head_seq;
-    } else {
-        chain.mem_active = chain.mem_active.concat(branch.versions);
-        chain.mem_head_seq = branch.versions[branch.versions.length - 1] || chain.mem_head_seq;
-    }
-
-    await _tx(db, ['active_chains', 'orphaned_branches'], 'readwrite', function (tx) {
-        tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
-        tx.objectStore('orphaned_branches').delete(branchId);
-    });
-}
-
 /**
  * 压缩：fold 所有 active deltas → 存入 base 版本的 folded 字段
  *
@@ -716,35 +664,6 @@ export async function compact(chatId) {
                 tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
             });
         }
-    }
-}
-
-/**
- * 清理过期孤立分支
- *
- * @returns {Promise<number>} 清理的分支数
- */
-export async function cleanupBranches() {
-    try {
-        var db = await openDB();
-        var now = new Date().toISOString();
-        var allBranches = await _tx(db, ['orphaned_branches'], 'readonly', function (tx) {
-            return tx.objectStore('orphaned_branches').getAll();
-        });
-        if (!allBranches || !allBranches.length) return 0;
-        var removed = 0;
-        for (var i = 0; i < allBranches.length; i++) {
-            if (allBranches[i].auto_clean_at && allBranches[i].auto_clean_at < now) {
-                await _tx(db, ['orphaned_branches'], 'readwrite', function (tx) {
-                    tx.objectStore('orphaned_branches').delete(allBranches[i].id);
-                });
-                removed++;
-            }
-        }
-        return removed;
-    } catch (e) {
-        console.warn('[NE] cleanupBranches failed:', e);
-        return 0;
     }
 }
 

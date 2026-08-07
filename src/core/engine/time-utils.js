@@ -1,6 +1,10 @@
 export function calRelativeTime(timestamp, storyTime) {
-    if (!timestamp || !storyTime) return '';
-    var diffMs = storyTime - timestamp;
+    // P1-13: 入口 Number() 归一化，字符串时间戳（如 "2026-08-08T..."）转 NaN 时早退，
+    // 避免 NaN 一路参与比较输出 "NaN 个月前"。
+    var ts = Number(timestamp);
+    var st = Number(storyTime);
+    if (!ts || !st) return '';
+    var diffMs = st - ts;
     if (diffMs <= 0) return '';
     var diffSec = Math.round(diffMs / 1000);
     if (diffSec < 60) return '刚刚';

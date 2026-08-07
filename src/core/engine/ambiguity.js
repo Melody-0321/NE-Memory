@@ -95,11 +95,11 @@ export function resolveAmbiguousReferences(userMessage, state, content) {
         var result = resolveEntityByDescriptor(descriptor, knownEntities)
         if (result.exact) {
             resolved[demonstrative] = result.exact
-            enhancedQuery = enhancedQuery.replace(demonstrative, result.exact)
+            enhancedQuery = enhancedQuery.split(demonstrative).join(result.exact)
         } else if (result.candidates && result.candidates.length > 0) {
             if (result.candidates.length === 1) {
                 resolved[demonstrative] = result.candidates[0].name
-                enhancedQuery = enhancedQuery.replace(demonstrative, result.candidates[0].name)
+                enhancedQuery = enhancedQuery.split(demonstrative).join(result.candidates[0].name)
             } else {
                 lowConfidence.push({
                     pattern: demonstrative,
@@ -119,11 +119,11 @@ export function resolveAmbiguousReferences(userMessage, state, content) {
         var result = resolveEntityByDescriptor(descriptor, knownEntities)
         if (result.exact) {
             resolved[fullMatch] = result.exact
-            enhancedQuery = enhancedQuery.replace(fullMatch, result.exact)
+            enhancedQuery = enhancedQuery.split(fullMatch).join(result.exact)
         } else if (result.candidates && result.candidates.length > 0) {
             if (result.candidates.length === 1) {
                 resolved[fullMatch] = result.candidates[0].name
-                enhancedQuery = enhancedQuery.replace(fullMatch, result.candidates[0].name)
+                enhancedQuery = enhancedQuery.split(fullMatch).join(result.candidates[0].name)
             } else {
                 lowConfidence.push({
                     pattern: fullMatch,
@@ -138,14 +138,14 @@ export function resolveAmbiguousReferences(userMessage, state, content) {
     var pattern3 = /([^\s，,。.!！?？\n]{1,10})(怎么样|后来|之后|现在|去哪|在哪|是谁|干嘛)(?:了|呢|的)?/g
     while ((match = pattern3.exec(userMessage)) !== null) {
         var entityName = match[1]
-        var suffix = match[2]
         var fullMatch = match[0]
         // 跳过已被前两个模式处理的
         if (resolved[fullMatch]) continue
         // 检查是否是已知实体名的模糊子串匹配
         var exactResult = resolveEntityByDescriptor(entityName, knownEntities)
         if (exactResult.exact) {
-            resolved[fullMatch] = exactResult.exact + suffix
+            // P1-15: 与模式1/2 一致，只存实体名（不拼接 "怎么样了/后来" 等后缀）
+            resolved[fullMatch] = exactResult.exact
         }
     }
 

@@ -140,11 +140,10 @@ function _renderAlertQueue() {
     try {
         if (ctx.sendSystemMessage) {
             var msg = alert.text;
+            // UI-8: ST 无消息内按钮机制，按钮以纯文本提示降级（不可点击是预期），
+            // 不再拼 "[文字]" 假按钮误导用户
             if (alert.buttons && alert.buttons.length) {
-                msg += '\n\n';
-                alert.buttons.forEach(function(b) {
-                    msg += '[' + b.text + '] ';
-                });
+                msg += '\n\n' + alert.buttons.map(function(b) { return b.text; }).join(' · ');
             }
             ctx.sendSystemMessage(null, msg);
         }

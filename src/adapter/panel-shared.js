@@ -76,6 +76,7 @@ export function injectBottomDrawerCSS() {
     if (exists) exists.remove();
     var isShadow = !!_panelRoot;
     var hostSel = isShadow ? ':host' : '.ne-vault-bottom-overlay';
+    var mobileSel = isShadow ? ':host(.ne-mobile)' : '.ne-vault-bottom-overlay.ne-mobile';
     var style = pdCreate('style');
     style.id = 'ne_vault_bottom_style';
     style.textContent = hostSel + '{' +
@@ -305,6 +306,10 @@ export function injectBottomDrawerCSS() {
         '.menu_button{padding:6px 12px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--SmartThemeBodyColor);cursor:pointer;font-family:inherit;}' +
         '.menu_button:hover{background:var(--black50a);}' +
         '.menu_button:disabled{opacity:0.5;cursor:not-allowed;}' +
+        // ── Memory table base (migrated from style.css, which is never loaded) ──
+        '.narrative_memory_table{width:100%;border-collapse:collapse;font-size:0.85em;line-height:1.5;margin-top:4px;}' +
+        '.narrative_memory_table th{background:var(--black50a);padding:6px 8px;text-align:left;font-weight:bold;border-bottom:2px solid var(--black70a);white-space:nowrap;}' +
+        '.narrative_memory_table td{padding:6px 8px;border-bottom:1px solid var(--black30a);vertical-align:top;word-break:break-word;}' +
         '.narrative_memory_table tbody tr:nth-child(even),.narrative_ltm_sub_table tbody tr:nth-child(even),.ne-usage-chat-table tr:nth-child(even){background:var(--black10a);}' +
         '.narrative_memory_table tbody tr:hover,.narrative_ltm_sub_table tbody tr:hover,.ne-usage-chat-table tr:hover{background:var(--black20a)!important;transition:background var(--ne-transition-fast);}' +
         '.ne-accordion-chevron{transition:transform var(--ne-transition-normal);}' +
@@ -373,13 +378,13 @@ export function injectBottomDrawerCSS() {
         '.narrative_ltm_toggle.expanded{transform:rotate(90deg);}' +
         '.narrative_ltm_toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}' +
         // ── L3: Mobile responsive (controlled by .ne-mobile class on host) ──
-        '.ne-mobile .ne-vault-bottom-overlay::before{backdrop-filter:none;-webkit-backdrop-filter:none;}' +
-        '.ne-mobile .ne-vault-scroll-area{padding:0 6px 60px;}' +
-        '.ne-mobile .ne-vault-tab-bar{padding:0 6px 4px;}' +
-        '.ne-mobile .ne-accordion-header{padding:6px 8px;font-size:0.88em;}' +
-        '.ne-mobile .ne-quick-index{padding:2px 6px;}' +
-        '.ne-mobile .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
-        '.ne-mobile .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
+        mobileSel + '::before{backdrop-filter:none;-webkit-backdrop-filter:none;}' +
+        mobileSel + ' .ne-vault-scroll-area{padding:0 6px 60px;}' +
+        mobileSel + ' .ne-vault-tab-bar{padding:0 6px 4px;}' +
+        mobileSel + ' .ne-accordion-header{padding:6px 8px;font-size:0.88em;}' +
+        mobileSel + ' .ne-quick-index{padding:2px 6px;}' +
+        mobileSel + ' .ne-vault-collapse-bar{padding:6px 0 4px;min-height:22px;}' +
+        mobileSel + ' .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
         // ── L3: Empty & error states ──
         '.ne-empty-state{text-align:center;padding:24px 16px;color:var(--ne-muted);}' +
         '.ne-empty-state-icon{font-size:2em;margin-bottom:8px;opacity:.5;}' +
@@ -558,7 +563,7 @@ export function injectBottomDrawerCSS() {
         '.ne-npc-selector{background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;padding:10px 12px;margin-top:6px;}' +
         '.ne-npc-select-item{display:flex;justify-content:space-between;align-items:center;padding:4px 8px;margin:3px 0;font-size:0.85em;}' +
         // ── Responsive: 768px two-col -> stacked ──
-        '.ne-mobile .ne-template-grid{grid-template-columns:1fr;}' +
+        mobileSel + ' .ne-template-grid{grid-template-columns:1fr;}' +
         // ── Modal overlay (P5: unified selector modal) ──
         '.ne-modal-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;' +
         'background:rgba(0,0,0,.5);opacity:0;transition:opacity .15s;}' +
@@ -638,11 +643,11 @@ export function injectBottomDrawerCSS() {
         '.ne-template-mode-hint{font-size:0.78em;color:var(--grey-50,#8b949e);margin-top:2px;margin-bottom:6px;}' +
         /* ── Mobile dual-zone switcher ── */
         '.ne-mobile-zone-switch{display:none;}' +
-        '@media(max-width:499px){.ne-mobile .ne-mobile-zone-switch{display:flex;gap:2px;margin-bottom:6px;}' +
-        '.ne-mobile .ne-unified-section{display:none;}' +
-        '.ne-mobile .ne-unified-section.ne-mobile-active{display:block;flex:1;overflow-y:auto;}' +
-        '.ne-mobile .ne-mobile-zone-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
-        '.ne-mobile .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
+        '@media(max-width:499px){' + mobileSel + ' .ne-mobile-zone-switch{display:flex;gap:2px;margin-bottom:6px;}' +
+        mobileSel + ' .ne-unified-section{display:none;}' +
+        mobileSel + ' .ne-unified-section.ne-mobile-active{display:block;flex:1;overflow-y:auto;}' +
+        mobileSel + ' .ne-mobile-zone-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
+        mobileSel + ' .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 
@@ -671,12 +676,47 @@ export function injectBottomDrawerCSS() {
             pdHead().appendChild(modalStyle);
         }
     }
+
+    // Design token variables must live in PD.head (:root) — custom properties inherit through the
+    // shadow boundary from the host, so this also feeds shadow-root panels. Migrated from style.css,
+    // which is never loaded by the manifest/rollup/CDN installers.
+    if (!PD.getElementById('ne_vars_style')) {
+        var varsStyle = pdCreate('style');
+        varsStyle.id = 'ne_vars_style';
+        varsStyle.textContent = ':root{' +
+            '--ne-success:#4caf50;--ne-success-bg:rgba(76,175,80,0.12);--ne-success-border:rgba(76,175,80,0.3);' +
+            '--ne-warning:#f0ad4e;--ne-warning-bg:rgba(240,173,78,0.12);--ne-warning-border:rgba(240,173,78,0.3);' +
+            '--ne-danger:#e53935;--ne-danger-bg:rgba(229,57,53,0.12);--ne-danger-border:rgba(229,57,53,0.3);' +
+            '--ne-info:#2196f3;--ne-info-bg:rgba(33,150,243,0.12);--ne-info-border:rgba(33,150,243,0.3);' +
+            '--ne-muted:#888;--ne-muted-bg:rgba(136,136,136,0.08);' +
+            '--ne-space-xs:4px;--ne-space-sm:8px;--ne-space-md:12px;--ne-space-lg:16px;--ne-space-xl:20px;--ne-space-2xl:24px;--ne-space-3xl:32px;' +
+            '--ne-text-xs:0.75em;--ne-text-sm:0.82em;--ne-text-base:0.9em;--ne-text-lg:1em;--ne-text-xl:1.1em;' +
+            '--ne-radius-sm:4px;--ne-radius-md:8px;--ne-radius-lg:12px;' +
+            '--ne-transition-fast:0.15s;--ne-transition-normal:0.2s;--ne-transition-slow:0.35s;' +
+            '--ne-easing-standard:cubic-bezier(0.4,0,0.2,1);--ne-easing-decelerate:cubic-bezier(0,0,0.2,1);--ne-easing-accelerate:cubic-bezier(0.4,0,1,1);' +
+            '--ne-shadow-sm:0 1px 3px rgba(0,0,0,0.12);--ne-shadow-md:0 4px 12px rgba(0,0,0,0.15);' +
+            '--ne-z-overlay:1000;}';
+        pdHead().appendChild(varsStyle);
+    }
 }
 
 export var vaultLLMLog = [];
 export var lastVaultStateJson = '{}';
 export function setLastVaultStateJson(v) { lastVaultStateJson = v; }
 
+
+// UIS-3: 命名 handler + 每次关闭前先移除，避免重复调用 closeVaultOverlay 累积 transitionend 监听
+var _overlayHideTimer = null;
+function _hideOverlayNow(overlay) {
+    overlay.style.display = 'none';
+    overlay.style.transition = '';
+}
+function _overlayTransitionDone(ev) {
+    var overlay = ev.currentTarget;
+    overlay.removeEventListener('transitionend', _overlayTransitionDone);
+    if (_overlayHideTimer) { clearTimeout(_overlayHideTimer); _overlayHideTimer = null; }
+    _hideOverlayNow(overlay);
+}
 
 export function closeVaultOverlay() {
     stopOverlayResizeWatcher();
@@ -685,16 +725,13 @@ export function closeVaultOverlay() {
         overlay.classList.remove('open');
         overlay.style.pointerEvents = '';
         overlay.style.transform = 'translateY(100%)';
-        var tid = setTimeout(function() {
-            overlay.style.display = 'none';
-            overlay.style.transition = '';
+        overlay.removeEventListener('transitionend', _overlayTransitionDone);
+        if (_overlayHideTimer) { clearTimeout(_overlayHideTimer); _overlayHideTimer = null; }
+        _overlayHideTimer = setTimeout(function () {
+            _overlayHideTimer = null;
+            _hideOverlayNow(overlay);
         }, 600);
-        overlay.addEventListener('transitionend', function handler() {
-            overlay.removeEventListener('transitionend', handler);
-            clearTimeout(tid);
-            overlay.style.display = 'none';
-            overlay.style.transition = '';
-        });
+        overlay.addEventListener('transitionend', _overlayTransitionDone);
     }
 }
 
@@ -723,6 +760,12 @@ export function stopOverlayResizeWatcher() {
     if (_overlayResizeHandler) {
         window.removeEventListener('resize', _overlayResizeHandler);
         _overlayResizeHandler = null;
+    }
+    // UIS-5: 一并断开挂载在 overlay 上的 ResizeObserver，避免关闭后继续观察/重复创建累积
+    var overlay = byId('ne_vault_bottom_overlay');
+    if (overlay && overlay._neResizeObserver) {
+        try { overlay._neResizeObserver.disconnect(); } catch (e) {}
+        overlay._neResizeObserver = null;
     }
 }
 
@@ -801,21 +844,34 @@ export function showConfirm(title, message, confirmLabel, cancelLabel, isDanger)
             '</div></div>';
         pdBody().appendChild(overlay);
 
+        function escHandler(e) {
+            if (e.key === 'Escape') close(false);
+        }
         function close(val) {
+            // UIS-1: 任何关闭路径都移除 Esc 监听，避免每次弹窗残留一个
+            document.removeEventListener('keydown', escHandler);
             overlay.classList.remove('show');
-            overlay.addEventListener('transitionend', function h() {
-                overlay.removeEventListener('transitionend', h);
+            // UIS-7: transitionend 驱动移除 + 超时兜底 —— 若弹窗 CSS transition 被主题/
+            // 样式覆盖禁用（transition:none 等），transitionend 永不触发，原实现 Promise 永久
+            // 挂起 → 确认后的删除/保存代码不执行，用户看到"点了没反应"
+            var fallback = setTimeout(function() {
+                overlay.removeEventListener('transitionend', done);
                 if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
                 resolve(val);
-            });
+            }, 300);
+            function done() {
+                clearTimeout(fallback);
+                overlay.removeEventListener('transitionend', done);
+                if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+                resolve(val);
+            }
+            overlay.addEventListener('transitionend', done);
         }
 
         overlay.querySelector('#ne-confirm-ok').addEventListener('click', function() { close(true); });
         overlay.querySelector('#ne-confirm-cancel').addEventListener('click', function() { close(false); });
         overlay.addEventListener('click', function(e) { if (e.target === overlay) close(false); });
-        document.addEventListener('keydown', function escHandler(e) {
-            if (e.key === 'Escape') { document.removeEventListener('keydown', escHandler); close(false); }
-        });
+        document.addEventListener('keydown', escHandler);
 
         requestAnimationFrame(function() { overlay.classList.add('show'); });
     });
@@ -866,29 +922,40 @@ export function showHelpCard(relativeToEl, title, body) {
     card.className = 'ne-help-card';
     card.innerHTML = '<div class="ne-help-card-header">' +
         '<span class="ne-help-card-title">' + title + '</span>' +
-        '<span class="ne-help-card-close" onclick="this.closest(\'.ne-help-card\').remove()">\u2715</span>' +
+        '<span class="ne-help-card-close">\u2715</span>' +
         '</div>' +
         '<div class="ne-help-card-body">' + body + '</div>';
     PD.body.appendChild(card);
+    // UIS-2: 统一关闭路径（X 按钮 / 外部点击 / hideHelpCard），确保外部点击监听一并移除
+    function closeCard() {
+        if (!card.parentNode) return;
+        card.remove();
+        if (card.__ne_outsideHandler) {
+            PD.removeEventListener('click', card.__ne_outsideHandler, true);
+            card.__ne_outsideHandler = null;
+        }
+    }
+    card.querySelector('.ne-help-card-close').addEventListener('click', closeCard);
+    var outsideHandler = function (e) {
+        if (!card.parentNode) { PD.removeEventListener('click', outsideHandler, true); return; }
+        if (!card.contains(e.target) && e.target !== relativeToEl) closeCard();
+    };
+    card.__ne_outsideHandler = outsideHandler;
+    setTimeout(function () {
+        PD.addEventListener('click', outsideHandler, true);
+    }, 0);
     var rect = relativeToEl.getBoundingClientRect();
     card.style.left = Math.min(rect.left, window.innerWidth - 320) + 'px';
     card.style.top = (rect.bottom + 4) + 'px';
-    // Click outside to close
-    setTimeout(function () {
-        var handler = function (e) {
-            if (card && card.parentNode && !card.contains(e.target) && e.target !== relativeToEl) {
-                card.remove();
-                PD.removeEventListener('click', handler, true);
-            }
-        };
-        PD.addEventListener('click', handler, true);
-    }, 0);
     return card;
 }
 
 function hideHelpCard() {
     var existing = PD.querySelector('.ne-help-card');
-    if (existing) existing.remove();
+    if (existing) {
+        if (existing.__ne_outsideHandler) PD.removeEventListener('click', existing.__ne_outsideHandler, true);
+        existing.remove();
+    }
 }
 
 // ── Guide banner (G3) ──

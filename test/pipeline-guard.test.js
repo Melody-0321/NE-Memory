@@ -153,5 +153,22 @@ for (var i = 0; i < 3; i++) {
 await enqueueStateWrite(async function() { results.push('marker'); });
 eq(results.join(','), '0,1,2,marker', 'all 3 enqueued tasks execute in order');
 
+// ── 10. P0-3: 任务抛错后队列不毒化，后续任务仍执行 ──
+reset();
+var postFail = [];
+enqueueStateWrite(async function() {
+    throw new Error('P0-3 simulated failure');
+});
+enqueueStateWrite(async function() {
+    await sleep(3);
+    postFail.push('after-fail');
+});
+await enqueueStateWrite(async function() {
+    await sleep(3);
+    postFail.push('after-fail-2');
+});
+eq(postFail.join(','), 'after-fail,after-fail-2', 'tasks after a failed task still execute (P0-3 no queue poisoning)');
+eq(getState().state, 'idle', 'state idle after failed task + follow-ups');
+
 console.log('\n--- pipeline-guard: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

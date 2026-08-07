@@ -4,7 +4,8 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableMod
   saveSecondaryApiConfig, loadSecondaryApiConfig } from '../core/api/llm.js';
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
-import { neSyncAll } from '../core/settings-adapter.js';
+import { neSync } from '../core/settings-adapter.js';
+import { setRetrievalEnabled, readNeSettingsObject } from '../core/settings.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory } from '../core/vault/store.js';
@@ -269,29 +270,29 @@ export function renderSettingsTab() {
     // --- Event bindings (save on every change) ---
     // Range sliders — update value display + save
     var tEl = panelById('nes_extraction_temperature');
-    if (tEl) { tEl.oninput = function () { var v = panelById('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); saveSettingsTab(); }; }
+    if (tEl) { tEl.oninput = function () { var v = panelById('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); _debouncedSaveSettingsTab(); }; }
     var bEl = panelById('nes_memory_budget');
-    if (bEl) { bEl.oninput = function () { var v = panelById('nes_budget_val'); if (v) v.textContent = bEl.value; saveSettingsTab(); }; }
+    if (bEl) { bEl.oninput = function () { var v = panelById('nes_budget_val'); if (v) v.textContent = bEl.value; _debouncedSaveSettingsTab(); }; }
     var sbEl = panelById('nes_stm_batch');
-    if (sbEl) { sbEl.oninput = function () { var v = panelById('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; saveSettingsTab(); }; }
+    if (sbEl) { sbEl.oninput = function () { var v = panelById('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; _debouncedSaveSettingsTab(); }; }
     var suEl = panelById('nes_stm_max_unconsolidated');
-    if (suEl) { suEl.oninput = function () { var v = panelById('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; saveSettingsTab(); }; }
+    if (suEl) { suEl.oninput = function () { var v = panelById('nes_stm_unconsolidated_val'); if (v) v.textContent = suEl.value; _debouncedSaveSettingsTab(); }; }
     var scSlider = panelById('nes_stm_chunk_max_chars');
     var scVal = panelById('nes_stm_chunk_val');
     var scInput = panelById('nes_stm_chunk_input');
     var _scSync = false;
-    if (scSlider) { scSlider.oninput = function () { if (_scSync) return; _scSync = true; var actual = Math.round(100 * Math.pow(10, Number(scSlider.value) * 2 / 100)); if (scVal) scVal.textContent = actual; if (scInput) scInput.value = actual; _scSync = false; saveSettingsTab(); }; }
+    if (scSlider) { scSlider.oninput = function () { if (_scSync) return; _scSync = true; var actual = Math.round(100 * Math.pow(10, Number(scSlider.value) * 2 / 100)); if (scVal) scVal.textContent = actual; if (scInput) scInput.value = actual; _scSync = false; _debouncedSaveSettingsTab(); }; }
     if (scInput) { scInput.onchange = function () { if (_scSync) return; _scSync = true; var v = Math.max(100, Math.min(10000, Number(scInput.value) || 4000)); scInput.value = v; if (scVal) scVal.textContent = v; if (scSlider) scSlider.value = Math.round(50 * Math.log10(v / 100)); _scSync = false; saveSettingsTab(); }; }
     var phSlider = panelById('nes_ph_batch_slider');
     var phVal = panelById('nes_ph_batch_val');
     var phInput = panelById('nes_ph_batch_input');
     var _phSync = false;
-    if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; saveSettingsTab(); }; }
+    if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; _debouncedSaveSettingsTab(); }; }
     if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(1000, Math.min(8000, Math.round((Number(phInput.value) || 4000) / 500) * 500)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = Math.round(100 * Math.log10(v / 1000) / Math.log10(8)); _phSync = false; saveSettingsTab(); }; }
     var srEl = panelById('nes_stm_summary_ratio');
-    if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; saveSettingsTab(); }; }
+    if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; _debouncedSaveSettingsTab(); }; }
     var cwEl = panelById('nes_dialog_window_rounds');
-    if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; saveSettingsTab(); }; }
+    if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; _debouncedSaveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
     var gtEl = panelById('nes_golden_context_tier');
@@ -301,13 +302,14 @@ export function renderSettingsTab() {
     if (adaptiveEl) {
         adaptiveEl.onchange = function () {
             var isOn = adaptiveEl.checked;
-            // 切换手动控件显隐
-            var manualControls = document.querySelectorAll('.ne-manual-controls');
+            // UI-11: 扩展模式面板在 shadow root 内，裸 document.querySelectorAll 查不到，
+            // 改 panelQSA（shadow-aware，先主 document 再 _panelRoot）
+            var manualControls = panelQSA('.ne-manual-controls');
             for (var i = 0; i < manualControls.length; i++) {
                 manualControls[i].style.display = isOn ? 'none' : '';
             }
             // 切换自适应专属控件显隐（黄金窗口档位）
-            var adaptiveOnly = document.querySelectorAll('.ne-adaptive-only');
+            var adaptiveOnly = panelQSA('.ne-adaptive-only');
             for (var k = 0; k < adaptiveOnly.length; k++) {
                 adaptiveOnly[k].style.display = isOn ? '' : 'none';
             }
@@ -441,39 +443,39 @@ export function renderSettingsTab() {
     }
     if (channelsEnabled) {
         var stmUrl = panelById('nes_stm_api_url');
-        if (stmUrl) stmUrl.onchange = function () { saveSettingsTab(); };
+        if (stmUrl) stmUrl.onchange = function () { _saveChannelApiOnly('nes_stm'); };
         var stmKey = panelById('nes_stm_api_key');
-        if (stmKey) stmKey.onchange = function () { saveSettingsTab(); };
+        if (stmKey) stmKey.onchange = function () { _saveChannelApiOnly('nes_stm'); };
         var stmModel = panelById('nes_stm_api_model_text');
-        if (stmModel) stmModel.onchange = function () { saveSettingsTab(); };
+        if (stmModel) stmModel.onchange = function () { _saveChannelApiOnly('nes_stm'); };
         bindChannelFetch('nes_stm');
         var ltmUrl = panelById('nes_ltm_api_url');
-        if (ltmUrl) ltmUrl.onchange = function () { saveSettingsTab(); };
+        if (ltmUrl) ltmUrl.onchange = function () { _saveChannelApiOnly('nes_ltm'); };
         var ltmKey = panelById('nes_ltm_api_key');
-        if (ltmKey) ltmKey.onchange = function () { saveSettingsTab(); };
+        if (ltmKey) ltmKey.onchange = function () { _saveChannelApiOnly('nes_ltm'); };
         var ltmModel = panelById('nes_ltm_api_model_text');
-        if (ltmModel) ltmModel.onchange = function () { saveSettingsTab(); };
+        if (ltmModel) ltmModel.onchange = function () { _saveChannelApiOnly('nes_ltm'); };
         bindChannelFetch('nes_ltm');
         var stateUrl = panelById('nes_state_api_url');
-        if (stateUrl) stateUrl.onchange = function () { saveSettingsTab(); };
+        if (stateUrl) stateUrl.onchange = function () { _saveChannelApiOnly('nes_state'); };
         var stateKey = panelById('nes_state_api_key');
-        if (stateKey) stateKey.onchange = function () { saveSettingsTab(); };
+        if (stateKey) stateKey.onchange = function () { _saveChannelApiOnly('nes_state'); };
         var stateModel = panelById('nes_state_api_model_text');
-        if (stateModel) stateModel.onchange = function () { saveSettingsTab(); };
+        if (stateModel) stateModel.onchange = function () { _saveChannelApiOnly('nes_state'); };
         bindChannelFetch('nes_state');
         var tplUrl = panelById('nes_template_api_url');
-        if (tplUrl) tplUrl.onchange = function () { saveSettingsTab(); };
+        if (tplUrl) tplUrl.onchange = function () { _saveChannelApiOnly('nes_template'); };
         var tplKey = panelById('nes_template_api_key');
-        if (tplKey) tplKey.onchange = function () { saveSettingsTab(); };
+        if (tplKey) tplKey.onchange = function () { _saveChannelApiOnly('nes_template'); };
         var tplModel = panelById('nes_template_api_model_text');
-        if (tplModel) tplModel.onchange = function () { saveSettingsTab(); };
+        if (tplModel) tplModel.onchange = function () { _saveChannelApiOnly('nes_template'); };
         bindChannelFetch('nes_template');
         var embChUrl = panelById('nes_embedding_url');
-        if (embChUrl) embChUrl.onchange = function () { saveSettingsTab(); };
+        if (embChUrl) embChUrl.onchange = function () { saveEmbeddingApiOnly(); };
         var embChKey = panelById('nes_embedding_key');
-        if (embChKey) embChKey.onchange = function () { saveSettingsTab(); };
+        if (embChKey) embChKey.onchange = function () { saveEmbeddingApiOnly(); };
         var embChModel = panelById('nes_embedding_model_text');
-        if (embChModel) embChModel.onchange = function () { saveSettingsTab(); };
+        if (embChModel) embChModel.onchange = function () { saveEmbeddingApiOnly(); };
         bindChannelFetch('nes_embedding');
     }
 
@@ -634,7 +636,8 @@ function bindChannelFetch(prefix) {
     if (!fetchBtn) return;
 
     var urlId = prefix + '_api_url';
-    var keyId = prefix + '_api_key';
+    // embedding 通道的 key 输入框 ID 无 `_api_` 段（nes_embedding_key），需特判（URL 同型特判见下）
+    var keyId = prefix === 'nes_embedding' ? 'nes_embedding_key' : prefix + '_api_key';
 
     fetchBtn.onclick = function () {
         var urlEl = panelById(urlId);
@@ -666,14 +669,23 @@ function bindChannelFetch(prefix) {
             var txt = panelById(prefix + '_model_text') || panelById(prefix + '_model');
             if (txt) { txt.style.display = ''; txt.value = ''; }
         }
-        saveSettingsTab();
+        // 增量保存：只写本通道配置，避免全量重写
+        if (prefix === 'nes_embedding') { saveEmbeddingApiOnly(); }
+        else { _saveChannelApiOnly(prefix); }
     };
+}
+
+// UIP-3: 滑杆拖动防抖保存（拖动过程中不触发全量 localStorage 写入）
+var _settingsSaveTimer = null;
+function _debouncedSaveSettingsTab() {
+    clearTimeout(_settingsSaveTimer);
+    _settingsSaveTimer = setTimeout(saveSettingsTab, 300);
 }
 
 function saveSettingsTab() {
     var channelsEnabled = panelById('nes_api_channels_enabled') ? panelById('nes_api_channels_enabled').checked : false;
-    var settings = {};
-    try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
+    var settingsPrev = readNeSettingsObject();
+    var settings = JSON.parse(JSON.stringify(settingsPrev));
 
     settings.useDynamicState = settings.useDynamicState || false;
     if (panelById('nes_enable_retrieval'))
@@ -719,48 +731,34 @@ function saveSettingsTab() {
         settings.memoryConfig.model = getModelValue('nes_secondary');
     }
 
-    localStorage.setItem('ne_settings', JSON.stringify(settings));
-    setRetrievalEnabled(settings.retrievalEnabled || false);
-    var secApi = {
-        url: panelById('nes_secondary_url').value.trim(),
-        key: panelById('nes_secondary_key').value.trim(),
-        model: getModelValue('nes_secondary')
-    };
-    saveSecondaryApiConfig(secApi);
-    if (channelsEnabled) {
-        var stmApi = {
-            url: panelById('nes_stm_api_url') ? panelById('nes_stm_api_url').value.trim() : '',
-            key: panelById('nes_stm_api_key') ? panelById('nes_stm_api_key').value.trim() : '',
-            model: getModelValue('nes_stm_api')
-        };
-        localStorage.setItem('ne_stm_api', JSON.stringify(stmApi));
-        var ltmApi = {
-            url: panelById('nes_ltm_api_url') ? panelById('nes_ltm_api_url').value.trim() : '',
-            key: panelById('nes_ltm_api_key') ? panelById('nes_ltm_api_key').value.trim() : '',
-            model: getModelValue('nes_ltm_api')
-        };
-        localStorage.setItem('ne_ltm_api', JSON.stringify(ltmApi));
-        var stateApi = {
-            url: panelById('nes_state_api_url') ? panelById('nes_state_api_url').value.trim() : '',
-            key: panelById('nes_state_api_key') ? panelById('nes_state_api_key').value.trim() : '',
-            model: getModelValue('nes_state_api')
-        };
-        localStorage.setItem('ne_state_api', JSON.stringify(stateApi));
-        var templateApi = {
-            url: panelById('nes_template_api_url') ? panelById('nes_template_api_url').value.trim() : '',
-            key: panelById('nes_template_api_key') ? panelById('nes_template_api_key').value.trim() : '',
-            model: getModelValue('nes_template_api')
-        };
-        localStorage.setItem('ne_template_api', JSON.stringify(templateApi));
-        var chEmbApi = {
-            url: panelById('nes_embedding_url') ? panelById('nes_embedding_url').value.trim() : '',
-            key: panelById('nes_embedding_key') ? panelById('nes_embedding_key').value.trim() : '',
-            model: getModelValue('nes_embedding')
-        };
-        saveEmbeddingApiConfig(chEmbApi);
+    // ── 增量保存：仅设置实际变化时才落盘 + 精确同步（API 通道配置由各拆分函数独立保存） ──
+    var changed = false;
+    for (var sk in settings) {
+        var pv = (sk in settingsPrev) ? settingsPrev[sk] : null;
+        if (sk === 'memoryConfig') {
+            if (JSON.stringify(settings[sk] || null) !== JSON.stringify(pv || null)) { changed = true; break; }
+        } else if (settings[sk] !== pv) { changed = true; break; }
     }
-    console.log('[NE] Settings saved from Settings tab');
-    neSyncAll();
+    if (changed) {
+        localStorage.setItem('ne_settings', JSON.stringify(settings));
+        neSync('ne_settings');
+        if (__NE_DEV_MODE) console.log('[NE] Settings saved from Settings tab');
+    }
+    setRetrievalEnabled(settings.retrievalEnabled || false);
+}
+
+// 增量保存单个 API 通道配置（stm/ltm/state/template），只写自己的 storageKey + 精确同步
+function _saveChannelApiOnly(prefix) {
+    var storageMap = { nes_stm: 'ne_stm_api', nes_ltm: 'ne_ltm_api', nes_state: 'ne_state_api', nes_template: 'ne_template_api' };
+    var storageKey = storageMap[prefix];
+    if (!storageKey) return;
+    var api = {
+        url: panelById(prefix + '_api_url') ? panelById(prefix + '_api_url').value.trim() : '',
+        key: panelById(prefix + '_api_key') ? panelById(prefix + '_api_key').value.trim() : '',
+        model: getModelValue(prefix + '_api')
+    };
+    localStorage.setItem(storageKey, JSON.stringify(api));
+    neSync(storageKey);
 }
 
 function saveSecApiOnly() {

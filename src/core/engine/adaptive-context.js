@@ -2,15 +2,14 @@
  * adaptive-context.js — 自适应上下文控制（Plan C）
  *
  * 在 CHAT_COMPLETION_PROMPT_READY 事件中触发，测量组装后 chat 数组的总 token 数，
- * 按饱和度轮转摊薄策略压缩/扩充 NE 可变注入层（dialog / stateTable / memoryVault）。
+ * 按饱和度轮转摊薄策略压缩/扩充 NE 可变注入层（dialog / memoryVault）。
  *
  * 设计要点：
  * - dialog 层为 PRIMARY 压缩层，floor=4 轮，ceiling=用户设置的 dialogWindowRounds
- * - stateTable/memoryVault 为次级层，通过 NE 内容标记定位并在原位替换
+ * - memoryVault 为次级层，通过 NE 内容标记定位并在原位替换
  * - 无跨生成状态，每次生成独立处理
  */
 import { countTokens } from './text-utils.js';
-import { buildStateInjectionTable } from '../vault/schema.js';
 import { readNeSetting } from '../settings.js';
 
 // 黄金窗口分档比例（基于 Lost in the Middle / RULER / Many-Shot ICL 学术依据）
@@ -153,43 +152,26 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
             if (!didCompress) {
                 pick.current = pick.floor;
             }
-        } else {
+        } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
             var newTarget = Math.max(pick.floor, Math.round(pick.current * 0.75));
-            var newContent = null;
-            if (pick.name === 'state_table' && _neCachedStateTable) {
-                var charMax = Math.max(1, Math.min(8, Math.round(newTarget / 150)));
-                var maxItems = { characters: charMax, factions: Math.max(0, Math.floor(charMax / 2)), quests: Math.max(0, Math.floor(charMax / 2)) };
-                newContent = buildStateInjectionTable(_neCachedState, _neCachedChatMessages, maxItems, _neCachedContent, _neCachedProtagonistName);
-                var compressedTokens = countTokens(newContent);
-                if (compressedTokens >= pick.current) {
-                    pick.current = pick.floor;
-                    continue;
-                }
-                if (!dryRun) _neCachedStateTable = newContent;
-            } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
-                newContent = trimMemoryVaultByKB(_neCachedMemoryVault, newTarget);
-                var vaultTokens = countTokens(newContent);
-                if (vaultTokens >= pick.current) {
-                    pick.current = pick.floor;
-                    continue;
-                }
-                if (!dryRun) _neCachedMemoryVault = newContent;
-            }
-            if (newContent) {
-                replaceNeMarkerInChat(chat, pick.name, newContent);
-                totalTokens = await ctx.getTokenCountAsync(
-                    chat.map(function(m) { return m.content || ''; }).join('\n')
-                );
-                pick.current = countTokens(newContent);
-            } else {
+            var newContent = trimMemoryVaultByKB(_neCachedMemoryVault, newTarget);
+            var vaultTokens = countTokens(newContent);
+            if (vaultTokens >= pick.current) {
                 pick.current = pick.floor;
+                continue;
             }
+            if (!dryRun) _neCachedMemoryVault = newContent;
+            replaceNeMarkerInChat(chat, pick.name, newContent);
+            totalTokens = await ctx.getTokenCountAsync(
+                chat.map(function(m) { return m.content || ''; }).join('\n')
+            );
+            pick.current = countTokens(newContent);
         }
     }
 }
 
 /**
- * 按饱和度轮转摊薄扩充（对话历史跳过，只扩充 stateTable/memoryVault）。
+ * 按饱和度轮转摊薄扩充（对话历史跳过，只扩充 memoryVault）。
  * 当 totalTokens < lowerThreshold（黄金窗口下限）时触发。
  */
 export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ctx, dryRun) {
@@ -207,30 +189,9 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
         }
         if (!pick) break;
 
-        var newTarget = Math.min(pick.ceiling, Math.round(pick.current * 1.25));
-        var newContent = null;
-        if (pick.name === 'state_table' && _neCachedStateTable) {
-            var charMax = Math.max(1, Math.min(8, Math.round(newTarget / 150)));
-            var maxItems = { characters: charMax, factions: Math.max(0, Math.floor(charMax / 2)), quests: Math.max(0, Math.floor(charMax / 2)) };
-            newContent = buildStateInjectionTable(_neCachedState, _neCachedChatMessages, maxItems, _neCachedContent, _neCachedProtagonistName);
-            var newTokens = countTokens(newContent);
-            if (newTokens <= pick.current) {
-                pick.current = pick.ceiling;
-                continue;
-            }
-            if (!dryRun) _neCachedStateTable = newContent;
-        } else if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
+        if (pick.name === 'memory_vault' && _neCachedMemoryVault) {
             pick.current = pick.ceiling;
             continue;
-        }
-        if (newContent) {
-            replaceNeMarkerInChat(chat, pick.name, newContent);
-            totalTokens = await ctx.getTokenCountAsync(
-                chat.map(function(m) { return m.content || ''; }).join('\n')
-            );
-            pick.current = countTokens(newContent);
-        } else {
-            pick.current = pick.ceiling;
         }
     }
 }
@@ -255,7 +216,9 @@ export async function adaptContextPostTrim(chat, dryRun) {
 
     var maxContext = ctx.maxContext || 32000;
     var genReserve = (ctx.chatCompletionSettings && ctx.chatCompletionSettings.openai_max_tokens) || 300;
-    var usableBase = Math.max(2000, maxContext - genReserve);
+    // P1-3: usableBase 原 max(2000, ...) 强抬 2000 下限，maxContext < 2300 的小模型
+    // goldenUpper 超过模型实际容量 → 压缩永不触发。改 1000 下限 + goldenUpper 封顶。
+    var usableBase = Math.max(1000, maxContext - genReserve);
 
     // 黄金窗口：绕过 maxContext 100% 阈值，按分档比例在质量退化前压缩
     var goldenTier = readNeSetting('goldenContextTier', 'balanced');
@@ -263,6 +226,8 @@ export async function adaptContextPostTrim(chat, dryRun) {
 
     var ratios = GOLDEN_TIERS[goldenTier];
     var goldenUpper = Math.max(1500, Math.round(usableBase * ratios.upper));
+    // P1-3: 压缩触发阈值封顶在可用预算内，确保小模型 goldenUpper 不超过模型实际容量
+    goldenUpper = Math.min(goldenUpper, usableBase);
     var goldenLower = Math.max(800, Math.round(usableBase * ratios.lower));
 
     var dialogCeiling = Number(readNeSetting('dialogWindowRounds', 10)) || 10;
@@ -294,7 +259,6 @@ export async function adaptContextPostTrim(chat, dryRun) {
 
     var layers = [
         { name: 'dialog', current: dialogRounds, floor: 4, ceiling: dialogCeiling },
-        { name: 'state_table', current: _neCachedStateTableTokens, floor: 150, ceiling: 3000 },
         { name: 'memory_vault', current: _neCachedMemoryVaultTokens, floor: 150, ceiling: 2000 },
     ];
 

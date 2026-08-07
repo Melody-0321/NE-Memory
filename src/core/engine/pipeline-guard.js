@@ -43,16 +43,17 @@ export function offPipelineChange(fn) {
  * @returns {Promise<void>}
  */
 export function enqueueStateWrite(taskFn) {
-    _stateQueue = _stateQueue.then(
-        async function() {
+    _stateQueue = _stateQueue
+        .then(async function() {
             _setStatus('state', 'active');
             try { await taskFn(); } finally { _setStatus('state', 'idle'); }
-        },
-        async function(e) {
-            _setStatus('state', 'idle');
-            throw e;
-        }
-    );
+        })
+        .catch(function(e) {
+            // P0-3: 任务失败记录后吞掉——不 rethrow 毒化队列，后续任务照常执行；
+            // 链尾 catch 保证返回 Promise 永远 resolved，调用方 await 不会收到未处理 rejection
+            console.error('[NE] pipeline task (state) failed:', e);
+            try { addAnomaly('pipeline_task_failed', { pipeline: 'state', error: String((e && e.message) || e) }); } catch (err) {}
+        });
     return _stateQueue;
 }
 
@@ -61,16 +62,17 @@ export function enqueueStateWrite(taskFn) {
  * @returns {Promise<void>}
  */
 export function enqueueStmWrite(taskFn) {
-    _stmQueue = _stmQueue.then(
-        async function() {
+    _stmQueue = _stmQueue
+        .then(async function() {
             _setStatus('stm', 'active');
             try { await taskFn(); } finally { _setStatus('stm', 'idle'); }
-        },
-        async function(e) {
-            _setStatus('stm', 'idle');
-            throw e;
-        }
-    );
+        })
+        .catch(function(e) {
+            // P0-3: 任务失败记录后吞掉——不 rethrow 毒化队列，后续任务照常执行；
+            // 链尾 catch 保证返回 Promise 永远 resolved，调用方 await 不会收到未处理 rejection
+            console.error('[NE] pipeline task (stm) failed:', e);
+            try { addAnomaly('pipeline_task_failed', { pipeline: 'stm', error: String((e && e.message) || e) }); } catch (err) {}
+        });
     return _stmQueue;
 }
 
@@ -79,16 +81,17 @@ export function enqueueStmWrite(taskFn) {
  * @returns {Promise<void>}
  */
 export function enqueueLtmWrite(taskFn) {
-    _ltmQueue = _ltmQueue.then(
-        async function() {
+    _ltmQueue = _ltmQueue
+        .then(async function() {
             _setStatus('ltm', 'active');
             try { await taskFn(); } finally { _setStatus('ltm', 'idle'); }
-        },
-        async function(e) {
-            _setStatus('ltm', 'idle');
-            throw e;
-        }
-    );
+        })
+        .catch(function(e) {
+            // P0-3: 任务失败记录后吞掉——不 rethrow 毒化队列，后续任务照常执行；
+            // 链尾 catch 保证返回 Promise 永远 resolved，调用方 await 不会收到未处理 rejection
+            console.error('[NE] pipeline task (ltm) failed:', e);
+            try { addAnomaly('pipeline_task_failed', { pipeline: 'ltm', error: String((e && e.message) || e) }); } catch (err) {}
+        });
     return _ltmQueue;
 }
 

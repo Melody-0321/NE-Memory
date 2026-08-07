@@ -507,6 +507,11 @@ export async function renderVaultPanel(getChatId) {
             if (!sheld) return;
             var overlay = byId('ne_vault_bottom_overlay');
             if (!overlay) return;
+            // UIS-5: 若已有观察器先断开，避免 init 双跑时重复创建累积
+            if (overlay._neResizeObserver) {
+                try { overlay._neResizeObserver.disconnect(); } catch (e) {}
+                overlay._neResizeObserver = null;
+            }
             try {
                 var ro = new ResizeObserver(function(entries) {
                     if (!overlay.classList.contains('open')) return;

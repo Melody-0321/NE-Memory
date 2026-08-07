@@ -42,6 +42,14 @@ eq(validateField('活跃', { type: 'enum', values: ['活跃', '非活跃', '已�
 eq(validateField('不在列表中', { type: 'enum', values: ['活跃', '非活跃'] }).ok, false, 'invalid enum fails');
 eq(validateField('活跃', { type: 'enum', values: null }).ok, false, 'enum without values array fails');
 
+// P1-7: object 类型补类型检查（原零校验）
+eq(validateField({ name: '剑术' }, { type: 'object' }).ok, true, 'object passes object type');
+eq(validateField({}, { type: 'object' }).ok, true, 'empty object passes object type');
+eq(validateField(['剑术'], { type: 'object' }).ok, false, 'array rejected for object type');
+eq(validateField('not-object', { type: 'object' }).ok, false, 'string rejected for object type');
+var nullObjResult = validateField(null, { type: 'object' });
+ok(nullObjResult.ok && typeof nullObjResult.value === 'object' && Object.keys(nullObjResult.value).length === 0, 'null coerced to {} for object type');
+
 console.log('\n=== schema: resolveSchemaPath ===');
 
 eq(resolveSchemaPath(null, 'anything'), null, 'null schema => null');
@@ -86,6 +94,36 @@ var schemaWithDirectFields = {
 };
 eq(resolveSchemaPath(schemaWithDirectFields, 'name').type, 'string', 'fields without type=object resolves');
 
+// P1-7: item_schema 步进 —— map 容器动态键（技能名）被丢弃，子字段按 item_schema 模板匹配
+var schemaWithItemSchema = {
+    type: 'object',
+    fields: {
+        characters: {
+            type: 'object',
+            fields: {
+                '*': {
+                    type: 'object',
+                    fields: {
+                        abilities: {
+                            type: 'object',
+                            item_schema: {
+                                name: { type: 'string', max_length: 40 },
+                                type: { type: 'enum', values: ['被动', '主动', '天赋', '种族'] },
+                                level: { type: 'string', max_length: 30 },
+                                effect: { type: 'string', max_length: 200 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+};
+eq(resolveSchemaPath(schemaWithItemSchema, 'characters.Hero.abilities.剑术.level').type, 'string', 'item_schema sub-field resolves through dynamic key');
+eq(resolveSchemaPath(schemaWithItemSchema, 'characters.Hero.abilities.剑术.name').max_length, 40, 'item_schema sub-field max_length resolves');
+eq(resolveSchemaPath(schemaWithItemSchema, 'characters.Hero.abilities.剑术.unknown'), null, 'unknown item_schema sub-field => null');
+eq(resolveSchemaPath(schemaWithItemSchema, 'characters.Hero.abilities').item_schema !== undefined, true, 'map container itself resolves to item_schema holder');
+
 console.log('\n=== schema: validateStateChanges ===');
 
 var vsResult = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, { 'present_characters': '张三' });
@@ -109,6 +147,18 @@ var vsResult5 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, {
 });
 eq(vsResult5.validated['characters.ZhangSan.newField'], undefined, 'unknown sub-field under known parent now rejected (not passed through)');
 assert(vsResult5.warnings.length > 0, 'warning for rejected unknown sub-field under known parent');
+
+// P1-7: required 字段空值 → 拒绝写入 + warning（name/status 为 DEFAULT_GLOBAL_SCHEMA required 字段）
+var vsResult6 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, {
+    'characters.ZhangSan.name': ''
+});
+eq(vsResult6.validated['characters.ZhangSan.name'], undefined, 'required empty value not written');
+assert(vsResult6.warnings.some(function(w) { return w.path === 'characters.ZhangSan.name'; }), 'warning for required empty value');
+var vsResult7 = validateStateChanges(DEFAULT_GLOBAL_SCHEMA, {
+    'characters.ZhangSan.name': '张三'
+});
+eq(vsResult7.validated['characters.ZhangSan.name'], '张三', 'required non-empty value still written');
+eq(vsResult7.warnings.length, 0, 'no warning for required non-empty value');
 
 console.log('\n=== schema: rebuildPresentCharacters ===');
 
@@ -210,6 +260,32 @@ var merged8 = mergeStateChanges({}, {
 ok(merged8.state.quests && merged8.state.quests.tasks && merged8.state.quests.tasks['MainQuest'], 'legacy quest path remapped to tasks');
 eq(merged8.state.quests.tasks['MainQuest'].name, 'MainQuest', 'quest name set in tasks');
 eq(merged8.state.quests.tasks['MainQuest'].status, '正在进行', 'quest status set in tasks');
+
+// P1-8: __inc 增量语法对任意 number 字段生效（原只对 affection 特判）
+var merged9 = mergeStateChanges({ characters: { 'Hero': { name: 'Hero', power_level: 5 } } }, {
+    'characters.Hero.power_level': { __inc: true, delta: 3 }
+});
+eq(merged9.state.characters['Hero'].power_level, 8, 'non-affection number field increment applies');
+eq(merged9.changes[0].old, 5, 'non-affection increment old captured');
+eq(merged9.changes[0].new, 8, 'non-affection increment new captured');
+var merged10 = mergeStateChanges({ characters: { 'Hero': { name: 'Hero', power_level: 5 } } }, {
+    'characters.Hero.power_level': { __inc: true, delta: -2 }
+});
+eq(merged10.state.characters['Hero'].power_level, 3, 'non-affection number field decrement applies');
+
+// P1-6: __proto__/constructor path 不触发原型污染
+var protoBefore = Object.prototype.polluted;
+var merged11 = mergeStateChanges({}, {
+    '__proto__.polluted': true,
+    'constructor.prototype.polluted2': true,
+    'characters.Hero.__proto__.polluted3': true
+});
+eq(merged11.state.polluted, undefined, '__proto__ top-level path not written');
+eq(Object.prototype.polluted, protoBefore, 'Object.prototype not polluted (1)');
+eq(Object.prototype.polluted2, protoBefore, 'Object.prototype not polluted (2)');
+eq(Object.prototype.polluted3, protoBefore, 'Object.prototype not polluted (3)');
+eq(merged11.state.characters && merged11.state.characters['Hero'] && merged11.state.characters['Hero'].polluted3, undefined, '__proto__ nested under character not writing into character object');
+eq(merged11.state.characters && merged11.state.characters['Hero'] && merged11.state.characters['Hero'].name, 'Hero', 'character template still created for legitimate path');
 
 console.log('\n=== schema: mergeStateChanges 旁路捕获 ===');
 

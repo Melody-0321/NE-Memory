@@ -393,6 +393,45 @@ console.log('\n=== adaptive-context: adaptContextPostTrim 完整路径 ===');
     resetAdaptiveCache();
 })();
 
+// Test 18: P1-3 小模型 usableBase 不再强抬 2000，压缩阈值封顶在可用预算内
+// 旧实现：maxContext=2048 时 usableBase=max(2000, 1748)=2000，goldenUpper=1900 > 模型容量 1748 → 压缩永不触发
+// 新实现：usableBase=1748，goldenUpper=min(max(1500,1661),1748)=1661 → totalTokens≈1750 可触发
+(async function() {
+    resetAdaptiveCache();
+    var chat = [
+        makeMsg('system', '<!--NE:state_table-->[State Table]<!--/NE:state_table-->'),
+        makeMsg('system', '<!--NE:memory_vault-->[Memory Vault]<!--/NE:memory_vault-->')
+    ];
+    chat = chat.concat(buildDialogChat(8, 413));  // dialog ~1650 tokens
+    var beforeLen = chat.length;
+    var beforeRounds = countRounds(chat);
+
+    setAdaptiveCache({
+        stateTable: '[State Table]',
+        stateTableTokens: 50,
+        memoryVault: '[Memory Vault]',
+        memoryVaultTokens: 50
+    });
+
+    mockSillyTavernCtx({
+        maxContext: 2048,  // maxContext < 2300 小模型
+        maxTokens: 300,
+        tokenCounter: function(text) { return Math.ceil((text || '').length / 4); }
+    });
+    localStorage.setItem('ne_settings', JSON.stringify({ dialogWindowRounds: 10, goldenContextTier: 'balanced' }));
+
+    await adaptContextPostTrim(chat, false);
+
+    var afterRounds = countRounds(chat);
+    ok(chat.length < beforeLen, 'P1-3 小模型超预算应触发压缩 (before=' + beforeLen + ', after=' + chat.length + ')');
+    ok(afterRounds < beforeRounds, 'P1-3 对话轮数应减少 (before=' + beforeRounds + ', after=' + afterRounds + ')');
+    ok(afterRounds >= 4, 'P1-3 不应低于 floor=4 (got ' + afterRounds + ')');
+
+    clearSillyTavern();
+    localStorage.clear();
+    resetAdaptiveCache();
+})();
+
 // Test 18: dialog 计数排除 NE 标记消息
 (async function() {
     resetAdaptiveCache();

@@ -562,8 +562,11 @@ function saveCardFields(cardDiv) {
 
     var getChatId = stored.getChatId;
     var chatId = getChatId();
+    // UI-6: writeState 失败不再静默，报 toast 提示
     writeState(chatId, stateVault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
+    }).catch(function(err) {
+        showToast(t('Save failed') + ': ' + err.message, 'error', 4000);
     });
 
     if (capturedChanges.length > 0) {
@@ -575,11 +578,8 @@ function saveCardFields(cardDiv) {
         }).catch(function(err) { console.error('[NE] recordStateDelta (manual edit) failed for ' + chatId, err); });
     }
 
-    cardDiv.classList.remove('ne-card-editing');
-    var form = cardDiv.querySelector('.ne-card-edit-form');
-    if (form) form.remove();
-    var btnBar = cardDiv.querySelector('.ne-card-edit-btns');
-    if (btnBar) btnBar.remove();
+    // UI-6: 死代码清理——.ne-card-edit-form/.ne-card-edit-btns 从不被创建，改走显式 exitCardEditMode
+    exitCardEditMode(cardDiv);
 }
 
 var _schemeEditStates = {};  // per-character scheme editor state
@@ -1206,7 +1206,7 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         presetFields.push(checkboxes[i].value);
     }
     var customFieldRefs = [];
-    var customItems = cardEl.querySelectorAll('.ne-scheme-custom-item span');
+    var customItems = cardEl.querySelectorAll('.ne-scheme-custom-item > span:first-child');
     for (var j = 0; j < customItems.length; j++) {
         customFieldRefs.push(customItems[j].textContent);
     }
@@ -1384,7 +1384,7 @@ function _addSchemeCustomField(cardEl) {
     var listEl = cardEl.querySelector('#ne-scheme-custom-fields');
     if (!listEl) return;
     // Check duplicate
-    var existing = listEl.querySelectorAll('.ne-scheme-custom-item span');
+    var existing = listEl.querySelectorAll('.ne-scheme-custom-item > span:first-child');
     for (var i = 0; i < existing.length; i++) {
         if (existing[i].textContent === fieldName) return;
     }
@@ -1506,8 +1506,11 @@ function deleteCharacterCard(cardDiv, charName) {
     c.state = state;
 
     var getChatId = stored.getChatId;
+    // UI-6: deleteCharacterCard 的 writeState 失败同样不再静默
     writeState(getChatId(), vault).then(function() {
         busEmit('vault:updated', { getChatId: getChatId });
+    }).catch(function(err) {
+        showToast(t('Delete failed') + ': ' + err.message, 'error', 4000);
     });
 }
 
@@ -1806,14 +1809,17 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             return;
         }
 
-        var periodCell = entry.time_range || entry.period || '';
+        var periodCell = escapeHtml(entry.time_range || entry.period || '');
         var refs = entry.stm_refs || [];
         var idListFull = refs.join(', ');
         var idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
         var idListCell = '<td style="font-size:0.85em;max-width:150px;color:#888;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
         var titleStyle = entry.status === 'open' ? 'font-style:italic;color:#888;' : 'font-weight:bold;';
-        rows.push('<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + (entry.title || entry.event || entry.summary || '') + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (entry.title && entry.event && entry.event !== entry.title ? '<div style="font-size:0.85em;color:#999;">' + entry.event.substring(0, 120) + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>');
+        // UI-5: LTM 主行 title/event 与 STM 行一致做 HTML 转义，防止特殊字符破坏渲染
+        var ltmTitle = escapeHtml(entry.title || entry.event || entry.summary || '');
+        var ltmEvent = (entry.title && entry.event && entry.event !== entry.title) ? escapeHtml(entry.event.substring(0, 120)) : '';
+        rows.push('<tr data-entry-id="' + entryId + '"><td style="text-align:center;color:#888;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div style="' + titleStyle + '">' + ltmTitle + (entry.status === 'open' ? '<span style="color:var(--ne-success);font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (ltmEvent ? '<div style="font-size:0.85em;color:#999;">' + ltmEvent + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>');
 
         rows.push('<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" data-lazy="1"><td colspan="5"></td></tr>');
     });

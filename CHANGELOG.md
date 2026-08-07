@@ -1,3 +1,61 @@
+# NE-Memory Unreleased（下一版本）
+
+## Bug 修复
+
+- **access 工具消息引用崩溃**：`[→msgId]` 引用未声明变量（ReferenceError），`msg#N`/裸数字引用且消息存在时 100% 失败。已改为 `numId` 回显引用数字（根因：`55f21c7` 改名时漏改此用法）
+- **裸数字消息查找 O(1) 化**：`findMessageInChat` 支持裸数字输入（`"95"`/`"msg#95"`），走数组下标 O(1) 反问 + id 身份校验，漂移时回退全量扫描，真正接入统一消息索引的 idx 前缀能力；顺带修复 `!msgId` 守卫误拦合法下标 0 的边界
+- **设置保存必然报错**：panel-settings.js 引用 `setRetrievalEnabled` 但从未 import，每次保存设置抛 ReferenceError，channels 模式下 API 通道配置/neSyncAll 全部不落盘。已补 import
+- **embedding 通道鉴权失效**：key 读取取不存在的 `nes_embedding_api_key`（真实 ID 是 `nes_embedding_key`），fetch models 永远无鉴权。已特判修正
+- **用量图表 State 序列断档**：panel-usage.js 图表默认对象用 `sp`、消费方读 `.state`，无数据日 State 曲线断档 + state-only 月份误判"无数据"。已统一为 `state`
+- **自定义字段误存类型名**：保存模板/方案时选择器同时匹配字段名 + 类型两个 span，把 `'string'/'number'` 混入字段引用并写入字段库（三处保存 + 两处查重同源）。已改 `> span:first-child` 精确取字段名
+- **编辑内容被刷新抹掉（数据丢失）**：panel-content.js 防刷新保护 class 列表漏 `.ne-inline-row`/`.ne-char-edit`，用户在管线运行时手改 STM/LTM 行或卡片会被 vault:updated 抹掉。已补两类编辑态 class
+- **启动重复执行**：bootNE 无守卫，DOMContentLoaded + `readyState==='interactive'` 双触发导致工具重复注册、vault 双写。已加 `window.__ne_booted` 守卫
+- **面板样式 token 失效（UI 变丑主因）**：`--ne-success` 等全部设计 token 只定义在 style.css 的 `:root`，而 style.css 从未被加载（manifest css 为空、rollup 无 CSS、CDN 只装 index.js）→ 所有 `var(--ne-*)` 静默失效，状态点/徽章/按钮颜色全部退色。已把 token 块迁移进 JS 注入（PD.head :root，shadow 树经 host 继承同样生效）
+- **记忆表格无基础样式**：`.narrative_memory_table` 的 th/td 边框、padding 只存在于 style.css（未加载），表格内容挤压无边框。已迁移基础规则进注入 CSS（含 td word-break 防长文本撑破）
+- **移动端响应式失效（Shadow DOM）**：`.ne-mobile` 类挂在 shadow host 上，注入到 shadow 内的 `.ne-mobile .xxx` 选择器无法跨边界选中宿主 → 移动端减 padding/降字号/关模糊/模板单列全部不生效。已改动态前缀 `:host(.ne-mobile)`（shadow 分支）/ `.ne-vault-bottom-overlay.ne-mobile`（非 shadow 分支），并修正原 `.ne-mobile .ne-vault-bottom-overlay::before` 两个分支均不匹配的错误选择器
+- **style.css 清空**：548 行规则经审计仅 token 块 + memory table 基础样式存活（已迁移），其余（`.ne_vault_drawer`/`.ne_vault_btn`/`.ne_textarea`/`.ne_log_*` 等）对应类在 src 中 0 使用，为死代码。文件保留为废弃说明占位，不再参与任何构建
+- **面板每轮全量重建（卡顿主因）**：`vault:updated` 触发时角色/阵营/任务卡、STM/LTM 表、quick index 无条件 innerHTML 全量重建 + 事件重绑，即使数据未变也触发解析/重排/失焦。已改为区块级 HTML 缓存：char/faction/quest 用渲染字符串比较、STM/LTM 用输入 JSON 签名、quick index 用内容比较，全部未变的轮次跳过 DOM 重建与重绑；同时移除 setTimeout(50) 二次绑定（重建时同步绑定），热路径 console.log 改 `__NE_DEV_MODE` 守卫（prod 剥离）
+- **模板卡每卡重复读 localStorage**：渲染配置卡时 `isDialogueTemplateLocked(_getCurrentCharName(), id)` 对每张卡重复调用 `SillyTavern.getContext()` + `loadCardConfigSync`（localStorage 读 + JSON.parse）。已改为直接基于渲染时已读入的 cardConfig 判断锁定态，一次读取全卡复用（`store.js` 的 `isDialogueTemplateLocked` 因此变为无引用导出，待后续清理）
+- **设置页滑杆拖动卡顿**：8 处滑杆 oninput 每 tick 触发全量保存（6×setItem + neSyncAll 全量扫描）。已改 300ms 防抖保存，拖动结束后才写入；输入框/开关的 onchange 保持直存
+- **设置保存全量热更新（ST 同款坏点）**：任何单项设置变更都经 saveSettingsTab 全量重写 `ne_settings` + channels 模式下再全量重写 5 份 API 配置 + neSyncAll 全量扫描 17+ key，改 1 项 = 6 份全量 JSON + 全量同步。已改为增量保存：①`ne_settings` 写前变更检测（值未变不落盘不同步）②channels 4 份 API 配置拆分独立保存（`_saveChannelApiOnly`，各自只写自己 key + neSync）③embedding/secondary 复用既有拆分函数（内部已带 neSync）④保存后由 `neSyncAll()` 全量扫描改为 `neSync(key)` 精确同步（`neSyncAll` 因此变无引用导出，待后续清理）
+- **确认弹窗 Esc 监听泄漏**：showConfirm 的 document keydown 监听只在按 Esc 时移除自身，点确定/取消/遮罩关闭则每次弹窗残留一个监听。已改为任何关闭路径统一移除
+- **帮助卡片外部点击监听泄漏**：showHelpCard 点 X 关闭按钮走 inline onclick 直接 remove 卡片，外部点击监听不随之移除；hideHelpCard 同样不清理。已统一 closeCard 关闭路径（X 按钮 / 外部点击 / hideHelpCard 都移除监听）
+- **overlay 关闭监听累积**：closeVaultOverlay 每次调用都 addEventListener transitionend，若 overlay 已 display:none（无过渡触发）监听永留累积。已改为命名 handler + 关闭前先移除 + 兜底 timer 重置
+- **全局键盘导航重复绑定**：bootstrap 的卡片回车/空格切换 keydown 监听无去重守卫，init 双跑时按键重复触发。已加 `_keyNavBound` 守卫只绑一次
+- **ResizeObserver 泄漏**：移动端响应式 ResizeObserver 挂在 overlay 上但关闭时从不 disconnect，且每次 init 可能重复创建。已并入 stopOverlayResizeWatcher 统一断开 + setupMobileObserver 防重复创建
+- **版本历史滑杆每事件落盘**：panel-version-history 两个限制滑杆 oninput 每次移动都写 localStorage + neSync（与 UIP-3 同源）。已改为 oninput 只更新即时显示、onchange（拖动结束）才保存
+- **LTM 主行未转义**：LTM 表主行的 title/event/period 直接拼 innerHTML，特殊字符可破坏渲染（STM 行已转义）。已与 STM 行一致做 escapeHtml
+- **手动编辑保存静默失败**：saveCardFields/deleteCharacterCard 的 writeState 无 catch，IndexedDB 写入失败无任何反馈（"保存无反应"）。已加 catch + toast 报错；保存后清理逻辑（`.ne-card-edit-form`/`.ne-card-edit-btns` 从不创建）为死代码，改走显式 exitCardEditMode
+- **确认弹窗 Promise 挂起（"点删除没反应"可疑根因）**：showConfirm 的 close 依赖 transitionend 事件才 resolve，若弹窗 CSS transition 被主题/样式覆盖禁用（transition:none 等）事件永不触发 → 确认后的删除/保存代码不执行，弹窗瞬隐但数据未变，表现即"点了没反应"。已加 300ms 超时兜底：transitionend 触发则即时清理，不触发则超时强制移除 + resolve
+- **消息内假按钮不可点击**：系统消息把按钮拼成 `[文字]` 纯文本进聊天（`sendNeInteraction` 的 `_renderAlertQueue`），ST 当前版本无消息内按钮机制，用户点击无反应且文本误导。已诚实降级：按钮以 `·` 分隔的纯文本提示呈现，不再拼假按钮；`sendNeInteraction`/`sendNePopup` 接口保留（测试 + 未来降级路径），事件调用点改走 `sendNeNotification`
+- **初始化窗口期首轮消息漏记**：init 顺序是先 `_bootstrapVault`（loadVault + 迁移 + 渲染面板，耗时）再绑事件，期间到达的首轮消息无人监听而永久漏记。已把事件绑定 + 工具注册 + ChatCompletion patch 移到 bootstrap 之前；bootstrap 首次初始化分支加重读保护（写前检查 readState/readMemory 已有数据则跳过全量初始化写，防覆盖竞态窗口已写入消息）
+- **设置页控件在 Shadow DOM 下失效**：panel-settings 的 `.ne-manual-controls`/`.ne-adaptive-only` 用裸 `document.querySelectorAll`，扩展模式面板在 shadow root 内查不到 → 手动控制/自适应专属选项无法切换。已改 shadow-aware 的 `panelQSA`
+- **FIND_PROMPT 双重转义致提示剥离失效**：events.js FIND_PROMPT 用 `\\\\` 级转义，经 ST `regexFromString`（`new RegExp`）编译成字面反斜杠，与真实 `|` 分隔符不匹配 → 注入的 NE-BANNER/NE-CHAR 块无法被剥离、系统提示里残留原始格式。已降为 `\\` 级与 FIND_PIPE/CHAR_FIND 对齐，并新增 `test/banner-regex.test.js` 冒烟测试（模拟 ST 编译方式验证三种正则匹配/剥离，注册进 test/run.mjs，27 → 28 测试文件）
+- **v6→v7 迁移在空库上永久挂起（存储层冻结）**：`_migrateVaultsToSplit` 用 `verifyHashes.forEach` 逐条校验，旧 vaults store 为空（或无带 content 记录）时回调一次不执行 → `done >= checks`（0>=0）永不成立，Promise 永不 settle → `openDB` 的 `resolve(db)` 永不执行，所有 read/write 永久挂起。已加空数组早退：`checks === 0` 直接 resolve 完成迁移（P0-2）
+- **单任务失败后该队列后续任务全部被跳过（记忆写入静默丢失）**：pipeline-guard 三个 enqueue 用 `.then(success, rejection)` 双参数链，rejection handler `throw e` 毒化队列 → 失败任务之后的任务只走 rejection 分支、`taskFn` 永不执行，直到 `reset()`。已改为 `.then(success).catch(failure)` 链式结构：失败经 `addAnomaly` 入 telemetry + console.error，尾部 catch 吞错保链 resolved，后续任务照常执行；返回 Promise 永远 resolved，`await enqueue*` 不再收未处理 rejection。新增 pipeline-guard 用例：任务 A 抛错后 B/C 仍按序执行（P0-3）
+- **STM 校验系统性误报（污染 telemetry validation_warnings）**：`validateMsgRanges` 用本次增量条数（`filteredMessages.length`）校验 msgRange 的**全局绝对消息索引** → 长对话增量更新时必然报"越界 + 未覆盖"。已改为窗口语义：`validateMsgRanges`/`validateSTMOutput` 增可选参数 `windowStart`/`windowEnd`（默认 0..messageCount-1 兼容旧签名），越界按窗口边界检查、covered 数组改连续性检查（首 range 锚定窗口起点、相邻衔接、末 range 锚定窗口终点）；stm-pipeline 调用处传 turns 首末条全局下标。新增 5 个窗口用例（P0-4）
+- **移除 orphaned_branches 死机制（P0-5）**：孤立分支 store 的写入生产者从未存在，`restoreBranch`/`cleanupBranches` 无任何调用方，`pruneOrphanedBranches` 唯一调用消费的永远为空数据。产品原则"记忆生命周期 = 对话生命周期"（对话删除 → 记忆物理删除；重 roll/swipe → `onMessageSwiped` 回退版本链 + 重新提取跟随版本）使"恢复已删除记忆"成为反模式。已删 `restoreBranch`/`cleanupBranches`/`pruneOrphanedBranches` 三函数 + state-pipeline 调用 + 死变量 `BRANCH_TTL_MS`；`orphaned_branches` store 定义保留（避免 IDB schema 变更），`remove(chatId)` 中的防御性清理保留
+- **token 相似度原型链误判（P1-10）**：`vocabularyOverlap` 用普通对象字面量 `{}` 当 Set，token 为 `constructor`/`toString`/`valueOf` 时经 `Object.prototype` 误判命中 → 相似度虚高。已改 `Object.create(null)` 无原型对象
+- **SmartPush 注入次数伪统计（P1-11）**：`total_smartpush_injections` 直接赋 `total_turns` 占位，无真实计数来源且全代码库无消费方，UI 展示误导。已删除字段（含注释示例与 aggregate 初始化）
+- **GC 漏 memory_vaults store（P1-12）**：`listAllChatIds` 只扫 `vaults`/`state_vaults`/`active_chains`，memory_vaults 中的孤儿数据永不参与清理。已补 store 名
+- **时间戳 NaN 输出"NaN 个月前"（P1-13）**：`calRelativeTime` 对字符串时间戳直接相减得 `NaN`，一路比较为 false 后落到"NaN 个月前"。已入口 `Number()` 归一化 + 空值/NaN 早退
+- **派系扫描大小写敏感（P1-14）**：`scanMessageForFactions` 用 `indexOf` 精确匹配，alias 大小写变体（如 `Order` 匹配不到 `order`）导致派系激活失败。已统一 toLowerCase 比较
+- **歧义解析语义不一致 + 只替换首处（P1-15）**：模式3 的 resolved 存"实体名+后缀"与模式1/2 只存实体名不一致；`enhancedQuery.replace` 无 `/g` 只替换第一处引用。已改为只存实体名 + `split/join` 全局替换（避免正则转义问题）
+- **present_characters 死代码 fallback（P1-16）**：`openLtm.present_characters[0].scene`——present_characters 是字符串数组（LLM 输出全名数组）无 `.scene` 字段，fallback 恒为 `''`。已删除，仅保留 `openLtm.scene || ''`
+- **原型链保留键 path 污染防护（P1-6）**：`__proto__`/`constructor`/`prototype` 作为 dot-path 段时，mergeStateChanges 的 `current[key]` 写入会落到 `Object.prototype` 或读到原型属性（LLM 输出的恶意/异常字段名可造成校验绕过或污染）。已在 schema.js merge 路径遍历 + ensureCharacterTemplate 调用处 + state-versions `_setByPath`/`_getByPath` 统一加 `isReservedKey` 拦截
+- **schema 校验缺口补全（P1-7）**：① `resolveSchemaPath` 不支持 `item_schema` 步进，abilities/inventory 等 map 容器子结构校验完全无效——已补"动态键丢弃 + 进入 item_schema 模板"逻辑（含 item_schema 中名为 `type` 的字段定义冲突修正）；② `validateField` 对 object 类型零校验（任意值放行）——已补类型检查（null 归 {}，数组/标量拒绝）；③ required 字段从不校验——已补空值拦截（`''`/`undefined`/`null`/`NaN` → 拒绝写入 + warning，保留旧值）
+- **`__inc` 增量语法通用化（P1-8）**：merge 层对 `__inc` 只特判 `affection`，LLM 对其他 number 字段输出 `+N`/`-N` 时把 `{__inc,delta}` 对象直接写进状态——已改为任意字段应用增量，affection 保留 0-100 clamp
+- **超长 segment 非首位置不拆分（P1-1）**：`chunkSegmentsForLLM` 仅 currentChunk 为空时才拆分超长 segment，累积场景（前一 segment 已入 chunk）下超长 chunk 整段提交给 LLM，触发上下文溢出。已泛化：超长 segment 无论是否首位置都先 flush 当前 chunk 再 `splitIntraSegment` 拆分
+- **STM 事件映射全量错位（P1-2）**：事件按数组下标与 segment 一一映射，LLM 少输出事件时后续事件全部错位到错误的 turn 区间。已改为优先用 LLM 返回的事件自带 `msgRange`（窗口内下标）→ 经 windowMessages（含 `_absIdx`）转换全局下标 → 与 turns 相交得覆盖轮次
+- **小模型上下文压缩永不触发（P1-3）**：`usableBase = Math.max(2000, ...)` 强抬下限，maxContext < 2300 的小模型 goldenUpper 超过模型实际容量 → 压缩条件恒不成立。已改 1000 下限 + `goldenUpper = Math.min(goldenUpper, usableBase)` 封顶在可用预算内
+- **LLM 超时重试加剧延迟（P1-4）**：AbortError（超时）无条件重试 ×2 轮 × 双请求且全部等满 timeoutSec，最坏 ~19s+。已改超时不重试直接抛，仅 5xx/网络类可重试
+- **退化日期 msgId 漂移断链（P1-5）**：数字 id 退化格式（`3_0000-00-00T00:00:00.000Z_5_user`）在消息漂移后无法按 send_date 匹配，fallback 直接断链 → msg 引用永久丢失。已改 `_legacyScan` 提取退化日期段的尾段数字 id 按 m.id 匹配（无 id 消息按位置即身份）
+- **STM 事件 partial 语义被覆盖（P1-17）**：`mapEventData` 强制 `event.status = 'closed'` 抹掉 LLM 输出的 partial（窗口内容不足以形成完整事件）。已改为仅缺失/非法值归 closed，partial 保留
+- **STM 分块/映射测试补齐**：新增 `test/stm-chunking.test.js`（P1-1 拆分回归 + P1-2 窗口映射 + P1-17 partial），注册进 test/run.mjs（28 → 29 测试文件）
+- **SmartPush 实体链链路恢复（P1-18）**：`formatSmartContext` 中 `entityChains` 初始化为 `{}` 后从未赋值，mergePipelines Step2 实体预取 / 场景外链块 / compileRetrievalBudget 三个消费点全部空转（文档宣称的功能未接线，legacy recall 工具链路正常）。已补 `await lookupEntityChains(content, entityNames)` 接线——实体链从事件指针 `present_characters` 实时构建，非独立存储，与"数据层只留指针"兼容。新增 `test/entity-chain.test.js` 单测（29 → 30 测试文件）
+
+---
+
 # NE-Memory v7.2.0 更新日志
 
 ## 新功能

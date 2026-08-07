@@ -42,35 +42,6 @@ export function neSync(key) {
     } catch (e) {}
 }
 
-export function neSyncAll() {
-    try {
-        var extNe = _getExt();
-        if (!extNe) return;
-        var i;
-        for (i = 0; i < SYNCED_KEYS.length; i++) {
-            var k = SYNCED_KEYS[i];
-            try {
-                var raw = localStorage.getItem(k);
-                if (raw != null) extNe[k] = raw;
-            } catch (e) {}
-        }
-        try {
-            var allKeys = Object.keys(localStorage);
-            for (i = 0; i < allKeys.length; i++) {
-                var lk = allKeys[i];
-                for (var j = 0; j < SYNCED_PREFIXES.length; j++) {
-                    if (lk.indexOf(SYNCED_PREFIXES[j]) === 0) {
-                        try { extNe[lk] = localStorage.getItem(lk); } catch (e) {}
-                        break;
-                    }
-                }
-            }
-        } catch (e) {}
-        var saveFn = _getSaveFn();
-        if (saveFn) saveFn();
-    } catch (e) {}
-}
-
 export function neRestoreAll() {
     try {
         var extNe = _getExt();

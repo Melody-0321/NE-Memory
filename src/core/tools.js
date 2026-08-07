@@ -44,7 +44,7 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                                 return entities.some(function(e) { return s.toLowerCase().indexOf(e.toLowerCase()) !== -1; });
                             }).join('').trim() || text.substring(0, 300) + '... [filtered]';
                         }
-                        result = '[→' + msgId + ']\n' + text;
+                        result = '[→' + numId + ']\n' + text;
                     }
                 }
 

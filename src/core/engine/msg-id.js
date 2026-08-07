@@ -48,18 +48,29 @@ export function buildMsgId(m, idx) {
  * findMessageInChat — 通过稳定 ID 在 chat 中定位消息
  *
  * 策略：
+ * 0. 裸数字（"95"/"msg#95" → 95）→ O(1) 数组下标反问 + id 校验（ST mes.id 通常为自增数字）
  * 1. 解析 idx 前缀 → O(1) 反问 chatMessages[idx]
  * 2. 验证 send_date 匹配 → 命中即返回
  * 3. 不匹配则 O(n) 漂移兜底（消息被删除/重排后 idx 漂移）
  * 4. 最终 fallback：按 send_date+role 全量遍历
  *
  * @param {object[]} chatMessages - SillyTavern 聊天消息数组
- * @param {string} msgId - buildMsgId() 产出的稳定 ID
+ * @param {string|number} msgId - buildMsgId() 产出的稳定 ID，或裸数字（消息 id/数组下标）
  * @returns {object|null} 找到的消息对象，或 null
  */
 export function findMessageInChat(chatMessages, msgId) {
-    if (!chatMessages || !chatMessages.length || !msgId) return null;
+    if (!chatMessages || !chatMessages.length || msgId == null || msgId === '') return null;
     var idStr = String(msgId);
+
+    // 裸数字 → O(1) 数组下标反问（idx 前缀语义），身份不符则回退全量扫描
+    if (/^\d+$/.test(idStr)) {
+        var idxNum = parseInt(idStr, 10);
+        if (idxNum >= 0 && idxNum < chatMessages.length) {
+            var direct = chatMessages[idxNum];
+            if (direct && _bareIdxMatches(direct, idxNum)) return direct;
+        }
+        return _findByFullScan(chatMessages, idStr);
+    }
 
     var parts = idStr.split('_');
     if (parts.length < 3) {
@@ -78,6 +89,15 @@ export function findMessageInChat(chatMessages, msgId) {
     }
 
     return _findByFullScan(chatMessages, idStr);
+}
+
+/**
+ * 裸数字身份校验：m.id 与数字一致（ST mes.id 通常为自增数字）；
+ * 无 id（ST 新建消息尚未分配 id）时按数组位置即身份。
+ */
+function _bareIdxMatches(m, idxNum) {
+    if (m.id != null) return String(m.id) === String(idxNum);
+    return true;
 }
 
 function _findByFullScan(chatMessages, idStr) {
@@ -103,10 +123,16 @@ function _findByFullScan(chatMessages, idStr) {
 }
 
 function _legacyScan(chatMessages, idStr) {
+    // P1-5: 数字 id 退化格式（"3_0000-00-00T00:00:00.000Z_5_user"）在消息漂移后
+    // 无法按 send_date 匹配，原 fallback 直接断链 → msg 引用永久丢失。改为提取
+    // 尾段数字 id（退化日期段的 m.id）按消息 id 匹配。
+    var degradedMatch = /_0000-00-00T00:00:00\.000Z_(\d+)(?:_|$)/.exec(idStr);
+    var numericId = degradedMatch ? degradedMatch[1] : null;
     for (var j = 0; j < chatMessages.length; j++) {
         var m2 = chatMessages[j];
         if (!m2) continue;
         try {
+            if (numericId != null && String(m2.id == null ? j : m2.id) === numericId) return m2;
             var legacy = String(m2.id == null ? j : m2.id);
             if (legacy === idStr) return m2;
         } catch (e) {}

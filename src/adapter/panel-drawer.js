@@ -88,6 +88,9 @@ export function setupAccordionHandlers(chatId) {
     });
 }
 
+// ── UIP-1: quick index 内容缓存（计数未变时跳过 innerHTML 重建与 onclick 重绑） ──
+var _quickIdxCache = { mem: null, state: null };
+
 export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
     // ── Memory tab quick index ──
     var memIdx = panelById('ne_quick_index');
@@ -100,7 +103,9 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
         };
         addMemItem('ne-acc-stm', t('STM'), stmCount);
         addMemItem('ne-acc-ltm', t('LTM'), ltmCount);
+        if (memHtml !== _quickIdxCache.mem) {
         memIdx.innerHTML = memHtml;
+        _quickIdxCache.mem = memHtml;
         panelQSA('#ne_quick_index .ne-index-item').forEach(function(item) {
             item.onclick = function() {
                 var targetId = this.getAttribute('data-target');
@@ -112,6 +117,7 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
                 navigateToAccordion(targetId, chatId);
             };
         });
+        }
     }
     // ── State tab quick index ──
     var stateIdx = panelById('ne_state_quick_index');
@@ -125,7 +131,9 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
         addStateItem('ne-acc-characters', t('Characters'), charCount);
         addStateItem('ne-acc-quests', t('Quests & Events'), questCount);
         addStateItem('ne-acc-factions', t('Factions'), factionCount);
+        if (stateHtml !== _quickIdxCache.state) {
         stateIdx.innerHTML = stateHtml;
+        _quickIdxCache.state = stateHtml;
         panelQSA('#ne_state_quick_index .ne-index-item').forEach(function(item) {
             item.onclick = function() {
                 var targetId = this.getAttribute('data-target');
@@ -137,6 +145,7 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
                 navigateToAccordion(targetId, chatId);
             };
         });
+        }
     }
 }
 

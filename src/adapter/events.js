@@ -44,7 +44,7 @@ function _neCheckChatIntegrity(tag) {
 }
 import { setToolResultNotifier } from '../core/engine/template-llm.js';
 import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
-import { sendNeNotification, sendNeInteraction } from './ne-system-msg.js';
+import { sendNeNotification } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
     '[以下是你在故事中积累的记忆，按实体分链组织。]',
@@ -774,18 +774,10 @@ function triggerPerRoundExtraction(assistantMsg) {
                 var schemeCount = (sig.schemes && sig.schemes.length) || 0;
                 if (schemeCount > 0) {
                     var schemesStr = sig.schemes.join(', ');
-                    sendNeInteraction(null,
-                        '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr,
-                        {
-                            buttons: [{ text: '\u67E5\u770B\u6A21\u677F\u5E93', key: 'open_templates' }],
-                            timeoutMs: 15000,
-                            onConfirm: function(key) {
-                                if (key === 'open_templates') {
-                                    try { PD.navigate('templates'); } catch(e) {}
-                                }
-                            }
-                        }
-                    );
+                    // UI-8: ST 无消息内按钮机制，改用纯通知 + 手动操作路径提示（原 "查看模板库" 假按钮不可点击已移除）
+                    sendNeNotification(null,
+                        '\u{1F4CB} \u89D2\u8272\u8FFD\u8E2A\u65B9\u6848\u5DF2\u521D\u59CB\u5316\u3002\u53D1\u73B0 ' + schemeCount + ' \u4E2A\u65B9\u6848\uFF1A' + schemesStr +
+                        '\n\u53EF\u5728\u5DE6\u4FA7\u9762\u677F\u300C\u6A21\u677F\u5E93\u300D\u4E2D\u67E5\u770B\u5168\u90E8\u65B9\u6848\u3002');
                 }
                 delete stateResult.vault.content._templateInitSignal;
             }
@@ -841,7 +833,7 @@ function registerGlobalBannerRegex() {
             '\u26A1 \u573A\u666F\u63CF\u8FF0\uFF1A$4\n' +
             '\uD83D\uDC64 \u5728\u573A\u89D2\u8272\uFF1A$5\n' +
             '```\n';
-        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*\\\\|[^|]*<!--\\\\/NE-BANNER-->\\\\s*|<!--NE-CHAR:[^-]+-{2,3}>[\\\\s\\\\S]*?<!--\\\\/NE-CHAR-->)/g';
+        var FIND_PROMPT = '/(?:<!--NE-BANNER-->[^|]*\\|[^|]*\\|[^|]*\\|[^|]*\\|[^|]*<!--\\/NE-BANNER-->\\s*|<!--NE-CHAR:[^-]+-{2,3}>[\\s\\S]*?<!--\\/NE-CHAR-->)/g';
 
         var BANNER_DISPLAY_PATTERN = /^ne-state-banner(?:-v\d+)?$/;
         var PROMPT_PATTERN = /^(?:ne-state-banner-prompt(?:-v\d+)?|ne-state-prompt(?:-v\d+)?|ne-char-block-prompt(?:-v\d+)?)$/;
