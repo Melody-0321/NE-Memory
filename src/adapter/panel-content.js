@@ -11,6 +11,9 @@ import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
+// ── UIP-1: 区块渲染输入签名缓存（undefined = 从未渲染，首次必渲染） ──
+var _renderCache = {};
+
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
     var _overlay = byId('ne_vault_bottom_overlay');
