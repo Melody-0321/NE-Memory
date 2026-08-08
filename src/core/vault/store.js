@@ -151,8 +151,12 @@ function _buildMemoryVault(chatId, vault) {
     };
 }
 
+// D1: openDB 连接缓存——首次调用建立后复用同一连接，避免每轮 pipeline 6-8 次 indexedDB.open
+var _dbPromise = null;
+
 function openDB() {
-    return new Promise((resolve, reject) => {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = new Promise((resolve, reject) => {
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = function (e) {
             var db = e.target.result;
@@ -186,6 +190,9 @@ function openDB() {
         };
         req.onsuccess = function () {
             var db = req.result;
+            // D1: 连接缓存失效——DB 被其他 tab 升级或主动关闭时置空，下次 openDB 重建
+            db.onversionchange = function () { _dbPromise = null; };
+            db.onclose = function () { _dbPromise = null; };
             if (_hasOldVaults(db)) {
                 _migrateVaultsToSplit(db).then(function (count) {
                     console.log('[NE] v7 migration complete: ' + count + ' vault(s) split. Old vaults store preserved (will clean up in future version).');
@@ -198,8 +205,9 @@ function openDB() {
                 resolve(db);
             }
         };
-        req.onerror = function () { reject(req.error); };
+        req.onerror = function () { _dbPromise = null; reject(req.error); };
     });
+    return _dbPromise;
 }
 
 export { openDB };
@@ -624,16 +632,22 @@ export function loadTemplateLibrary() {
     return { templates: {}, updatedAt: new Date().toISOString() };
 }
 
+// D7: 有效模板库缓存——saveTemplateLibrary 是唯一写入口，写后失效
+var _effTplCache = null;
+
 export function getEffectiveTemplates() {
+    if (_effTplCache) return JSON.parse(JSON.stringify(_effTplCache));
     var lib = loadTemplateLibrary();
-    var merged = Object.assign({}, _getDefaultTemplates(), lib.templates || {});
+    // 先深拷贝再填充 perRoundFields，避免 mutate 共享默认模板对象（此前浅拷贝会污染 _getDefaultTemplates() 返回值）
+    var merged = JSON.parse(JSON.stringify(Object.assign({}, _getDefaultTemplates(), lib.templates || {})));
     Object.keys(merged).forEach(function(k) {
         var tpl = merged[k];
         if ((tpl.role === 'pc' || tpl.role === 'npc') && !tpl.perRoundFields) {
             tpl.perRoundFields = ['current_mood', 'inner_thoughts'];
         }
     });
-    return { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id, DEFAULT_FACTION_TEMPLATE.id, DEFAULT_TASK_TEMPLATE.id, DEFAULT_GOAL_TEMPLATE.id], updatedAt: lib.updatedAt };
+    _effTplCache = { templates: merged, order: lib.order || [DEFAULT_PC_TEMPLATE.id, DEFAULT_NPC_TEMPLATE.id, DEFAULT_FACTION_TEMPLATE.id, DEFAULT_TASK_TEMPLATE.id, DEFAULT_GOAL_TEMPLATE.id], updatedAt: lib.updatedAt };
+    return JSON.parse(JSON.stringify(_effTplCache));
 }
 
 export function saveTemplateLibrary(lib) {
@@ -648,6 +662,7 @@ export function saveTemplateLibrary(lib) {
             toStore.templates = userOnly;
         }
         localStorage.setItem('ne_template_library', JSON.stringify(toStore));
+        _effTplCache = null; // D7: 模板库变更后失效缓存
         try { neSync('ne_template_library'); } catch (e) {}
     } catch (e) {}
 }

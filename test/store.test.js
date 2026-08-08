@@ -85,6 +85,20 @@ ok(eff.templates['_default_pc'], 'default PC accessible via getEffectiveTemplate
 ok(eff.templates['_default_npc'], 'default NPC accessible via getEffectiveTemplates');
 eq(eff.templates['_default_npc'].system, true, 'system flag on default NPC');
 
+// D7: getEffectiveTemplates 缓存隔离——深拷贝隔离 + 写入口失效
+var eff1 = getEffectiveTemplates();
+var eff2 = getEffectiveTemplates();
+neq(eff1, eff2, 'D7: consecutive calls return distinct objects (deep copy)');
+neq(eff1.templates, eff2.templates, 'D7: templates map not shared reference');
+ok(Array.isArray(eff1.templates['_default_pc'].perRoundFields), 'D7: perRoundFields filled as array on default pc');
+eff1.templates['_default_pc'].name = 'MUTATED';
+var eff3 = getEffectiveTemplates();
+neq(eff3.templates['_default_pc'].name, 'MUTATED', 'D7: mutation of returned object does not pollute cache');
+saveTemplate({ id: 'd7_tmp', name: 'D7Tmp', role: 'npc' });
+var eff4 = getEffectiveTemplates();
+ok(eff4.templates['d7_tmp'], 'D7: cache invalidated after saveTemplateLibrary (new template visible)');
+deleteTemplate('d7_tmp');
+
 // ====== Field Library CRUD ======
 console.log('\n=== store: field library CRUD ===');
 

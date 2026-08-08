@@ -34,7 +34,8 @@ var testMap = {
     'bm25-grouper': 'bm25-grouper.test.js',
     'msg-id': 'msg-id.test.js',
     'adaptive-context': 'adaptive-context.test.js',
-    'banner-regex': 'banner-regex.test.js'
+    'banner-regex': 'banner-regex.test.js',
+    'state-versions-compact': 'state-versions-compact.test.js'
 };
 
 var batchMap = {

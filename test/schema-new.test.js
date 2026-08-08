@@ -65,6 +65,12 @@ var mixed = expandTemplateFields({ presetFields: ['personality', 'nonexistent_xy
 assert(Object.keys(mixed).length >= 3, 'valid presets + name + status always added');
 ok(mixed['personality'].type, 'personality resolved');
 
+// D4: 多个 customFieldRefs 展开正确（fieldLib 循环外只读一次，行为等价回归）
+var multiRefs = expandTemplateFields({ presetFields: [], customFieldRefs: ['custom_mood', 'custom_extra'] });
+ok(multiRefs['custom_mood'], 'D4: first custom ref resolved');
+ok(multiRefs['custom_extra'], 'D4: second custom ref resolved');
+ok(multiRefs['custom_extra'].type, 'D4: fallback field has type');
+
 // Custom field from field library (tested after field added in store.test.js)
 // The field library is tested separately in store.test.js
 

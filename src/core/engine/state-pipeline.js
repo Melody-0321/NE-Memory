@@ -873,7 +873,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         }
 
         var mergeResult = mergeStateChanges(stateVault.content.state || {}, result.validated);
-        if (JSON.stringify(mergeResult.state) === JSON.stringify(stateVault.content.state || {})) {
+        if (!mergeResult.changed) { // D3: 免 2 次全量 stringify 比较（changed 覆盖 capturedChanges + backfill）
             console.log('[NE] State unchanged, skipping write');
         } else {
             stateVault.content.state = mergeResult.state;

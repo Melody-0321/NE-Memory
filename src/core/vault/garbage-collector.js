@@ -53,6 +53,36 @@ function fingerprintMatchesAnyCharacter(key, characters) {
 }
 
 /**
+ * D8: 限并发 map——Promise.all 并发执行，结果按 index 保序
+ */
+function mapLimit(items, limit, fn) {
+    return new Promise(function (resolve, reject) {
+        var results = new Array(items.length);
+        var nextIdx = 0;
+        var running = 0;
+        var done = 0;
+        var rejected = false;
+        function pump() {
+            if (rejected) return;
+            while (running < limit && nextIdx < items.length) {
+                var idx = nextIdx++;
+                running++;
+                fn(items[idx], idx).then(function (res) {
+                    results[idx] = res;
+                    running--;
+                    done++;
+                    pump();
+                }).catch(function (err) {
+                    if (!rejected) { rejected = true; reject(err); }
+                });
+            }
+            if (done === items.length) resolve(results);
+        }
+        pump();
+    });
+}
+
+/**
  * 扫描 IndexedDB，返回各条目状态
  */
 export async function scanOrphans() {
@@ -67,9 +97,8 @@ export async function scanOrphans() {
 
     var allKeys = await listAllChatIds();
 
-    var results = [];
-    for (var idx = 0; idx < allKeys.length; idx++) {
-        var key = allKeys[idx];
+    // D8: 限并发 8 扫描，单键失败在回调内转 error 结果，不阻塞其余键
+    var results = await mapLimit(allKeys, 8, async function (key) {
         var status = 'orphan';
         var reason = 'not in ST character/groups lists';
 
@@ -90,25 +119,25 @@ export async function scanOrphans() {
                 if (Array.isArray(vault.content.stm_entries)) stmCount += vault.content.stm_entries.length;
                 if (Array.isArray(vault.content.ltm_entries)) ltmCount = vault.content.ltm_entries.length;
             }
-            results.push({
+            return {
                 chat_id: key,
                 version: vault ? vault.version : 0,
                 stm: stmCount,
                 ltm: ltmCount,
                 status: status,
                 reason: reason
-            });
+            };
         } catch (e) {
-            results.push({
+            return {
                 chat_id: key,
                 version: -1,
                 stm: 0,
                 ltm: 0,
                 status: 'error',
                 reason: 'read failed: ' + (e.message || '')
-            });
+            };
         }
-    }
+    });
 
     return results;
 }

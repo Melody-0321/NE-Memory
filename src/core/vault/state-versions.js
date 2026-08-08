@@ -42,6 +42,28 @@ function _generateId(prefix, chatId, seq) {
     return prefix + '_' + chatId + '_' + seq;
 }
 
+/**
+ * D6: 单次 readonly 事务取回某 chat 的全部 delta/version（走 chat_id index）
+ */
+function _getAllByChatIndex(db, store, chatId) {
+    return _tx(db, [store], 'readonly', function (tx) {
+        return tx.objectStore(store).index('chat_id').getAll(chatId);
+    });
+}
+
+/**
+ * D2: 计算 compact 折叠后应删除的旧 seq（active 中 < headSeq 的非 head 项）
+ *
+ * @param {number[]} activeSeqs — 折叠前 state_active / mem_active 快照
+ * @param {number} headSeq — 折叠目标 seq（保留，含 folded_* 字段）
+ * @returns {number[]}
+ */
+export function computeCompactDeleteSeqs(activeSeqs, headSeq) {
+    return (activeSeqs || []).filter(function (s) {
+        return s !== headSeq && s < headSeq;
+    });
+}
+
 function _nowISO() {
     return new Date().toISOString();
 }
@@ -333,12 +355,17 @@ export async function foldState(chatId, targetSeq, headState) {
     if (targetSeq == null) targetSeq = chain.state_head_seq;
     if (targetSeq <= 0) return {};
 
+    // D6: 一次取回该 chat 全部 delta，收集 {seq: delta} map，替代逐 seq 独立只读事务（链长 N → 事务数 1）
+    var allDeltas = await _getAllByChatIndex(db, 'state_deltas', chatId);
+    var deltasBySeq = {};
+    for (var di = 0; di < allDeltas.length; di++) {
+        deltasBySeq[allDeltas[di].seq] = allDeltas[di];
+    }
+
     var base = {};
     var usedFallback = false;
     if (chain.state_base_seq >= 0) {
-        var baseDelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-            return tx.objectStore('state_deltas').get(_generateId('delta', chatId, chain.state_base_seq));
-        });
+        var baseDelta = deltasBySeq[chain.state_base_seq];
         if (baseDelta && baseDelta.folded_state) {
             base = JSON.parse(JSON.stringify(baseDelta.folded_state));
         }
@@ -357,9 +384,7 @@ export async function foldState(chatId, targetSeq, headState) {
                 for (var ri = chain.state_active.length - 1; ri >= 0; ri--) {
                     var rseq = chain.state_active[ri];
                     if (rseq <= targetSeq) break;
-                    var rdelta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-                        return tx.objectStore('state_deltas').get(_generateId('delta', chatId, rseq));
-                    });
+                    var rdelta = deltasBySeq[rseq];
                     if (!rdelta || !rdelta.changes) continue;
                     for (var rci = 0; rci < rdelta.changes.length; rci++) {
                         var rc = rdelta.changes[rci];
@@ -380,9 +405,7 @@ export async function foldState(chatId, targetSeq, headState) {
             var seq = chain.state_active[i];
             if (seq > targetSeq) break;
             if (seq === chain.state_base_seq) continue;
-            var delta = await _tx(db, ['state_deltas'], 'readonly', function (tx) {
-                return tx.objectStore('state_deltas').get(_generateId('delta', chatId, seq));
-            });
+            var delta = deltasBySeq[seq];
             if (!delta || !delta.changes) continue;
             for (var ci = 0; ci < delta.changes.length; ci++) {
                 var c = delta.changes[ci];
@@ -435,10 +458,15 @@ export async function foldMemory(chatId, targetSeq) {
 
     var memory = { stm_entries: [], unconsolidated_stm: [], ltm_entries: [] };
 
+    // D6: 一次取回该 chat 全部 memory_versions，收集 {seq: version} map，替代逐 seq 独立只读事务
+    var allVersions = await _getAllByChatIndex(db, 'memory_versions', chatId);
+    var versionsBySeq = {};
+    for (var vi = 0; vi < allVersions.length; vi++) {
+        versionsBySeq[allVersions[vi].seq] = allVersions[vi];
+    }
+
     if (chain.mem_base_seq >= 0) {
-        var baseVer = await _tx(db, ['memory_versions'], 'readonly', function (tx) {
-            return tx.objectStore('memory_versions').get(_generateId('memver', chatId, chain.mem_base_seq));
-        });
+        var baseVer = versionsBySeq[chain.mem_base_seq];
         if (baseVer) {
             memory.stm_entries = (baseVer.folded_stm_entries) ? JSON.parse(JSON.stringify(baseVer.folded_stm_entries)) : [];
             memory.unconsolidated_stm = (baseVer.folded_unconsolidated_stm) ? JSON.parse(JSON.stringify(baseVer.folded_unconsolidated_stm)) : [];
@@ -454,9 +482,7 @@ export async function foldMemory(chatId, targetSeq) {
         if (seq === chain.mem_base_seq) continue;
 
         /** @type {object|null} */
-        var version = await _tx(db, ['memory_versions'], 'readonly', function (tx) {
-            return tx.objectStore('memory_versions').get(_generateId('memver', chatId, seq));
-        });
+        var version = versionsBySeq[seq];
         if (!version || !version.delta) continue;
 
         var d = version.delta;
@@ -629,6 +655,7 @@ export async function compact(chatId) {
     var chain = await _getOrCreateChain(chatId);
 
     if (chain.state_active.length > 1) {
+        var stOldSeqs = chain.state_active.slice(); // D2: 折叠前快照，用于删除旧 delta
         var foldedState = await foldState(chatId, chain.state_head_seq);
         var headSeq = chain.state_head_seq;
         var baseId = _generateId('delta', chatId, headSeq);
@@ -637,8 +664,12 @@ export async function compact(chatId) {
         });
         if (existing) {
             existing.folded_state = foldedState;
+            var stDelSeqs = computeCompactDeleteSeqs(stOldSeqs, headSeq);
             await _tx(db, ['state_deltas', 'active_chains'], 'readwrite', function (tx) {
                 tx.objectStore('state_deltas').put(existing);
+                for (var sdi = 0; sdi < stDelSeqs.length; sdi++) {
+                    tx.objectStore('state_deltas').delete(_generateId('delta', chatId, stDelSeqs[sdi]));
+                }
                 chain.state_base_seq = headSeq;
                 chain.state_active = [headSeq];
                 tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
@@ -647,6 +678,7 @@ export async function compact(chatId) {
     }
 
     if (chain.mem_active.length > 1) {
+        var memOldSeqs = chain.mem_active.slice(); // D2: 折叠前快照
         var foldedMem = await foldMemory(chatId, chain.mem_head_seq);
         var headSeq = chain.mem_head_seq;
         var baseId = _generateId('memver', chatId, headSeq);
@@ -657,8 +689,12 @@ export async function compact(chatId) {
             existing.folded_stm_entries = foldedMem.stm_entries;
             existing.folded_unconsolidated_stm = foldedMem.unconsolidated_stm;
             existing.folded_ltm_entries = foldedMem.ltm_entries;
+            var memDelSeqs = computeCompactDeleteSeqs(memOldSeqs, headSeq);
             await _tx(db, ['memory_versions', 'active_chains'], 'readwrite', function (tx) {
                 tx.objectStore('memory_versions').put(existing);
+                for (var mdi = 0; mdi < memDelSeqs.length; mdi++) {
+                    tx.objectStore('memory_versions').delete(_generateId('memver', chatId, memDelSeqs[mdi]));
+                }
                 chain.mem_base_seq = headSeq;
                 chain.mem_active = [headSeq];
                 tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });

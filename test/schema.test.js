@@ -303,6 +303,17 @@ var rEmpty = mergeStateChanges({}, {});
 eq(rEmpty.changes.length, 0, 'empty input → empty changes');
 eq(typeof rEmpty.state, 'object', 'empty input still returns state object');
 
+// D3: changed 字段——与调用方原 stringify 比较等价
+eq(r1.changed, true, 'D3: actual change → changed=true');
+// 注：rUnchanged 的 state 无 _scheme，backfill 会补填 → changed=true 属预期；此处用已带 _scheme 的 state 验证"真无变化"
+var sNoChange = { protagonist_name: 'Hero', characters: { 'Hero': { name: 'Hero', current_mood: '平静', _scheme: '_default_pc' } } };
+var rNoChange = mergeStateChanges(sNoChange, { 'characters.Hero.current_mood': '平静' });
+eq(rNoChange.changed, false, 'D3: no actual change (no backfill) → changed=false');
+eq(rEmpty.changed, false, 'D3: empty input → changed=false');
+var mergeBackfilled = mergeStateChanges({ characters: { 'NPC_X': { name: 'NPC_X' } }, protagonist_name: 'Hero' }, {});
+eq(mergeBackfilled.changed, true, 'D3: _scheme backfill → changed=true');
+eq(mergeBackfilled.state.characters['NPC_X']._scheme, '_default_npc', 'D3: NPC backfilled _scheme');
+
 console.log('\n=== schema: getNpcInjectionFields ===');
 
 // N5: getNpcInjectionFields now requires stCharName and reads from cardConfig._dialogueTemplates.
@@ -390,6 +401,30 @@ var stateWithEmptyQuests = {
 };
 var emptyQuestTable = buildStateInjectionTable(stateWithEmptyQuests, [], {}, {});
 ok(emptyQuestTable.indexOf('(empty') !== -1, 'empty quests shows (empty) hint');
+
+// D5: 注入表提及窗口化——仅最近 20 条消息参与 '本轮提及' 判定
+var mentionState = {
+    protagonist_name: 'Hero',
+    characters: {
+        'Hero': { name: 'Hero', status: '活跃', occupation: '' },
+        'Merchant': { name: 'Merchant', status: '非活跃', occupation: '商人' }
+    }
+};
+var msgs25 = [];
+for (var mi = 0; mi < 25; mi++) msgs25.push({ content: mi < 5 ? 'Merchant sells goods here' : 'walking along the road' });
+var tableWin = buildStateInjectionTable(mentionState, msgs25, {}, {});
+assert(tableWin.indexOf('Non-active: [Merchant]') !== -1, 'D5: mention outside last-20 window → card stays inactive');
+assert(tableWin.indexOf('[NPC] [Merchant]') === -1, 'D5: not promoted to active section');
+var msgs25b = [];
+for (var mj = 0; mj < 24; mj++) msgs25b.push({ content: 'walking along the road' });
+msgs25b.push({ content: 'Merchant hands over the goods' });
+var tableWin2 = buildStateInjectionTable(mentionState, msgs25b, {}, {});
+assert(tableWin2.indexOf('[NPC] [Merchant]') !== -1, 'D5: mention within last-20 window → card active');
+var longBody = new Array(30000).join('x');
+var longMsgs = [];
+for (var lk = 0; lk < 25; lk++) longMsgs.push({ content: longBody });
+var longTable = buildStateInjectionTable(mentionState, longMsgs, {}, {});
+ok(typeof longTable === 'string' && longTable.length > 0, 'D5: >16k long text does not crash');
 
 console.log('\n=== schema: getCharacterInjectionFields ===');
 

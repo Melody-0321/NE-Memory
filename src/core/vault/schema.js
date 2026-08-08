@@ -683,6 +683,7 @@ function isReservedKey(key) {
 export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
     var capturedChanges = [];
+    var backfilled = false; // D3: 标记 _scheme 补填——state 值变化但不产生 capturedChanges
 
     // Backfill _scheme for legacy characters that predate the _scheme field
     if (newState && newState.characters) {
@@ -693,6 +694,7 @@ export function mergeStateChanges(state, validatedChanges) {
             if (cd._scheme) return;
             var isPC = (cn === protoName) || (cd._role === 'protagonist');
             cd._scheme = isPC ? '_default_pc' : '_default_npc';
+            backfilled = true; // D3
         });
     }
 
@@ -823,7 +825,8 @@ export function mergeStateChanges(state, validatedChanges) {
         }
     }
 
-    return { state: newState, changes: capturedChanges };
+    // D3: changed 覆盖 capturedChanges 应用 + _scheme backfill——与调用方原 stringify 比较等价
+    return { state: newState, changes: capturedChanges, changed: hasChanges || backfilled };
 }
 
 // Fields injected for NPC — derived from character schema
@@ -871,6 +874,10 @@ export function getCharacterInjectionFields(state, name, stCharName) {
  * @param {string} [stCharName]
  * @returns {string}
  */
+// D5: '本轮提及'判定窗口——最近 N 条消息 + 文本上限，避免全量历史拼接 + 每角色 indexOf 扫描
+var INJECTION_MENTION_WINDOW = 20;
+var INJECTION_MENTION_MAX_TEXT = 16000;
+
 export function buildStateInjectionTable(state, messages, maxItems, world, stCharName) {
     if (!state) return '';
     maxItems = maxItems || { characters: Infinity, factions: Infinity, quests: Infinity };
@@ -897,7 +904,10 @@ export function buildStateInjectionTable(state, messages, maxItems, world, stCha
         // Build a set of names mentioned in this round's messages (for auto-expand)
         var mentionedNames = {};
         if (messages && messages.length > 0) {
-            var msgText = messages.map(function(m) { return m.content || ''; }).join(' ');
+            // D5: 只扫最近 INJECTION_MENTION_WINDOW 条，超长文本截断
+            var mentionMessages = messages.slice(-INJECTION_MENTION_WINDOW);
+            var msgText = mentionMessages.map(function(m) { return m.content || ''; }).join(' ');
+            if (msgText.length > INJECTION_MENTION_MAX_TEXT) msgText = msgText.slice(-INJECTION_MENTION_MAX_TEXT);
             charNames.forEach(function(name) {
                 var card = state.characters[name];
                 var displayName = (card && card.name) ? card.name : name;
@@ -1129,8 +1139,9 @@ export function expandTemplateFields(template) {
         });
     }
     if (template.customFieldRefs) {
+        // D4: 字段库只读一次（此前循环内每次 loadFieldLibrary 读 localStorage + JSON.parse）
+        var fieldLib = loadFieldLibrary();
         template.customFieldRefs.forEach(function(fn) {
-            var fieldLib = loadFieldLibrary();
             var def = fieldLib && fieldLib.fields && fieldLib.fields[fn];
             if (def) {
                 fields[fn] = { type: def.type };
