@@ -134,13 +134,13 @@ export async function renderUsageTab() {
             if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
                 breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
             } else if (scope === 'today') {
-                breakdown = overview.breakdown || { stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+                breakdown = overview.breakdown || { stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
             } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
                 var monthSel = panelById('ne-breakdown-month');
                 var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
                 breakdown = debug2.getMonthlyBreakdown(monthVal);
             } else {
-                breakdown = overview.breakdown || { stm: 0, ltm: 0, sp: 0, tool: 0, chat: 0 };
+                breakdown = overview.breakdown || { stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
             }
 
             var bc = breakdown;
