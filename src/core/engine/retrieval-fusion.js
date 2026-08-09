@@ -1,4 +1,4 @@
-import { computeEmbeddings, cosineSimilarity } from './embedding.js';
+import { computeEmbeddings, normalizeVec } from './embedding.js';
 import { buildSearchableText } from './retrieval-text.js';
 
 var _vectorIndexes = {};
@@ -51,7 +51,8 @@ export async function ensureVectorIndex(allSTM, aliasesMap, chatId) {
             if (!vec) continue;
             var pos = idx.entries.length;
             idx.entries.push(entry);
-            idx.vectors.push(vec);
+            // R3: 入库归一化——所有向量归一化后，检索侧点积即余弦
+            idx.vectors.push(normalizeVec(vec));
             idx.idToIdx[entry.id] = pos;
         }
     }
@@ -78,10 +79,14 @@ export async function ensureVectorIndex(allSTM, aliasesMap, chatId) {
 }
 
 export function vectorSearch(queryEmbedding, vectorIndex, k) {
+    // R3: query 归一化一次（拷贝，避免改调用方数据），索引向量已入库归一化 → 纯点积即余弦
+    var q = normalizeVec(new Float32Array(queryEmbedding));
     var results = [];
     for (var i = 0; i < vectorIndex.entries.length; i++) {
-        var sim = cosineSimilarity(queryEmbedding, vectorIndex.vectors[i]);
-        results.push({ entry: vectorIndex.entries[i], similarity: sim, _idx: i });
+        var v = vectorIndex.vectors[i];
+        var dot = 0;
+        for (var j = 0; j < q.length; j++) dot += q[j] * v[j];
+        results.push({ entry: vectorIndex.entries[i], similarity: dot, _idx: i });
     }
     results.sort(function(a, b) { return b.similarity - a.similarity; });
     return results.slice(0, Math.min(k, results.length));

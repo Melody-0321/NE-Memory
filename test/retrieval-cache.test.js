@@ -130,6 +130,42 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
     assert(found, '场景6: 别名加入后，含别名的查询能命中 STM');
 })();
 
+// ── 场景 7 (R1): 同 aliasesMap 连续调用结果一致；早返回路径不污染原始 STM/LTM (R7) ──
+(function() {
+    _resetRetrievalCache();
+    var stms = [
+        makeSTM('s1', '与林夏对话', '教室', ['林夏']),
+        makeSTM('s2', '在森林探索', '森林'),
+        makeSTM('s3', '在酒馆休息', '酒馆')
+    ];
+    var ltm = { id: 'l1', timestamp: '2026-01-01T00:00:00Z', event: 'LTM 旧事' };
+    var aliasesMap = { '林夏': ['小夏', '夏夏'] };
+    // 池=3 <= minResults=3 → 走 R7 早返回路径
+    var r1 = filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
+    var r2 = filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
+    eq(r1.length, r2.length, 'R1: 同 aliasesMap 连续调用结果数量一致');
+    var sameOrder = r1.every(function(e, i) { return e.__id === r2[i].__id; });
+    assert(sameOrder, 'R1: 同 aliasesMap 连续调用结果顺序一致');
+    assert(!stms[0].__type && !stms[0].__id, 'R7: 原始 STM 未被写入 __type/__id');
+    assert(!ltm.__type && !ltm.__id, 'R7: 原始 LTM 未被写入 __type/__id');
+})();
+
+// ── 场景 8 (R1): aliasesMap 指纹变化 → 缓存失效重算，新别名命中 ──
+(function() {
+    _resetRetrievalCache();
+    var stms = [
+        makeSTM('s1', '与林夏对话', '教室', ['林夏']),
+        makeSTM('s2', '在森林探索', '森林'),
+        makeSTM('s3', '在酒馆休息', '酒馆'),
+        makeSTM('s4', '古神苏醒', '神殿'),
+        makeSTM('s5', '同伴会议', '营地')
+    ];
+    var rOld = filterCandidates('小夏', stms, [], 40, 3, { '林夏': ['小夏'] }, 'chat-G');
+    assert(rOld.some(function(e) { return e.__id === 's1'; }), 'R1: 别名A 能命中');
+    var rNew = filterCandidates('夏夏', stms, [], 40, 3, { '林夏': ['夏夏'] }, 'chat-G');
+    assert(rNew.some(function(e) { return e.__id === 's1'; }), 'R1: aliasesMap 指纹变化后重算，新别名命中');
+})();
+
 // ── 附加: bm25Score 纯函数回归（确保缓存改造未污染算法层）──
 (function() {
     _resetRetrievalCache();

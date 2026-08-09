@@ -97,7 +97,10 @@ export async function executeAccess(ref, entities, getChatId, getChatMessages) {
                         });
                         result = JSON.stringify({
                             text: chainLines.join('\n'),
-                            entries: chainEntries.map(function(e) { return e; })
+                            // R6: 精简 entries——text 已含 label+event+msg 引用，只保留结构化定位字段
+                            entries: chainEntries.map(function(e) {
+                                return { id: e.id, ts: e.timestamp, event: e.event };
+                            })
                         });
                     }
                 }

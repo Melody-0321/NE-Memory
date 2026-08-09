@@ -85,42 +85,104 @@ export async function computeEmbedding(text) {
     }
 }
 
+// R3: L2 归一化（原地），供向量索引入库与查询侧归一化用
+export function normalizeVec(vec) {
+    var sum = 0;
+    for (var i = 0; i < vec.length; i++) sum += vec[i] * vec[i];
+    var norm = Math.sqrt(sum);
+    if (norm <= 0) return vec;
+    for (var i = 0; i < vec.length; i++) vec[i] /= norm;
+    return vec;
+}
+
+function _embedBatch(cfg, batch) {
+    return fetchWithTimeout(cfg.url, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': 'Bearer ' + (cfg.key || '')
+        },
+        body: JSON.stringify({ model: cfg.model, input: batch.texts })
+    }, getConfiguredTimeoutSec(120) * 1000).then(function(resp) {
+        if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
+        return resp.json();
+    }).then(function(data) {
+        if (!data.data || !Array.isArray(data.data)) throw new Error('No embeddings in response');
+        return data.data;
+    });
+}
+
+// R4: 限并发 2 的批处理 map（保序收集，fn 自行消化错误）
+function _mapLimit2(items, fn) {
+    return new Promise(function(resolve, reject) {
+        var results = new Array(items.length);
+        var nextIdx = 0, running = 0, done = 0, rejected = false;
+        function pump() {
+            if (rejected) return;
+            while (running < 2 && nextIdx < items.length) {
+                var idx = nextIdx++;
+                running++;
+                fn(items[idx], idx).then(function(res) {
+                    results[idx] = res;
+                    running--; done++; pump();
+                }, function(err) {
+                    if (!rejected) { rejected = true; reject(err); }
+                });
+            }
+            if (done === items.length) resolve(results);
+        }
+        pump();
+    });
+}
+
+// R4: 单批嵌入 + 失败重试 1 次；仍失败返回全 null 占位（不拖垮整批）
+function _embedBatchWithRetry(cfg, batch) {
+    var attempt = 0;
+    function run() {
+        return _embedBatch(cfg, batch).then(function(embeddings) {
+            var vecs = new Array(batch.texts.length);
+            for (var i = 0; i < batch.texts.length; i++) {
+                var emb = embeddings[i] && embeddings[i].embedding;
+                vecs[i] = emb ? new Float32Array(emb) : null;
+            }
+            return vecs;
+        }, function(err) {
+            if (attempt < 1) { attempt++; return run(); }
+            console.warn('[NE] computeEmbeddings batch [' + batch.start + '-' + (batch.start + batch.texts.length - 1) + '] failed:', err && err.message);
+            var nulls = new Array(batch.texts.length);
+            for (var i = 0; i < batch.texts.length; i++) nulls[i] = null;
+            return nulls;
+        });
+    }
+    return run();
+}
+
 export async function computeEmbeddings(texts) {
     var cfg = loadEmbeddingApiConfig();
     if (!cfg || !cfg.url) return null;
     if (!texts || texts.length === 0) return [];
 
     var BATCH_SIZE = 40;
-    var allEmbeddings = [];
-
+    var batches = [];
     for (var start = 0; start < texts.length; start += BATCH_SIZE) {
-        var batch = texts.slice(start, start + BATCH_SIZE);
-        try {
-            var resp = await fetchWithTimeout(cfg.url, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer ' + (cfg.key || '')
-                },
-                body: JSON.stringify({ model: cfg.model, input: batch })
-            }, getConfiguredTimeoutSec(120) * 1000);
-            if (!resp.ok) throw new Error('Embedding API returned ' + resp.status);
-            var data = await resp.json();
-            var embeddings = data.data;
-            if (!embeddings || !Array.isArray(embeddings)) throw new Error('No embeddings in response');
-            for (var i = 0; i < embeddings.length; i++) {
-                allEmbeddings.push(new Float32Array(embeddings[i].embedding));
-            }
-        } catch (e) {
-            console.warn('[NE] computeEmbeddings batch [' + start + '-' + (start + batch.length - 1) + '] failed:', e && e.message);
-            return null;
-        }
+        batches.push({ start: start, texts: texts.slice(start, start + BATCH_SIZE) });
     }
 
-    if (allEmbeddings.length > 0) {
-        EMBEDDING_DIM = allEmbeddings[0].length;
-    }
-    return allEmbeddings;
+    var results = new Array(texts.length);
+    var anySuccess = false;
+
+    await _mapLimit2(batches, function(batch) {
+        return _embedBatchWithRetry(cfg, batch).then(function(vecs) {
+            for (var i = 0; i < vecs.length; i++) {
+                results[batch.start + i] = vecs[i] || null;
+                if (vecs[i]) anySuccess = true;
+            }
+        });
+    });
+
+    // 全部批都失败 → 保持旧语义返回 null
+    if (!anySuccess) return null;
+    return results;
 }
 
 export function cosineSimilarity(a, b) {
@@ -190,7 +252,12 @@ export async function runVectorQualityTest(cfg) {
         if (!queryEmb) return { success: false, error: 'Query embedding failed' };
 
         var results = testSet.map(function(s, i) {
-            return { id: s.id, text: s.text.substring(0, 40), score: cosineSimilarity(queryEmb, allEmb[i]) };
+            return {
+                id: s.id,
+                text: s.text.substring(0, 40),
+                // R4: 部分失败时向量为 null，给 -1 分排到末尾，不影响 top 判定
+                score: allEmb[i] ? cosineSimilarity(queryEmb, allEmb[i]) : -1
+            };
         });
         results.sort(function(a, b) { return b.score - a.score; });
 

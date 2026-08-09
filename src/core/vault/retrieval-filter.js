@@ -31,6 +31,18 @@ function _fingerprint(entry) {
             entry.scene, entry.event, entry.translation].join('\x00');
 }
 
+// R1: aliasesMap 轻量指纹（key 排序 + 值 join），用于 alias tokens 缓存失效判定
+function _aliasMapFingerprint(aliasesMap) {
+    if (!aliasesMap) return '';
+    var keys = Object.keys(aliasesMap).sort();
+    var parts = [];
+    for (var i = 0; i < keys.length; i++) {
+        var vals = aliasesMap[keys[i]];
+        parts.push(keys[i] + '=' + (Array.isArray(vals) ? vals.join(',') : String(vals)));
+    }
+    return parts.join('|');
+}
+
 function _addToIndex(entry) {
     var baseText = buildSearchableBaseText(entry);
     var baseTokens = tokenize(baseText);
@@ -328,13 +340,19 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
     }
     _syncCache(allSTM);
 
+    // R1: alias tokens 缓存——aliasesMap 指纹变化时全部重算，否则复用
+    var aliasFp = _aliasMapFingerprint(aliasesMap);
+
     for (var i = 0; i < allSTM.length; i++) {
         var stm = allSTM[i];
         if (!stm || !stm.id) continue;
         var cached = _cache.knownMap[stm.id];
         if (!cached) continue;
-        var aliasTokens = tokenize(buildAliasText(stm, aliasesMap));
-        var mergedTokens = cached.baseTokens.concat(aliasTokens);
+        if (cached.aliasKey !== aliasFp) {
+            cached.aliasTokens = tokenize(buildAliasText(stm, aliasesMap));
+            cached.aliasKey = aliasFp;
+        }
+        var mergedTokens = cached.baseTokens.concat(cached.aliasTokens);
         entries.push({
             _tokens: mergedTokens,
             _entry: stm,
@@ -352,9 +370,11 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         var allResults = [];
         for (var i = 0; i < entries.length; i++) {
             var e = entries[i];
-            var r = e._entry;
-            if (r == null) r = { id: e._id || 'unknown', event: '(data missing)' };
-            else if (typeof r !== 'object') r = { id: e._id || 'unknown', event: String(r) };
+            // R7: 浅拷贝，避免 __type/__id 写入原始 vault 对象
+            var r;
+            if (e._entry == null) r = { id: e._id || 'unknown', event: '(data missing)' };
+            else if (typeof e._entry !== 'object') r = { id: e._id || 'unknown', event: String(e._entry) };
+            else r = Object.assign({}, e._entry);
             r.__type = e._type;
             r.__id = e._id;
             allResults.push(r);
@@ -367,9 +387,10 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
             var ltmDirCount = Math.min(ltmSorted.length, 20);
             for (var i = 0; i < ltmDirCount; i++) {
                 var ltm = ltmSorted[i];
-                ltm.__type = 'ltm';
-                ltm.__id = ltm.id;
-                allResults.push(ltm);
+                var ltmCopy = Object.assign({}, ltm);
+                ltmCopy.__type = 'ltm';
+                ltmCopy.__id = ltm.id;
+                allResults.push(ltmCopy);
             }
         }
         return allResults;

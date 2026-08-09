@@ -35,7 +35,8 @@ var testMap = {
     'msg-id': 'msg-id.test.js',
     'adaptive-context': 'adaptive-context.test.js',
     'banner-regex': 'banner-regex.test.js',
-    'state-versions-compact': 'state-versions-compact.test.js'
+    'state-versions-compact': 'state-versions-compact.test.js',
+    'embedding': 'embedding.test.js'
 };
 
 var batchMap = {

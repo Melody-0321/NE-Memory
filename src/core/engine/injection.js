@@ -7,6 +7,37 @@ import { countTokens } from './text-utils.js';
 import { findMessageInChat, buildMsgId } from './msg-id.js';
 import { calRelativeTime } from './time-utils.js';
 
+// R2: 可见窗口每条消息 token 计数缓存（key = 消息身份 + 内容长度指纹，捕捉 swipe/reroll/编辑）
+var _msgTokenCache = {};
+// R2: sortStmByMsgOrder 结果缓存（key = STM id+位置序列指纹，消息集不变则排序结果不变）
+var _sortCache = { fp: null, result: null };
+
+function _msgCacheKey(m, text) {
+    var identity;
+    if (m.id != null) identity = String(m.id);
+    else if (m.send_date) identity = String(m.send_date);
+    else if (m.created_date) identity = String(m.created_date);
+    else identity = 'no-id';
+    return identity + '\x00' + text.length;
+}
+
+function sortStmCached(entries) {
+    if (!entries || entries.length < 2) return entries;
+    var fpParts = [];
+    for (var i = 0; i < entries.length; i++) {
+        var e = entries[i];
+        var pos = e.absMsgStart !== undefined ? e.absMsgStart
+            : (e.msgRange && e.msgRange[0] !== undefined ? e.msgRange[0] : 'inf');
+        fpParts.push(e.id + ':' + pos);
+    }
+    var fpStr = fpParts.join('|');
+    if (_sortCache.fp === fpStr) return _sortCache.result.slice();
+    var sorted = sortStmByMsgOrder(entries);
+    _sortCache.fp = fpStr;
+    _sortCache.result = sorted;
+    return sorted;
+}
+
 var getChatId = null;
 var getChatMessages = null;
 
@@ -91,7 +122,15 @@ function computeVisibleWindow(chatMessages, maxContext) {
     for (var i = chatMessages.length - 1; i >= 0; i--) {
         var m = chatMessages[i];
         var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
-        var tokens = countTokens(text) + 10;
+        // R2: 每条消息 token 计数缓存（id+内容长度指纹，编辑/swap 自动失效）
+        var cacheKey = _msgCacheKey(m, text);
+        var tokens;
+        if (_msgTokenCache[cacheKey] !== undefined) {
+            tokens = _msgTokenCache[cacheKey];
+        } else {
+            tokens = countTokens(text) + 10;
+            _msgTokenCache[cacheKey] = tokens;
+        }
         if (accumulated + tokens > available) break;
         accumulated += tokens;
         m._msg_id = buildMsgId(m, i);
@@ -108,7 +147,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     var content = vault.content || {};
     var state = content.state || {};
 
-    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []));
+    var allSTM = sortStmCached((content.unconsolidated_stm || []).concat(content.stm_entries || []));
     var allLTM = content.ltm_entries || [];
 
     if (allSTM.length === 0 && allLTM.length === 0) {
@@ -496,7 +535,7 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
 
 function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens) {
     if (!entityChains || Object.keys(entityChains).length === 0) return ''
-    var allSTM = sortStmByMsgOrder((content.unconsolidated_stm || []).concat(content.stm_entries || []))
+    var allSTM = sortStmCached((content.unconsolidated_stm || []).concat(content.stm_entries || []))
     var allLTM = content.ltm_entries || []
 
     var scoredEntities = []

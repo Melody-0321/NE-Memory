@@ -15,6 +15,29 @@ import { readVault } from '../vault/store.js'
 import { filterCandidates } from '../vault/retrieval-filter.js'
 import { callMemoryLLM } from '../api/llm.js'
 
+// R5: 限并发 map（保序收集；fn 自行消化错误，仅意外异常才 reject）
+function _mapLimit(items, limit, fn) {
+    return new Promise(function(resolve, reject) {
+        var results = new Array(items.length)
+        var nextIdx = 0, running = 0, done = 0, rejected = false
+        function pump() {
+            if (rejected) return
+            while (running < limit && nextIdx < items.length) {
+                var idx = nextIdx++
+                running++
+                fn(items[idx], idx).then(function(res) {
+                    results[idx] = res
+                    running--; done++; pump()
+                }, function(err) {
+                    if (!rejected) { rejected = true; reject(err) }
+                })
+            }
+            if (done === items.length) resolve(results)
+        }
+        pump()
+    })
+}
+
 /**
  * 检测 AI 回复中是否存在与记忆库矛盾的事实主张
  * @param {string} chatId - 聊天 ID
@@ -57,33 +80,42 @@ export async function detectContradictions(chatId, aiMessage) {
         return { hasContradiction: false, contradictions: [], systemMessage: '' }
     }
 
-    // ── 阶段 2: 对每个主张做 BM25 记忆检索 ──
-    var contradictions = []
+    // ── 阶段 2: 对每个主张做 BM25 记忆检索（R5: 纯本地检索，全部并行）──
+    var validClaims = []
     for (var i = 0; i < claims.length; i++) {
-        var claim = claims[i]
-        if (!claim.entity || !claim.assertion) continue
+        if (claims[i].entity && claims[i].assertion) validClaims.push(claims[i])
+    }
+    if (validClaims.length === 0) {
+        return { hasContradiction: false, contradictions: [], systemMessage: '' }
+    }
 
-        // 构建检索查询：实体名 + 断言关键信息
-        var searchQuery = claim.entity + ' ' + (claim.assertion || '')
-        var candidates
-        try {
-            candidates = await filterCandidates(searchQuery, allSTM, allLTM, 10)
-        } catch (e) {
-            continue
-        }
-        if (!candidates || candidates.length === 0) continue
+    var candidateLists
+    try {
+        candidateLists = await Promise.all(validClaims.map(function(claim) {
+            // 构建检索查询：实体名 + 断言关键信息
+            var searchQuery = claim.entity + ' ' + (claim.assertion || '')
+            return filterCandidates(searchQuery, allSTM, allLTM, 10).catch(function() { return [] })
+        }))
+    } catch (e) {
+        candidateLists = []
+    }
+    if (!candidateLists || candidateLists.length === 0) {
+        return { hasContradiction: false, contradictions: [], systemMessage: '' }
+    }
 
-        // ── 阶段 3: LLM 矛盾判定 ──
-        var verdict
-        try {
-            verdict = await verifyClaim(claim, candidates)
-        } catch (e) {
-            continue
-        }
+    // ── 阶段 3: LLM 矛盾判定（R5: 限并发 2 保序；单 claim 失败跳过，不阻塞其余）──
+    var verdicts = await _mapLimit(validClaims, 2, function(claim, idx) {
+        var candidates = candidateLists[idx] || []
+        if (!candidates || candidates.length === 0) return Promise.resolve(null)
+        return verifyClaim(claim, candidates).catch(function() { return null })
+    })
 
+    var contradictions = []
+    for (var v = 0; v < verdicts.length; v++) {
+        var verdict = verdicts[v]
         if (verdict && verdict.contradicts) {
             contradictions.push({
-                claim: claim,
+                claim: validClaims[v],
                 evidence: verdict.evidence || '',
                 correction: verdict.correction || ''
             })
