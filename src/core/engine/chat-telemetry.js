@@ -31,6 +31,13 @@ import { neSync } from '../settings-adapter.js';
 
 const MAX_TURNS = 200;
 const STORAGE_KEY = 'ne_chat_stats';
+const FLUSH_DELAY_MS = 100;
+
+// === P1: 内存缓存 + 节流落盘（每轮 ~6 次全量 JSON 读写 → 1 次节流写）===
+// 崩溃最多丢 FLUSH_DELAY_MS 窗口内增量；跨 tab 以最后写入为准（已接受代价）
+var _statsData = null;
+var _statsDirty = false;
+var _statsTimer = null;
 
 function load() {
     try {
@@ -43,12 +50,44 @@ function save(data) {
     try { neSync(STORAGE_KEY); } catch (e) {}
 }
 
+function _ensureStats() {
+    if (_statsData === null) _statsData = load();
+    return _statsData;
+}
+
+function _flushNow() {
+    if (_statsTimer !== null) { clearTimeout(_statsTimer); _statsTimer = null; }
+    if (_statsData !== null && _statsDirty) {
+        _statsDirty = false;
+        save(_statsData);
+    }
+}
+
+function _scheduleFlush() {
+    _statsDirty = true;
+    if (_statsTimer !== null) return;
+    _statsTimer = setTimeout(function() {
+        _statsTimer = null;
+        _flushNow();
+    }, FLUSH_DELAY_MS);
+}
+
+// 页面卸载兜底：尽量把未落盘增量写出去
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('beforeunload', function() { _flushNow(); });
+}
+
+/** 立即落盘（供测试与退出边界使用） */
+export function flushChatStats() {
+    _flushNow();
+}
+
 /**
- * 对话轮次推进：轮数 +1，创建新一轮快照
+ * 对话轮次推进：轮数 +1，创建新一轮快照（轮次推进是自然边界，强制落盘）
  */
 export function incrementChatTurn(chatId) {
     if (!chatId) return;
-    var data = load();
+    var data = _ensureStats();
     var chat = data[chatId] || { turns: [], aggregates: null };
     var turns = chat.turns;
     var nextTurn = turns.length + 1;
@@ -61,18 +100,19 @@ export function incrementChatTurn(chatId) {
     // 重建聚合
     chat.aggregates = rebuildAggregates(turns);
     data[chatId] = chat;
-    save(data);
+    _statsDirty = true;
+    _flushNow();
 }
 
 /**
- * 更新当前轮快照的字段（累加模式）并刷新聚合
+ * 更新当前轮快照的字段（累加模式）并刷新聚合（内存操作 + 节流落盘）
  * @param {string} chatId
  * @param {'stm'|'ltm'|'llm'|'tool'|'tok'|'err'|'dur'} key
  * @param {number} value - 对于 stm/ltm 是绝对值，其余是累加值
  */
 export function recordChatStat(chatId, key, value) {
     if (!chatId || value === undefined || value === null) return;
-    var data = load();
+    var data = _ensureStats();
     var chat = data[chatId];
     if (!chat || !chat.turns || chat.turns.length === 0) return;
 
@@ -88,7 +128,7 @@ export function recordChatStat(chatId, key, value) {
 
     chat.aggregates = rebuildAggregates(chat.turns);
     data[chatId] = chat;
-    save(data);
+    _scheduleFlush();
 }
 
 /**
@@ -96,48 +136,59 @@ export function recordChatStat(chatId, key, value) {
  */
 export function getChatTurnNumber(chatId) {
     if (!chatId) return 0;
-    var data = load();
+    var data = _ensureStats();
     var chat = data[chatId];
     if (!chat || !chat.turns) return 0;
     return chat.turns.length;
 }
 
 /**
- * 按 operation 记录分类 token 消耗
+ * 按 operation 记录分类 token 消耗。
+ * P1: 合并双写 — 'tok' 与 tokenOp 在同一次内存更新中生效，一次重建聚合 + 一次节流落盘
  * @param {string} chatId
  * @param {string} tokenOp - 'tok_stm' | 'tok_ltm' | 'tok_sp' | 'tok_tool' | 'tok_chat'
  * @param {number} value
  */
 export function recordChatToken(chatId, tokenOp, value) {
     if (!chatId || !value) return;
-    recordChatStat(chatId, 'tok', value);
-    recordChatStat(chatId, tokenOp, value);
+    var data = _ensureStats();
+    var chat = data[chatId];
+    if (!chat || !chat.turns || chat.turns.length === 0) return;
+
+    var current = chat.turns[chat.turns.length - 1];
+    current.tok = (current.tok || 0) + value;
+    if (tokenOp) current[tokenOp] = (current[tokenOp] || 0) + value;
+
+    chat.aggregates = rebuildAggregates(chat.turns);
+    data[chatId] = chat;
+    _scheduleFlush();
 }
 
 /**
- * 获取某 chat 的完整统计
+ * 获取某 chat 的完整统计（读内存缓存；调用方只读）
  */
 export function getChatStats(chatId) {
     if (!chatId) return null;
-    var data = load();
+    var data = _ensureStats();
     return data[chatId] || null;
 }
 
 /**
- * 获取所有 chat 的统计摘要
+ * 获取所有 chat 的统计摘要（读内存缓存；调用方只读）
  */
 export function getAllChatStats() {
-    return load();
+    return _ensureStats();
 }
 
 /**
- * 清除某 chat 统计
+ * 清除某 chat 统计（内存操作 + 立即落盘）
  */
 export function clearChatStats(chatId) {
     if (!chatId) return;
-    var data = load();
+    var data = _ensureStats();
     delete data[chatId];
-    save(data);
+    _statsDirty = true;
+    _flushNow();
 }
 
 function rebuildAggregates(turns) {

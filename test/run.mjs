@@ -37,7 +37,9 @@ var testMap = {
     'banner-regex': 'banner-regex.test.js',
     'state-versions-compact': 'state-versions-compact.test.js',
     'embedding': 'embedding.test.js',
-    'settings-cache': 'settings-cache.test.js'
+    'settings-cache': 'settings-cache.test.js',
+    'chat-telemetry': 'chat-telemetry.test.js',
+    'token-stats': 'token-stats.test.js'
 };
 
 var batchMap = {

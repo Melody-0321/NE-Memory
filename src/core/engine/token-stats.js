@@ -5,6 +5,13 @@ var MAX_DAILY_DAYS = 90;
 
 var _sessionSnapshot = null;
 
+// === P4: 内存缓存 + 节流落盘（每次 LLM 调用的全量 read-modify-write → 1 次节流写）===
+// 崩溃最多丢 FLUSH_DELAY_MS 窗口内增量；跨 tab 以最后写入为准（已接受代价）
+var _dailyData = null;
+var _dailyDirty = false;
+var _dailyTimer = null;
+var DAILY_FLUSH_DELAY_MS = 100;
+
 function loadDaily() {
     try { return JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); } catch (e) { return {}; }
 }
@@ -14,9 +21,41 @@ function saveDaily(data) {
     try { neSync(DAILY_KEY); } catch (e) {}
 }
 
+function _getDaily() {
+    if (_dailyData === null) _dailyData = loadDaily();
+    return _dailyData;
+}
+
+function _flushDailyNow() {
+    if (_dailyTimer !== null) { clearTimeout(_dailyTimer); _dailyTimer = null; }
+    if (_dailyData !== null && _dailyDirty) {
+        _dailyDirty = false;
+        saveDaily(_dailyData);
+    }
+}
+
+function _scheduleDailyFlush() {
+    _dailyDirty = true;
+    if (_dailyTimer !== null) return;
+    _dailyTimer = setTimeout(function() {
+        _dailyTimer = null;
+        _flushDailyNow();
+    }, DAILY_FLUSH_DELAY_MS);
+}
+
+// 页面卸载兜底：尽量把未落盘增量写出去
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+    window.addEventListener('beforeunload', function() { _flushDailyNow(); });
+}
+
+/** 立即落盘（供测试与退出边界使用） */
+export function flushDailyStats() {
+    _flushDailyNow();
+}
+
 export function recordDailyToken(operation, value) {
     if (!value) return;
-    var data = loadDaily();
+    var data = _getDaily();
     var today = new Date().toISOString().substring(0, 10);
     if (!data[today]) data[today] = { tok_stm: 0, tok_ltm: 0, tok_state: 0, tok_tool: 0, tok_chat: 0 };
     data[today][operation] = (data[today][operation] || 0) + value;
@@ -26,12 +65,12 @@ export function recordDailyToken(operation, value) {
         delete data[keys[0]];
         keys.shift();
     }
-    saveDaily(data);
+    _scheduleDailyFlush();
 }
 
 export function getUsageOverview(getChatStatsFn) {
     var stats = getChatStatsFn() || {};
-    var daily = loadDaily();
+    var daily = _getDaily();
     var now = new Date();
     var thisMonth = now.toISOString().substring(0, 7);
     var today = now.toISOString().substring(0, 10);
@@ -99,7 +138,7 @@ export function getUsageOverview(getChatStatsFn) {
 }
 
 export function getDailyStats(days) {
-    var data = loadDaily();
+    var data = _getDaily();
     var keys = Object.keys(data).sort();
     var result = [];
     var maxDays = days || 30;
@@ -142,7 +181,7 @@ export function getAllChatUsage(getAllChatStatsFn) {
 }
 
 export function getMonthlyBreakdown(month) {
-    var data = loadDaily();
+    var data = _getDaily();
     var stm = 0, ltm = 0, state = 0, tool = 0, chat = 0;
     Object.keys(data).forEach(function(date) {
         if (date.substring(0, 7) === month) {
@@ -172,7 +211,7 @@ export function getChatBreakdown(getChatStatsFn, chatId) {
 }
 
 export function getAvailableMonths() {
-    var data = loadDaily();
+    var data = _getDaily();
     var months = {};
     Object.keys(data).forEach(function(date) {
         months[date.substring(0, 7)] = true;
@@ -183,7 +222,7 @@ export function getAvailableMonths() {
 }
 
 export function getMonthlyStats(month) {
-    var data = loadDaily();
+    var data = _getDaily();
     var keys = Object.keys(data).sort();
     var result = [];
     for (var i = 0; i < keys.length; i++) {
