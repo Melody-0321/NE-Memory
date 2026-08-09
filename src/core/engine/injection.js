@@ -8,21 +8,23 @@ import { findMessageInChat, buildMsgId } from './msg-id.js';
 import { calRelativeTime } from './time-utils.js';
 import { readNeSettingsCached } from '../settings.js';
 
-// R2: 可见窗口每条消息 token 计数缓存（key = 消息身份 + 内容长度指纹，捕捉 swipe/reroll/编辑）
+// R2: 可见窗口每条消息 token 计数缓存（key = chatId + 消息身份 + 内容长度指纹，捕捉 swipe/reroll/编辑）
 var _msgTokenCache = {};
-// R2: sortStmByMsgOrder 结果缓存（key = STM id+位置序列指纹，消息集不变则排序结果不变）
-var _sortCache = { fp: null, result: null };
+var _msgTokenCacheSize = 0;
+var MSG_TOKEN_CACHE_MAX = 2000; // R2 修复：缓存上限，超限整体重置防止无界增长
+// R2: sortStmByMsgOrder 结果缓存（key = chatId + STM id+位置序列指纹，消息集不变则排序结果不变）
+var _sortCache = { chatId: null, fp: null, result: null };
 
-function _msgCacheKey(m, text) {
+function _msgCacheKey(chatId, m, text) {
     var identity;
     if (m.id != null) identity = String(m.id);
     else if (m.send_date) identity = String(m.send_date);
     else if (m.created_date) identity = String(m.created_date);
     else identity = 'no-id';
-    return identity + '\x00' + text.length;
+    return (chatId || '') + '\x00' + identity + '\x00' + text.length;
 }
 
-function sortStmCached(entries) {
+function sortStmCached(chatId, entries) {
     if (!entries || entries.length < 2) return entries;
     var fpParts = [];
     for (var i = 0; i < entries.length; i++) {
@@ -32,8 +34,11 @@ function sortStmCached(entries) {
         fpParts.push(e.id + ':' + pos);
     }
     var fpStr = fpParts.join('|');
-    if (_sortCache.fp === fpStr) return _sortCache.result.slice();
+    // R2 修复：指纹必须绑定 chatId，否则两个 chat 的 STM id/位置序列相同时
+    // 会误命中返回另一 chat 的排序数组（对象引用），把错误记忆注入当前上下文
+    if (_sortCache.chatId === (chatId || '') && _sortCache.fp === fpStr) return _sortCache.result.slice();
     var sorted = sortStmByMsgOrder(entries);
+    _sortCache.chatId = chatId || '';
     _sortCache.fp = fpStr;
     _sortCache.result = sorted;
     return sorted;
@@ -103,7 +108,7 @@ function getActiveCharacters(state) {
     });
 }
 
-function computeVisibleWindow(chatMessages, maxContext) {
+function computeVisibleWindow(chatMessages, maxContext, chatId) {
     if (!chatMessages || chatMessages.length === 0) return [];
     if (!maxContext) {
         try {
@@ -123,14 +128,20 @@ function computeVisibleWindow(chatMessages, maxContext) {
     for (var i = chatMessages.length - 1; i >= 0; i--) {
         var m = chatMessages[i];
         var text = typeof m.mes === 'string' ? m.mes : (m.content || '');
-        // R2: 每条消息 token 计数缓存（id+内容长度指纹，编辑/swap 自动失效）
-        var cacheKey = _msgCacheKey(m, text);
+        // R2: 每条消息 token 计数缓存（chatId+消息身份+长度指纹，编辑/swap 自动失效）
+        var cacheKey = _msgCacheKey(chatId, m, text);
         var tokens;
         if (_msgTokenCache[cacheKey] !== undefined) {
             tokens = _msgTokenCache[cacheKey];
         } else {
             tokens = countTokens(text) + 10;
             _msgTokenCache[cacheKey] = tokens;
+            _msgTokenCacheSize++;
+            // R2 修复：缓存有界，超限整体重置（token 计数成本低，重置可接受）
+            if (_msgTokenCacheSize > MSG_TOKEN_CACHE_MAX) {
+                _msgTokenCache = {};
+                _msgTokenCacheSize = 0;
+            }
         }
         if (accumulated + tokens > available) break;
         accumulated += tokens;
@@ -148,14 +159,14 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     var content = vault.content || {};
     var state = content.state || {};
 
-    var allSTM = sortStmCached((content.unconsolidated_stm || []).concat(content.stm_entries || []));
+    var allSTM = sortStmCached(chatId, (content.unconsolidated_stm || []).concat(content.stm_entries || []));
     var allLTM = content.ltm_entries || [];
 
     if (allSTM.length === 0 && allLTM.length === 0) {
         return buildStateOnlyInjection(vault);
     }
 
-    var visibleWindow = computeVisibleWindow(chatMessages);
+    var visibleWindow = computeVisibleWindow(chatMessages, null, chatId);
 
     // P7: 走缓存解析，避免每轮注入全量 JSON.parse
     var neSettings = readNeSettingsCached();
@@ -360,7 +371,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     }
 
     if (neSettings.retrievalBudgetEnabled) {
-        var budgetText = compileRetrievalBudget(content, query, entityNames, entityChains, neSettings.retrievalBudgetTokens || 300);
+        var budgetText = compileRetrievalBudget(content, query, entityNames, entityChains, neSettings.retrievalBudgetTokens || 300, chatId);
         if (budgetText) {
             if (parts.length > 0) parts.push('<hr>');
             parts.push(budgetText);
@@ -531,9 +542,9 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
 
 
 
-function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens) {
+function compileRetrievalBudget(content, query, entityNames, entityChains, budgetTokens, chatId) {
     if (!entityChains || Object.keys(entityChains).length === 0) return ''
-    var allSTM = sortStmCached((content.unconsolidated_stm || []).concat(content.stm_entries || []))
+    var allSTM = sortStmCached(chatId, (content.unconsolidated_stm || []).concat(content.stm_entries || []))
     var allLTM = content.ltm_entries || []
 
     var scoredEntities = []

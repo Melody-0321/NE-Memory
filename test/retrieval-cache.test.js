@@ -20,7 +20,7 @@ function makeSTM(id, event, scene, entities) {
 console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
 
 // ── 场景 1: 缓存命中 -- 同 chatId 同 STM 集合连续调用，结果一致 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '在古城找到秘境入口', '古城'),
@@ -29,15 +29,15 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒引发地震', '神殿'),
         makeSTM('s5', '主角与同伴商议对策', '营地')
     ];
-    var r1 = filterCandidates('古城秘境', stms, [], 40, 3, {}, 'chat-A');
-    var r2 = filterCandidates('古城秘境', stms, [], 40, 3, {}, 'chat-A');
+    var r1 = await filterCandidates('古城秘境', stms, [], 40, 3, {}, 'chat-A');
+    var r2 = await filterCandidates('古城秘境', stms, [], 40, 3, {}, 'chat-A');
     eq(r1.length, r2.length, '场景1: 缓存命中结果数量一致');
     var sameOrder = r1.every(function(e, i) { return e.__id === r2[i].__id; });
     assert(sameOrder, '场景1: 缓存命中结果顺序一致');
 })();
 
 // ── 场景 2: 新增失效 -- 加一条 STM 后，结果应反映新条目 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '在古城找到秘境入口', '古城'),
@@ -46,15 +46,15 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒引发地震', '神殿'),
         makeSTM('s5', '主角与同伴商议对策', '营地')
     ];
-    filterCandidates('特殊关键词', stms, [], 40, 3, {}, 'chat-B');
+    await filterCandidates('特殊关键词', stms, [], 40, 3, {}, 'chat-B');
     stms.push(makeSTM('s6', '特殊关键词触发的事件', '特殊场景'));
-    var r2 = filterCandidates('特殊关键词', stms, [], 40, 3, {}, 'chat-B');
+    var r2 = await filterCandidates('特殊关键词', stms, [], 40, 3, {}, 'chat-B');
     var found = r2.some(function(e) { return e.__id === 's6'; });
     assert(found, '场景2: 新增 STM 后检索能命中新条目');
 })();
 
 // ── 场景 3: 删除失效 -- 移除一条 STM 后，结果不含它 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '在古城找到秘境入口', '古城'),
@@ -63,15 +63,15 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒引发地震', '神殿'),
         makeSTM('s5', '主角与同伴商议对策', '营地')
     ];
-    filterCandidates('神殿地震', stms, [], 40, 3, {}, 'chat-C');
+    await filterCandidates('神殿地震', stms, [], 40, 3, {}, 'chat-C');
     stms = stms.filter(function(s) { return s.id !== 's4'; });
-    var r2 = filterCandidates('神殿地震', stms, [], 40, 3, {}, 'chat-C');
+    var r2 = await filterCandidates('神殿地震', stms, [], 40, 3, {}, 'chat-C');
     var stillThere = r2.some(function(e) { return e.__id === 's4'; });
     assert(!stillThere, '场景3: 删除 STM 后结果不再含该条目');
 })();
 
 // ── 场景 4: 修改失效 -- 改 STM.event 后，tokens 反映新内容 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '在古城找到秘境入口', '古城'),
@@ -80,15 +80,15 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒引发地震', '神殿'),
         makeSTM('s5', '主角与同伴商议对策', '营地')
     ];
-    filterCandidates('完全不存在的内容', stms, [], 40, 3, {}, 'chat-D');
+    await filterCandidates('完全不存在的内容', stms, [], 40, 3, {}, 'chat-D');
     stms[0].event = '修改后的独特关键词XYZ';
-    var r2 = filterCandidates('独特关键词XYZ', stms, [], 40, 3, {}, 'chat-D');
+    var r2 = await filterCandidates('独特关键词XYZ', stms, [], 40, 3, {}, 'chat-D');
     var found = r2.some(function(e) { return e.__id === 's1'; });
     assert(found, '场景4: 修改 STM.event 后检索能命中新关键词');
 })();
 
 // ── 场景 5: chatId 切换 -- 切到新 chatId 缓存重建，不串数据 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stmsA = [
         makeSTM('s1', 'A对话的独有事件AAA', '场景A'),
@@ -104,17 +104,17 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', 'B对话的普通事件三', '场景B'),
         makeSTM('s5', 'B对话的普通事件四', '场景B')
     ];
-    filterCandidates('独有事件', stmsA, [], 40, 3, {}, 'chat-A2');
-    var rB = filterCandidates('BBB', stmsB, [], 40, 3, {}, 'chat-B2');
+    await filterCandidates('独有事件', stmsA, [], 40, 3, {}, 'chat-A2');
+    var rB = await filterCandidates('BBB', stmsB, [], 40, 3, {}, 'chat-B2');
     var foundB = rB.some(function(e) { return e.__id === 's1' && e.event.indexOf('BBB') !== -1; });
     assert(foundB, '场景5: 切 chatId 后检索命中新 chat 的条目');
-    var rA = filterCandidates('AAA', stmsA, [], 40, 3, {}, 'chat-A2');
+    var rA = await filterCandidates('AAA', stmsA, [], 40, 3, {}, 'chat-A2');
     var foundA = rA.some(function(e) { return e.__id === 's1' && e.event.indexOf('AAA') !== -1; });
     assert(foundA, '场景5: 切回原 chatId 后检索仍命中原 chat 条目（缓存重建正确）');
 })();
 
 // ── 场景 6: 别名变化 -- aliasesMap 加别名后，含别名的查询能命中 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '与林夏对话', '教室', ['林夏']),
@@ -123,15 +123,15 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒', '神殿'),
         makeSTM('s5', '同伴会议', '营地')
     ];
-    filterCandidates('无关查询', stms, [], 40, 3, {}, 'chat-E');
+    await filterCandidates('无关查询', stms, [], 40, 3, {}, 'chat-E');
     var aliasesMap = { '林夏': ['小夏', '夏夏'] };
-    var r = filterCandidates('小夏', stms, [], 40, 3, aliasesMap, 'chat-E');
+    var r = await filterCandidates('小夏', stms, [], 40, 3, aliasesMap, 'chat-E');
     var found = r.some(function(e) { return e.__id === 's1'; });
     assert(found, '场景6: 别名加入后，含别名的查询能命中 STM');
 })();
 
 // ── 场景 7 (R1): 同 aliasesMap 连续调用结果一致；早返回路径不污染原始 STM/LTM (R7) ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '与林夏对话', '教室', ['林夏']),
@@ -141,8 +141,8 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
     var ltm = { id: 'l1', timestamp: '2026-01-01T00:00:00Z', event: 'LTM 旧事' };
     var aliasesMap = { '林夏': ['小夏', '夏夏'] };
     // 池=3 <= minResults=3 → 走 R7 早返回路径
-    var r1 = filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
-    var r2 = filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
+    var r1 = await filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
+    var r2 = await filterCandidates('小夏', stms, [ltm], 40, 3, aliasesMap, 'chat-F');
     eq(r1.length, r2.length, 'R1: 同 aliasesMap 连续调用结果数量一致');
     var sameOrder = r1.every(function(e, i) { return e.__id === r2[i].__id; });
     assert(sameOrder, 'R1: 同 aliasesMap 连续调用结果顺序一致');
@@ -151,7 +151,7 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
 })();
 
 // ── 场景 8 (R1): aliasesMap 指纹变化 → 缓存失效重算，新别名命中 ──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var stms = [
         makeSTM('s1', '与林夏对话', '教室', ['林夏']),
@@ -160,14 +160,14 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
         makeSTM('s4', '古神苏醒', '神殿'),
         makeSTM('s5', '同伴会议', '营地')
     ];
-    var rOld = filterCandidates('小夏', stms, [], 40, 3, { '林夏': ['小夏'] }, 'chat-G');
+    var rOld = await filterCandidates('小夏', stms, [], 40, 3, { '林夏': ['小夏'] }, 'chat-G');
     assert(rOld.some(function(e) { return e.__id === 's1'; }), 'R1: 别名A 能命中');
-    var rNew = filterCandidates('夏夏', stms, [], 40, 3, { '林夏': ['夏夏'] }, 'chat-G');
+    var rNew = await filterCandidates('夏夏', stms, [], 40, 3, { '林夏': ['夏夏'] }, 'chat-G');
     assert(rNew.some(function(e) { return e.__id === 's1'; }), 'R1: aliasesMap 指纹变化后重算，新别名命中');
 })();
 
 // ── 附加: bm25Score 纯函数回归（确保缓存改造未污染算法层）──
-(function() {
+(async function() {
     _resetRetrievalCache();
     var queryTokens = tokenize('古城');
     var docTokens = tokenize('主角在古城找到了秘境入口');
@@ -189,5 +189,8 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
     gt(score, 0, '附加: bm25Score 纯函数仍正确返回正分');
 })();
 
-console.log('\n  ' + passed + ' passed, ' + failed + ' failed');
-if (failed > 0) process.exit(1);
+// 汇总：async IIFE 断言在 microtask 阶段执行，需推迟到微任务完成后判定
+setTimeout(function() {
+    console.log('\n  ' + passed + ' passed, ' + failed + ' failed');
+    if (failed > 0) process.exit(1);
+}, 50);

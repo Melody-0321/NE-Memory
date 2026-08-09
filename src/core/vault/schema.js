@@ -614,8 +614,9 @@ function _resolveFactionTemplateFields(stCharName) {
  * @param {string} name
  * @param {string} [schemeKey]
  * @param {string} [stCharName]
+ * @param {Object} [tplCache] - D4: 轮内解析缓存（mergeStateChanges 传入，同轮多字段只解析一次模板）
  */
-export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
+export function ensureCharacterTemplate(state, name, schemeKey, stCharName, tplCache) {
     if (!state.characters) state.characters = {};
 
     var isPC = (state.protagonist_name && name === state.protagonist_name) ||
@@ -631,8 +632,23 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
         template = _characterSchema().protagonist.fields;
     } else {
         // NPC: resolve template via lock-aware active-version chain
-        template = resolveActiveTemplateFields(stCharName, schemeKey, state.characters[name]);
+        // D4: 轮内缓存——(stCharName, schemeKey, locked) 相同则复用解析结果，
+        // 避免同轮 merge 对 N 个 characters 字段重复 localStorage 读
+        var charData = state.characters[name] || {};
+        var locked = !!charData._templateLocked;
+        var cacheKey = (stCharName || '') + '\x00' + schemeKey + '\x00' + (locked ? '1' : '0');
+        if (tplCache && tplCache[cacheKey]) {
+            template = tplCache[cacheKey];
+        } else {
+            template = resolveActiveTemplateFields(stCharName, schemeKey, charData);
+            if (tplCache) tplCache[cacheKey] = template;
+        }
     }
+
+    // D3: 隐式修改标记——ensureCharacterTemplate 可能补建角色/补齐模板字段，
+    // 这些写入不经过 dot-path 值比较，必须返回给 mergeStateChanges 并入 changed，
+    // 否则新角色仅输出与骨架默认值相同的字段（如 name）时整体漏写。
+    var modified = false;
 
     // Backfill: if character already exists, add any missing template fields
     if (state.characters[name] && typeof state.characters[name] === 'object' && Object.keys(state.characters[name]).length > 0) {
@@ -646,9 +662,10 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
                 } else {
                     state.characters[name][fk] = '';
                 }
+                modified = true;
             }
         });
-        return;
+        return modified;
     }
 
     state.characters[name] = {};
@@ -668,6 +685,7 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName) {
     } else {
         state.characters[name]._scheme = '_default_pc';
     }
+    return true; // 新角色创建必然修改 state
 }
 
 // P1-6: 原型链保留键 —— __proto__/constructor/prototype path 可触发原型污染或校验绕过，写入前一律拦截
@@ -686,6 +704,7 @@ export function mergeStateChanges(state, validatedChanges) {
     var newState = JSON.parse(JSON.stringify(state || {}));
     var capturedChanges = [];
     var backfilled = false; // D3: 标记 _scheme 补填——state 值变化但不产生 capturedChanges
+    var templateApplied = false; // D3 修复: ensureCharacterTemplate 隐式建角色/补字段的修改标记
 
     // Backfill _scheme for legacy characters that predate the _scheme field
     if (newState && newState.characters) {
@@ -739,6 +758,8 @@ export function mergeStateChanges(state, validatedChanges) {
     flattened = normalizedFlattened;
 
     var hasChanges = false;
+    // D4: 轮内模板解析缓存——同轮 merge 对同一 (stCharName, schemeKey, locked) 只解析一次
+    var mergeTplCache = {};
     Object.keys(flattened).forEach(function (path) {
         var parts = path.split('.');
 
@@ -756,7 +777,7 @@ export function mergeStateChanges(state, validatedChanges) {
                     console.warn('[NE] _scheme protected: ' + schCharName + ' is protagonist, ignoring _scheme change');
                     // Still ensure the character exists (with _default_pc from ensureCharacterTemplate)
                     if (!newState.characters[schCharName]) {
-                        ensureCharacterTemplate(newState, schCharName, '_default_pc', newState.protagonist_name);
+                        if (ensureCharacterTemplate(newState, schCharName, '_default_pc', newState.protagonist_name, mergeTplCache)) templateApplied = true;
                     }
                     return;
                 }
@@ -778,7 +799,7 @@ export function mergeStateChanges(state, validatedChanges) {
             var charName = parts[1];
             if (charName && charName !== '*') {
                 if (isReservedKey(charName)) return; // P1-6: 拦截 characters.__proto__ 等路径，防止 ensureCharacterTemplate 设置原型
-                ensureCharacterTemplate(newState, charName, null, newState.protagonist_name);
+                if (ensureCharacterTemplate(newState, charName, null, newState.protagonist_name, mergeTplCache)) templateApplied = true;
             }
         }
 
@@ -827,8 +848,8 @@ export function mergeStateChanges(state, validatedChanges) {
         }
     }
 
-    // D3: changed 覆盖 capturedChanges 应用 + _scheme backfill——与调用方原 stringify 比较等价
-    return { state: newState, changes: capturedChanges, changed: hasChanges || backfilled };
+    // D3: changed 覆盖 capturedChanges 应用 + _scheme backfill + ensureCharacterTemplate 隐式修改
+    return { state: newState, changes: capturedChanges, changed: hasChanges || backfilled || templateApplied };
 }
 
 // Fields injected for NPC — derived from character schema

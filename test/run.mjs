@@ -39,7 +39,8 @@ var testMap = {
     'embedding': 'embedding.test.js',
     'settings-cache': 'settings-cache.test.js',
     'chat-telemetry': 'chat-telemetry.test.js',
-    'token-stats': 'token-stats.test.js'
+    'token-stats': 'token-stats.test.js',
+    'retrieval-cache': 'retrieval-cache.test.js'
 };
 
 var batchMap = {

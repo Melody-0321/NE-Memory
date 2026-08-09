@@ -4,7 +4,7 @@
  * 遍历 IndexedDB 中所有 chat_id，与 ST ctx.characters / ctx.groups
  * 做差集对比，找出并清理已删除聊天遗留的 vault 数据。
  */
-import { readVault, remove, openDB } from './store.js';
+import { readVault, remove, openStandaloneDB } from './store.js';
 import { neSync } from '../settings-adapter.js';
 
 var _gcImportsReady = true;
@@ -188,7 +188,8 @@ export async function purgeOrphanChatData(chatId) {
 }
 
 export async function listAllChatIds() {
-    var db = await openDB();
+    // D1 修复：使用独立连接（openStandaloneDB），用完即 close 不影响 openDB 的连接缓存。
+    var db = await openStandaloneDB();
     return new Promise(function(resolve, reject) {
         try {
             var stores = ['vaults', 'state_vaults', 'memory_vaults', 'active_chains'];

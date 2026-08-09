@@ -305,10 +305,25 @@ eq(typeof rEmpty.state, 'object', 'empty input still returns state object');
 
 // D3: changed 字段——与调用方原 stringify 比较等价
 eq(r1.changed, true, 'D3: actual change → changed=true');
-// 注：rUnchanged 的 state 无 _scheme，backfill 会补填 → changed=true 属预期；此处用已带 _scheme 的 state 验证"真无变化"
-var sNoChange = { protagonist_name: 'Hero', characters: { 'Hero': { name: 'Hero', current_mood: '平静', _scheme: '_default_pc' } } };
+// 注：rUnchanged 的 state 无 _scheme，backfill 会补填 → changed=true 属预期；
+// 此处用已带 _scheme 且补全模板字段的 state 验证"真无变化"（D3: ensureCharacterTemplate 补齐字段也视为修改）
+var sNoChange = {
+    protagonist_name: 'Hero',
+    characters: {
+        'Hero': {
+            name: 'Hero', current_mood: '平静', _scheme: '_default_pc',
+            gender_age: '', physique: '', occupation: '', personality: '', clothing_build: '',
+            current_outfit: '', injuries: '', status_effects: '', past_experience: '',
+            inventory: '', abilities: '', power_level: '', status: '', inner_thoughts: ''
+        }
+    }
+};
 var rNoChange = mergeStateChanges(sNoChange, { 'characters.Hero.current_mood': '平静' });
 eq(rNoChange.changed, false, 'D3: no actual change (no backfill) → changed=false');
+// D3 修复: ensureCharacterTemplate 补齐缺失模板字段 → 视为修改（此前会漏写新角色）
+var sPartialChar = { protagonist_name: 'Hero', characters: { 'Hero': { name: 'Hero', current_mood: '平静', _scheme: '_default_pc' } } };
+var rPartialChar = mergeStateChanges(sPartialChar, { 'characters.Hero.current_mood': '平静' });
+eq(rPartialChar.changed, true, 'D3: ensureCharacterTemplate backfills missing template fields → changed=true');
 eq(rEmpty.changed, false, 'D3: empty input → changed=false');
 var mergeBackfilled = mergeStateChanges({ characters: { 'NPC_X': { name: 'NPC_X' } }, protagonist_name: 'Hero' }, {});
 eq(mergeBackfilled.changed, true, 'D3: _scheme backfill → changed=true');

@@ -154,9 +154,10 @@ function _buildMemoryVault(chatId, vault) {
 // D1: openDB 连接缓存——首次调用建立后复用同一连接，避免每轮 pipeline 6-8 次 indexedDB.open
 var _dbPromise = null;
 
-function openDB() {
-    if (_dbPromise) return _dbPromise;
-    _dbPromise = new Promise((resolve, reject) => {
+// 底层连接：含升级建 store 与 v7 迁移，不做任何缓存。供 openDB（缓存复用）与
+// openStandaloneDB（短生命周期独立连接，如 GC 扫描用完即 close）共用。
+function openRawDB() {
+    return new Promise((resolve, reject) => {
         var req = indexedDB.open(DB_NAME, DB_VERSION);
         req.onupgradeneeded = function (e) {
             var db = e.target.result;
@@ -190,9 +191,6 @@ function openDB() {
         };
         req.onsuccess = function () {
             var db = req.result;
-            // D1: 连接缓存失效——DB 被其他 tab 升级或主动关闭时置空，下次 openDB 重建
-            db.onversionchange = function () { _dbPromise = null; };
-            db.onclose = function () { _dbPromise = null; };
             if (_hasOldVaults(db)) {
                 _migrateVaultsToSplit(db).then(function (count) {
                     console.log('[NE] v7 migration complete: ' + count + ' vault(s) split. Old vaults store preserved (will clean up in future version).');
@@ -205,12 +203,33 @@ function openDB() {
                 resolve(db);
             }
         };
-        req.onerror = function () { _dbPromise = null; reject(req.error); };
+        req.onerror = function () { reject(req.error); };
+    });
+}
+
+function openDB() {
+    if (_dbPromise) return _dbPromise;
+    _dbPromise = openRawDB().then(function (db) {
+        // D1: 连接缓存失效——DB 被其他 tab 升级或主动关闭时置空，下次 openDB 重建。
+        // 注意：IndexedDB 显式 db.close() 不触发 onclose（onclose 仅外部强制关闭时触发），
+        // 因此依赖本缓存的调用方（openDB）绝不能显式 close；短生命周期场景改用 openStandaloneDB。
+        db.onversionchange = function () { _dbPromise = null; };
+        db.onclose = function () { _dbPromise = null; };
+        return db;
+    }).catch(function (err) {
+        _dbPromise = null;
+        throw err;
     });
     return _dbPromise;
 }
 
 export { openDB };
+
+// D1 修复：独立连接——不参与 _dbPromise 缓存，调用方用完后自行 db.close()（如 GC 扫描）。
+// 避免显式 close 使缓存连接悬空导致后续所有 DB 访问失败。
+export function openStandaloneDB() {
+    return openRawDB();
+}
 
 var _storageBlocked = false;
 
