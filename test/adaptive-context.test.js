@@ -465,6 +465,213 @@ console.log('\n=== adaptive-context: adaptContextPostTrim 完整路径 ===');
     resetAdaptiveCache();
 })();
 
+// === P2 对账：累计实现 vs O(n²) 参考实现 ===
+
+// 参考实现：原 O(n²) 语义（每删一节全量 join + countTokens）
+function refTrimMemoryVaultByKB(text, targetTokens) {
+    if (countTokens(text) <= targetTokens) return text;
+    var sections = text.split(/(?=\[KB:[^\]]*\])/);
+    var priority = ['线索', '间接'];
+    for (var p = 0; p < priority.length; p++) {
+        for (var i = sections.length - 1; i >= 0; i--) {
+            if (countTokens(sections.join('\n')) <= targetTokens) return sections.join('\n');
+            if (sections[i].indexOf('[KB:') !== -1 && sections[i].indexOf('=' + priority[p]) !== -1) {
+                sections.splice(i, 1);
+            }
+        }
+    }
+    return sections.join('\n');
+}
+
+function kbSectionsOf(text) {
+    // 剥离尾随 '\n'（split lookahead 将分隔符留在前段尾部，join('\n') 使剩余段尾 \n 数随段数变化，
+    // 直接比较整段会因尾随换行差异误判）
+    return text.split(/(?=\[KB:[^\]]*\])/).filter(function(s) { return s.indexOf('[KB:') !== -1; })
+        .map(function(s) { return s.replace(/\n+$/, ''); });
+}
+
+// mine 保留的每个 section 都必须出现在 ref 保留集中（新实现最多额外多删低优先级节）
+function mineIsSubsetOf(mine, ref) {
+    var refSet = kbSectionsOf(ref);
+    return kbSectionsOf(mine).every(function(s) { return refSet.indexOf(s) !== -1; });
+}
+
+function mineKeepsCoreOf(mine, coreText) {
+    var coreSet = kbSectionsOf(coreText);
+    if (coreSet.length === 0) return true;
+    var mineSet = kbSectionsOf(mine);
+    return coreSet.every(function(s) { return mineSet.indexOf(s) !== -1; });
+}
+
+console.log('\n=== adaptive-context: trimMemoryVaultByKB 对账（P2） ===');
+
+(function() {
+    var T5text = [
+        '[KB:核心角色=核心] 核心记忆内容，重要不可删',
+        '[KB:次要角色=间接] 间接记忆内容',
+        '[KB:旁观者=线索] 线索记忆内容'
+    ].join('\n');
+    var T5coreAndIndirect = '[KB:核心角色=核心] 核心记忆内容，重要不可删\n[KB:次要角色=间接] 间接记忆内容';
+    var T6text = [
+        '[KB:核心角色=核心] 核心记忆内容',
+        '[KB:次要角色=间接] 间接记忆内容',
+        '[KB:旁观者=线索] 线索记忆内容'
+    ].join('\n');
+    var T6core = '[KB:核心角色=核心] 核心记忆内容';
+    var T7text = '[KB:A=核心] 内容A\n[KB:B=线索] 内容B';
+    var T8text = '[KB:A=线索] 内容A\n[KB:B=间接] 内容B\n[KB:C=核心] 内容C';
+    var mixedText = [
+        '[KB:A=核心] 角色设定一句话',
+        '[KB:B=间接] 世界背景设定第二句话',
+        '[KB:C=线索] 伏笔线索甲',
+        '[KB:D=线索] 伏笔线索乙',
+        '[KB:E=间接] 配角背景补充',
+        '[KB:F=核心] 核心身份关键'
+    ].join('\n');
+    var enText = [
+        '[KB:A=核心] the quick brown fox jumps over the lazy dog',
+        '[KB:B=间接] pack my box with five dozen liquor jugs',
+        '[KB:C=线索] how vexingly quick daft zebras jump'
+    ].join('\n');
+
+    // 1) T5-T8 原样本 + 原 target：逐字节一致（实验确认落在稳定区）
+    var exactCases = [
+        ['T5', T5text, countTokens(T5coreAndIndirect) + 5],
+        ['T6', T6text, countTokens(T6core) + 2],
+        ['T7', T7text, 99999],
+        ['T8', T8text, 0]
+    ];
+    for (var e = 0; e < exactCases.length; e++) {
+        var refR = refTrimMemoryVaultByKB(exactCases[e][1], exactCases[e][2]);
+        var mineR = trimMemoryVaultByKB(exactCases[e][1], exactCases[e][2]);
+        eq(mineR, refR, 'P2 ' + exactCases[e][0] + ' 与参考实现逐字节一致');
+    }
+
+    // 2) 全 target 扫描对账：混合优先级 + 中英文样本
+    //    大部分 target 逐字节一致；窄窗口（sum ≥ joinCount 边界）允许新实现多删低优先级节，
+    //    但安全不变式（不超裁 / 核心保留 / 单调）必须成立
+    var scanSamples = [mixedText, enText, T5text, T6text, T7text, T8text];
+    for (var si = 0; si < scanSamples.length; si++) {
+        var text = scanSamples[si];
+        var parts = text.split(/(?=\[KB:[^\]]*\])/);
+        var sum = 0;
+        for (var pi = 0; pi < parts.length; pi++) sum += countTokens(pi === 0 ? parts[pi] : '\n' + parts[pi]);
+        var coreText = kbSectionsOf(text).filter(function(s) { return s.indexOf('=核心') !== -1; }).join('\n');
+        var coreTokens = countTokens(coreText);
+        var exactAgree = 0, totalTargets = 0;
+        for (var t = 0; t <= sum + 1; t++) {
+            totalTargets++;
+            var refScan = refTrimMemoryVaultByKB(text, t);
+            var mineScan = trimMemoryVaultByKB(text, t);
+            if (refScan === mineScan) {
+                exactAgree++;
+            } else {
+                ok(mineIsSubsetOf(mineScan, refScan), 'P2 样本' + si + ' t=' + t + ' 单调：新实现保留集 ⊆ 参考保留集');
+                if (t >= coreTokens) ok(countTokens(mineScan) <= t, 'P2 样本' + si + ' t=' + t + ' 不超裁 (' + countTokens(mineScan) + ' ≤ ' + t + ')');
+                ok(mineKeepsCoreOf(mineScan, coreText), 'P2 样本' + si + ' t=' + t + ' 核心保留');
+            }
+        }
+        ok(exactAgree >= totalTargets * 0.85, 'P2 样本' + si + ' 逐字节一致率 ≥ 85% (' + exactAgree + '/' + totalTargets + ')');
+    }
+})();
+
+// === P3: compressLayers memory_vault 增量差值（ST tokenizer 精确 diff） ===
+
+console.log('\n=== adaptive-context: compressLayers memory_vault 增量差值（P3） ===');
+
+// 非 dryRun：压缩发生、替换标记、从未对全量 chat join 计数
+// 注意：P3 两个块共享模块级 _neCachedMemoryVault（setAdaptiveCache/resetAdaptiveCache），
+// 必须串行执行，否则并发交错会导致状态被覆盖。块1 赋给变量，块2 await 它。
+var p3FirstBlock = (async function() {
+    resetAdaptiveCache();
+    var vaultText = [
+        '[KB:核心角色=核心] ' + '主角的核心设定内容描述'.repeat(15),
+        '[KB:世界观=间接] ' + '世界观的间接记忆背景'.repeat(15),
+        '[KB:线索一=线索] ' + '伏笔线索甲的内容描述'.repeat(15),
+        '[KB:线索二=线索] ' + '伏笔线索乙的内容描述'.repeat(15),
+        '[KB:配角=间接] ' + '配角背景补充描述内容'.repeat(15),
+        '[KB:线索三=线索] ' + '伏笔线索丙的内容描述'.repeat(15)
+    ].join('\n');
+    var vaultTokensLocal = countTokens(vaultText);
+    var tokenCalls = [];
+    mockSillyTavernCtx({
+        maxContext: 4000,
+        maxTokens: 300,
+        tokenCounter: function(text) { tokenCalls.push(text); return Math.ceil((text || '').length / 4); }
+    });
+    var ctx = SillyTavern.getContext();
+
+    var chat = [
+        makeMsg('system', '前置系统消息'),
+        makeMsg('system', '<!--NE:memory_vault-->' + vaultText + '<!--/NE:memory_vault-->')
+    ];
+    setAdaptiveCache({ memoryVault: vaultText, memoryVaultTokens: vaultTokensLocal });
+
+    var layers = [{ name: 'memory_vault', current: vaultTokensLocal, floor: 150, ceiling: 2000 }];
+
+    await compressLayers(chat, layers, 5000, 0, [], ctx, false);
+
+    // P3 关键：从未对全量 chat join 调用 getTokenCountAsync（O(chatSize) 重算已消除）
+    var everChatJoin = tokenCalls.some(function(t) { return t.indexOf('<!--NE:') !== -1; });
+    eq(everChatJoin, false, 'P3 从未以全量 chat join 触发 getTokenCountAsync (calls=' + tokenCalls.length + ')');
+    ok(tokenCalls.indexOf(vaultText) !== -1, 'P3 首轮 lazy init 对旧 vault 计数');
+
+    var finalMatch = chat[1].content.match(/<!--NE:memory_vault-->([\s\S]*?)<!--\/NE:memory_vault-->/);
+    ok(finalMatch !== null, 'P3 NE:memory_vault 标记仍在');
+    ok(countTokens(finalMatch[1]) < countTokens(vaultText), 'P3 vault 压缩后 token 减少 (before=' + countTokens(vaultText) + ', after=' + countTokens(finalMatch[1]) + ')');
+    ok(finalMatch[1].indexOf('核心') !== -1, 'P3 核心等级保留');
+    ok(finalMatch[1].indexOf('线索') === -1, 'P3 低优先级已裁掉');
+
+    clearSillyTavern();
+    resetAdaptiveCache();
+})();
+
+// dryRun：不污染模块缓存。dryRun 从原文反复裁剪（缓存不更新），结果与非 dryRun 的
+// 增量裁剪路径本就不同（无法逐字节对比）；改为基线对照：dryRun 后跑一次非 dryRun，
+// 其结果必须与干净缓存直接非 dryRun 一致 —— 直接验证 _neCachedMemoryVault 未被污染。
+(async function() {
+    await p3FirstBlock; // 串行：等块1 完成，避免共享 _neCachedMemoryVault 交错
+    var vaultText = [
+        '[KB:核心角色=核心] ' + '主角核心设定描述'.repeat(20),
+        '[KB:线索一=线索] ' + '伏笔甲内容描述'.repeat(20),
+        '[KB:线索二=线索] ' + '伏笔乙内容描述'.repeat(20),
+        '[KB:间接一=间接] ' + '背景补充描述内容'.repeat(20)
+    ].join('\n');
+    var vaultTokensLocal = countTokens(vaultText);
+    mockSillyTavernCtx({
+        maxContext: 4000,
+        maxTokens: 300,
+        tokenCounter: function(text) { return Math.ceil((text || '').length / 4); }
+    });
+    var ctx = SillyTavern.getContext();
+    function mkChat() { return [makeMsg('system', '<!--NE:memory_vault-->' + vaultText + '<!--/NE:memory_vault-->')]; }
+    function mkLayers() { return [{ name: 'memory_vault', current: vaultTokensLocal, floor: 150, ceiling: 2000 }]; }
+
+    // 基线：干净缓存直接非 dryRun
+    resetAdaptiveCache();
+    setAdaptiveCache({ memoryVault: vaultText, memoryVaultTokens: vaultTokensLocal });
+    var chatBase = mkChat();
+    await compressLayers(chatBase, mkLayers(), 5000, 0, [], ctx, false);
+
+    // dryRun 后再非 dryRun（复用同一模块缓存）
+    resetAdaptiveCache();
+    setAdaptiveCache({ memoryVault: vaultText, memoryVaultTokens: vaultTokensLocal });
+    var chatDry = mkChat();
+    await compressLayers(chatDry, mkLayers(), 5000, 0, [], ctx, true);
+    var chatAfter = mkChat();
+    await compressLayers(chatAfter, mkLayers(), 5000, 0, [], ctx, false);
+
+    // dryRun 未污染 _neCachedMemoryVault：dryRun 后的非 dryRun 与干净基线一致
+    eq(chatAfter[0].content, chatBase[0].content, 'P3 dryRun 不污染缓存（dryRun 后非 dryRun 与基线一致）');
+
+    clearSillyTavern();
+    resetAdaptiveCache();
+})();
+
 // === 汇总 ===
-console.log('\n--- adaptive-context: ' + passed + ' passed, ' + failed + ' failed ---');
-if (failed > 0) process.exit(1);
+// async 测试块的断言在 microtask 阶段执行，晚于顶层同步代码（汇总行无法在同步处
+// 捕获 async 失败）。用 setTimeout 推迟到事件循环下一 tick，确保计数完整后再判定退出码。
+setTimeout(function() {
+    console.log('\n--- adaptive-context: ' + passed + ' passed, ' + failed + ' failed ---');
+    if (failed > 0) process.exit(1);
+}, 50);

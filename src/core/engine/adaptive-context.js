@@ -72,12 +72,24 @@ export function trimMemoryVaultByKB(text, targetTokens) {
     // 早返回：若原文已满足 targetTokens，原样返回避免 split+join 改变空白
     if (countTokens(text) <= targetTokens) return text;
     var sections = text.split(/(?=\[KB:[^\]]*\])/);
+    // P2: 预计算每个 section 的 token 数（首段无前导 '\n'，其余带前导 '\n'，与 join('\n') 的
+    // 分隔符语义一致），累计 total = Σ pieceTokens。删除 section i 时 total -= pieceTokens[i]，
+    // 将原实现的"每次全量 join + countTokens"（O(n²)）降为 O(n)。
+    // 近似误差：BPE 拼接边界下累计值 ≥ join 计数，故累计值 ≤ target 时实际 join ≤ target，不会超裁。
+    var pieceTokens = new Array(sections.length);
+    var total = 0;
+    for (var i = 0; i < sections.length; i++) {
+        pieceTokens[i] = countTokens(i === 0 ? sections[i] : '\n' + sections[i]);
+        total += pieceTokens[i];
+    }
     var priority = ['线索', '间接'];
     for (var p = 0; p < priority.length; p++) {
         for (var i = sections.length - 1; i >= 0; i--) {
-            if (countTokens(sections.join('\n')) <= targetTokens) return sections.join('\n');
+            if (total <= targetTokens) return sections.join('\n');
             if (sections[i].indexOf('[KB:') !== -1 && sections[i].indexOf('=' + priority[p]) !== -1) {
+                total -= pieceTokens[i];
                 sections.splice(i, 1);
+                pieceTokens.splice(i, 1);
             }
         }
     }
@@ -121,6 +133,9 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
     var spliceOffset = 0;
     var maxIterations = 200;
     var iter = 0;
+    // P3: memory_vault 以 ST tokenizer 计量的局部值（首次进入时惰性初始化，与 totalTokens 同口径）。
+    // 压缩后用 old/new 各计一次的精确差值更新 totalTokens，替代 O(chatSize) 全量重算。
+    var vaultTokensST = null;
     while (totalTokens > totalBudget && iter < maxIterations) {
         iter++;
         var maxSat = -Infinity, pick = null;
@@ -160,11 +175,15 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
                 pick.current = pick.floor;
                 continue;
             }
+            if (vaultTokensST === null) {
+                vaultTokensST = await ctx.getTokenCountAsync(_neCachedMemoryVault);
+            }
+            var newVaultTokensST = await ctx.getTokenCountAsync(newContent);
             if (!dryRun) _neCachedMemoryVault = newContent;
             replaceNeMarkerInChat(chat, pick.name, newContent);
-            totalTokens = await ctx.getTokenCountAsync(
-                chat.map(function(m) { return m.content || ''; }).join('\n')
-            );
+            // P3: old/new 同一 ST tokenizer 精确差值，替代对 chat 全量 join + 重算
+            totalTokens += newVaultTokensST - vaultTokensST;
+            vaultTokensST = newVaultTokensST;
             pick.current = countTokens(newContent);
         }
     }
