@@ -1,16 +1,14 @@
 import { neSync } from '../settings-adapter.js';
+import { readNeSettingsCached } from '../settings.js';
 
 var EMBEDDING_DIM = 1536;
 
 function getConfiguredTimeoutSec(fallbackSec) {
     fallbackSec = fallbackSec || 120;
     try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) {
-            var settings = JSON.parse(raw);
-            if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
-                return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
-            }
+        var settings = readNeSettingsCached();
+        if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
+            return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
         }
     } catch (e) {}
     return fallbackSec;
@@ -53,8 +51,7 @@ export function saveEmbeddingApiConfig(config) {
 export function isVectorSearchEnabled() {
     if (typeof process !== 'undefined' && process.env && process.env.NE_BENCHMARK_VECTOR === '0') return false;
     try {
-        var raw = localStorage.getItem('ne_settings');
-        return raw ? !!JSON.parse(raw).enableVectorSearch : false;
+        return !!readNeSettingsCached().enableVectorSearch;
     } catch (e) {}
     if (typeof process !== 'undefined' && process.env && process.env.EMBEDDING_URL) return true;
     return false;

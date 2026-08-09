@@ -9,6 +9,7 @@ import { saveMemoryVault, filterNewMessages } from './pipeline-shared.js';
 import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
+import { readNeSettingsCached } from '../settings.js';
 
 function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateVault, force) {
     var content = vault.content || {};
@@ -273,6 +274,11 @@ async function segmentTurns(turns, vault, callLLM) {
     return [[0, turns.length - 1]];
 }
 
+// P5: 区间唯一键（用于格式化结果缓存复用）
+function segKey(seg) {
+    return seg[0] + ':' + seg[1];
+}
+
 function splitIntraSegment(seg, turns, maxChars) {
     var subSegments = [];
     var subStart = seg[0];
@@ -295,7 +301,7 @@ function splitIntraSegment(seg, turns, maxChars) {
     return subSegments;
 }
 
-export function chunkSegmentsForLLM(segments, turns, maxChars) {
+export function chunkSegmentsForLLM(segments, turns, maxChars, segTexts) {
     var chunks = [];
     var currentChunk = [];
     var currentChars = 0;
@@ -304,7 +310,8 @@ export function chunkSegmentsForLLM(segments, turns, maxChars) {
         var seg = segments[i];
         var segTurns = [];
         for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
-        var segText = formatTurnsText(turns, segTurns);
+        // P5: 复用调用方预计算的格式化文本（segKey 命中），未命中时回退现算
+        var segText = (segTexts && segTexts[segKey(seg)]) || formatTurnsText(turns, segTurns);
         var segChars = segText.length;
 
         if (segChars > maxChars) {
@@ -373,7 +380,7 @@ export function mapEventData(event, seg, turns, allSegments, windowMessages) {
     event.status = event.status === 'partial' ? 'partial' : 'closed';
 }
 
-function computePerSegmentGuidance(segments, turns, ratio, lang) {
+function computePerSegmentGuidance(segments, turns, ratio, lang, segTexts) {
     var CHAR_FACTOR = lang === 'en' ? 0.25 : 1.0;
     var MIN_CHARS = lang === 'en' ? 40 : 10;
     var MAX_CHARS = 400;
@@ -381,7 +388,8 @@ function computePerSegmentGuidance(segments, turns, ratio, lang) {
     return segments.map(function(seg) {
         var segTurns = [];
         for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
-        var segText = formatTurnsText(turns, segTurns);
+        // P5: 复用预计算文本，避免与 prompt 拼装重复格式化
+        var segText = (segTexts && segTexts[segKey(seg)]) || formatTurnsText(turns, segTurns);
         var inputChars = segText.length;
         var recommended = Math.round(inputChars * ratio * CHAR_FACTOR);
         recommended = Math.max(MIN_CHARS, Math.min(MAX_CHARS, recommended));
@@ -389,14 +397,14 @@ function computePerSegmentGuidance(segments, turns, ratio, lang) {
     });
 }
 
-function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio) {
+function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTexts) {
     var content = vault.content || {};
     var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var bannerMatched = globalThis.__ne_banner_matched;
     var _ratio = ratio || 0.05;
 
-    var guidance = computePerSegmentGuidance(segments, turns, _ratio, lang);
+    var guidance = computePerSegmentGuidance(segments, turns, _ratio, lang, segTexts);
 
     var unit = lang === 'en' ? 'chars' : '\u5B57';
     var segmentsText = lang === 'en'
@@ -407,12 +415,14 @@ function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio) {
         var segTurns = [];
         for (var ti = seg[0]; ti <= seg[1]; ti++) segTurns.push(ti);
         var g = guidance[si];
+        // P5: 与 guidance 共用同一份格式化文本（segKey 命中时不再重复 formatTurnsText）
+        var segText = (segTexts && segTexts[segKey(seg)]) || formatTurnsText(turns, segTurns);
         if (lang === 'en') {
             segmentsText += '\n--- Segment ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', ~' + g.inputChars + ' input chars, recommended summary ~' + g.recommended + ' chars) ---\n';
         } else {
             segmentsText += '\n--- \u533A\u95F4 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', \u539F\u6587\u7EA6 ' + g.inputChars + ' ' + unit + ', \u63A8\u8350\u6458\u8981\u7EA6 ' + g.recommended + ' ' + unit + ') ---\n';
         }
-        segmentsText += formatTurnsText(turns, segTurns);
+        segmentsText += segText;
         segmentsText += '\n';
     }
 
@@ -484,21 +494,28 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         if (segments.length > 0) {
             var maxChars = 500;
             try {
-                var rawSettings = localStorage.getItem('ne_settings');
-                if (rawSettings) {
-                    var parsed = JSON.parse(rawSettings);
-                    if (parsed.stmChunkMaxChars) maxChars = Number(parsed.stmChunkMaxChars);
-                    if (parsed.stmSummaryRatio !== undefined) var stmRatio = Number(parsed.stmSummaryRatio);
-                }
+                // P7: 走缓存解析，避免每轮 STM 全量 JSON.parse
+                var parsed = readNeSettingsCached();
+                if (parsed.stmChunkMaxChars) maxChars = Number(parsed.stmChunkMaxChars);
+                if (parsed.stmSummaryRatio !== undefined) var stmRatio = Number(parsed.stmSummaryRatio);
             } catch (e) {}
             var stmRatio = stmRatio || 0.05;
 
-            var chunks = chunkSegmentsForLLM(segments, turns, maxChars);
+            // P5: 全部 segment 的格式化文本只算一次，供 chunk 边界判定与 prompt 拼装复用
+            var segTexts = {};
+            for (var sti = 0; sti < segments.length; sti++) {
+                var stSeg = segments[sti];
+                var stTurns = [];
+                for (var stti = stSeg[0]; stti <= stSeg[1]; stti++) stTurns.push(stti);
+                segTexts[segKey(stSeg)] = formatTurnsText(turns, stTurns);
+            }
+
+            var chunks = chunkSegmentsForLLM(segments, turns, maxChars, segTexts);
             console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
 
             for (var ci = 0; ci < chunks.length; ci++) {
                 var chunk = chunks[ci];
-                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio);
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio, segTexts);
                 var responseText = '';
                 try {
                     _checkChatIntegrity('executeIncrementalUpdate:beforeLLM');
@@ -516,7 +533,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
                     for (var si = 0; si < chunk.length; si++) {
                         var singleSeg = [chunk[si]];
-                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio);
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio, segTexts);
                         try {
                             responseText = await callMemoryPipeline([
                                 { role: 'system', content: singlePrompt.system },

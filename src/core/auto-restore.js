@@ -140,15 +140,19 @@ export async function loadVault(chatId) {
                 ' state_keys=' + Object.keys((chatVault.content && chatVault.content.state) || {}).length);
         } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
         var dbVault = await readVault(chatId);
-        if (dbVault && dbVault.version > 0) {
+        // P6: 仅 DB 严格新于聊天文件时才回填，版本一致（恢复成功）跳过冗余全量 saveChat
+        if (dbVault && dbVault.version > chatVersion) {
             persistVaultToChatFile(dbVault);
         }
         return dbVault;
     }
 
     var dbVault = await readVault(chatId);
-    if (dbVault && dbVault.version > 0) {
+    // P6: 仅 DB 严格新于聊天文件时才回填（含兼容回填：chat 无 metadata 而 DB 有数据）
+    if (dbVault && dbVault.version > chatVersion) {
         persistVaultToChatFile(dbVault);
+    } else if (dbVault && dbVault.version > 0) {
+        console.log('[NE-VAULT] DB and chat metadata in sync (v' + dbVault.version + ') — skip backfill');
     } else {
         console.log('[NE-VAULT] Both DB and chat metadata are empty — fresh start');
     }

@@ -5,7 +5,7 @@ import { testSecondaryApiConnection, sendSecondaryTestMessage, fetchAvailableMod
 import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
          testEmbeddingApiConnection, isVectorSearchEnabled, runVectorQualityTest } from '../core/engine/embedding.js';
 import { neSync } from '../core/settings-adapter.js';
-import { setRetrievalEnabled, readNeSettingsObject } from '../core/settings.js';
+import { setRetrievalEnabled, readNeSettingsObject, invalidateNeSettingsCache } from '../core/settings.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory } from '../core/vault/store.js';
@@ -486,6 +486,7 @@ export function renderSettingsTab() {
             try { var raw = localStorage.getItem('ne_settings'); if (raw) settings = JSON.parse(raw); } catch (e) {}
             settings.enableVectorSearch = embEnable.checked;
             localStorage.setItem('ne_settings', JSON.stringify(settings));
+            invalidateNeSettingsCache();
             var config = panelById('ne-embedding-config');
             if (config) config.style.display = embEnable.checked ? 'block' : 'none';
             // ── Update embedding header dot on toggle ──
@@ -741,6 +742,7 @@ function saveSettingsTab() {
     }
     if (changed) {
         localStorage.setItem('ne_settings', JSON.stringify(settings));
+        invalidateNeSettingsCache();
         neSync('ne_settings');
         if (__NE_DEV_MODE) console.log('[NE] Settings saved from Settings tab');
     }

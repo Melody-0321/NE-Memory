@@ -23,6 +23,23 @@ export function readNeSettingsObject() {
     return {};
 }
 
+// === P7: ne_settings 缓存解析（热路径 LLM/embedding/telemetry 复用，写路径需调用 invalidateNeSettingsCache）===
+var _neSettingsCache = null;
+
+/**
+ * 缓存版设置读取：首次调用解析一次，之后复用；返回浅拷贝防调用方误改缓存。
+ * 设置被改写后必须调用 invalidateNeSettingsCache() 使缓存失效。
+ */
+export function readNeSettingsCached() {
+    if (_neSettingsCache === null) _neSettingsCache = readNeSettingsObject();
+    return Object.assign({}, _neSettingsCache);
+}
+
+/** 设置写路径失效钩子：任何 ne_settings 落盘后调用 */
+export function invalidateNeSettingsCache() {
+    _neSettingsCache = null;
+}
+
 /**
  * 读取 ne_settings 中的单个键值。
  * @param {string} key - 设置键名

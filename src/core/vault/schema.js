@@ -5,6 +5,7 @@
 //
 import { t_field } from '../i18n.js';
 import { neSync } from '../settings-adapter.js';
+import { invalidateNeSettingsCache } from '../settings.js';
 import { loadCardConfigSync, getActiveVersion, getEffectiveTemplates, loadFieldLibrary, saveFieldLibrary, addFieldToLibrary, addTemplateRefToField, removeTemplateRefFromField } from './store.js';
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from './template-defs.js';
 export { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE };
@@ -37,6 +38,7 @@ export function setDynamicStateMode(val) {
     } catch (e) {}
     settings.useDynamicState = !!val;
     try { localStorage.setItem('ne_settings', JSON.stringify(settings)); } catch (e) {}
+    invalidateNeSettingsCache();
     try { neSync('ne_settings'); } catch (e) {}
 }
 

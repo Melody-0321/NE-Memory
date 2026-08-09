@@ -5,6 +5,7 @@
  */
 import { recordChatStat } from './chat-telemetry.js';
 import { neSync } from '../settings-adapter.js';
+import { readNeSettingsCached } from '../settings.js';
 
 var STORAGE_ANOMALIES = 'ne_anomalies';
 var MAX_ANOMALIES = 50;
@@ -24,8 +25,7 @@ export function addAnomaly(type, context, chatId) {
 
 export function isTelemetryEnabled() {
     try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) return JSON.parse(raw).enableTelemetry || false;
+        return readNeSettingsCached().enableTelemetry || false;
     } catch (e) {}
     return false;
 }

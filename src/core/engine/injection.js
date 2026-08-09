@@ -6,6 +6,7 @@ import { recordTelemetry } from '../api/llm.js';
 import { countTokens } from './text-utils.js';
 import { findMessageInChat, buildMsgId } from './msg-id.js';
 import { calRelativeTime } from './time-utils.js';
+import { readNeSettingsCached } from '../settings.js';
 
 // R2: 可见窗口每条消息 token 计数缓存（key = 消息身份 + 内容长度指纹，捕捉 swipe/reroll/编辑）
 var _msgTokenCache = {};
@@ -156,11 +157,8 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
 
     var visibleWindow = computeVisibleWindow(chatMessages);
 
-    var neSettings = {};
-    try {
-        var neRaw = localStorage.getItem('ne_settings');
-        if (neRaw) neSettings = JSON.parse(neRaw);
-    } catch (e) {}
+    // P7: 走缓存解析，避免每轮注入全量 JSON.parse
+    var neSettings = readNeSettingsCached();
 
     var conversationContext = '';
     var query;

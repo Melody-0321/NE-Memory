@@ -17,6 +17,7 @@ import {
     loadCardConfigSync, saveCardConfig, loadFieldLibrary, addFieldToLibrary,
     cloneTemplateToCard, getActiveVersion, upgradeTemplateVersion, saveTemplate
 } from '../vault/store.js';
+import { readNeSettingsCached } from '../settings.js';
 
 var _functionCallingSupported = null;
 
@@ -53,8 +54,7 @@ function _notify(level, text, options) {
 export function checkFunctionCallingSupport() {
     if (_functionCallingSupported !== null) return Promise.resolve(_functionCallingSupported);
     try {
-        var raw = localStorage.getItem('ne_settings');
-        var settings = raw ? JSON.parse(raw) : {};
+        var settings = readNeSettingsCached();
         var secondaryConfig = settings.memoryConfig || {};
         if (!secondaryConfig.url) {
             try {

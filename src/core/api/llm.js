@@ -9,16 +9,14 @@ import { runtime } from '../runtime.js';
 import { recordChatStat, recordChatToken } from '../engine/chat-telemetry.js';
 import { recordDailyToken } from '../engine/token-stats.js';
 import { neSync } from '../settings-adapter.js';
+import { readNeSettingsCached } from '../settings.js';
 
 function getConfiguredTimeoutSec(fallbackSec) {
     fallbackSec = fallbackSec || 120;
     try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) {
-            var settings = JSON.parse(raw);
-            if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
-                return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
-            }
+        var settings = readNeSettingsCached();
+        if (settings.apiTimeoutMs && typeof settings.apiTimeoutMs === 'number') {
+            return Math.max(10, Math.floor(settings.apiTimeoutMs / 1000));
         }
     } catch (e) {}
     return fallbackSec;
@@ -53,19 +51,14 @@ export function recordTelemetry(entry, chatId) {
 
 export function isTelemetryEnabled() {
     try {
-        const raw = localStorage.getItem('ne_settings');
-        if (raw) return JSON.parse(raw).enableTelemetry || false;
+        return readNeSettingsCached().enableTelemetry || false;
     } catch (e) {}
     return false;
 }
 
 async function loadMemoryConfig() {
     try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) {
-            var s = JSON.parse(raw);
-            return s.memoryConfig || {};
-        }
+        return readNeSettingsCached().memoryConfig || {};
     } catch (e) {}
     return {};
 }
@@ -306,11 +299,7 @@ export async function callMemoryRetrieval(messages, options = {}, chatId = null)
 function resolvePipelineApi(operation) {
     var channelsEnabled = false;
     try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) {
-            var s = JSON.parse(raw);
-            channelsEnabled = s.apiChannelsEnabled === true;
-        }
+        channelsEnabled = readNeSettingsCached().apiChannelsEnabled === true;
     } catch (e) {}
 
     if (!channelsEnabled) {
