@@ -36,6 +36,7 @@ var testMap = {
     'adaptive-context': 'adaptive-context.test.js',
     'banner-regex': 'banner-regex.test.js',
     'state-versions-compact': 'state-versions-compact.test.js',
+    'state-versions-rollback': 'state-versions-rollback.test.js',
     'embedding': 'embedding.test.js',
     'settings-cache': 'settings-cache.test.js',
     'chat-telemetry': 'chat-telemetry.test.js',

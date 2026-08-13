@@ -148,6 +148,26 @@ function _renderStateTimeline(container) {
         html += '</div>';
     }
     body.innerHTML = html;
+    _syncPanelNav(container, 'state');
+}
+
+/**
+ * 同步面板内回滚/前进按钮的可用状态 — 依据 active 链（listStateDeltas 只返回 active 内版本），
+ * 折叠后仅剩 head 一条时回滚按钮置灰
+ */
+function _syncPanelNav(container, type) {
+    var deltas = type === 'state' ? _stateDeltas : _memVersions;
+    var cursor = type === 'state' ? _stateCursor : _memCursor;
+    var rbBtn = container.querySelector('#ne-' + type + '-rollback-btn');
+    var rsBtn = container.querySelector('#ne-' + type + '-restore-btn');
+    if (!rbBtn || !rsBtn) return;
+    var idx = deltas.findIndex(function(d) { return d.seq === cursor; });
+    rbBtn.disabled = !(idx >= 0 && idx < deltas.length - 1);
+    rsBtn.disabled = !(idx > 0);
+    if (rbBtn.disabled) rbBtn.title = '\u65E0\u66F4\u65E7\u7248\u672C\u53EF\u56DE\u9000\uFF08\u5DF2\u538B\u7F29\u5F52\u6863\u6216\u5904\u4E8E\u6700\u65E9\u7248\u672C\uFF09';
+    else rbBtn.title = '\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C';
+    if (rsBtn.disabled) rsBtn.title = '\u65E0\u66F4\u65B0\u7248\u672C\u53EF\u524D\u8FDB\uFF08\u5DF2\u5728\u6700\u65B0\uFF09';
+    else rsBtn.title = '\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C';
 }
 
 function _renderMemoryTimeline(container) {
@@ -182,6 +202,7 @@ function _renderMemoryTimeline(container) {
         html += '</div>';
     }
     body.innerHTML = html;
+    _syncPanelNav(container, 'memory');
 }
 
 /** @param {HTMLElement} container */
@@ -445,15 +466,12 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         var deltas = type === 'state' ? _stateDeltas : _memVersions;
         var cursor = type === 'state' ? _stateCursor : _memCursor;
         var headSeq = type === 'state' ? headStateSeq : headMemSeq;
-        var hasVersions = deltas.length > 0;
-        if (els.rollbackBtn) {
-            if (!hasVersions && cursor <= 0) { els.rollbackBtn.disabled = true; }
-            else { _updateNavButtonState(els.rollbackBtn, cursor <= 0); }
-        }
-        if (els.restoreBtn) {
-            if (!hasVersions && cursor >= headSeq) { els.restoreBtn.disabled = true; }
-            else { _updateNavButtonState(els.restoreBtn, cursor >= headSeq); }
-        }
+        // 依据 active 链可用性：只有存在更旧版本时回滚可用，存在更新版本时前进可用
+        var idx = deltas.findIndex(function(d) { return d.seq === cursor; });
+        var canRollback = idx >= 0 && idx < deltas.length - 1;
+        var canRestore = idx > 0;
+        if (els.rollbackBtn) _updateNavButtonState(els.rollbackBtn, !canRollback);
+        if (els.restoreBtn) _updateNavButtonState(els.restoreBtn, !canRestore);
         if (els.cursorInfo) _setCursorText(els.cursorInfo, cursor, headSeq);
     }
 

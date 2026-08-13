@@ -501,12 +501,12 @@ export async function onMessageReceived(messageIndex) {
             // P1-2: UI 延迟回退标记无条件执行（解开批次门槛，原嵌在 pending>2 / shouldRunPipeline 内）
             var psRb = globalThis.__ne_pending_state_rollback;
             if (psRb && psRb.chatId === chatId) {
-                try { await rollbackState(chatId, psRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
+                try { await _rollbackOrWarn('state', chatId, psRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackState failed:', e); }
                 globalThis.__ne_pending_state_rollback = null;
             }
             var pmRb = globalThis.__ne_pending_mem_rollback;
             if (pmRb && pmRb.chatId === chatId) {
-                try { await rollbackMemory(chatId, pmRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
+                try { await _rollbackOrWarn('memory', chatId, pmRb.targetSeq); } catch (e) { console.warn('[NE] deferred rollbackMemory failed:', e); }
                 globalThis.__ne_pending_mem_rollback = null;
             }
 
@@ -1176,6 +1176,33 @@ export async function onBeforeGenerate(type, _options, dryRun) {
 /* ──────── 消息删除 / Swipe / 更新 — 记忆协调 ──────── */
 
 /**
+ * 执行回滚并处理折叠归档（archived）结果。
+ *
+ * 数据层守卫：compact 后旧版本已移出 active 链，rollbackState/rollbackMemory 会拒绝
+ * 回滚到已归档版本并返回 {ok:false, reason:'archived'}。此处给出用户可见的 toastr
+ * 警告弹窗，避免静默失败；其他拒绝原因（no_chain / invalid_target）仅记录日志。
+ *
+ * @param {'state'|'memory'} type
+ * @param {string} chatId
+ * @param {number} targetSeq
+ * @returns {Promise<boolean>} 回滚是否成功执行
+ */
+async function _rollbackOrWarn(type, chatId, targetSeq) {
+    var res = type === 'state'
+        ? await rollbackState(chatId, targetSeq)
+        : await rollbackMemory(chatId, targetSeq);
+    if (res && !res.ok && res.reason === 'archived') {
+        try { toastr.warning('该版本已压缩归档，无法回退到更早的版本。'); } catch (e) {}
+        return false;
+    }
+    if (res && !res.ok) {
+        console.warn('[NE] rollback ' + type + ' skipped (reason=' + res.reason + ') target=' + targetSeq);
+        return false;
+    }
+    return true;
+}
+
+/**
  * _detectAndRollback - 检测旧 msg_id 缺失并回退 State + Memory 版本链
  *
  * 用 findMessageInChat（send_date+role 锚定，带 idx 漂移兜底）判定 vault 中的
@@ -1234,16 +1261,18 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
         if (earliestStateSeq > 0) {
             targetStateSeq = earliestStateSeq - 1;
             await enqueueStateWrite(async function() {}); // drain state queue to avoid lost writes
-            await rollbackState(chatId, targetStateSeq);
-            rolledBackState = affectedStateSeqs.length;
+            if (await _rollbackOrWarn('state', chatId, targetStateSeq)) {
+                rolledBackState = affectedStateSeqs.length;
+            }
         }
     }
 
     if (affectedMemSeqs.length > 0) {
         var earliestMemSeq = Math.min.apply(null, affectedMemSeqs);
         if (earliestMemSeq > 0) {
-            await rollbackMemory(chatId, earliestMemSeq - 1);
-            rolledBackMem = affectedMemSeqs.length;
+            if (await _rollbackOrWarn('memory', chatId, earliestMemSeq - 1)) {
+                rolledBackMem = affectedMemSeqs.length;
+            }
         }
     }
 
@@ -1489,13 +1518,13 @@ export async function onMessageUpdated(messageId) {
                 var earliestState = Math.min.apply(null, affectedStateSeqs);
                 if (earliestState > 0) {
                     targetStateSeq = earliestState - 1;
-                    await rollbackState(chatId, targetStateSeq);
+                    await _rollbackOrWarn('state', chatId, targetStateSeq);
                 }
             }
             if (affectedMemSeqs.length > 0) {
                 var earliestMem = Math.min.apply(null, affectedMemSeqs);
                 if (earliestMem > 0) {
-                    await rollbackMemory(chatId, earliestMem - 1);
+                    await _rollbackOrWarn('memory', chatId, earliestMem - 1);
                 }
             }
             if (affectedStateSeqs.length > 0 || affectedMemSeqs.length > 0) {

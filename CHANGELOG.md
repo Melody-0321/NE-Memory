@@ -53,6 +53,7 @@
 - **STM 事件 partial 语义被覆盖（P1-17）**：`mapEventData` 强制 `event.status = 'closed'` 抹掉 LLM 输出的 partial（窗口内容不足以形成完整事件）。已改为仅缺失/非法值归 closed，partial 保留
 - **STM 分块/映射测试补齐**：新增 `test/stm-chunking.test.js`（P1-1 拆分回归 + P1-2 窗口映射 + P1-17 partial），注册进 test/run.mjs（28 → 29 测试文件）
 - **SmartPush 实体链链路恢复（P1-18）**：`formatSmartContext` 中 `entityChains` 初始化为 `{}` 后从未赋值，mergePipelines Step2 实体预取 / 场景外链块 / compileRetrievalBudget 三个消费点全部空转（文档宣称的功能未接线，legacy recall 工具链路正常）。已补 `await lookupEntityChains(content, entityNames)` 接线——实体链从事件指针 `present_characters` 实时构建，非独立存储，与"数据层只留指针"兼容。新增 `test/entity-chain.test.js` 单测（29 → 30 测试文件）
+- **compact 折叠后回滚越界破坏版本链（P2-1）**：`rollbackState`/`rollbackMemory` 只挡 `target >= head`，向已折叠版本（`target ∉ active 链`）回滚时把 head 也当孤儿项删除 → `newActive=[]`、`base_seq=0`，head delta（含 folded_state）被物理删除，版本链损坏。已三层防护：①数据层新增纯函数 `evaluateRollbackTarget`，非 active 目标统一拒绝并返回 `{ok:false, reason:'archived'}`；②面板回滚/前进按钮按 active 链可用性置灰（无可回退版本时 disabled）；③events.js 三处回滚调用点经 `_rollbackOrWarn` 处理返回，`archived` 时 toastr 警告弹窗并避免伪报成功。新增 `test/state-versions-rollback.test.js`（36 → 37 测试文件）
 
 ---
 

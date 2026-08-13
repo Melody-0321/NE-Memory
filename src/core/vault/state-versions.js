@@ -64,6 +64,25 @@ export function computeCompactDeleteSeqs(activeSeqs, headSeq) {
     });
 }
 
+/**
+ * 评估回滚目标在版本链中的可行性（折叠归档守卫，D2 配套）
+ *
+ * - 'invalid_target'：目标 >= head 或 < 0（不存在或越界）
+ * - 'archived'：目标不在 active 链中（已压缩归档）。此时回滚会把 head 也当成
+ *   孤儿项删除并清空链（base_seq=0），破坏版本链 — 必须拒绝
+ * - 'ok'：目标在 active 链中，可正常回滚
+ *
+ * @param {number[]} activeSeqs — state_active / mem_active
+ * @param {number} headSeq — state_head_seq / mem_head_seq
+ * @param {number} targetSeq
+ * @returns {'invalid_target'|'archived'|'ok'}
+ */
+export function evaluateRollbackTarget(activeSeqs, headSeq, targetSeq) {
+    if (targetSeq >= headSeq || targetSeq < 0) return 'invalid_target';
+    if (activeSeqs.indexOf(targetSeq) === -1) return 'archived';
+    return 'ok';
+}
+
 function _nowISO() {
     return new Date().toISOString();
 }
@@ -556,9 +575,11 @@ export async function rollbackState(chatId, targetSeq) {
     var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
         return tx.objectStore('active_chains').get(chatId);
     });
-    if (!chainData) return;
+    if (!chainData) return { ok: false, reason: 'no_chain' };
     var chain = chainData.chain || chainData;
-    if (targetSeq >= chain.state_head_seq || targetSeq < 0) return;
+    // 折叠守卫：compact 后旧版本已从 active 链剔除，回滚到已折叠版本会破坏链（误删 head delta）
+    var verdict = evaluateRollbackTarget(chain.state_active, chain.state_head_seq, targetSeq);
+    if (verdict !== 'ok') return { ok: false, reason: verdict };
 
     var orphanedSeqs = [];
     var newActive = [];
@@ -582,6 +603,7 @@ export async function rollbackState(chatId, targetSeq) {
         }
     });
     await rebuildStateVault(chatId, targetSeq);
+    return { ok: true };
 }
 
 /**
@@ -596,9 +618,11 @@ export async function rollbackMemory(chatId, targetSeq) {
     var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
         return tx.objectStore('active_chains').get(chatId);
     });
-    if (!chainData) return;
+    if (!chainData) return { ok: false, reason: 'no_chain' };
     var chain = chainData.chain || chainData;
-    if (targetSeq >= chain.mem_head_seq || targetSeq < 0) return;
+    // 折叠守卫：compact 后旧版本已从 active 链剔除，回滚到已折叠版本会破坏链（误删 head delta）
+    var verdict = evaluateRollbackTarget(chain.mem_active, chain.mem_head_seq, targetSeq);
+    if (verdict !== 'ok') return { ok: false, reason: verdict };
 
     var orphanedSeqs = [];
     var newActive = [];
@@ -622,6 +646,7 @@ export async function rollbackMemory(chatId, targetSeq) {
         }
     });
     await rebuildMemoryVault(chatId, targetSeq);
+    return { ok: true };
 }
 
 export async function rebuildStateVault(chatId, targetSeq) {
