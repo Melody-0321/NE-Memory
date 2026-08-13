@@ -10,6 +10,9 @@ test/retrieval-benchmark/measure-context-size.js
 # AI assistant working files
 .trae/
 
+# Personal / local-only files (unrelated to the repo)
+personal/
+
 # Backup files from refactoring
 *.bak
 _old_*.js
