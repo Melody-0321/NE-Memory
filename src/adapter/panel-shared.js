@@ -333,6 +333,12 @@ export function injectBottomDrawerCSS() {
         '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
         // ── L2: Inline edit row ──
         '.ne-inline-row input,.ne-inline-row textarea{background:var(--black20a)!important;border:1px solid var(--ne-info-border);color:var(--text)!important;}' +
+        // ── L2: Inline edit row（纵向分行）──
+        '.ne-inline-row .ne-inline-edit-cell{padding:8px 10px!important;}' +
+        '.ne-inline-edit-grid{display:flex;flex-direction:column;gap:8px;}' +
+        '.ne-inline-field{display:flex;flex-direction:column;gap:2px;}' +
+        '.ne-inline-label{font-size:0.75em;color:var(--grey-60);font-weight:600;letter-spacing:0.3px;}' +
+        '.ne-inline-actions{display:flex;align-items:center;gap:2px;margin-top:2px;}' +
         // ── L2: Faction card body ──
         '.ne-faction-card-body{display:none;padding:8px 12px;}' +
         '.ne-faction-card.open>.ne-faction-card-body{display:block;}' +

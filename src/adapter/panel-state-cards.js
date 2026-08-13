@@ -1524,7 +1524,6 @@ function toggleInlineEdit(row, entryId, entryType) {
     // 旧 6 列布局: [0]No [1]Period [2]Scene [3]MsgIDs [4]Event [5]Edit
     var hasIdColumn = cells.length > 5;
     var origEvent = (cells[hasIdColumn ? 4 : 3].textContent || '').trim();
-    var origIds = hasIdColumn ? (cells[3].textContent || '').trim() : '';
 
     // 新增：从 Present 列（index 5）反解在场角色数组
     var presentCellIdx = hasIdColumn ? 5 : 4;
@@ -1580,23 +1579,21 @@ function toggleInlineEdit(row, entryId, entryType) {
         };
     }
 
-    var idColumnCell = hasIdColumn
-        ? '<td style="font-size:0.75em;max-width:180px;color:var(--ne-muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + escapeHtml(origIds) + '">' + escapeHtml(origIds) + '</td>'
-        : '';
     var eventCellTarget = hasIdColumn ? 5 : 4;
     var presentCellTarget = hasIdColumn ? 6 : 5;
     var psycheCellTarget = hasIdColumn ? 7 : 6;
 
-    row.innerHTML = '<td style="text-align:center;width:2em;">' + cells[0].innerHTML + '</td>' +
-        '<td><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></td>' +
-        '<td><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></td>' +
-        idColumnCell +
-        '<td><textarea class="ne-inline-event" rows="2">' + escapeHtml(origEvent) + '</textarea></td>' +
-        '<td><input class="ne-inline-present" value="' + escapeHtml(origPresent) + '" placeholder="角色A, 角色B" style="width:100%;font-size:0.85em;"></td>' +
-        '<td><textarea class="ne-inline-psyche" rows="2" placeholder="角色名|情绪|内心想法（每行一个）" style="width:100%;font-size:0.85em;">' + escapeHtml(origPsycheText) + '</textarea></td>' +
-        '<td style="white-space:nowrap;"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
+    row.innerHTML = '<td colspan="8" class="ne-inline-edit-cell">' +
+        '<div class="ne-inline-edit-grid">' +
+        '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Period') + '</span><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></div>' +
+        '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Scene') + '</span><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></div>' +
+        '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Event') + '</span><textarea class="ne-inline-event" rows="3">' + escapeHtml(origEvent) + '</textarea></div>' +
+        '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Present') + '</span><input class="ne-inline-present" value="' + escapeHtml(origPresent) + '" placeholder="角色A, 角色B"></div>' +
+        '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Psyche') + '</span><textarea class="ne-inline-psyche" rows="3" placeholder="角色名|情绪|内心想法（每行一个）">' + escapeHtml(origPsycheText) + '</textarea></div>' +
+        '<div class="ne-inline-actions"><button class="ne-inline-save" aria-label="' + t('Save') + '">\u2713</button>' +
         '<button class="ne-inline-cancel" style="background:var(--grey-40);color:#fff;border:none;" aria-label="' + t('Cancel') + '">\u2190</button>' +
-        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;margin-left:2px;" aria-label="' + t('Delete') + '">\u{1F5D1}</button></td>';
+        '<button class="ne-inline-delete" style="background:#d32f2f;color:#fff;border:none;" aria-label="' + t('Delete') + '">\u{1F5D1}</button></div>' +
+        '</div></td>';
     row.querySelector('.ne-inline-save').onclick = async function() {
         var period = row.querySelector('.ne-inline-period').value;
         var scene = row.querySelector('.ne-inline-scene').value;
