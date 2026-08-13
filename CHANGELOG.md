@@ -2,6 +2,7 @@
 
 ## Bug 修复
 
+- **vault 状态栏无数据（UIP-1 缓存回归）**：5bc0d1d 引入区块渲染缓存后，panel-content.js 顶部仍无条件移除 `.narrative_*_block` 元素，而内层 Section 仅在缓存未命中时才重新注入 innerHTML（innerHTML 覆盖本身会替换容器子元素）→ 任一 `vault:updated` 刷新轮次若 state 数据未变（缓存命中），State 区块被先删后不重建，状态栏永久空白（记忆 tab 用 tbody、不在此移除循环内，故正常）。已删除冗余的区块移除循环，依赖 innerHTML 覆盖完成清理（2560b80 修复 `_renderCache` 声明后，State tab 仍空即此因）
 - **启用自适应上下文控制后"一发消息就卡死"（空转死循环）**：对话初期 vault 记忆为空 → `_neCachedMemoryVault` 无缓存，`expandLayers`/`compressLayers` 选中 memory_vault 层后无分支可执行，`totalTokens` 永不变化 → 无限循环冻结主线程（7.2 曾以 `maxIterations` 兜底，仅把卡死降级为每次空转 100-200 轮）。已加 no-progress 检测（本轮 token 无变化即 break）+ layers 源头过滤（无缓存层不入候选），根治空转
 - **access 工具消息引用崩溃**：`[→msgId]` 引用未声明变量（ReferenceError），`msg#N`/裸数字引用且消息存在时 100% 失败。已改为 `numId` 回显引用数字（根因：`55f21c7` 改名时漏改此用法）
 - **裸数字消息查找 O(1) 化**：`findMessageInChat` 支持裸数字输入（`"95"`/`"msg#95"`），走数组下标 O(1) 反问 + id 身份校验，漂移时回退全量扫描，真正接入统一消息索引的 idx 前缀能力；顺带修复 `!msgId` 守卫误拦合法下标 0 的边界

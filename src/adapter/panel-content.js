@@ -91,12 +91,9 @@ export async function updateVaultViewerPopout(getChatId) {
 
     if (!panelById('tab-memory')) { setUpdatingPopout(false); return; }
 
-    // 修复区域中嵌套 Accordion 面板的显示状态，将所有子 accordion-content 统一标记
-    panelQSA('.narrative_state_block').forEach(function (el) { el.remove(); });
-    panelQSA('.narrative_opening_block').forEach(function (el) { el.remove(); });
-    panelQSA('.narrative_faction_block').forEach(function (el) { el.remove(); });
-    panelQSA('.narrative_character_block').forEach(function (el) { el.remove(); });
-    panelQSA('.narrative_quest_block').forEach(function (el) { el.remove(); });
+    // UIP-1 注意：此处不能无条件移除 .narrative_*_block——内层 Section 仅在缓存未命中
+    // 时才重新注入 innerHTML（innerHTML 覆盖本身会替换容器子元素），先删后等注入
+    // 会导致缓存命中轮次把 State 区块清空后不重建（状态栏"无数据"回归根因）。
 
     // ── Section C: Character block ──
     var _anyBlockChanged = false;
