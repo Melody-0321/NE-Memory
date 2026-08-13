@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-13 | 56 个文档 | 50% 完成
+> 自动生成 | 2026-08-13 | 57 个文档 | 49% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -44,6 +44,7 @@
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `state-template-sync-fix.md` | ❓ 未知 | — | — | State-Template 同步修复计划 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
+| `stm-inline-edit-stacked-layout.md` | 🔄 进行中 | 2026-07-24 | 2026-07-24 | STM 行编辑模式 — 字段纵向分行布局 |
 | `stm-structure-finalize.md` | ✅ 已完成 | 2026-07-23 | 2026-07-23 | STM 结构重构收尾计划：编辑模式 + 注入 + 测试 |
 | `stm-structure-refactor.md` | 🔄 进行中 | 2026-07-23 | 2026-07-23 | STM 结构重构：present_characters 与 character_psyche 提升为正式字段 |
 | `template-copy-management-plan.md` | ❓ 未知 | — | — | 模板副本管理：删除 + 去重 + UI 简化 |
@@ -67,6 +68,6 @@
 
 ### 统计
 - ✅ 已完成：28
-- 🔄 进行中：10
+- 🔄 进行中：11
 - ⏳ 未开始：3
 - ❓ 未标记：15

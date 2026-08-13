@@ -2,6 +2,7 @@
 
 ## Bug 修复
 
+- **启用自适应上下文控制后"一发消息就卡死"（空转死循环）**：对话初期 vault 记忆为空 → `_neCachedMemoryVault` 无缓存，`expandLayers`/`compressLayers` 选中 memory_vault 层后无分支可执行，`totalTokens` 永不变化 → 无限循环冻结主线程（7.2 曾以 `maxIterations` 兜底，仅把卡死降级为每次空转 100-200 轮）。已加 no-progress 检测（本轮 token 无变化即 break）+ layers 源头过滤（无缓存层不入候选），根治空转
 - **access 工具消息引用崩溃**：`[→msgId]` 引用未声明变量（ReferenceError），`msg#N`/裸数字引用且消息存在时 100% 失败。已改为 `numId` 回显引用数字（根因：`55f21c7` 改名时漏改此用法）
 - **裸数字消息查找 O(1) 化**：`findMessageInChat` 支持裸数字输入（`"95"`/`"msg#95"`），走数组下标 O(1) 反问 + id 身份校验，漂移时回退全量扫描，真正接入统一消息索引的 idx 前缀能力；顺带修复 `!msgId` 守卫误拦合法下标 0 的边界
 - **设置保存必然报错**：panel-settings.js 引用 `setRetrievalEnabled` 但从未 import，每次保存设置抛 ReferenceError，channels 模式下 API 通道配置/neSyncAll 全部不落盘。已补 import

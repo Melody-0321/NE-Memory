@@ -668,6 +668,62 @@ var p3FirstBlock = (async function() {
     resetAdaptiveCache();
 })();
 
+// === 回归：memoryVault 无缓存（对话初期）不得空转 ===
+// 历史根因：对话初期 vault 记忆为空 → _neCachedMemoryVault=null，
+// expand/compress 选中 memory_vault 层后无分支可执行 → 无限循环（7.0 起"一发消息就卡死"）。
+// 7.2 用 maxIterations 兜底降级为空转；本次加 no-progress break + layers 源头过滤根治。
+
+// N1: expandLayers 选中 memory_vault 但无缓存 → 单轮退出（no-progress break 兜底）
+(async function() {
+    resetAdaptiveCache();  // 确保 _neCachedMemoryVault === null
+    var reads = 0;
+    var layers = [
+        { name: 'dialog', current: 4, floor: 4, ceiling: 10 },
+        // getter 计数选层读取次数：空转 100 轮会读 ~100 次，单轮退出仅 1-2 次
+        { name: 'memory_vault', get current() { reads++; return 0; }, floor: 150, ceiling: 2000 }
+    ];
+    mockSillyTavernCtx();
+    var ctx = SillyTavern.getContext();
+    // totalTokens=100 << lowerThreshold=1000 → 进入 expand；memory_vault 无缓存 → 无分支 → break
+    await expandLayers([], layers, 100, 1000, ctx, false);
+    ok(reads < 50, 'N1 expand 选中无缓存层应立即退出（选层读取 ' + reads + ' 次，空转会 ≥100）');
+    clearSillyTavern();
+    resetAdaptiveCache();
+})();
+
+// N2: compressLayers 选中无分支层 → 单轮退出（no-progress break 兜底）
+(async function() {
+    resetAdaptiveCache();
+    var reads = 0;
+    var unknownLayer = { name: 'ghost', get current() { reads++; return 1000; }, floor: 100, ceiling: 2000 };
+    mockSillyTavernCtx();
+    var ctx = SillyTavern.getContext();
+    // totalTokens=5000 >> budget=100 → 进入 compress；ghost 层无任何分支 → totalTokens 不变 → break
+    await compressLayers([], [unknownLayer], 5000, 100, [], ctx, false);
+    ok(reads < 100, 'N2 compress 选中无分支层应立即退出（选层读取 ' + reads + ' 次，空转会 ≥200）');
+    clearSillyTavern();
+    resetAdaptiveCache();
+})();
+
+// N3: 对话初期完整路径（仅有 stateTable 缓存、memoryVault 为空）→ expand 不修改 chat
+(async function() {
+    resetAdaptiveCache();
+    var chat = buildDialogChat(2, 30);  // 少量对话 → totalTokens 远低于 goldenLower → expand 触发
+    var beforeLen = chat.length;
+    setAdaptiveCache({ stateTable: '[State Table]', stateTableTokens: 20 });  // 只设 stateTable
+    mockSillyTavernCtx({
+        maxContext: 999999,  // 大模型：goldenLower ≈ 299910 → totalTokens 必 < lower → 走 expand
+        maxTokens: 300,
+        tokenCounter: function(text) { return Math.ceil((text || '').length / 4); }
+    });
+    localStorage.setItem('ne_settings', JSON.stringify({ dialogWindowRounds: 10 }));
+    await adaptContextPostTrim(chat, false);
+    eq(chat.length, beforeLen, 'N3 对话初期无 memoryVault 缓存时 chat 不变（不空转不误改）');
+    clearSillyTavern();
+    localStorage.clear();
+    resetAdaptiveCache();
+})();
+
 // === 汇总 ===
 // async 测试块的断言在 microtask 阶段执行，晚于顶层同步代码（汇总行无法在同步处
 // 捕获 async 失败）。用 setTimeout 推迟到事件循环下一 tick，确保计数完整后再判定退出码。

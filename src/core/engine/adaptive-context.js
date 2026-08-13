@@ -138,6 +138,8 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
     var vaultTokensST = null;
     while (totalTokens > totalBudget && iter < maxIterations) {
         iter++;
+        // 无收益防护：记录本轮起始 token 数，循环末尾对比，无变化则退出
+        var beforeTotal = totalTokens;
         var maxSat = -Infinity, pick = null;
         for (var i = 0; i < layers.length; i++) {
             var l = layers[i];
@@ -186,6 +188,8 @@ export async function compressLayers(chat, layers, totalTokens, totalBudget, dia
             vaultTokensST = newVaultTokensST;
             pick.current = countTokens(newContent);
         }
+        // 无收益防护：本轮无任何 token 变化（选中层无缓存/无内容可压缩）→ 无法收敛，退出避免空转
+        if (totalTokens === beforeTotal) break;
     }
 }
 
@@ -198,6 +202,8 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
     var iter = 0;
     while (totalTokens < lowerThreshold && iter < maxIterations) {
         iter++;
+        // 无收益防护：记录本轮起始 token 数，循环末尾对比，无变化则退出
+        var beforeTotal = totalTokens;
         var minSat = Infinity, pick = null;
         for (var i = 0; i < layers.length; i++) {
             var l = layers[i];
@@ -212,6 +218,8 @@ export async function expandLayers(chat, layers, totalTokens, lowerThreshold, ct
             pick.current = pick.ceiling;
             continue;
         }
+        // 无收益防护：选中层无缓存/无可扩张内容 → totalTokens 无法上升 → 退出避免空转
+        if (totalTokens === beforeTotal) break;
     }
 }
 
@@ -278,8 +286,12 @@ export async function adaptContextPostTrim(chat, dryRun) {
 
     var layers = [
         { name: 'dialog', current: dialogRounds, floor: 4, ceiling: dialogCeiling },
-        { name: 'memory_vault', current: _neCachedMemoryVaultTokens, floor: 150, ceiling: 2000 },
     ];
+    // 源头加固：memoryVault 无缓存（对话初期 vault 记忆为空）时不作为可变层，
+    // 否则 expand 会选中它却无内容可扩张，白跑循环（"一发消息就卡死"根因之一）
+    if (_neCachedMemoryVault) {
+        layers.push({ name: 'memory_vault', current: _neCachedMemoryVaultTokens, floor: 150, ceiling: 2000 });
+    }
 
     var action = 'none';
     if (totalTokens > goldenUpper) {
