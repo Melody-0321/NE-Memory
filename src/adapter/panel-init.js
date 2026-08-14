@@ -103,6 +103,14 @@ export async function renderVaultPanel(getChatId) {
             '<span id="ne_pin_usage" class="ne-pin-icon" title="' + t('Usage Statistics') + '" style="font-size:0.78em;color:var(--grey-60);cursor:pointer;white-space:nowrap;">\u{1F4CA} --</span>' +
             '<span id="ne_pin_settings" class="ne-pin-icon" title="' + t('Settings & Data Management') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u2699</span>' +
             '</div></div>' +
+            // ── 仅摘要模式警示条 ──
+            '<div id="ne_summary_only_notice" class="ne-summary-only-notice" style="display:none;">' +
+                '<span class="ne-summary-only-icon">\u{1F441}\u200D\u23EC</span>' +
+                '<div class="ne-summary-only-copy">' +
+                    '<strong>' + t('summary_only_notice_title') + '</strong>' +
+                    '<p>' + t('summary_only_notice_body') + '</p>' +
+                '</div>' +
+            '</div>' +
             '<div class="ne-vault-tab-bar">' +
             '<div class="ne-vault-tab active" data-tab="state">\u{1F4CB} ' + t('State') + '</div>' +
             '<div class="ne-vault-tab" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
@@ -140,6 +148,11 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_faction_block_container"></div>' +
+            '</div></div>' +
+            '<div class="ne-accordion" id="ne-acc-suspense">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('suspense_section_title') + ' <span id="ne-suspense-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_suspense_block_container"></div>' +
             '</div></div>' +
             '</div>' +
             // ── Memory tab ──
@@ -483,6 +496,19 @@ export async function renderVaultPanel(getChatId) {
                     qCard.classList.toggle('open');
                     qDetail.style.display = qCard.classList.contains('open') ? 'block' : 'none';
                     if (qToggle) qToggle.textContent = qCard.classList.contains('open') ? '\u25BE' : '\u25B6';
+                }
+                return;
+            }
+            // Suspense card toggle
+            var suspenseHeader = target.closest('.ne-suspense-header');
+            if (suspenseHeader) {
+                var sCard = suspenseHeader.closest('.ne-suspense-card');
+                var sDetail = sCard ? sCard.querySelector('.ne-suspense-detail') : null;
+                var sToggle = suspenseHeader.querySelector('.ne-suspense-toggle');
+                if (sDetail && sCard) {
+                    sCard.classList.toggle('open');
+                    sDetail.style.display = sCard.classList.contains('open') ? 'block' : 'none';
+                    if (sToggle) sToggle.textContent = sCard.classList.contains('open') ? '\u25BE' : '\u25B6';
                 }
                 return;
             }

@@ -172,7 +172,9 @@ export async function callMemoryLLM(messages, options = {}) {
 
     var TOKEN_OP_MAP = {
         stm_extract: 'tok_stm',
-        ltm_decision: 'tok_ltm', ltm_decision_retry: 'tok_ltm', ltm_rebatch: 'tok_ltm',
+        ltm_decision: 'tok_consolidate', ltm_decision_retry: 'tok_consolidate', ltm_rebatch: 'tok_consolidate',
+        meta_ltm_decision: 'tok_consolidate', meta_ltm_decision_retry: 'tok_consolidate',
+        suspense_extract: 'tok_consolidate', suspense_extract_retry: 'tok_consolidate',
         state_extract: 'tok_state', faction_discovery: 'tok_state',
         scheme_discovery: 'tok_tool', template_scheme: 'tok_tool', template_proposal: 'tok_tool',
         access: 'tok_tool', recall_memory: 'tok_tool', init_power_slots: 'tok_tool'
@@ -309,7 +311,7 @@ function resolvePipelineApi(operation) {
     var channelKey = null;
     if (operation === 'stm_extract' || operation === 'stm_boundary') {
         channelKey = 'ne_stm_api';
-    } else if (operation && (operation.startsWith('ltm_') || operation === 'ltm_rebatch')) {
+    } else if (operation && (operation.startsWith('ltm_') || operation.startsWith('meta_ltm_') || operation.startsWith('suspense_'))) {
         channelKey = 'ne_ltm_api';
     } else if (operation === 'state_extract' || operation === 'scheme_discovery' || operation === 'faction_discovery') {
         channelKey = 'ne_state_api';

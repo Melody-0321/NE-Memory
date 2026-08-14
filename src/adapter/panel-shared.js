@@ -99,6 +99,11 @@ export function injectBottomDrawerCSS() {
         '.ne-vault-collapse-chevron{margin-left:4px;color:var(--SmartThemeBorderColor);font-size:10px;opacity:.6;}' +
         '.ne-vault-scroll-area{flex:1;overflow-y:auto;overflow-x:hidden;padding:0 12px 12px;min-height:0;}' +
         '.ne-vault-pin-row{display:flex;align-items:center;padding:0 0 8px;min-height:24px;}' +
+        '.ne-summary-only-notice{display:flex;align-items:flex-start;gap:8px;margin:0 12px 4px;padding:8px 10px;border:1px solid var(--ne-warning,var(--yellow40,#e6a817));border-radius:6px;background:var(--black20a);box-shadow:inset 3px 0 0 var(--ne-warning,var(--yellow40,#e6a817));}' +
+        '.ne-summary-only-icon{flex:0 0 auto;display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border:1px solid var(--ne-warning,var(--yellow40,#e6a817));border-radius:4px;color:var(--ne-warning,var(--yellow40,#e6a817));font-size:13px;}' +
+        '.ne-summary-only-copy{min-width:0;}' +
+        '.ne-summary-only-copy strong{display:block;color:var(--ne-warning,var(--yellow40,#e6a817));font-size:0.82em;line-height:1.3;}' +
+        '.ne-summary-only-copy p{margin:2px 0 0;color:var(--grey50,#888);font-size:0.7em;line-height:1.45;}' +
         '.ne-vault-tab-bar{display:flex;gap:2px;padding:0 12px 6px;border-bottom:1px solid var(--SmartThemeBorderColor);margin-bottom:4px;}' +
         '.ne-vault-tab{flex:1;text-align:center;padding:8px 0;cursor:pointer;font-size:0.9em;color:var(--grey-70);border-bottom:2px solid transparent;transition:color .15s,border-color .15s;user-select:none;}' +
         '.ne-vault-tab:hover{color:var(--text,#ddd);}' +
@@ -202,6 +207,13 @@ export function injectBottomDrawerCSS() {
         '.ne-state-badge.friendly{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
         '.ne-state-badge.hostile{background:var(--ne-danger-bg);color:var(--ne-danger);border:1px solid var(--ne-danger-border);}' +
         '.ne-state-badge.neutral{background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);}' +
+        '.ne-state-badge.suspense-open{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
+        '.ne-state-badge.suspense-resolved{background:var(--black50a);color:var(--ne-muted);border:1px solid var(--grey-50);}' +
+        '.ne-state-badge.suspense-abandoned{background:var(--black50a);color:var(--grey-50);border:1px solid var(--grey-50);}' +
+        '.ne-state-badge.cat-mystery{background:var(--black30a);color:var(--ne-info);border:1px solid var(--ne-info);}' +
+        '.ne-state-badge.cat-threat{background:var(--black30a);color:var(--ne-danger);border:1px solid var(--ne-danger);}' +
+        '.ne-state-badge.cat-promise{background:var(--black30a);color:#e2b714;border:1px solid #e2b714;}' +
+        '.ne-state-badge.cat-foreshadow{background:var(--black30a);color:#a855f7;border:1px solid #a855f7;}' +
         '.ne-char-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
         '.ne-char-card.status-active{border-left-color:var(--ne-success);}' +
         '.ne-char-card.status-inactive{border-left-color:var(--ne-warning);}' +
@@ -239,6 +251,17 @@ export function injectBottomDrawerCSS() {
         '.ne-quest-toggle{font-size:0.8em;}' +
         '.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
         '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
+        '.ne-suspense-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
+        '.ne-suspense-card.cat-mystery{border-left-color:var(--ne-info);}' +
+        '.ne-suspense-card.cat-threat{border-left-color:var(--ne-danger);}' +
+        '.ne-suspense-card.cat-promise{border-left-color:#e2b714;}' +
+        '.ne-suspense-card.cat-foreshadow{border-left-color:#a855f7;}' +
+        '.ne-suspense-card.status-resolved,.ne-suspense-card.status-abandoned{opacity:0.65;}' +
+        '.ne-suspense-header{display:flex;align-items:center;gap:6px;}' +
+        '.ne-suspense-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
+        '.ne-suspense-card.open>.ne-suspense-detail{display:block;}' +
+        '.ne-suspense-meta{color:var(--grey-50);font-size:0.78em;margin-top:3px;}' +
+        '.ne-suspense-resolution{color:var(--grey-50);font-style:italic;margin-top:4px;padding:4px 6px;background:var(--black10a);border-radius:3px;}' +
         '.ne-settings-save-btn{margin-top:12px;padding:8px 24px;background:var(--black50a);color:var(--text);border:1px solid var(--SmartThemeBorderColor);border-radius:4px;cursor:pointer;font-size:0.95em;}' +
         '.ne-settings-save-btn:hover{background:var(--black70a);}' +
         '.ne-settings-cascade{margin-left:16px;padding-left:8px;border-left:2px solid var(--black30a);}' +
@@ -255,6 +278,9 @@ export function injectBottomDrawerCSS() {
         '.ne-settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px 12px;}' +
         '.ne-settings-grid input, .ne-settings-grid select, .ne-settings-grid textarea{width:100%;padding:6px 10px;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--text);font-size:0.9em;box-sizing:border-box;}' +
         '.ne-settings-grid>.ne-settings-full{grid-column:1/-1;}' +
+        '.ne-seg-btn{flex:1;padding:5px 6px;cursor:pointer;border:1px solid var(--SmartThemeBorderColor);border-radius:4px;background:var(--black30a);color:var(--SmartThemeBodyColor);font-size:0.8em;text-align:center;}' +
+        '.ne-seg-btn:hover{border-color:var(--SmartThemeBorderColor);color:var(--text);}' +
+        '.ne-seg-btn.active{background:var(--ne-success);border-color:var(--ne-success);color:#fff;font-weight:bold;}' +
         '.ne-settings-cascade-card{background:var(--black10a);border-left:3px solid var(--SmartThemeBorderColor);border-radius:0 4px 4px 0;padding:4px 8px;margin-left:12px;margin-top:4px;}' +
         '.ne-settings-toggle-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 12px;padding:6px 8px;background:var(--black10a);border:1px solid var(--SmartThemeBorderColor);border-radius:6px;margin:4px 0 6px;}' +
         '.ne-settings-toggle-grid label{padding:3px 0 !important;font-size:0.85em !important;}' +
@@ -316,11 +342,11 @@ export function injectBottomDrawerCSS() {
         '.ne_vault_btn_small{padding:4px 10px;}' +
         '.ne_vault_btn_tiny{padding:4px 8px;}' +
         // ── L2: Chevron toggle unified animations ──
-        '.ne-char-toggle,.ne-faction-toggle,.ne-quest-toggle{display:inline-block;transition:transform var(--ne-transition-normal);font-size:10px;margin-right:4px;cursor:pointer;user-select:none;}' +
-        '.ne-char-toggle:focus-visible,.ne-faction-toggle:focus-visible,.ne-quest-toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}' +
-        '.ne-char-card.open .ne-char-toggle,.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle,.ne-quest-card.open .ne-quest-toggle{transform:rotate(90deg);}' +
+        '.ne-char-toggle,.ne-faction-toggle,.ne-quest-toggle,.ne-suspense-toggle{display:inline-block;transition:transform var(--ne-transition-normal);font-size:10px;margin-right:4px;cursor:pointer;user-select:none;}' +
+        '.ne-char-toggle:focus-visible,.ne-faction-toggle:focus-visible,.ne-quest-toggle:focus-visible,.ne-suspense-toggle:focus-visible{outline:2px solid var(--ne-info);outline-offset:2px;}' +
+        '.ne-char-card.open .ne-char-toggle,.ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle,.ne-quest-card.open .ne-quest-toggle,.ne-suspense-card.open .ne-suspense-toggle{transform:rotate(90deg);}' +
         // ── L2: Card header keyboard focus ──
-        '.ne-char-card-header:focus-visible,.ne-faction-card-header:focus-visible,.ne-quest-header:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}' +
+        '.ne-char-card-header:focus-visible,.ne-faction-card-header:focus-visible,.ne-quest-header:focus-visible,.ne-suspense-header:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}' +
         // ── L2: PC/NPC badge ──
         '.ne-char-type{display:inline-block;padding:1px 7px;border-radius:3px;font-size:0.75em;font-weight:bold;margin-left:6px;}' +
         '.ne-char-type-pc{background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);}' +
@@ -654,7 +680,10 @@ export function injectBottomDrawerCSS() {
         mobileSel + ' .ne-unified-section.ne-mobile-active{display:block;flex:1;overflow-y:auto;}' +
         mobileSel + ' .ne-mobile-zone-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
         mobileSel + ' .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
-        '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}';
+        '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}' +
+        // 楼内面板"在主面板查看"定位高亮
+        '@keyframes ne-fp-flash{0%,100%{background:transparent}50%{background:var(--SmartThemeQuoteColor,#ffeb3b);opacity:0.3}}' +
+        '.ne-fp-highlight{animation:ne-fp-flash 1s ease-in-out 2}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 
     // Modal CSS must also be in PD.head (main document) since modals are appended to PD.body

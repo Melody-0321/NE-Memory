@@ -97,7 +97,8 @@ export var PRESET_FIELDS = {
     },
     social: {
         affection:       { type: 'number', min: 0, max: 100, required: false, category: 'social' },
-        relationship:    { type: 'string', max_length: 50,  required: false, category: 'social' }
+        relationship:    { type: 'string', max_length: 50,  required: false, category: 'social' },
+        ties:            { type: 'string', max_length: 200, required: false, category: 'social' }
     },
     battle: {
         injuries:        { type: 'string', max_length: 120, required: false, category: 'battle' },

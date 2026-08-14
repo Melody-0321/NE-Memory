@@ -65,12 +65,12 @@ function _bindCardToggleKeyNav() {
         if (path) {
             for (var i = 0; i < path.length; i++) {
                 if (path[i] && path[i].closest) {
-                    target = path[i].closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+                    target = path[i].closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-suspense-header, .ne-accordion-header');
                     if (target) break;
                 }
             }
         } else {
-            target = e.target.closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-accordion-header');
+            target = e.target.closest('.ne-char-card-header, .ne-faction-card-header, .ne-quest-header, .ne-suspense-header, .ne-accordion-header');
         }
         if (!target) return;
         if (target.closest('input, textarea, select, button')) return;

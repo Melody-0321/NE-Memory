@@ -22,8 +22,19 @@ import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
 import { neRestoreAll } from '../core/settings-adapter.js';
 import { applyChatCompletionPatch } from './chat-completion-patch.js';
+import { registerPublicApi } from './public-api.js';
+import { initFloorPanel, destroyFloorPanel, onFloorPanelSettingChanged } from './floor-panel.js';
+import { on as busOn, off as busOff } from './stateBus.js';
 
 var _retryTimer = null;
+
+// 楼内面板开关变化 handler（来自 panel-settings.js 的 busEmit）
+var _onFloorPanelToggle = function(payload) {
+    try {
+        var enabled = payload && payload.enabled;
+        onFloorPanelSettingChanged(enabled);
+    } catch (e) { console.warn('[NE] floor panel toggle failed:', e); }
+};
 
 function getChatId() {
     try {
@@ -243,6 +254,20 @@ async function init() {
     try { await applyChatCompletionPatch(); } catch (e) { console.warn('[NE] ChatCompletion patch failed:', e.message); }
 
     await _bootstrapVault(chatId, locale, settings);
+
+    // 注册公开只读 API（window.neMemory + /ne-get slash + {{neState}} 宏）
+    try { await registerPublicApi(); } catch (e) { console.warn('[NE] public API registration failed:', e); }
+
+    // 楼内摘要面板（默认关闭，按设置开关启动）
+    try {
+        var fpSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}');
+        if (fpSettings.floorPanelEnabled) {
+            initFloorPanel(getChatId);
+        }
+    } catch (e) { console.warn('[NE] floor panel init failed:', e); }
+
+    // 监听设置开关变化（来自 panel-settings.js 的 busEmit）
+    busOn('ne:floor-panel-toggle', _onFloorPanelToggle);
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {
@@ -567,7 +592,7 @@ function _buildDebugApi() {
     var api = {
         getLastInjection: function() { return globalThis.__ne_debug_last_injection || null; },
         getVaultState: async function() {
-            try { var v = await readVault(getChatId()); return v && v.content ? v.content.state : null; } catch (e) { return null; }
+            try { var v = await readVault(getChatId()); if (!v || !v.content) return null; return JSON.parse(JSON.stringify(v.content.state)); } catch (e) { return null; }
         },
         getVaultSummary: async function() {
             try {

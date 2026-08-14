@@ -8,7 +8,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml, getPanelRoot } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
-import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
+import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML, renderSuspensePanelHTML,
   renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
 // ── UIP-1: 区块渲染输入签名缓存（undefined = 从未渲染，首次必渲染） ──
@@ -76,6 +76,16 @@ export async function updateVaultViewerPopout(getChatId) {
         setUpdatingPopout(false);
         return;
     }
+
+    // ── 仅摘要模式警示条显隐 ──
+    try {
+        var summaryNoticeEl = panelById('ne_summary_only_notice');
+        if (summaryNoticeEl) {
+            var _neSettings = {};
+            try { var _raw = localStorage.getItem('ne_settings'); if (_raw) _neSettings = JSON.parse(_raw); } catch (e) {}
+            summaryNoticeEl.style.display = _neSettings.summaryOnlyMode === true ? '' : 'none';
+        }
+    } catch (e) { _logSection('header', e); }
 
     // ── Section A: Scene info (State tab) ──
     try {
@@ -184,6 +194,20 @@ export async function updateVaultViewerPopout(getChatId) {
         }
     } catch (e) { _logSection('quest-block', e); }
 
+    // ── Section E2: Suspense ledger block ──
+    try {
+        var suspenseContainer = panelById('ne_suspense_block_container');
+        if (suspenseContainer) {
+            var suspenseHtml = renderSuspensePanelHTML(c);
+            var suspenseFinalHtml = suspenseHtml || emptyStateHtml('\u{1F4D4}', t('suspense_no_hooks'), t('suspense_ledger_enabled_desc'));
+            if (suspenseFinalHtml !== _renderCache.suspense) {
+                suspenseContainer.innerHTML = suspenseFinalHtml;
+                _renderCache.suspense = suspenseFinalHtml;
+                _anyBlockChanged = true;
+            }
+        }
+    } catch (e) { _logSection('suspense-block', e); }
+
     // ── Section F: STM index + self-heal ──
     var stmIndexMap = {};
     try {
@@ -275,6 +299,12 @@ export async function updateVaultViewerPopout(getChatId) {
         if (questCountEl) questCountEl.textContent = '\u00B7 ' + questCount;
         var factionCountEl = panelById('ne-faction-count');
         if (factionCountEl) factionCountEl.textContent = '\u00B7 ' + factionCount;
+        var suspenseCountEl = panelById('ne-suspense-count');
+        if (suspenseCountEl) {
+            var suspenseEntries = Array.isArray(c.suspense_entries) ? c.suspense_entries : [];
+            var openCount = suspenseEntries.filter(function(e) { return e.status === 'open'; }).length;
+            suspenseCountEl.textContent = '\u00B7 ' + openCount + ' ' + t('suspense_status_open');
+        }
 
         var chatId = getChatId();
         renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, c.state && Object.keys(c.state).length > 0, chatId);

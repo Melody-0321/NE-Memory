@@ -7,6 +7,7 @@ preconditions:
   - NE-Memory 已初始化，SmartPush 启用，State Schema 已开启
   - 副 API 可用
   - stmBatch >= 4
+  - stmMaxUnconsolidated = 5（默认值；调大后 8 轮内 STM 可能不达阈值，LTM 断言必然失败）
 structural:
   - { op: exists, target: smartpush_injection }
   - { op: min_length, target: smartpush_injection, value: 50 }
@@ -47,6 +48,7 @@ timeoutPerRound: 120000
 - State Schema 已开启
 - 副 API 可用
 - stmBatch >= 4
+- stmMaxUnconsolidated = 5（默认值；调大后 8 轮内 STM 可能不达阈值，LTM 断言必然失败）
 
 ## 对话设计
 Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
@@ -71,7 +73,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `not_contains: pipeline_changes error` | State 无报错 |
 | `exists: state_block_instruction` | 注入指令存在 |
 | `min_length: state_block_instruction >= 20` | 指令非空 |
-| `equals: truncation_count = 0` | 无 completion 截断（completion_tokens < 2048） |
+| `equals: truncation_count = 0` | 无 completion 截断（completion_tokens 达 4096 上限且响应无法解析为 JSON） |
 | `equals: fallback_count = 0` | 无 fallback 到 TavernHelper |
 
 ### 语义性断言（1 条）

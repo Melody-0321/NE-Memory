@@ -14,6 +14,35 @@ import { getActiveChain, listStateDeltas, listMemoryVersions } from '../core/vau
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { initTestRunner } from './panel-tools.js';
 
+// === STM 摘要三档档位（存储仍写 stmSummaryRatio，管线读取零改动）===
+var _detailLevelToRatio = { concise: 0.03, standard: 0.05, detailed: 0.10 };
+var _detailBtnIds = ['nes_stm_detail_concise', 'nes_stm_detail_standard', 'nes_stm_detail_detailed'];
+/** 把存量的 stmSummaryRatio 归一到最近档位 */
+function currentDetailLevel(ratio) {
+    var r = Number(ratio) || 0.05;
+    if (r <= 0.04) return 'concise';
+    if (r <= 0.075) return 'standard';
+    return 'detailed';
+}
+/** 点击三档按钮后高亮切换（active 类只落在一个按钮上） */
+function setActiveDetailButton(btnId) {
+    for (var i = 0; i < _detailBtnIds.length; i++) {
+        var el = panelById(_detailBtnIds[i]);
+        if (el) {
+            if (_detailBtnIds[i] === btnId) el.classList.add('active');
+            else el.classList.remove('active');
+        }
+    }
+}
+/** 读取当前高亮按钮对应的档位名，无高亮返回 null */
+function activeDetailLevel() {
+    for (var i = 0; i < _detailBtnIds.length; i++) {
+        var el = panelById(_detailBtnIds[i]);
+        if (el && el.classList.contains('active')) return _detailBtnIds[i].substring(_detailBtnIds[i].lastIndexOf('_') + 1);
+    }
+    return null;
+}
+
 export function renderSettingsTab() {
     var container = panelById('ne_common_settings');
     var advContainer = panelById('ne_advanced_settings');
@@ -49,6 +78,34 @@ export function renderSettingsTab() {
                 '<input type="checkbox" id="nes_adaptive_context_control" ' + (settings.adaptiveContextControl ? 'checked' : '') + '> ' + t('adaptive_context_control') +
             '</label>' +
             '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('adaptive_context_control_desc') + '</div>' +
+        '</div>' +
+        // === 仅摘要模式 开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--ne-warning,var(--yellow40,#e6a817));border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_summary_only_mode" ' + (settings.summaryOnlyMode ? 'checked' : '') + '> ' + t('summary_only_mode') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('summary_only_mode_desc') + '</div>' +
+        '</div>' +
+        // === 楼内摘要面板 开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_floor_panel_enabled" ' + (settings.floorPanelEnabled ? 'checked' : '') + '> ' + t('floor_panel_enabled') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('floor_panel_enabled_desc') + '</div>' +
+        '</div>' +
+        // === Meta-LTM 跨弧摘要 开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_meta_ltm_enabled" ' + (settings.metaLtmEnabled ? 'checked' : '') + '> ' + t('meta_ltm_enabled') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('meta_ltm_enabled_desc') + '</div>' +
+        '</div>' +
+        // === 悬念簿 开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_suspense_enabled" ' + (settings.suspenseLedgerEnabled ? 'checked' : '') + '> ' + t('suspense_ledger_enabled') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('suspense_ledger_enabled_desc') + '</div>' +
         '</div>' +
         // === Dialog Rounds（两种模式都显示，描述文字切换）===
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span id="nes_dialog_rounds_label">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control')) + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
@@ -102,9 +159,17 @@ export function renderSettingsTab() {
             '<input type="range" id="nes_ph_batch_slider" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(100 * Math.log10(((settings.phBatchChars || 4000) / 1000)) / Math.log10(8)))) + '" style="flex:1;">' +
         '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Ratio') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '%</span></div>' +
-        '<input type="range" id="nes_stm_summary_ratio" min="1" max="20" step="1" value="' + Math.round((settings.stmSummaryRatio || 0.05) * 100) + '" style="width:100%;">' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Target compression ratio for STM event summaries. Based on input text length per segment. 5% means ~50 chars output for 1000 chars input. Lower = shorter summaries, higher = more detail retained.') + '</div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Detail') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((_detailLevelToRatio[currentDetailLevel(settings.stmSummaryRatio)] || 0.05) * 100) + '%</span></div>' +
+        '<div style="display:flex;gap:6px;margin:0 0 4px;">' +
+            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'concise' ? ' active' : '') + '" id="nes_stm_detail_concise">' + t('Concise') + '</button>' +
+            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'standard' ? ' active' : '') + '" id="nes_stm_detail_standard">' + t('Standard') + '</button>' +
+            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'detailed' ? ' active' : '') + '" id="nes_stm_detail_detailed">' + t('Detailed') + '</button>' +
+        '</div>' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM Summary Detail Description') + '</div>' +
+        // === 内容清洗（读取时清洗，不改 vault 原文）===
+        '<div style="margin:8px 0 4px;"><span>' + t('Content Cleaning') + '</span></div>' +
+        '<input type="text" id="nes_custom_strip_tags" placeholder="think, analysis" value="' + escapeHtml((settings.customStripTags || []).join(', ')) + '" style="width:100%;">' +
+        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Content Cleaning Description') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion" id="ne-set-api">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot" style="font-size:0.7em;margin-left:4px;color:var(--ne-success);display:none;">\u25CF</span></div>' +
@@ -289,8 +354,12 @@ export function renderSettingsTab() {
     var _phSync = false;
     if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; _debouncedSaveSettingsTab(); }; }
     if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(1000, Math.min(8000, Math.round((Number(phInput.value) || 4000) / 500) * 500)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = Math.round(100 * Math.log10(v / 1000) / Math.log10(8)); _phSync = false; saveSettingsTab(); }; }
-    var srEl = panelById('nes_stm_summary_ratio');
-    if (srEl) { srEl.oninput = function () { var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = srEl.value + '%'; _debouncedSaveSettingsTab(); }; }
+    for (var dbi = 0; dbi < _detailBtnIds.length; dbi++) {
+        (function (btnId) {
+            var dbEl = panelById(btnId);
+            if (dbEl) { dbEl.onclick = function () { setActiveDetailButton(btnId); var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = Math.round(_detailLevelToRatio[activeDetailLevel()] * 100) + '%'; _debouncedSaveSettingsTab(); }; }
+        })(_detailBtnIds[dbi]);
+    }
     var cwEl = panelById('nes_dialog_window_rounds');
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; _debouncedSaveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
@@ -318,6 +387,42 @@ export function renderSettingsTab() {
             if (labelEl) labelEl.textContent = isOn ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control');
             var descEl = panelById('nes_dialog_rounds_desc');
             if (descEl) descEl.textContent = isOn ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.');
+            saveSettingsTab();
+        };
+    }
+    // 仅摘要模式 开关：保存 + 切换面板顶部警示条
+    var summaryOnlyEl = panelById('nes_summary_only_mode');
+    if (summaryOnlyEl) {
+        summaryOnlyEl.onchange = function () {
+            saveSettingsTab();
+            // 同步面板顶部警示条显隐
+            var noticeEl = panelById('ne_summary_only_notice');
+            if (noticeEl) noticeEl.style.display = summaryOnlyEl.checked ? '' : 'none';
+            if (summaryOnlyEl.checked) {
+                showToast(t('summary_only_notice_title'), 'warning');
+            }
+        };
+    }
+    // 楼内摘要面板 开关：保存 + 动态挂载/卸载
+    var floorPanelEl = panelById('nes_floor_panel_enabled');
+    if (floorPanelEl) {
+        floorPanelEl.onchange = function () {
+            saveSettingsTab();
+            // 通过 StateBus 通知 index.js 响应（避免直接 import 循环）
+            busEmit('ne:floor-panel-toggle', { enabled: floorPanelEl.checked });
+        };
+    }
+    // Meta-LTM 跨弧摘要 开关：保存
+    var metaLtmEl = panelById('nes_meta_ltm_enabled');
+    if (metaLtmEl) {
+        metaLtmEl.onchange = function () {
+            saveSettingsTab();
+        };
+    }
+    // 悬念簿 开关：保存
+    var suspenseEl = panelById('nes_suspense_enabled');
+    if (suspenseEl) {
+        suspenseEl.onchange = function () {
             saveSettingsTab();
         };
     }
@@ -707,6 +812,14 @@ function saveSettingsTab() {
         settings.dialogOverrideEnabled = panelById('nes_dialog_override_enabled').checked;
     if (panelById('nes_adaptive_context_control'))
         settings.adaptiveContextControl = panelById('nes_adaptive_context_control').checked;
+    if (panelById('nes_summary_only_mode'))
+        settings.summaryOnlyMode = panelById('nes_summary_only_mode').checked;
+    if (panelById('nes_floor_panel_enabled'))
+        settings.floorPanelEnabled = panelById('nes_floor_panel_enabled').checked;
+    if (panelById('nes_meta_ltm_enabled'))
+        settings.metaLtmEnabled = panelById('nes_meta_ltm_enabled').checked;
+    if (panelById('nes_suspense_enabled'))
+        settings.suspenseLedgerEnabled = panelById('nes_suspense_enabled').checked;
     if (panelById('nes_golden_context_tier'))
         settings.goldenContextTier = panelById('nes_golden_context_tier').value;
     if (panelById('nes_api_channels_enabled'))
@@ -719,8 +832,12 @@ function saveSettingsTab() {
     if (phInput2) {
         settings.phBatchChars = Math.max(1000, Math.min(8000, Number(phInput2.value) || 4000));
     }
-    if (panelById('nes_stm_summary_ratio'))
-        settings.stmSummaryRatio = Number(panelById('nes_stm_summary_ratio').value) / 100;
+    var detailActive = activeDetailLevel();
+    if (detailActive && _detailLevelToRatio[detailActive]) settings.stmSummaryRatio = _detailLevelToRatio[detailActive];
+    var stripEl = panelById('nes_custom_strip_tags');
+    if (stripEl) {
+        settings.customStripTags = stripEl.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
+    }
 
     settings.memoryConfig = settings.memoryConfig || {};
     if (panelById('nes_extraction_temperature')) {

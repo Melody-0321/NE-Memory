@@ -7,6 +7,8 @@ import { neSync } from '../settings-adapter.js';
 import { runtime } from '../runtime.js';
 import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
 import { processToolCalls } from './template-llm.js';
+import { cleanMessageText } from './content-clean.js';
+import { readNeSettingsCached } from '../settings.js';
 
 function buildCharacterCardSection(vault) {
     var chars = runtime.getCharacters();
@@ -76,6 +78,7 @@ var FIELD_SAMPLES_EN = {
     current_mood: 'anxious',
     relationship: 'acquaintance of the protagonist',
     affection: 50,
+    ties: 'Mentor Li:master;Rival Wang:nemesis',
     injuries: 'none',
     status_effects: 'none',
     abilities: [{ name: 'Empathy', type: '被动', level: 'Lv.3', effect: 'senses others emotions' }],
@@ -95,6 +98,7 @@ var FIELD_SAMPLES_ZH = {
     current_mood: '焦虑',
     relationship: '主角的熟人',
     affection: 50,
+    ties: '李师傅:师父;王对手:宿敌',
     injuries: '无',
     status_effects: '无',
     abilities: [{ name: '共情', type: '被动', level: 'Lv.3', effect: '感知他人情绪' }],
@@ -244,7 +248,7 @@ function buildWorldBookSection(vault, names, worldBookText) {
         if (!names || names.length === 0) return '';
         if (!worldBookText || !worldBookText.trim()) return '';
         return '\n## World Book — new character profiles\n' +
-            '(以上是世界书原文。请重点关注并映射到对应字段：性别年龄→gender_age、体型外貌→physique、职业身份→occupation、性格→personality、穿着设定→clothing_build 与 current_outfit、过往经历→past_experience、人际关系→relationship、能力技能→abilities 与 power_level、随身物品→inventory。原文未直接写出的字段，请结合对话与场景合理推断，不要留空。"或"/斜杠等选择表述请消歧推断，不要原样照搬。)\n\n' +
+            '(以上是世界书原文。请重点关注并映射到对应字段：性别年龄→gender_age、体型外貌→physique、职业身份→occupation、性格→personality、穿着设定→clothing_build 与 current_outfit、过往经历→past_experience、与主角的关系→relationship、NPC 之间的长期关系→ties（格式 姓名:关系;姓名:关系）、能力技能→abilities 与 power_level、随身物品→inventory。原文未直接写出的字段，请结合对话与场景合理推断，不要留空。"或"/斜杠等选择表述请消歧推断，不要原样照搬。)\n\n' +
             '[WB] ' + worldBookText.trim() + '\n';
     } catch (e) {
         console.warn('[NE] buildWorldBookSection failed:', e && e.message);
@@ -346,10 +350,11 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
     var content = vault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
 
+    var stripTags = (readNeSettingsCached().customStripTags) || [];
     var msgTexts = messages.map(function(m, i) {
         var role = m.role === 'user' ? 'User' : 'Character';
         var name = m.name ? m.name + ': ' : '';
-        return '[' + i + '] [' + role + '] ' + name + (m.content || '');
+        return '[' + i + '] [' + role + '] ' + name + cleanMessageText(m.content || '', stripTags);
     }).join('\n\n');
 
     var state = (content.state) || {};
@@ -378,6 +383,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- When source text says A/B or "or": resolve the ambiguity, do not copy "or" literally.\n' +
         '- Use the full dotted path as the JSON path (e.g. characters.\u89d2\u8272\u540d.' + (allCharFields[0] || 'gender_age') + ').\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
+        '- ties: long-term relationships BETWEEN NPCs (not with protagonist — that is "relationship"). Format: "Name:relation;Name:relation". Example: "Mentor Li:master;Rival Wang:nemesis". Use "none" if no known ties.\n' +
         '- Do NOT output present_characters (auto-generated).\n' +
         '- NPCs with _scheme: do NOT change it. New NPCs without _scheme: assign from "NPC Schemes Available". Default to "default".\n' +
         ((newNames.length > 0 || hasEmptyFieldChars) ? '' : '\nZero-change example: {"state_changes":{}}\n') +
@@ -395,6 +401,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 原文如有 A/B 或 "或" 等选择表述：请消歧推断，不要原样照搬 "或"。\n' +
         '- JSON 路径使用完整的点分隔路径（如 characters.角色名.' + (allCharFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
+        '- ties: NPC 之间的长期关系（与主角的关系用 relationship，不要混到 ties）。格式："姓名:关系;姓名:关系"。例："李师傅:师父;王对手:宿敌"。无已知关系填 "无"。\n' +
         '- 不要输出 present_characters（自动生成）。\n' +
         '- 已有 _scheme 的 NPC — 不要修改。新 NPC 无 _scheme：从上方「NPC Schemes Available」中分配，不确定用 "default"。\n' +
         ((newNames.length > 0 || hasEmptyFieldChars) ? '' : '\n零变化示例: {"state_changes":{}}\n') +

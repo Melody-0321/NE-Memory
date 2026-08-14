@@ -61,14 +61,14 @@ localStorage.clear();
 // 场景 3: recordChatToken 合并双写 — 一次调用同时更新 tok 与分类 tokenOp
 (function() {
     recordChatToken('chat_a', 'tok_stm', 300);
-    recordChatToken('chat_a', 'tok_ltm', 120);
+    recordChatToken('chat_a', 'tok_consolidate', 120);
     recordChatToken('chat_a', 'tok_chat', 500);
     flushChatStats();
     var stats = getChatStats('chat_a');
     var last = stats.turns[stats.turns.length - 1];
     eq(last.tok, 920, '场景3: tok 累计 300+120+500');
     eq(last.tok_stm, 300, '场景3: tok_stm 生效');
-    eq(last.tok_ltm, 120, '场景3: tok_ltm 生效');
+    eq(last.tok_consolidate, 120, '场景3: tok_consolidate 生效');
     eq(last.tok_chat, 500, '场景3: tok_chat 生效');
     eq(stats.aggregates.total_tokens, 920, '场景3: 聚合 total_tokens');
     eq(stats.aggregates.total_tok_stm, 300, '场景3: 聚合 total_tok_stm');

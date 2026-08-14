@@ -433,6 +433,89 @@ export function renderQuestPanelHTML(state) {
         '</div>';
 }
 
+// ─── 悬念簿卡片渲染（对齐 ne-quest-card 模式）───
+
+function renderSuspenseCard(hook) {
+    var status = hook.status || 'open';
+    var category = hook.category || 'mystery';
+
+    var statusLabel = t('suspense_status_' + status);
+    var catLabel = t('suspense_category_' + category);
+
+    var catIcons = { mystery: '\u2753', threat: '\u26A0', promise: '\u2728', foreshadow: '\u25C8' };
+    var iconChar = catIcons[category] || '\u2753';
+
+    var detailLines = [];
+    if (hook.event) {
+        detailLines.push('<div style="margin:2px 0;">' + escapeHtml(hook.event) + '</div>');
+    }
+    var metaParts = [];
+    if (hook.raised_at_period) metaParts.push(escapeHtml(hook.raised_at_period));
+    if (hook.present_characters && hook.present_characters.length) {
+        metaParts.push(escapeHtml(hook.present_characters.join(', ')));
+    }
+    if (hook.resolved_at_period && status === 'resolved') {
+        metaParts.push('\u2713 ' + escapeHtml(hook.resolved_at_period));
+    }
+    if (metaParts.length > 0) {
+        detailLines.push('<div class="ne-suspense-meta">' + metaParts.join(' \u00B7 ') + '</div>');
+    }
+    if (status === 'resolved' && hook.resolution_note) {
+        detailLines.push('<div class="ne-suspense-resolution">' + escapeHtml(hook.resolution_note) + '</div>');
+    }
+
+    var html = '<div class="ne-suspense-card cat-' + category + ' status-' + status + '">' +
+        '<div class="ne-suspense-header" tabindex="0" role="button" aria-label="' + t('Toggle details') + ': ' + escapeHtml(hook.title || '') + '">' +
+            '<span class="ne-suspense-toggle">\u25B6</span>' +
+            '<span style="color:var(--ne-muted);">' + iconChar + '</span>' +
+            '<span class="ne-state-badge suspense-' + status + '">' + statusLabel + '</span>' +
+            '<span class="ne-state-badge cat-' + category + '">' + catLabel + '</span>' +
+            '<b style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">' + escapeHtml(hook.title || '') + '</b>' +
+        '</div>' +
+        '<div class="ne-suspense-detail">' + detailLines.join('') + '</div>' +
+    '</div>';
+
+    return html;
+}
+
+export function renderSuspensePanelHTML(content) {
+    var entries = Array.isArray(content.suspense_entries) ? content.suspense_entries : [];
+    if (entries.length === 0) return '';
+
+    var open = entries.filter(function(e) { return e.status === 'open'; })
+        .sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+    var archived = entries.filter(function(e) { return e.status !== 'open'; })
+        .sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+
+    var html = '<div class="narrative_suspense_block" style="margin-bottom:14px;">';
+
+    if (open.length > 0) {
+        html += '<div class="ne_quest_subsection" style="margin:8px 0;">' +
+            '<div style="font-weight:bold;font-size:0.9em;color:var(--ne-success);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B6 ' +
+            t('suspense_status_open') + ' (' + open.length + ')</div>';
+        open.forEach(function(hook) { html += renderSuspenseCard(hook); });
+        html += '</div>';
+    }
+
+    if (archived.length > 0) {
+        var resolvedCount = archived.filter(function(e) { return e.status === 'resolved'; }).length;
+        var abandonedCount = archived.filter(function(e) { return e.status === 'abandoned'; }).length;
+        var archiveLabel = t('suspense_archive') + ' (' + archived.length;
+        if (resolvedCount) archiveLabel += ' \u00B7 ' + resolvedCount + ' ' + t('suspense_status_resolved');
+        if (abandonedCount) archiveLabel += ' \u00B7 ' + abandonedCount + ' ' + t('suspense_status_abandoned');
+        archiveLabel += ')';
+
+        html += '<div class="ne-accordion" id="ne-acc-suspense-archive" style="margin-top:8px;">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + archiveLabel + '</div>' +
+            '<div class="ne-accordion-body">';
+        archived.forEach(function(hook) { html += renderSuspenseCard(hook); });
+        html += '</div></div>';
+    }
+
+    html += '</div>';
+    return html;
+}
+
 export function enterCardEditMode(editBtn) {
     var cardDiv = editBtn.closest('.ne-char-card');
     if (!cardDiv || cardDiv.classList.contains('ne-card-editing')) return;
@@ -1742,7 +1825,7 @@ function renderStmRow(stm, opts) {
         psycheHtml += '</div>';
     }
 
-    return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + '>'
+    return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + ' data-ne-stm-id="' + escapeHtml(stm.id || '') + '">'
         + '<td style="text-align:center;color:#888;width:2em;font-size:' + fs + ';">' + no + '</td>'
         + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
         + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'

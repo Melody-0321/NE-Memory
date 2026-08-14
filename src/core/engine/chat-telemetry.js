@@ -5,7 +5,7 @@
  * {
  *   "chat_abc123": {
  *     "turns": [
- *       { "t": 1, "stm": 3, "ltm": 0, "llm": 2, "tool": 0, "tok": 500, "tok_stm": 300, "tok_ltm": 120, "tok_state": 100, "tok_tool": 30, "tok_chat": 0, "err": 0, "dur": 1200 },
+ *       { "t": 1, "stm": 3, "ltm": 0, "llm": 2, "tool": 0, "tok": 500, "tok_stm": 300, "tok_consolidate": 120, "tok_state": 100, "tok_tool": 30, "tok_chat": 0, "err": 0, "dur": 1200 },
  *       ...
  *     ],
  *     "aggregates": {
@@ -16,7 +16,7 @@
  *       "total_tool_calls": 1,
  *       "total_tokens": 1300,
  *       "total_tok_stm": 800,
- *       "total_tok_ltm": 300,
+ *       "total_tok_consolidate": 300,
  *       "total_tok_state": 200,
  *       "total_tok_tool": 80,
  *       "total_tok_chat": 0,
@@ -95,7 +95,7 @@ export function incrementChatTurn(chatId) {
     // 超出上限裁剪
     while (turns.length >= MAX_TURNS) turns.shift();
 
-    turns.push({ t: nextTurn, stm: 0, ltm: 0, llm: 0, tool: 0, tok: 0, tok_stm: 0, tok_ltm: 0, tok_state: 0, tok_tool: 0, tok_chat: 0, err: 0, dur: 0 });
+    turns.push({ t: nextTurn, stm: 0, ltm: 0, llm: 0, tool: 0, tok: 0, tok_stm: 0, tok_consolidate: 0, tok_state: 0, tok_tool: 0, tok_chat: 0, err: 0, dur: 0 });
 
     // 重建聚合
     chat.aggregates = rebuildAggregates(turns);
@@ -146,7 +146,7 @@ export function getChatTurnNumber(chatId) {
  * 按 operation 记录分类 token 消耗。
  * P1: 合并双写 — 'tok' 与 tokenOp 在同一次内存更新中生效，一次重建聚合 + 一次节流落盘
  * @param {string} chatId
- * @param {string} tokenOp - 'tok_stm' | 'tok_ltm' | 'tok_sp' | 'tok_tool' | 'tok_chat'
+ * @param {string} tokenOp - 'tok_stm' | 'tok_consolidate' | 'tok_sp' | 'tok_tool' | 'tok_chat'
  * @param {number} value
  */
 export function recordChatToken(chatId, tokenOp, value) {
@@ -200,7 +200,7 @@ function rebuildAggregates(turns) {
         total_tool_calls: 0,
         total_tokens: 0,
         total_tok_stm: 0,
-        total_tok_ltm: 0,
+        total_tok_consolidate: 0,
         total_tok_sp: 0,
         total_tok_state: 0,
         total_tok_tool: 0,
@@ -222,7 +222,7 @@ function rebuildAggregates(turns) {
         agg.total_tool_calls += t.tool || 0;
         agg.total_tokens += t.tok || 0;
         agg.total_tok_stm += t.tok_stm || 0;
-        agg.total_tok_ltm += t.tok_ltm || 0;
+        agg.total_tok_consolidate += t.tok_consolidate || 0;
         agg.total_tok_sp += t.tok_sp || 0;
         agg.total_tok_state += t.tok_state || 0;
         agg.total_tok_tool += t.tok_tool || 0;

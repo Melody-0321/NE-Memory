@@ -73,6 +73,67 @@ export function validateLtmDecision(result) {
     return result;
 }
 
+export function validateMetaLtmDecision(result) {
+    var action = result.action;
+    if (action !== 'append' && action !== 'close_and_new') {
+        console.warn('[NE Meta-LTM] decision invalid action:', action);
+        return null;
+    }
+    if (result.updated_title && String(result.updated_title).length > 60) {
+        result.updated_title = String(result.updated_title).substring(0, 60);
+    }
+    return result;
+}
+
+// ─── 悬念簿决策验证 ───
+
+var VALID_SUSPENSE_ACTIONS = ['raise', 'develop', 'resolve', 'abandon'];
+var VALID_SUSPENSE_CATEGORIES = ['mystery', 'threat', 'promise', 'foreshadow'];
+
+export function validateSuspenseDecisions(decisions) {
+    if (!Array.isArray(decisions)) {
+        console.warn('[NE Suspense] decisions is not an array:', typeof decisions);
+        return null;
+    }
+
+    var valid = [];
+    for (var i = 0; i < decisions.length; i++) {
+        var d = decisions[i];
+        if (!d || typeof d !== 'object') continue;
+
+        var action = d.action;
+        if (VALID_SUSPENSE_ACTIONS.indexOf(action) === -1) {
+            console.warn('[NE Suspense] decision[' + i + '] invalid action:', action);
+            continue;
+        }
+
+        if (action === 'raise') {
+            if (!d.title || !String(d.title).trim()) {
+                console.warn('[NE Suspense] raise decision[' + i + '] missing title');
+                continue;
+            }
+            if (d.title && String(d.title).length > 40) {
+                d.title = String(d.title).substring(0, 40);
+            }
+            if (d.event && String(d.event).length > 200) {
+                d.event = String(d.event).substring(0, 200);
+            }
+            if (d.category && VALID_SUSPENSE_CATEGORIES.indexOf(d.category) === -1) {
+                d.category = 'mystery';
+            }
+        } else {
+            if (!d.hook_id || !String(d.hook_id).trim()) {
+                console.warn('[NE Suspense] ' + action + ' decision[' + i + '] missing hook_id');
+                continue;
+            }
+        }
+
+        valid.push(d);
+    }
+
+    return valid;
+}
+
 // ─── msgRange 验证 ───
 
 export function validateMsgRanges(stmEntries, messageCount, windowStart, windowEnd) {

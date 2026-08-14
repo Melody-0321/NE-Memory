@@ -330,6 +330,22 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         parts.push(vault.memory_system_prompt);
     }
 
+    if (vault.content && vault.content.meta_ltm_entries && vault.content.meta_ltm_entries.length > 0) {
+        var metaOverview = buildMetaLtmOverview(vault.content.meta_ltm_entries);
+        if (metaOverview) {
+            if (parts.length > 0) parts.push('<hr>');
+            parts.push(metaOverview);
+        }
+    }
+
+    if (vault.content && vault.content.suspense_entries && vault.content.suspense_entries.length > 0) {
+        var suspenseOverview = buildSuspenseOverview(vault.content.suspense_entries);
+        if (suspenseOverview) {
+            if (parts.length > 0) parts.push('<hr>');
+            parts.push(suspenseOverview);
+        }
+    }
+
     if (entityGrouped && (Object.keys(entityGrouped.groups).length > 0 || entityGrouped.unassigned.length > 0)) {
         var activeChars = getActiveCharacters(state);
         var storyTime = (content && content.story_time) ? content.story_time : null;
@@ -381,6 +397,56 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     return parts.join('\n\n');
 }
 
+/**
+ * 格式化单条 STM entry 为可读文本（供注入和楼内面板复用）。
+ *
+ * NE 与柏宝书的关键差异：NE 的 STM 数据存在外部 vault（IndexedDB），
+ * 不嵌入 chat 消息对象。楼内面板通过 msg_ids 反查定位所属 STM，
+ * 然后调用本函数渲染。
+ *
+ * @param {STMEvent} entry — STM 条目（注意：是 entry 本身，不是 UnifiedEntry 包装）
+ * @param {number} storyTime — 故事时间戳（用于相对时间计算）
+ * @returns {string} 多行文本
+ */
+export function formatStmEntry(entry, storyTime) {
+    var timePart = entry.period || '';
+    var relative = calRelativeTime(entry.timestamp, storyTime);
+    var scene = entry.scene || '';
+    var event = entry.event || entry.summary || '';
+    var line = (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
+
+    // 在场角色（兼容旧 entities）
+    var present = entry.present_characters || entry.entities || [];
+    if (present && present.length > 0) {
+        var presentNames = present.map(function(p) { return typeof p === 'string' ? p : p.name; });
+        line += ' | 在场: ' + presentNames.join('、');
+    }
+
+    // 角色心理（兼容旧 _inner_thoughts）
+    var psyche = entry.character_psyche;
+    var oldThoughts = entry._inner_thoughts;
+    if (psyche && Object.keys(psyche).length > 0) {
+        Object.keys(psyche).forEach(function(name) {
+            var p = psyche[name] || {};
+            var mood = p.current_mood || '';
+            var thoughts = p.inner_thoughts || '';
+            if (mood || thoughts) {
+                line += '\n   > ' + name + (mood ? ' [' + mood + ']' : '') + (thoughts ? ': ' + thoughts : '');
+            }
+        });
+    } else if (oldThoughts && Object.keys(oldThoughts).length > 0) {
+        // 旧数据兼容：_inner_thoughts 是 {角色名: [想法1, 想法2]}
+        Object.keys(oldThoughts).forEach(function(name) {
+            var thoughtsArr = oldThoughts[name] || [];
+            if (thoughtsArr.length > 0) {
+                line += '\n   > ' + name + ' 内心: ' + thoughtsArr.join(' → ');
+            }
+        });
+    }
+
+    return line;
+}
+
 export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, storyTime) {
     var lines = [];
 
@@ -398,41 +464,7 @@ export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, 
     });
 
     function formatEntry(e) {
-        var timePart = e.entry.period || '';
-        var relative = calRelativeTime(e.entry.timestamp, storyTime);
-        var scene = e.entry.scene || '';
-        var event = e.entry.event || e.entry.summary || '';
-        var line = (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event;
-
-        // 新增：在场角色（兼容旧 entities）
-        var present = e.entry.present_characters || e.entry.entities || [];
-        if (present && present.length > 0) {
-            var presentNames = present.map(function(p) { return typeof p === 'string' ? p : p.name; });
-            line += ' | 在场: ' + presentNames.join('、');
-        }
-
-        // 新增：角色心理（兼容旧 _inner_thoughts）
-        var psyche = e.entry.character_psyche;
-        var oldThoughts = e.entry._inner_thoughts;
-        if (psyche && Object.keys(psyche).length > 0) {
-            Object.keys(psyche).forEach(function(name) {
-                var p = psyche[name] || {};
-                var mood = p.current_mood || '';
-                var thoughts = p.inner_thoughts || '';
-                if (mood || thoughts) {
-                    line += '\n   > ' + name + (mood ? ' [' + mood + ']' : '') + (thoughts ? ': ' + thoughts : '');
-                }
-            });
-        } else if (oldThoughts && Object.keys(oldThoughts).length > 0) {
-            // 旧数据兼容：_inner_thoughts 是 {角色名: [想法1, 想法2]}
-            Object.keys(oldThoughts).forEach(function(name) {
-                var thoughtsArr = oldThoughts[name] || [];
-                if (thoughtsArr.length > 0) {
-                    line += '\n   > ' + name + ' 内心: ' + thoughtsArr.join(' → ');
-                }
-            });
-        }
-
+        var line = formatStmEntry(e.entry, storyTime);
         if (e._originalText) {
             line += '\n   > ' + e._originalText.replace(/\n/g, '\n   > ');
         }
@@ -604,6 +636,58 @@ function compileRetrievalBudget(content, query, entityNames, entityChains, budge
 
 export function buildStateOnlyInjection(vault) {
     return '[ℹ No memory entries available and no World Book state. The current context is limited to chat history only.]';
+}
+
+function buildMetaLtmOverview(metaLtmEntries) {
+    if (!metaLtmEntries || metaLtmEntries.length === 0) return '';
+    var sorted = metaLtmEntries.slice().sort(function(a, b) {
+        return (b.timestamp || 0) - (a.timestamp || 0);
+    });
+    // 只展示有标题的条目（开放占位符 Meta-LTM 无标题，跳过避免注入空白块）
+    var maxShow = 5;
+    var titled = sorted.filter(function(m) { return m.title; }).slice(0, maxShow);
+    if (titled.length === 0) return '';
+    var lines = ['## 故事弧概览'];
+    titled.forEach(function(m) {
+        var title = m.title || '';
+        var event = m.event || '';
+        var arcCount = m.arc_count || (m.ltm_refs || []).length;
+        lines.push('### ' + title + ' (' + arcCount + ' 弧)');
+        if (event) lines.push(event);
+    });
+    return lines.join('\n');
+}
+
+function buildSuspenseOverview(suspenseEntries) {
+    if (!suspenseEntries || suspenseEntries.length === 0) return '';
+    var open = suspenseEntries.filter(function(e) { return e.status === 'open'; });
+    if (open.length === 0) return '';
+
+    open.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); });
+
+    var lines = ['## 悬念簿'];
+    open.forEach(function(h) {
+        var cat = h.category || 'mystery';
+        lines.push('### [' + cat + '] ' + (h.title || ''));
+        if (h.event) lines.push(h.event);
+        var meta = [];
+        if (h.present_characters && h.present_characters.length) meta.push('角色: ' + h.present_characters.join(', '));
+        if (h.raised_at_period) meta.push('来源: ' + h.raised_at_period);
+        if (meta.length) lines.push(meta.join(' | '));
+    });
+
+    // 已兑现钩子简要列表（最多 5 条）
+    var resolved = suspenseEntries.filter(function(e) { return e.status === 'resolved'; })
+        .sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); })
+        .slice(0, 5);
+    if (resolved.length > 0) {
+        lines.push('---');
+        lines.push('已兑现: ' + resolved.map(function(e) {
+            return '[' + (e.title || '') + '] (' + (e.resolved_at_period || e.raised_at_period || '') + ')';
+        }).join(' · '));
+    }
+
+    return lines.join('\n');
 }
 
 export function buildKeyHighlights(pipelineMap, entityGrouped, topK, storyTime) {

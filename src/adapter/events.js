@@ -22,6 +22,8 @@ import { isAuto, computeStmBatch, getTelemetryStats, recordTelemetry } from '../
 import { isStateSchemaEnabled, ensureCharacterTemplate } from '../core/vault/schema.js';
 import { runLtmRebatch } from '../core/engine/consolidate.js';
 import { callMemoryPipeline } from '../core/api/llm.js';
+import { checkMetaResummary } from '../core/engine/meta-ltm-pipeline.js';
+import { checkSuspenseUpdate } from '../core/engine/suspense-pipeline.js';
 import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, isIdle } from '../core/engine/pipeline-guard.js';
 import { t_narrative } from '../core/i18n.js';
 import { neSync } from '../core/settings-adapter.js';
@@ -262,7 +264,7 @@ async function consumeNeCharBlocks(messageIndex, neId) {
         pending.forEach(function(cb) {
             if (!cb.name || !cb.fields) return;
             var c = charBefore[cb.name];
-            summaryBefore[cb.name] = c ? JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts }) : 'NEW';
+            summaryBefore[cb.name] = c ? JSON.stringify({ affection: c.affection, relationship: c.relationship, ties: c.ties, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts }) : 'NEW';
         });
         if (__NE_DEV_MODE) {
             console.log('[NE-DEBUG] consumeNeCharBlocks START: pending=' + pending.length +
@@ -346,7 +348,7 @@ async function consumeNeCharBlocks(messageIndex, neId) {
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
-            summaryAfter[n] = JSON.stringify({ affection: c.affection, relationship: c.relationship, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts });
+            summaryAfter[n] = JSON.stringify({ affection: c.affection, relationship: c.relationship, ties: c.ties, current_mood: c.current_mood, inner_thoughts: c.inner_thoughts });
         });
         if (__NE_DEV_MODE) console.log('[NE-DEBUG] consumeNeCharBlocks DONE, after=' + JSON.stringify(summaryAfter));
     } catch (e) {
@@ -737,6 +739,38 @@ async function flushPendingMessages() {
     persistPending();
     try { await runLtmConsolidation(chatId); } catch(e) { console.warn('[NE] LTM pipeline failed:', e); }
 
+    // Meta-LTM 跨弧摘要：在 LTM 巩固完成后触发
+    try {
+        var metaSettings = {};
+        try { var metaRaw = localStorage.getItem('ne_settings'); if (metaRaw) metaSettings = JSON.parse(metaRaw); } catch (e) {}
+        if (metaSettings.metaLtmEnabled === true) {
+            var metaVault = await readVault(chatId);
+            if (metaVault && metaVault.content) {
+                var metaChanged = await checkMetaResummary(chatId, metaVault, callMemoryPipeline);
+                if (metaChanged) {
+                    await saveMemoryVault(chatId, metaVault);
+                    notifyVaultChanged();
+                }
+            }
+        }
+    } catch(e) { console.warn('[NE] Meta-LTM pipeline failed:', e); }
+
+    // 悬念簿：在 Meta-LTM 之后触发
+    try {
+        var suspenseSettings = {};
+        try { var sRaw = localStorage.getItem('ne_settings'); if (sRaw) suspenseSettings = JSON.parse(sRaw); } catch(e) {}
+        if (suspenseSettings.suspenseLedgerEnabled === true) {
+            var suspenseVault = await readVault(chatId);
+            if (suspenseVault && suspenseVault.content) {
+                var suspenseChanged = await checkSuspenseUpdate(chatId, suspenseVault, callMemoryPipeline);
+                if (suspenseChanged) {
+                    await saveMemoryVault(chatId, suspenseVault);
+                    notifyVaultChanged();
+                }
+            }
+        }
+    } catch(e) { console.warn('[NE] Suspense pipeline failed:', e); }
+
     if (pendingMessages.length > 0) {
         (async function() {
             var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
@@ -1036,6 +1070,14 @@ export async function onBeforeGenerate(type, _options, dryRun) {
         var protagonistName = stateProtoName || ctxName1;
         var neSettings = {};
         try { var raw = localStorage.getItem('ne_settings'); if (raw) neSettings = JSON.parse(raw); } catch (e) {}
+
+        // 仅摘要模式：管线照常提取状态/STM/LTM，但不向主模型注入任何内容。
+        // 用途：角色卡自带变量系统时，避免 NE 的状态注入与角色卡变量冲突。
+        // 注意：只跳过注入出口，pipeline（state/stm/ltm 提取）由其他事件触发，不受影响。
+        if (neSettings.summaryOnlyMode === true) {
+            if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate EXIT: summary-only mode, skipping injection');
+            return;
+        }
 
         // State table injection — independent from SmartPush
         if (isStateSchemaEnabled()) {

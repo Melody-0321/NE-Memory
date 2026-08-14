@@ -134,17 +134,17 @@ export async function renderUsageTab() {
             if (scope === 'chat' && debug2.getChatBreakdown && debug2.getCurrentChatId) {
                 breakdown = debug2.getChatBreakdown(debug2.getCurrentChatId());
             } else if (scope === 'today') {
-                breakdown = overview.breakdown || { stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
+                breakdown = overview.breakdown || { stm: 0, consolidate: 0, state: 0, tool: 0, chat: 0 };
             } else if (scope === 'month' && debug2.getMonthlyBreakdown) {
                 var monthSel = panelById('ne-breakdown-month');
                 var monthVal = monthSel ? monthSel.value : (months.length > 0 ? months[0] : new Date().toISOString().substring(0, 7));
                 breakdown = debug2.getMonthlyBreakdown(monthVal);
             } else {
-                breakdown = overview.breakdown || { stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
+                breakdown = overview.breakdown || { stm: 0, consolidate: 0, state: 0, tool: 0, chat: 0 };
             }
 
             var bc = breakdown;
-            var bData = [(bc && bc.stm) || 0, (bc && bc.ltm) || 0, (bc && bc.state) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
+            var bData = [(bc && bc.stm) || 0, (bc && bc.consolidate) || 0, (bc && bc.state) || 0, (bc && bc.tool) || 0, (bc && bc.chat) || 0];
             var bSum = bData[0] + bData[1] + bData[2] + bData[3] + bData[4];
 
             var emptyEl = panelById('ne-breakdown-empty');
@@ -161,7 +161,7 @@ export async function renderUsageTab() {
             _chartInstances.pie = new Chart(pieCtx, {
                 type: 'pie',
                 data: {
-                    labels: ['STM', 'LTM', 'State', 'Tool', t('User Chat')],
+                    labels: ['STM', 'Consolidate', 'State', 'Tool', t('User Chat')],
                     datasets: [{
                         data: bData,
                         backgroundColor: ['#4CAF50', '#FF9800', '#E91E63', '#9C27B0', '#9E9E9E']
@@ -207,14 +207,14 @@ export async function renderUsageTab() {
                 /* For future dates, show 0; for past dates without data, also 0 */
                 var entry = dataMap[dateStr];
                 if (entry) return entry;
-                return { date: dateStr, stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
+                return { date: dateStr, stm: 0, consolidate: 0, state: 0, tool: 0, chat: 0 };
             };
 
             /* Check if all values are zero */
             var allZero = true;
             for (var dz = 0; dz < allDates.length; dz++) {
                 var ez = fill(allDates[dz]);
-                if (ez.stm || ez.ltm || ez.state || ez.tool || ez.chat) { allZero = false; break; }
+                if (ez.stm || ez.consolidate || ez.state || ez.tool || ez.chat) { allZero = false; break; }
             }
 
             var emptyEl = panelById('ne-daily-bar-empty');
@@ -237,7 +237,7 @@ export async function renderUsageTab() {
 
             var labels = allDates.map(function(ds) { return ds; });  /* full YYYY-MM-DD */
             var stmData = allDates.map(function(ds) { return fill(ds).stm; });
-            var ltmData = allDates.map(function(ds) { return fill(ds).ltm; });
+            var consolidateData = allDates.map(function(ds) { return fill(ds).consolidate; });
             var stateData = allDates.map(function(ds) { return fill(ds).state; });
             var toolData = allDates.map(function(ds) { return fill(ds).tool; });
             var chatData = allDates.map(function(ds) { return fill(ds).chat; });
@@ -248,7 +248,7 @@ export async function renderUsageTab() {
                     labels: labels,
                     datasets: [
                         { label: 'STM', data: stmData, backgroundColor: '#4CAF50' },
-                        { label: 'LTM', data: ltmData, backgroundColor: '#FF9800' },
+                        { label: 'Consolidate', data: consolidateData, backgroundColor: '#FF9800' },
                         { label: 'State', data: stateData, backgroundColor: '#E91E63' },
                         { label: 'Tool', data: toolData, backgroundColor: '#9C27B0' },
                         { label: t('User Chat'), data: chatData, backgroundColor: '#9E9E9E' }

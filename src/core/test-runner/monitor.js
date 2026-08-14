@@ -29,6 +29,23 @@ function _onPipelineCall(data) {
     _pipelineCallsPerRound.push(data);
 }
 
+/**
+ * 判定一次管线 LLM 调用是否为"有害截断"。
+ * 仅在 completion_tokens 达 4096 上限时进一步核实：若响应仍能解析出 JSON，
+ * 说明输出已完整落盘（长但完整的响应不误报）；解析失败才计为真截断。
+ */
+function _isTruncatedCall(c) {
+    if (!c.usage || !(c.usage.completion_tokens >= 4096)) return false;
+    var text = c.response || '';
+    var m = text.match(/```(?:json)?\s*([\s\S]*?)```/);
+    if (m) text = m[1].trim();
+    else {
+        var bracketMatch = text.match(/\[[\s\S]*\]/);
+        if (bracketMatch) text = bracketMatch[0];
+    }
+    try { JSON.parse(text); return false; } catch (e) { return true; }
+}
+
 function _filterByRoundTag(roundTag) {
     var matching = [];
     var remaining = [];
@@ -77,7 +94,7 @@ export function collectRoundData(roundTag, round) {
     var fallbackCount = 0;
     for (var i = 0; i < pipelineCalls.length; i++) {
         var c = pipelineCalls[i];
-        if (c.usage && c.usage.completion_tokens >= 4096) truncationCount++;
+        if (_isTruncatedCall(c)) truncationCount++;
         if (c.source === 'tavern') fallbackCount++;
     }
 

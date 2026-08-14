@@ -10,6 +10,7 @@ import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
 import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 import { readNeSettingsCached } from '../settings.js';
+import { cleanMessageText } from './content-clean.js';
 
 function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateVault, force) {
     var content = vault.content || {};
@@ -17,11 +18,12 @@ function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateV
     var lang = content.language === 'en' ? 'en' : 'zh';
 
     // 格式化窗口消息
+    var stripTags = (readNeSettingsCached().customStripTags) || [];
     var itemsText = windowItems.map(function(item, i) {
         var idx = i;
         var role = item.role || (item.is_user ? 'user' : 'assistant');
         var name = item.name ? item.name + ': ' : '';
-        return '[' + idx + '] ' + role + ': ' + name + (item.content || item.mes || '');
+        return '[' + idx + '] ' + role + ': ' + name + cleanMessageText(item.content || item.mes || '', stripTags);
     }).join('\n');
 
     // 当前状态摘要

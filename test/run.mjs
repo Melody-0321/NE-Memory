@@ -15,6 +15,8 @@ var testMap = {
     'bm25-scoring': 'bm25-scoring.test.js',
     'time-filter': 'time-filter.test.js',
     'turn-segmenter': 'turn-segmenter.test.js',
+    'content-clean': 'content-clean.test.js',
+    'suspense-pipeline': 'suspense-pipeline.test.js',
     'stm-validate': 'stm-validate.test.js',
     'stm-chunking': 'stm-chunking.test.js',
     'entity-chain': 'entity-chain.test.js',

@@ -110,8 +110,8 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
             item.onclick = function() {
                 var targetId = this.getAttribute('data-target');
                 var target = panelById(targetId);
-                if (!target) return;var visibleContent = panelQSA('#' + targetId + ' .ne-accordion-body tr:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-char-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-faction-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-quest-card:not(.ne-search-hidden)');
-                if (target.classList.contains('ne-accordion') && (target.querySelector('.ne-search-hidden') && !target.querySelector('tr:not(.ne-search-hidden), .ne-char-card:not(.ne-search-hidden), .ne-faction-card:not(.ne-search-hidden), .ne-quest-card:not(.ne-search-hidden)'))) {
+                if (!target) return;var visibleContent = panelQSA('#' + targetId + ' .ne-accordion-body tr:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-char-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-faction-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-quest-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-suspense-card:not(.ne-search-hidden)');
+                if (target.classList.contains('ne-accordion') && (target.querySelector('.ne-search-hidden') && !target.querySelector('tr:not(.ne-search-hidden), .ne-char-card:not(.ne-search-hidden), .ne-faction-card:not(.ne-search-hidden), .ne-quest-card:not(.ne-search-hidden), .ne-suspense-card:not(.ne-search-hidden)'))) {
                     if (visibleContent.length === 0) { showToast(t('No matches under current search')); return; }
                 }
                 navigateToAccordion(targetId, chatId);
@@ -139,7 +139,7 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
                 var targetId = this.getAttribute('data-target');
                 var target = panelById(targetId);
                 if (!target) return;if (target.classList.contains('ne-accordion')) {
-                    var visibleCards = panelQSA('#ne_character_block_container .ne-char-card:not(.ne-search-hidden), #ne_faction_block_container .ne-faction-card:not(.ne-search-hidden), #ne_quest_block_container .ne-quest-card:not(.ne-search-hidden)');
+                    var visibleCards = panelQSA('#ne_character_block_container .ne-char-card:not(.ne-search-hidden), #ne_faction_block_container .ne-faction-card:not(.ne-search-hidden), #ne_quest_block_container .ne-quest-card:not(.ne-search-hidden), #ne_suspense_block_container .ne-suspense-card:not(.ne-search-hidden)');
                     if (visibleCards.length === 0 && panelQSA('.ne-search-hidden').length > 0) { showToast(t('No matches under current search')); return; }
                 }
                 navigateToAccordion(targetId, chatId);

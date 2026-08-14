@@ -5,6 +5,9 @@
  * 输出 turns[] 供语义切分和 STM 提取使用。
  */
 
+import { cleanMessageText } from './content-clean.js';
+import { readNeSettingsCached } from '../settings.js';
+
 /**
  * @param {Array<import('../../types.js').Message>} messages
  * @returns {Array<import('../../types.js').Turn>}
@@ -60,6 +63,7 @@ export function formatTurnsText(turns, turnIndices) {
         for (var i = 0; i < turns.length; i++) indices.push(i);
     }
 
+    var stripTags = (readNeSettingsCached().customStripTags) || [];
     var lines = [];
     for (var ti = 0; ti < indices.length; ti++) {
         var t = turns[indices[ti]];
@@ -67,11 +71,11 @@ export function formatTurnsText(turns, turnIndices) {
         lines.push('[Turn ' + indices[ti] + ']');
         if (t.user) {
             var userName = t.user.name ? t.user.name + ': ' : '';
-            lines.push('  user: ' + userName + (t.user.content || t.user.mes || ''));
+            lines.push('  user: ' + userName + cleanMessageText(t.user.content || t.user.mes || '', stripTags));
         }
         if (t.assistant) {
             var asstName = t.assistant.name ? t.assistant.name + ': ' : '';
-            lines.push('  assistant: ' + asstName + (t.assistant.content || t.assistant.mes || ''));
+            lines.push('  assistant: ' + asstName + cleanMessageText(t.assistant.content || t.assistant.mes || '', stripTags));
         }
         lines.push('');
     }

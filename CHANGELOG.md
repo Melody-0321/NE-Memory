@@ -1,6 +1,13 @@
 # NE-Memory Unreleased（下一版本）
 
+## 新功能
+
+- **NPC 长期关系网（ties 字段）**：character schema 的 social 分类新增 `ties` 字段（string max 200），记录 NPC 之间的长期关系（与主角的关系仍用 `relationship`）。格式 `"姓名:关系;姓名:关系"`，例 `"李师傅:师父;王对手:宿敌"`。提取 prompt 的 Field Rules、世界书映射指引、字段示例均已加入 ties 说明。变更追踪（summaryBefore/After）已纳入 ties。面板角色卡片自动展示（Schema 驱动遍历渲染，无需额外 UI 代码）。参考柏宝书 v1.2.4 的 NPC 长期关系图设计，采用带目标的分号格式（柏宝书是纯关系类型分号）以适配 NE 的 RPG 叙事场景
+- **仅摘要模式（summaryOnlyMode）**：新增设置开关，启用后管线照常提取状态/STM/LTM 并维护账本，但不向主对话 AI 注入任何内容。用途：角色卡自带变量系统（MVU 式）时，避免 NE 的状态注入与角色卡变量冲突，把变量空间让给角色卡。设置面板顶部黄色警示条提示当前处于仅记录模式，面板渲染时根据 `ne_settings.summaryOnlyMode` 自动显隐。参考柏宝书 v1.2.4 的 `summaryOnlyMode` 设计
+
 ## Bug 修复
+
+- **冒烟测试三项误判（smartpush-14）**：①LTM 断言依赖运行环境设置 `stmMaxUnconsolidated`（本次=6，8 轮仅 5 条 STM 不达阈值，`ltm_decision`/`ltm_state` 必然 FAIL）→ test-case.md 前置条件写死默认值 5；②truncation 用 `completion_tokens>=4096` 代理判定，长但完整的 JSON 响应被误判截断 → monitor 改为"触顶且响应无法解析为 JSON"才算真截断；③语义评估器只收到累积缓冲前 3000 字符（全是首轮 state_extract），永远看不到 stm_extract 输出 → 改收对话文本 + STM 事件结构化上下文、截取缓冲末尾，并修正"(超时截断)"误导标签（实为数据不足），测试开始时重置跨测试累积的响应缓冲
 
 - **vault 状态栏无数据（UIP-1 缓存回归）**：5bc0d1d 引入区块渲染缓存后，panel-content.js 顶部仍无条件移除 `.narrative_*_block` 元素，而内层 Section 仅在缓存未命中时才重新注入 innerHTML（innerHTML 覆盖本身会替换容器子元素）→ 任一 `vault:updated` 刷新轮次若 state 数据未变（缓存命中），State 区块被先删后不重建，状态栏永久空白（记忆 tab 用 tbody、不在此移除循环内，故正常）。已删除冗余的区块移除循环，依赖 innerHTML 覆盖完成清理（2560b80 修复 `_renderCache` 声明后，State tab 仍空即此因）
 - **启用自适应上下文控制后"一发消息就卡死"（空转死循环）**：对话初期 vault 记忆为空 → `_neCachedMemoryVault` 无缓存，`expandLayers`/`compressLayers` 选中 memory_vault 层后无分支可执行，`totalTokens` 永不变化 → 无限循环冻结主线程（7.2 曾以 `maxIterations` 兜底，仅把卡死降级为每次空转 100-200 轮）。已加 no-progress 检测（本轮 token 无变化即 break）+ layers 源头过滤（无缓存层不入候选），根治空转

@@ -74,6 +74,8 @@ export async function runTestLoop(testCase, hostDoc) {
     }
 
     startCollectingPipelineCalls();
+    // 重置跨测试累积的管线响应缓冲，避免上一次测试的数据污染本次语义评估
+    globalThis.__ne_debug_all_pipeline_responses = '';
     for (var round = 1; round <= testCase.maxRounds; round++) {
         console.log('[NE-TEST] === Round ' + round + '/' + testCase.maxRounds + ' ===');
 
@@ -162,7 +164,10 @@ export async function runTestLoop(testCase, hostDoc) {
         var semanticQuestions = testCase.semantic;
         if (semanticQuestions && semanticQuestions.length > 0 && !semanticDefinitive && round >= testCase.minRounds && round % 3 === 0) {
             try {
-                var semResults = await evaluateSemantic(roundData.pipelineResponses, semanticQuestions, callMemoryApiForEval, round);
+                var semResults = await evaluateSemantic(roundData.pipelineResponses, semanticQuestions, callMemoryApiForEval, round, {
+                    dialogue: (roundData.message || '') + '\n' + (roundData.aiReply || ''),
+                    stmEvents: roundData.stmEvents ? roundData.stmEvents.events : null
+                });
                 semanticResults = semResults;
                 // 分类结果：明确通过、明确不通过、无法判断
                 var semPassed = semResults.filter(function(r) { return r.passed === true; }).length;
@@ -238,14 +243,17 @@ export async function runTestLoop(testCase, hostDoc) {
             console.log('[NE-TEST] Using loop-collected semantic results (definitive).');
         } else if (lastRound && lastRound.pipelineResponses) {
             console.log('[NE-TEST] Running final semantic assertions...');
-            semanticResults = await evaluateSemantic(lastRound.pipelineResponses, testCase.semantic, callMemoryApiForEval, roundDataList.length);
+            semanticResults = await evaluateSemantic(lastRound.pipelineResponses, testCase.semantic, callMemoryApiForEval, roundDataList.length, {
+                dialogue: (lastRound.message || '') + '\n' + (lastRound.aiReply || ''),
+                stmEvents: lastRound.stmEvents ? lastRound.stmEvents.events : null
+            });
         } else {
             semanticResults = [];
         }
         if (endType === 'forced_max_rounds') {
             semanticResults = (semanticResults || []).map(function(r) {
                 if (r.passed === null) {
-                    return { question: r.question, passed: false, evaluation: r.evaluation + ' (超时截断，按不通过处理)' };
+                    return { question: r.question, passed: false, evaluation: r.evaluation + ' (数据不足，无法判断，按不通过处理)' };
                 }
                 return r;
             });

@@ -143,7 +143,8 @@ function _buildMemoryVault(chatId, vault) {
             summary: content.summary || '',
             current_scene: content.current_scene || '',
             character_states: content.character_states || {},
-            relationships: content.relationships || []
+            relationships: content.relationships || [],
+            meta_ltm_entries: content.meta_ltm_entries || []
         },
         stm_index: vault.stm_index || {},
         link_index: vault.link_index || {},
@@ -334,7 +335,10 @@ export function emptyMemoryVault(chatId) {
             summary: '',
             current_scene: '',
             character_states: {},
-            relationships: []
+            relationships: [],
+            meta_ltm_entries: [],
+            suspense_entries: [],
+            suspense_cursor: null
         },
         stm_index: {},
         link_index: {},
@@ -393,7 +397,7 @@ export async function writeMemory(chatId, memoryVault) {
 
 export var STATE_CONTENT_FIELDS = ['state', 'story_time', 'story_scene', 'story_date', 'state_schema', 'state_css', 'character_schema', '_active_characters', 'faction_keywords'];
 
-export var MEMORY_CONTENT_FIELDS = ['unconsolidated_stm', 'stm_entries', 'ltm_entries', 'cursor_state', 'segment_counter', 'consolidate_threshold', 'language', 'memory_config', 'summary', 'current_scene', 'character_states', 'relationships'];
+export var MEMORY_CONTENT_FIELDS = ['unconsolidated_stm', 'stm_entries', 'ltm_entries', 'cursor_state', 'segment_counter', 'consolidate_threshold', 'language', 'memory_config', 'summary', 'current_scene', 'character_states', 'relationships', 'meta_ltm_entries', 'suspense_entries', 'suspense_cursor'];
 
 export async function readVault(chatId) {
     var [stateVault, memoryVault] = await Promise.all([readState(chatId), readMemory(chatId)]);
@@ -425,6 +429,9 @@ export async function readVault(chatId) {
     if (!v.content.cursor_state) {
         v.content.cursor_state = { stm: { position: 0, pending_partials: [], completedTurns: 0 }, ltm: { position: 0, pending_partials: [] } };
     }
+    if (!v.content.meta_ltm_entries) v.content.meta_ltm_entries = [];
+    if (!v.content.suspense_entries) v.content.suspense_entries = [];
+    if (v.content.suspense_cursor === undefined) v.content.suspense_cursor = null;
     return v;
 }
 

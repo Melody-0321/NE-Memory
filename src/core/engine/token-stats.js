@@ -13,7 +13,20 @@ var _dailyTimer = null;
 var DAILY_FLUSH_DELAY_MS = 100;
 
 function loadDaily() {
-    try { return JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); } catch (e) { return {}; }
+    var data;
+    try { data = JSON.parse(localStorage.getItem(DAILY_KEY) || '{}'); } catch (e) { return {}; }
+    // 旧数据一次性迁移：tok_ltm → tok_consolidate（全部历史日期）
+    var migrated = false;
+    Object.keys(data).forEach(function(date) {
+        var d = data[date];
+        if (d && d.tok_ltm != null) {
+            d.tok_consolidate = (d.tok_consolidate || 0) + d.tok_ltm;
+            delete d.tok_ltm;
+            migrated = true;
+        }
+    });
+    if (migrated) { try { localStorage.setItem(DAILY_KEY, JSON.stringify(data)); } catch (e) {} }
+    return data;
 }
 
 function saveDaily(data) {
@@ -57,7 +70,7 @@ export function recordDailyToken(operation, value) {
     if (!value) return;
     var data = _getDaily();
     var today = new Date().toISOString().substring(0, 10);
-    if (!data[today]) data[today] = { tok_stm: 0, tok_ltm: 0, tok_state: 0, tok_tool: 0, tok_chat: 0 };
+    if (!data[today]) data[today] = { tok_stm: 0, tok_consolidate: 0, tok_state: 0, tok_tool: 0, tok_chat: 0 };
     data[today][operation] = (data[today][operation] || 0) + value;
 
     var keys = Object.keys(data).sort();
@@ -77,13 +90,13 @@ export function getUsageOverview(getChatStatsFn) {
 
     var allChat = 0, allNE = 0, allTurns = 0;
     var todayChat = 0, todayNE = 0;
-    var todayStm = 0, todayLtm = 0, todayState = 0, todayTool = 0;
+    var todayStm = 0, todayConsolidate = 0, todayState = 0, todayTool = 0;
     var monthChat = 0, monthNE = 0, monthDays = 0;
 
     Object.keys(stats).forEach(function(cid) {
         var agg = (stats[cid] && stats[cid].aggregates) || {};
         allChat += agg.total_tok_chat || 0;
-        var ne = (agg.total_tok_stm || 0) + (agg.total_tok_ltm || 0) + (agg.total_tok_state || 0) + (agg.total_tok_tool || 0);
+        var ne = (agg.total_tok_stm || 0) + (agg.total_tok_consolidate || 0) + (agg.total_tok_state || 0) + (agg.total_tok_tool || 0);
         allNE += ne;
         allTurns += agg.total_turns || 0;
     });
@@ -93,14 +106,14 @@ export function getUsageOverview(getChatStatsFn) {
         if (date === today) {
             todayChat = d.tok_chat || 0;
             todayStm = d.tok_stm || 0;
-            todayLtm = d.tok_ltm || 0;
+            todayConsolidate = d.tok_consolidate || 0;
             todayState = d.tok_state || 0;
             todayTool = d.tok_tool || 0;
-            todayNE = todayStm + todayLtm + todayState + todayTool;
+            todayNE = todayStm + todayConsolidate + todayState + todayTool;
         }
         if (date.substring(0, 7) === thisMonth) {
             monthChat += (d.tok_chat || 0);
-            monthNE += (d.tok_stm || 0) + (d.tok_ltm || 0) + (d.tok_state || 0) + (d.tok_tool || 0);
+            monthNE += (d.tok_stm || 0) + (d.tok_consolidate || 0) + (d.tok_state || 0) + (d.tok_tool || 0);
             monthDays++;
         }
     });
@@ -129,7 +142,7 @@ export function getUsageOverview(getChatStatsFn) {
         monthDays: monthDays,
         breakdown: {
             stm: todayStm,
-            ltm: todayLtm,
+            consolidate: todayConsolidate,
             state: todayState,
             tool: todayTool,
             chat: todayChat
@@ -148,7 +161,7 @@ export function getDailyStats(days) {
         result.push({
             date: keys[i],
             stm: d.tok_stm || 0,
-            ltm: d.tok_ltm || 0,
+            consolidate: d.tok_consolidate || 0,
             state: d.tok_state || 0,
             tool: d.tok_tool || 0,
             chat: d.tok_chat || 0
@@ -163,7 +176,7 @@ export function getAllChatUsage(getAllChatStatsFn) {
     Object.keys(stats).forEach(function(cid) {
         var chat = stats[cid];
         var agg = chat.aggregates || {};
-        var tokNE = (agg.total_tok_stm || 0) + (agg.total_tok_ltm || 0) + (agg.total_tok_state || 0) + (agg.total_tok_tool || 0);
+        var tokNE = (agg.total_tok_stm || 0) + (agg.total_tok_consolidate || 0) + (agg.total_tok_state || 0) + (agg.total_tok_tool || 0);
         var tokChat = agg.total_tok_chat || 0;
         var totalTokens = tokNE + tokChat;
         var turns = agg.total_turns || 0;
@@ -182,28 +195,28 @@ export function getAllChatUsage(getAllChatStatsFn) {
 
 export function getMonthlyBreakdown(month) {
     var data = _getDaily();
-    var stm = 0, ltm = 0, state = 0, tool = 0, chat = 0;
+    var stm = 0, consolidate = 0, state = 0, tool = 0, chat = 0;
     Object.keys(data).forEach(function(date) {
         if (date.substring(0, 7) === month) {
             var d = data[date];
             stm += (d.tok_stm || 0);
-            ltm += (d.tok_ltm || 0);
+            consolidate += (d.tok_consolidate || 0);
             state += (d.tok_state || 0);
             tool += (d.tok_tool || 0);
             chat += (d.tok_chat || 0);
         }
     });
-    return { stm: stm, ltm: ltm, state: state, tool: tool, chat: chat };
+    return { stm: stm, consolidate: consolidate, state: state, tool: tool, chat: chat };
 }
 
 export function getChatBreakdown(getChatStatsFn, chatId) {
     var stats = getChatStatsFn() || {};
     var chat = stats[chatId];
-    if (!chat || !chat.aggregates) return { stm: 0, ltm: 0, state: 0, tool: 0, chat: 0 };
+    if (!chat || !chat.aggregates) return { stm: 0, consolidate: 0, state: 0, tool: 0, chat: 0 };
     var agg = chat.aggregates;
     return {
         stm: agg.total_tok_stm || 0,
-        ltm: agg.total_tok_ltm || 0,
+        consolidate: agg.total_tok_consolidate || 0,
         state: agg.total_tok_state || 0,
         tool: agg.total_tok_tool || 0,
         chat: agg.total_tok_chat || 0
@@ -231,7 +244,7 @@ export function getMonthlyStats(month) {
             result.push({
                 date: keys[i],
                 stm: d.tok_stm || 0,
-                ltm: d.tok_ltm || 0,
+                consolidate: d.tok_consolidate || 0,
                 state: d.tok_state || 0,
                 tool: d.tok_tool || 0,
                 chat: d.tok_chat || 0
