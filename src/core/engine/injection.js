@@ -667,7 +667,7 @@ function buildSuspenseOverview(suspenseEntries) {
 
     var lines = ['## 悬念簿'];
     open.forEach(function(h) {
-        var cat = h.category || 'mystery';
+        var cat = h.category || 'suspense';
         lines.push('### [' + cat + '] ' + (h.title || ''));
         if (h.event) lines.push(h.event);
         var meta = [];
@@ -676,14 +676,16 @@ function buildSuspenseOverview(suspenseEntries) {
         if (meta.length) lines.push(meta.join(' | '));
     });
 
-    // 已兑现钩子简要列表（最多 5 条）
+    // 已了结钩子简要列表（最多 5 条），带核销语义
     var resolved = suspenseEntries.filter(function(e) { return e.status === 'resolved'; })
         .sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0); })
         .slice(0, 5);
     if (resolved.length > 0) {
+        var outcomeLabel = { done: '已兑现', cancelled: '已作废', failed: '已失败' };
         lines.push('---');
-        lines.push('已兑现: ' + resolved.map(function(e) {
-            return '[' + (e.title || '') + '] (' + (e.resolved_at_period || e.raised_at_period || '') + ')';
+        lines.push('已了结: ' + resolved.map(function(e) {
+            var oc = outcomeLabel[e.outcome] || '已兑现';
+            return '[' + (e.title || '') + '] (' + oc + ', ' + (e.resolved_at_period || e.raised_at_period || '') + ')';
         }).join(' · '));
     }
 

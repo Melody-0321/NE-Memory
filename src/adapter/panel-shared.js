@@ -210,10 +210,18 @@ export function injectBottomDrawerCSS() {
         '.ne-state-badge.suspense-open{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
         '.ne-state-badge.suspense-resolved{background:var(--black50a);color:var(--ne-muted);border:1px solid var(--grey-50);}' +
         '.ne-state-badge.suspense-abandoned{background:var(--black50a);color:var(--grey-50);border:1px solid var(--grey-50);}' +
+        // 旧 4 分类兼容（历史数据）
         '.ne-state-badge.cat-mystery{background:var(--black30a);color:var(--ne-info);border:1px solid var(--ne-info);}' +
         '.ne-state-badge.cat-threat{background:var(--black30a);color:var(--ne-danger);border:1px solid var(--ne-danger);}' +
         '.ne-state-badge.cat-promise{background:var(--black30a);color:#e2b714;border:1px solid #e2b714;}' +
         '.ne-state-badge.cat-foreshadow{background:var(--black30a);color:#a855f7;border:1px solid #a855f7;}' +
+        // 新 plan/suspense 两分
+        '.ne-state-badge.cat-plan{background:var(--black30a);color:#e2b714;border:1px solid #e2b714;}' +
+        '.ne-state-badge.cat-suspense{background:var(--black30a);color:var(--ne-info);border:1px solid var(--ne-info);}' +
+        // 核销 outcome badge
+        '.ne-state-badge.suspense-outcome-done{background:var(--ne-success-bg);color:var(--ne-success);border:1px solid var(--ne-success-border);}' +
+        '.ne-state-badge.suspense-outcome-cancelled{background:var(--black50a);color:var(--grey-50);border:1px solid var(--grey-50);}' +
+        '.ne-state-badge.suspense-outcome-failed{background:var(--ne-danger-bg,var(--black30a));color:var(--ne-danger);border:1px solid var(--ne-danger);}' +
         '.ne-char-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;}' +
         '.ne-char-card.status-active{border-left-color:var(--ne-success);}' +
         '.ne-char-card.status-inactive{border-left-color:var(--ne-warning);}' +
@@ -252,10 +260,14 @@ export function injectBottomDrawerCSS() {
         '.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +
         '.ne-quest-card.open>.ne-quest-detail{display:block;}' +
         '.ne-suspense-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}' +
+        // 旧 4 分类兼容（历史数据）
         '.ne-suspense-card.cat-mystery{border-left-color:var(--ne-info);}' +
         '.ne-suspense-card.cat-threat{border-left-color:var(--ne-danger);}' +
         '.ne-suspense-card.cat-promise{border-left-color:#e2b714;}' +
         '.ne-suspense-card.cat-foreshadow{border-left-color:#a855f7;}' +
+        // 新 plan/suspense 两分
+        '.ne-suspense-card.cat-plan{border-left-color:#e2b714;}' +
+        '.ne-suspense-card.cat-suspense{border-left-color:var(--ne-info);}' +
         '.ne-suspense-card.status-resolved,.ne-suspense-card.status-abandoned{opacity:0.65;}' +
         '.ne-suspense-header{display:flex;align-items:center;gap:6px;}' +
         '.ne-suspense-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}' +

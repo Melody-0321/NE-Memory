@@ -87,8 +87,9 @@ export function validateMetaLtmDecision(result) {
 
 // ─── 悬念簿决策验证 ───
 
-var VALID_SUSPENSE_ACTIONS = ['raise', 'develop', 'resolve', 'abandon'];
-var VALID_SUSPENSE_CATEGORIES = ['mystery', 'threat', 'promise', 'foreshadow'];
+var VALID_SUSPENSE_ACTIONS = ['raise', 'develop', 'resolve'];
+var VALID_SUSPENSE_CATEGORIES = ['plan', 'suspense'];
+var VALID_SUSPENSE_OUTCOMES = ['done', 'cancelled', 'failed'];
 
 export function validateSuspenseDecisions(decisions) {
     if (!Array.isArray(decisions)) {
@@ -119,12 +120,21 @@ export function validateSuspenseDecisions(decisions) {
                 d.event = String(d.event).substring(0, 200);
             }
             if (d.category && VALID_SUSPENSE_CATEGORIES.indexOf(d.category) === -1) {
-                d.category = 'mystery';
+                d.category = 'suspense';
             }
         } else {
             if (!d.hook_id || !String(d.hook_id).trim()) {
                 console.warn('[NE Suspense] ' + action + ' decision[' + i + '] missing hook_id');
                 continue;
+            }
+            if (action === 'resolve') {
+                if (d.outcome && VALID_SUSPENSE_OUTCOMES.indexOf(d.outcome) === -1) {
+                    d.outcome = 'done';
+                }
+                if (!d.outcome) d.outcome = 'done';
+                if (d.resolution_note && String(d.resolution_note).length > 200) {
+                    d.resolution_note = String(d.resolution_note).substring(0, 200);
+                }
             }
         }
 

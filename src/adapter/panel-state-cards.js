@@ -437,12 +437,12 @@ export function renderQuestPanelHTML(state) {
 
 function renderSuspenseCard(hook) {
     var status = hook.status || 'open';
-    var category = hook.category || 'mystery';
+    var category = hook.category || 'suspense';
 
     var statusLabel = t('suspense_status_' + status);
     var catLabel = t('suspense_category_' + category);
 
-    var catIcons = { mystery: '\u2753', threat: '\u26A0', promise: '\u2728', foreshadow: '\u25C8' };
+    var catIcons = { plan: '\u2705', suspense: '\u2753' };
     var iconChar = catIcons[category] || '\u2753';
 
     var detailLines = [];
@@ -459,6 +459,11 @@ function renderSuspenseCard(hook) {
     }
     if (metaParts.length > 0) {
         detailLines.push('<div class="ne-suspense-meta">' + metaParts.join(' \u00B7 ') + '</div>');
+    }
+    if (status === 'resolved') {
+        var oc = hook.outcome || 'done';
+        detailLines.push('<div class="ne-suspense-meta" style="margin-top:2px;">' +
+            '<span class="ne-state-badge suspense-outcome-' + oc + '">' + t('suspense_outcome_' + oc) + '</span></div>');
     }
     if (status === 'resolved' && hook.resolution_note) {
         detailLines.push('<div class="ne-suspense-resolution">' + escapeHtml(hook.resolution_note) + '</div>');

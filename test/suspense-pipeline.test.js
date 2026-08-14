@@ -9,10 +9,10 @@ console.log('\n=== suspense-pipeline: validateSuspenseDecisions ===');
 
 // Valid actions
 var d1 = validateSuspenseDecisions([
-    { action: 'raise', title: 'Mystery Pendant', event: 'A glowing pendant found in the well', category: 'mystery', stm_ref: 'stm_1', present_characters: ['Hero'] },
+    { action: 'raise', title: 'Mystery Pendant', event: 'A glowing pendant found in the well', category: 'suspense', stm_ref: 'stm_1', present_characters: ['Hero'] },
     { action: 'develop', hook_id: 'suspense_1', stm_ref: 'stm_3' },
-    { action: 'resolve', hook_id: 'suspense_2', resolution_note: 'Prophecy fulfilled' },
-    { action: 'abandon', hook_id: 'suspense_3' }
+    { action: 'resolve', hook_id: 'suspense_2', outcome: 'done', resolution_note: 'Prophecy fulfilled' },
+    { action: 'resolve', hook_id: 'suspense_3', outcome: 'cancelled', resolution_note: 'No longer needed' }
 ]);
 assert(d1 !== null, 'valid decisions returned non-null');
 eq(d1.length, 4, 'all 4 valid decisions kept');
@@ -62,11 +62,29 @@ var d7 = validateSuspenseDecisions([
 ]);
 eq(d7[0].event.length, 200, 'event truncated to 200 chars');
 
-// Invalid category defaults to mystery
+// Invalid category defaults to suspense
 var d8 = validateSuspenseDecisions([
     { action: 'raise', title: 'Hook', event: 'desc', category: 'invalid_cat' }
 ]);
-eq(d8[0].category, 'mystery', 'invalid category defaults to mystery');
+eq(d8[0].category, 'suspense', 'invalid category defaults to suspense');
+
+// resolve without outcome defaults to done
+var d10 = validateSuspenseDecisions([
+    { action: 'resolve', hook_id: 'suspense_1', resolution_note: 'resolved it' }
+]);
+eq(d10[0].outcome, 'done', 'resolve missing outcome defaults to done');
+
+// invalid outcome defaults to done
+var d11 = validateSuspenseDecisions([
+    { action: 'resolve', hook_id: 'suspense_1', outcome: 'bogus', resolution_note: 'x' }
+]);
+eq(d11[0].outcome, 'done', 'invalid outcome defaults to done');
+
+// abandon action is no longer valid → filtered out
+var d12 = validateSuspenseDecisions([
+    { action: 'abandon', hook_id: 'suspense_1' }
+]);
+eq(d12.length, 0, 'abandon action filtered out');
 
 // Null/undefined entries in array filtered
 var d9 = validateSuspenseDecisions([null, undefined, { action: 'raise', title: 'OK', event: 'desc' }]);
@@ -148,11 +166,45 @@ eq(getNewStmEntries(vault6).length, 0, 'cursor beyond range → 0 (rollback safe
 // No STM entries
 eq(getNewStmEntries({ content: { stm_entries: [] } }).length, 0, 'empty STM → 0');
 
+// ── 双区扫描：unconsolidated_stm 中的新 STM 也应被检测 ──
+var dualVault1 = { content: {
+    suspense_cursor: null,
+    unconsolidated_stm: [
+        { id: 'stm_1', event: 'A' },
+        { id: 'stm_2', event: 'B' }
+    ],
+    stm_entries: [
+        { id: 'stm_3', event: 'C' }
+    ]
+}};
+var new3 = getNewStmEntries(dualVault1);
+eq(new3.length, 3, '双区扫描: unconsolidated + stm_entries 全部计入');
+eq(new3[0].id, 'stm_1', '双区扫描: 按 id 升序');
+eq(new3[2].id, 'stm_3', '双区扫描: stm_entries 条目也在列');
+
+// 跨区去重：同 id 同时出现在两个区时不重复
+var dualVault2 = { content: {
+    suspense_cursor: null,
+    unconsolidated_stm: [{ id: 'stm_1', event: 'A' }],
+    stm_entries: [{ id: 'stm_1', event: 'A' }]
+}};
+eq(getNewStmEntries(dualVault2).length, 1, '跨区同 id 去重 → 1');
+
+// 游标在 stm_entries 区，unconsolidated 区的新条目仍被检测
+var dualVault3 = { content: {
+    suspense_cursor: 'stm_3',
+    unconsolidated_stm: [{ id: 'stm_4', event: 'D' }],
+    stm_entries: [{ id: 'stm_1', event: 'A' }, { id: 'stm_3', event: 'C' }]
+}};
+var new4 = getNewStmEntries(dualVault3);
+eq(new4.length, 1, '双区扫描: cursor 跨区正确跳过旧条目');
+eq(new4[0].id, 'stm_4', '双区扫描: 新条目在 unconsolidated_stm 也被发现');
+
 console.log('\n=== suspense-pipeline: updateSuspenseCursor ===');
 
-var vault7 = { content: {} };
-updateSuspenseCursor(vault7, 'stm_5');
-eq(vault7.content.suspense_cursor, 'stm_5', 'cursor updated');
+var curVault = { content: {} };
+updateSuspenseCursor(curVault, 'stm_5');
+eq(curVault.content.suspense_cursor, 'stm_5', 'cursor updated');
 
 updateSuspenseCursor({ content: {} }, 'stm_99');
 // Should not throw
@@ -194,19 +246,20 @@ async function testRaise() {
     }};
     var result = await checkSuspenseUpdate('test', vault11, async function() {
         return JSON.stringify({ suspense_decisions: [
-            { action: 'raise', title: 'Mystery Pendant', event: 'A glowing pendant found in the well', category: 'mystery', stm_ref: 'stm_1', present_characters: ['Hero', 'Old Man'] }
+            { action: 'raise', title: 'Mystery Pendant', event: 'A glowing pendant found in the well', category: 'suspense', stm_ref: 'stm_1', present_characters: ['Hero', 'Old Man'] }
         ]});
     });
     eq(result, true, 'raise → true');
     eq(vault11.content.suspense_entries.length, 1, '1 hook created');
     eq(vault11.content.suspense_entries[0].id, 'suspense_1', 'id is suspense_1');
     eq(vault11.content.suspense_entries[0].status, 'open', 'status is open');
+    eq(vault11.content.suspense_entries[0].category, 'suspense', 'category saved as suspense');
     eq(vault11.content.suspense_entries[0].raised_at_period, 'Ch1', 'period derived from STM');
     eq(vault11.content.suspense_cursor, 'stm_1', 'cursor advanced');
 }
 await testRaise();
 
-// Resolve decision → hook closed
+// Resolve decision → hook closed with outcome
 async function testResolve() {
     var vault12 = { id: 'test', content: {
         suspense_entries: [{ id: 'suspense_1', status: 'open', title: 'Old Hook', event: 'desc', stm_refs: ['stm_1'], raised_at_period: 'Ch1', present_characters: [] }],
@@ -215,11 +268,12 @@ async function testResolve() {
     }};
     var result = await checkSuspenseUpdate('test', vault12, async function() {
         return JSON.stringify({ suspense_decisions: [
-            { action: 'resolve', hook_id: 'suspense_1', resolution_note: 'Prophecy came true', stm_ref: 'stm_2' }
+            { action: 'resolve', hook_id: 'suspense_1', outcome: 'done', resolution_note: 'Prophecy came true', stm_ref: 'stm_2' }
         ]});
     });
     eq(result, true, 'resolve → true');
     eq(vault12.content.suspense_entries[0].status, 'resolved', 'status changed to resolved');
+    eq(vault12.content.suspense_entries[0].outcome, 'done', 'outcome saved as done');
     eq(vault12.content.suspense_entries[0].resolution_note, 'Prophecy came true', 'resolution_note saved');
     eq(vault12.content.suspense_entries[0].resolved_at_period, 'Ch2', 'resolved period derived from STM');
     eq(vault12.content.suspense_cursor, 'stm_2', 'cursor advanced');
@@ -247,22 +301,23 @@ async function testDevelop() {
 }
 await testDevelop();
 
-// Abandon decision → hook abandoned
-async function testAbandon() {
+// Cancel decision → hook closed with outcome cancelled
+async function testCancelled() {
     var vault14 = { id: 'test', content: {
         suspense_entries: [{ id: 'suspense_1', status: 'open', title: 'Hook', event: 'desc', stm_refs: ['stm_1'], raised_at_period: 'Ch1', present_characters: [] }],
         suspense_cursor: 'stm_1',
-        stm_entries: [{ id: 'stm_1', event: 'A', period: 'Ch1' }, { id: 'stm_2', event: 'Story moved on', period: 'Ch2' }]
+        stm_entries: [{ id: 'stm_1', event: 'A', period: 'Ch1' }, { id: 'stm_2', event: 'Matter dropped', period: 'Ch2' }]
     }};
     var result = await checkSuspenseUpdate('test', vault14, async function() {
         return JSON.stringify({ suspense_decisions: [
-            { action: 'abandon', hook_id: 'suspense_1' }
+            { action: 'resolve', hook_id: 'suspense_1', outcome: 'cancelled', resolution_note: 'Deal fell through' }
         ]});
     });
-    eq(result, true, 'abandon → true');
-    eq(vault14.content.suspense_entries[0].status, 'abandoned', 'status changed to abandoned');
+    eq(result, true, 'cancel → true');
+    eq(vault14.content.suspense_entries[0].status, 'resolved', 'status changed to resolved');
+    eq(vault14.content.suspense_entries[0].outcome, 'cancelled', 'outcome saved as cancelled');
 }
-await testAbandon();
+await testCancelled();
 
 console.log('\n--- suspense-pipeline: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);
