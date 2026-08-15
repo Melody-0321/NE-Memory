@@ -1,7 +1,7 @@
 # SP·数据库 VII（shujuku）可参考项分析 → NE
 
 > 来源：2026-08-15 ~ 2026-08-16 会话。基于 shujuku-latest（test31.3, 2026-08-12, SP·数据库 VII）的 CODE_WIKI.md 分析，
-> 筛选出对 NE 项目有参考价值的架构点，逐项讨论采纳/排除。
+> 筛选出对 NE 项目有参考价值的架构点，逐项讨论采纳/排除。**13 项已全部讨论完毕**（统计见 §15）。
 > shujuku 版本分析详见 `d:\SillyTavern\xm\shujuku-latest\CODE_WIKI.md`。
 
 ## 1. 参考项总览
@@ -29,7 +29,7 @@
 | # | 参考项 | shujuku 中的实现 | NE 决策 | 状态 |
 |---|--------|------------------|---------|------|
 | 11 | 多槽生成门控 | `activeGenerations` 栈替代单一 `lastGeneration`，TTL 清理 + 栈配对消费 | **排除**（见 §13） | ❌ 不采用 |
-| 12 | 跨 checkpoint 分阶段提交协议 | 跨 full checkpoint 的统一分阶段提交 | 待讨论 | ⏳ |
+| 12 | 跨 checkpoint 分阶段提交协议 | 跨 full checkpoint 的统一分阶段提交 | **排除**（见 §14） | ❌ 不采用 |
 | 13 | 性能优化 | replay 惰性 hydrate、多 boundary 一次前向 replay、受控主线程让步(yield)、post-save 收敛 | **排除**（见 §4） | ❌ 不采用 |
 
 ### 1.3 明确排除项
@@ -811,7 +811,93 @@ NE 管线触发点是**内容驱动**（来了条带 id 的消息就处理），
 
 ---
 
-## 14. 待讨论项（第 12 项）
+## 14. 第 12 项：跨 checkpoint 分阶段提交协议（已讨论，排除）
 
-按序逐项讨论，讨论完成后在此文档为每项补充「NE 现状差距 / 采纳决策 / 损益 / 实施落点」小节，
-并将结论同步到 `project_memory.md` 的 Hard Constraints（如涉及硬约束）。
+### 14.1 shujuku 为什么需要它
+
+回顾其存储模型（第 1/2 项前提）：表格数据**分散在聊天消息的 V2 帧里**，读取当前状态 =
+从最后一个 full checkpoint（正式根）replay 后续增量。致命场景在**手动重填**（manual_refill，
+用户要求 AI 对一段历史楼层重新填表）：重填范围横跨 checkpoint 边界时——
+
+- **根之前的楼层**：往那里写增量**无效**——replay 从根起算，根之前的新写入永远不可见，
+  更糟的是可能造成双根或破坏语义
+- 但不写又不行——重填结果需要累进到当前状态
+
+### 14.2 协议内容（`table-fill-boundary-staging.ts`）
+
+```
+规划 planTableFillBoundaryStaging
+  ├─ 按 originalFullIndex 把待填楼层切成 pre/post 两段
+  ├─ requiresStaging = pre 段非空
+  └─ 多于 1 个 full checkpoint → fail-closed 拒绝（单正式根不变量）
+
+阶段1 pre_boundary_staging（根之前）
+  └─ bucket 只进 run 级隔离 staging（stagedWorkingData 内存累计，
+     不写聊天帧）；bucket 失败回滚到 bucket 前快照
+
+阶段2 boundary_committing（到达根边界）
+  └─ commitStagedSheetsAtFullBoundaryAtomic
+     ├─ 事务内复检唯一 full checkpoint
+     ├─ staging 累计快照原子折叠为原根上的 sheet_rebase（恢复原正式根）
+     └─ saveChatToHostStrict 失败 → 原位回滚不删数据
+
+阶段3 post_boundary_persisting（根之后）
+  └─ 恢复普通逐 bucket 持久化（增量写在根之后，replay 可见）
+```
+
+四条不变量：单正式根 / 严格保存 / 边界汇合（目标表=staging 快照，非目标表=原根语义）/
+零猜测恢复（runId/隔离键/表集合不匹配 → fail-closed）。
+
+**本质**：它是「数据分布在消息帧 + 从根 replay 读取」模型的必然代价——重填历史必然撞上
+根边界，撞上就必须把根之前的结果「折回根里」（rebase），staging 只是让折叠原子化、
+不产生中间坏态。
+
+### 14.3 NE 核实：读路径不依赖根，写路径无「根之前」可落
+
+逐点核实代码后的结论：
+
+**1. 常态读 = 纯物化 vault 单键 get，零链依赖**
+`readVault`（store.js:402）= readState + readMemory 两个单键 get 后合并。
+`state_deltas` / `memory_versions` / `active_chains` 在 store.js 中只出现在
+schema 建表和清理函数里——注入、SmartPush、面板、管线全部走这条路，**不触碰 checkpoint**。
+
+**2. fold（回滚/compact）对 checkpoint 只有优化依赖，无硬依赖**
+`foldState`（state-versions.js:599）优先用 `base_seq` 记录上的 `folded_state` 快照
+做折叠基底——但 625-650 行有完整 fallback：**从当前物化 vault 出发反向应用 delta 的
+`old` 值**回退到目标。即 checkpoint 缺失时回滚照常工作，只是多算几步。
+
+**3. 没有「写在根之前」这个动作可发生**
+| 写路径 | 行为 |
+|---|---|
+| `writeStateWithDelta` / `writeMemoryWithVersion` | 链头追加 + vault 更新，单事务（第 1 项已实施）；消息多老都一样写在链头 |
+| `rollbackState` / `rollbackMemory` | 链截断到 active 内的 seq（`evaluateRollbackTarget`：目标不在 active → `'archived'` 直接拒绝） |
+| `compact` | 折叠到 head，把 `folded_state` 挂在 head 记录上，active 收敛为 `[headSeq]` |
+
+唯一涉及「根之前历史」的场景（回滚到归档边界之外）被 `evaluateRollbackTarget`
+fail-closed 拒绝——这正是第 2 项链体检吸收的「拒绝猜测」原则，且 UI 已有引导出口。
+
+### 14.4 排除理由
+
+**排除，问题面不存在类**（第 10/11/13 项同族）：
+
+1. shujuku 的协议为「数据分布在消息帧 + 从根 replay」的双重前提服务；NE 是物化 vault +
+   单键读，**读取没有根概念**，写入没有位置概念
+2. NE 的 checkpoint（folded_state）只是**回滚路径的性能优化**，且有无损 fallback；
+   不存在「绕不开的正式根」
+3. 共同的哲学（fail-closed 拒绝不可验证状态）已在第 2 项链体检吸收（archived 拒绝 +
+   体检引导），无需借道本协议
+
+---
+
+## 15. 全部收尾统计
+
+13 项参考项讨论完毕（2026-08-15 ~ 2026-08-16）：
+
+| 决策 | 项 | 明细 |
+|---|---|---|
+| **采纳实施** | 7 | V2 原子写（§2）/ 链体检（§3）/ content_hash（§5）/ JSON 解析遥测（§6）/ 孤儿裁剪（§7）/ 字段库引用完整性（§8）/ 模板 AI 助手重设计（§11） |
+| **排除** | 6 | 性能优化（§4，问题面不存在）/ 世界书接管（§9）/ 严格世界书读取（§10，伴生）/ 飞行模式（§12，问题面不存在）/ 多槽生成门控（§13，问题面不存在）/ 跨 checkpoint 分阶段提交（§14，问题面不存在） |
+
+排除项里 4/6 是「问题面不存在」类——根因是 shujuku 的四个结构性前提 NE 都没有：
+**消息帧分布存储、replay 读取、注入-存储耦合、多生成源走 ST quiet 通道**。
+其余 2/6 是产品判断（世界书接管/严格读取的物理改资产路线与 NE 边界原则冲突）。
