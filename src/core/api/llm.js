@@ -315,7 +315,7 @@ function resolvePipelineApi(operation) {
         channelKey = 'ne_ltm_api';
     } else if (operation === 'state_extract' || operation === 'scheme_discovery' || operation === 'faction_discovery') {
         channelKey = 'ne_state_api';
-    } else if (operation === 'template_scheme' || operation === 'template_proposal') {
+    } else if (operation === 'template_scheme' || operation === 'template_proposal' || operation === 'template_assistant') {
         channelKey = 'ne_template_api';
     }
 
