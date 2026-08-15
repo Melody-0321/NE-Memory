@@ -9,8 +9,8 @@ import { buildMsgId } from '../engine/msg-id.js';
 import { persistVaultToChatFile } from '../auto-restore.js';
 const DB_NAME = 'ne_memory_vault';
 const DB_VERSION = 8;
-const STATE_STORE = 'state_vaults';
-const MEMORY_STORE = 'memory_vaults';
+export const STATE_STORE = 'state_vaults';
+export const MEMORY_STORE = 'memory_vaults';
 
 function _hasOldVaults(db) {
     try { if (localStorage.getItem('ne_v7_migrated') === '1') return false; } catch (e) {}
@@ -709,6 +709,10 @@ export function deleteTemplate(templateId) {
         // If a user override exists in localStorage, remove only the override
         var lib = loadTemplateLibrary();
         if (lib.templates[templateId]) {
+            // 清字段库中该 override 登记的引用（编辑保存时对称登记的 ref）
+            (lib.templates[templateId].customFieldRefs || []).forEach(function (fn) {
+                removeTemplateRefFromField(fn, templateId);
+            });
             delete lib.templates[templateId];
             if (lib.order) {
                 var idx = lib.order.indexOf(templateId);
@@ -720,6 +724,10 @@ export function deleteTemplate(templateId) {
     }
     var lib = loadTemplateLibrary();
     if (!lib.templates[templateId]) return false;
+    // 清字段库中该模板登记的引用，防止悬挂 ref 阻塞字段删除
+    (lib.templates[templateId].customFieldRefs || []).forEach(function (fn) {
+        removeTemplateRefFromField(fn, templateId);
+    });
     delete lib.templates[templateId];
     // Remove from order array
     if (lib.order) {
@@ -898,13 +906,42 @@ export function addFieldToLibrary(fieldName, entry) {
     saveFieldLibrary(lib);
 }
 
+/**
+ * 字段库引用存在性校验：templateId 可能是全局模板 id（含系统默认/override），
+ * 也可能是卡片副本 key。删除字段前用于识别悬挂引用。
+ */
+export function templateIdExists(templateId) {
+    var defaults = _getDefaultTemplates();
+    if (defaults[templateId]) return true;
+    var lib = loadTemplateLibrary();
+    if (lib.templates[templateId]) return true;
+    for (var i = 0; i < localStorage.length; i++) {
+        var key = localStorage.key(i);
+        if (!key || key.indexOf('ne_card_templates_') !== 0) continue;
+        try {
+            var cfg = JSON.parse(localStorage.getItem(key));
+            if (cfg && cfg._dialogueTemplates && cfg._dialogueTemplates[templateId]) return true;
+        } catch (e) {}
+    }
+    return false;
+}
+
 export function removeFieldFromLibrary(fieldName) {
     var lib = loadFieldLibrary();
     if (!lib.fields[fieldName]) return false;
     var usedBy = lib.fields[fieldName].usedByTemplates || [];
     if (usedBy.length > 0) {
-        console.warn('[NE] Cannot delete field', fieldName, '— used by templates:', usedBy);
-        return false;
+        // 惰性过滤悬挂引用（模板已删但 ref 残留），只保留仍存在的模板引用
+        var live = usedBy.filter(function (tid) { return templateIdExists(tid); });
+        if (live.length > 0) {
+            if (live.length !== usedBy.length) {
+                lib.fields[fieldName].usedByTemplates = live;
+                saveFieldLibrary(lib);
+            }
+            console.warn('[NE] Cannot delete field', fieldName, '— used by templates:', live);
+            return false;
+        }
+        // 全部为悬挂引用：清理后允许删除（落入下方正常删除路径）
     }
     delete lib.fields[fieldName];
     saveFieldLibrary(lib);
@@ -1129,6 +1166,10 @@ export function deleteTemplateVersion(charName, versionKey) {
     var dt = config._dialogueTemplates[versionKey];
     if (!dt) return false;
     if (dt._active) return false; // 禁止删除主副本
+    // 清字段库中该副本登记的引用，防止悬挂 ref 阻塞字段删除
+    (dt.customFieldRefs || []).forEach(function (fn) {
+        removeTemplateRefFromField(fn, versionKey);
+    });
     delete config._dialogueTemplates[versionKey];
     return saveCardConfig(charName, config);
 }

@@ -10,7 +10,7 @@
  *   active_chains     keyPath: "chat_id"
  */
 
-import { openDB, readState, writeState, readMemory, writeMemory } from './store.js';
+import { openDB, readState, writeState, readMemory, writeMemory, STATE_STORE, MEMORY_STORE } from './store.js';
 
 var COMPACT_THRESHOLD = 100;
 var MAX_ACTIVE_VERSIONS = 500;
@@ -81,6 +81,69 @@ export function evaluateRollbackTarget(activeSeqs, headSeq, targetSeq) {
     if (targetSeq >= headSeq || targetSeq < 0) return 'invalid_target';
     if (activeSeqs.indexOf(targetSeq) === -1) return 'archived';
     return 'ok';
+}
+
+/**
+ * 链一致性体检（纯函数）：active 引用 vs 实际存在的记录
+ *
+ * seq 0 为链根哨兵，永无记录，不计悬空。
+ * orphans 只报告计数，不影响 status（孤儿不破坏 fold/回滚）。
+ *
+ * @param {number[]} activeSeqs — chain.state_active / mem_active
+ * @param {number} headSeq — chain.state_head_seq / mem_head_seq
+ * @param {number[]} existingSeqs — store 中该 chat 实际存在的 seq 列表
+ * @returns {{status:'ok'|'dangling_active', dangling:number[], headMissing:boolean, orphans:number[]}}
+ */
+export function diagnoseChainRefs(activeSeqs, headSeq, existingSeqs) {
+    var active = activeSeqs || [];
+    var existing = existingSeqs || [];
+    var existingSet = new Set(existing);
+    var dangling = [];
+    for (var i = 0; i < active.length; i++) {
+        var s = active[i];
+        if (s !== 0 && !existingSet.has(s)) dangling.push(s);
+    }
+    var headMissing = headSeq !== 0 && (!existingSet.has(headSeq) || active.indexOf(headSeq) === -1);
+    var activeSet = new Set(active);
+    var orphans = [];
+    for (var j = 0; j < existing.length; j++) {
+        if (!activeSet.has(existing[j])) orphans.push(existing[j]);
+    }
+    return {
+        status: (dangling.length > 0 || headMissing) ? 'dangling_active' : 'ok',
+        dangling: dangling,
+        headMissing: headMissing,
+        orphans: orphans
+    };
+}
+
+/**
+ * 保守修复（纯函数）：截断到第一个悬空 seq，保留连续前缀。
+ *
+ * fold 按 active 数组顺序迭代且静默跳过缺失项，中段悬空会让回滚结果
+ * 无声丢数据 — 因此必须截断到第一个悬空前，不能「过滤保留仍存在的」
+ * （后者会留下中段洞）。绝不推测内容、绝不重排。
+ *
+ * @param {number[]} activeSeqs
+ * @param {number} headSeq
+ * @param {number} baseSeq
+ * @param {number[]} existingSeqs
+ * @returns {{newActive:number[], newHead:number, newBase:number, dropped:number[]}}
+ *   无悬空时 dropped=[]（no-op，但 head 仍归位为 active 末位）。
+ */
+export function computeConservativeRepair(activeSeqs, headSeq, baseSeq, existingSeqs) {
+    var active = activeSeqs || [];
+    var existingSet = new Set(existingSeqs || []);
+    var cutIdx = -1;
+    for (var i = 0; i < active.length; i++) {
+        var s = active[i];
+        if (s !== 0 && !existingSet.has(s)) { cutIdx = i; break; }
+    }
+    var newActive = cutIdx < 0 ? active.slice() : active.slice(0, cutIdx);
+    var dropped = cutIdx < 0 ? [] : active.slice(cutIdx);
+    var newHead = newActive.length > 0 ? newActive[newActive.length - 1] : 0;
+    var newBase = newActive.length > 0 ? newActive[0] : 0;
+    return { newActive: newActive, newHead: newHead, newBase: newBase, dropped: dropped };
 }
 
 function _nowISO() {
@@ -356,6 +419,175 @@ export async function recordMemoryVersion(chatId, versionData) {
     }
 
     return newSeq;
+}
+
+/**
+ * 原子写入：State Vault + Delta + Chain 在同一 IndexedDB 事务中
+ *
+ * 消除 vault 内容与版本链不同步的风险，并将 chain 的 read-modify-write
+ * 收进同一 readwrite 事务（事务独占锁保证并发写入不丢失）。
+ *
+ * 如果 deltaData 为 null，仅写入 vault（不记录版本）。
+ *
+ * @param {string} chatId
+ * @param {object} stateVault
+ * @param {object|null} deltaData — { source, summary, changes, message_dates }
+ * @returns {Promise<number|null>} 新 seq（有 delta 时），或 null
+ */
+export async function writeStateWithDelta(chatId, stateVault, deltaData) {
+    var db = await openDB();
+
+    if (!deltaData) {
+        return _tx(db, [STATE_STORE], 'readwrite', function (tx) {
+            tx.objectStore(STATE_STORE).put({ chat_id: chatId, vault: stateVault, updated_at: Date.now() });
+        }).then(function () { return null; });
+    }
+
+    return new Promise(function (resolve, reject) {
+        var tx;
+        try {
+            tx = db.transaction([STATE_STORE, 'state_deltas', 'active_chains'], 'readwrite');
+        } catch (e) { reject(e); return; }
+        var stateStore = tx.objectStore(STATE_STORE);
+        var deltaStore = tx.objectStore('state_deltas');
+        var chainStore = tx.objectStore('active_chains');
+        var resultSeq = null;
+        var pendingCompact = false;
+
+        stateStore.put({ chat_id: chatId, vault: stateVault, updated_at: Date.now() });
+
+        // chain 读取在同一事务内（exclusive lock），杜绝跨事务 read-modify-write 竞态
+        var getReq = chainStore.get(chatId);
+        getReq.onsuccess = function () {
+            var existing = getReq.result;
+            var chain = (existing && existing.chain) || existing || _emptyChain(chatId);
+            var newSeq = chain._global_state_seq + 1;
+            var changes = deltaData.changes || [];
+            var summary = deltaData.summary || buildStateDeltaSummary(changes);
+            deltaStore.put({
+                id: _generateId('delta', chatId, newSeq),
+                chat_id: chatId,
+                seq: newSeq,
+                prev_seq: chain.state_head_seq,
+                timestamp: _nowISO(),
+                source: deltaData.source || 'ai_update',
+                summary: summary,
+                changes: changes,
+                message_dates: deltaData.message_dates || [],
+                derived_from_stm_version: null
+            });
+            chain.state_head_seq = newSeq;
+            chain._global_state_seq = newSeq;
+            chain.state_active.push(newSeq);
+            if (chain.state_active.length > MAX_ACTIVE_VERSIONS) {
+                chain.state_active = chain.state_active.slice(-MAX_ACTIVE_VERSIONS);
+                chain.state_base_seq = chain.state_active[0];
+            }
+            chainStore.put({ chat_id: chatId, chain: chain });
+            resultSeq = newSeq;
+            if (chain.state_active.length > _getVersionLimit('ne_state_version_limit')) {
+                pendingCompact = true;
+            }
+        };
+        getReq.onerror = function () { reject(getReq.error); };
+
+        tx.oncomplete = function () {
+            if (pendingCompact) {
+                compact(chatId).catch(function(e) { console.warn('[NE] auto-compact state failed:', e); });
+            }
+            resolve(resultSeq);
+        };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error || new Error('transaction aborted')); };
+    });
+}
+
+/**
+ * 原子写入：Memory Vault + Version + Chain 在同一 IndexedDB 事务中
+ *
+ * 消除 vault 内容与版本链不同步的风险，并将 chain 的 read-modify-write
+ * 收进同一 readwrite 事务（事务独占锁保证并发写入不丢失）。
+ *
+ * 如果 versionData 为 null，仅写入 vault（不记录版本）。
+ *
+ * @param {string} chatId
+ * @param {object} memoryVault
+ * @param {object|null} versionData — { type, summary, delta, message_dates, derived_from_stm_version }
+ * @returns {Promise<number|null>} 新 seq（有 version 时），或 null
+ */
+export async function writeMemoryWithVersion(chatId, memoryVault, versionData) {
+    var db = await openDB();
+
+    if (!versionData) {
+        return _tx(db, [MEMORY_STORE], 'readwrite', function (tx) {
+            tx.objectStore(MEMORY_STORE).put({ chat_id: chatId, vault: memoryVault, updated_at: Date.now() });
+        }).then(function () { return null; });
+    }
+
+    return new Promise(function (resolve, reject) {
+        var tx;
+        try {
+            tx = db.transaction([MEMORY_STORE, 'memory_versions', 'active_chains'], 'readwrite');
+        } catch (e) { reject(e); return; }
+        var memStore = tx.objectStore(MEMORY_STORE);
+        var verStore = tx.objectStore('memory_versions');
+        var chainStore = tx.objectStore('active_chains');
+        var resultSeq = null;
+        var pendingCompact = false;
+
+        memStore.put({ chat_id: chatId, vault: memoryVault, updated_at: Date.now() });
+
+        // chain 读取在同一事务内（exclusive lock），杜绝跨事务 read-modify-write 竞态
+        var getReq = chainStore.get(chatId);
+        getReq.onsuccess = function () {
+            var existing = getReq.result;
+            var chain = (existing && existing.chain) || existing || _emptyChain(chatId);
+            var newSeq = chain._global_mem_seq + 1;
+            var delta = versionData.delta || {};
+            var summary = versionData.summary || buildMemoryVersionSummary({ delta: delta, type: versionData.type });
+            verStore.put({
+                id: _generateId('memver', chatId, newSeq),
+                chat_id: chatId,
+                seq: newSeq,
+                prev_seq: chain.mem_head_seq,
+                timestamp: _nowISO(),
+                type: versionData.type || 'stm_batch',
+                summary: summary,
+                delta: {
+                    stm_added: delta.stm_added || [],
+                    stm_removed: delta.stm_removed || [],
+                    stm_moved: delta.stm_moved || [],
+                    ltm_added: delta.ltm_added || [],
+                    ltm_removed: delta.ltm_removed || [],
+                    ltm_modified: delta.ltm_modified || []
+                },
+                message_dates: versionData.message_dates || [],
+                derived_from_stm_version: versionData.derived_from_stm_version != null ? versionData.derived_from_stm_version : null
+            });
+            chain.mem_head_seq = newSeq;
+            chain._global_mem_seq = newSeq;
+            chain.mem_active.push(newSeq);
+            if (chain.mem_active.length > MAX_ACTIVE_VERSIONS) {
+                chain.mem_active = chain.mem_active.slice(-MAX_ACTIVE_VERSIONS);
+                chain.mem_base_seq = chain.mem_active[0];
+            }
+            chainStore.put({ chat_id: chatId, chain: chain });
+            resultSeq = newSeq;
+            if (chain.mem_active.length > _getVersionLimit('ne_mem_version_limit')) {
+                pendingCompact = true;
+            }
+        };
+        getReq.onerror = function () { reject(getReq.error); };
+
+        tx.oncomplete = function () {
+            if (pendingCompact) {
+                compact(chatId).catch(function(e) { console.warn('[NE] auto-compact memory failed:', e); });
+            }
+            resolve(resultSeq);
+        };
+        tx.onerror = function () { reject(tx.error); };
+        tx.onabort = function () { reject(tx.error || new Error('transaction aborted')); };
+    });
 }
 
 /**
@@ -673,11 +905,13 @@ export async function rebuildMemoryVault(chatId, targetSeq) {
  * 压缩：fold 所有 active deltas → 存入 base 版本的 folded 字段
  *
  * @param {string} chatId
+ * @param {string} [reason='auto_threshold'] — 折叠原因（如 'auto_threshold' / 'manual'），记录到 checkpoint_reason
  * @returns {Promise<void>}
  */
-export async function compact(chatId) {
+export async function compact(chatId, reason) {
     var db = await openDB();
     var chain = await _getOrCreateChain(chatId);
+    reason = reason || 'auto_threshold';
 
     if (chain.state_active.length > 1) {
         var stOldSeqs = chain.state_active.slice(); // D2: 折叠前快照，用于删除旧 delta
@@ -689,6 +923,8 @@ export async function compact(chatId) {
         });
         if (existing) {
             existing.folded_state = foldedState;
+            existing.checkpoint_reason = reason;
+            existing.checkpoint_source = existing.source || 'unknown';
             var stDelSeqs = computeCompactDeleteSeqs(stOldSeqs, headSeq);
             await _tx(db, ['state_deltas', 'active_chains'], 'readwrite', function (tx) {
                 tx.objectStore('state_deltas').put(existing);
@@ -714,6 +950,8 @@ export async function compact(chatId) {
             existing.folded_stm_entries = foldedMem.stm_entries;
             existing.folded_unconsolidated_stm = foldedMem.unconsolidated_stm;
             existing.folded_ltm_entries = foldedMem.ltm_entries;
+            existing.checkpoint_reason = reason;
+            existing.checkpoint_source = existing.type || 'unknown';
             var memDelSeqs = computeCompactDeleteSeqs(memOldSeqs, headSeq);
             await _tx(db, ['memory_versions', 'active_chains'], 'readwrite', function (tx) {
                 tx.objectStore('memory_versions').put(existing);
@@ -726,6 +964,145 @@ export async function compact(chatId) {
             });
         }
     }
+}
+
+/**
+ * 双链一致性体检（只读）：校验 active_chains 引用的每个 seq 都有对应记录
+ *
+ * 检测三类问题（详见 diagnoseChainRefs）：
+ *   - dangling：active 引用但 store 无记录（原子化改造前两段式写入的残留）
+ *   - headMissing：head 悬空或不在 active 中
+ *   - orphans：存在记录但未挂载在 active 上（历史残留 / gc bug），只计数
+ *
+ * @param {string} chatId
+ * @returns {Promise<{status:'no_chain'|'ok'|'broken', state:object|null, mem:object|null, orphanDeltas:number, orphanVersions:number}>}
+ *   chain 记录不存在 → status:'no_chain'（新对话正常态，非错误）
+ */
+export async function diagnoseChainConsistency(chatId) {
+    var db = await openDB();
+    var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
+        return tx.objectStore('active_chains').get(chatId);
+    });
+    if (!chainData) {
+        return { status: 'no_chain', state: null, mem: null, orphanDeltas: 0, orphanVersions: 0 };
+    }
+    var chain = chainData.chain || chainData;
+    var deltas = await _getAllByChatIndex(db, 'state_deltas', chatId);
+    var versions = await _getAllByChatIndex(db, 'memory_versions', chatId);
+    var deltaSeqs = deltas.map(function (d) { return d.seq; });
+    var versionSeqs = versions.map(function (v) { return v.seq; });
+    var state = diagnoseChainRefs(chain.state_active, chain.state_head_seq, deltaSeqs);
+    var mem = diagnoseChainRefs(chain.mem_active, chain.mem_head_seq, versionSeqs);
+    var broken = state.status !== 'ok' || mem.status !== 'ok';
+    return {
+        status: broken ? 'broken' : 'ok',
+        state: state,
+        mem: mem,
+        orphanDeltas: state.orphans.length,
+        orphanVersions: mem.orphans.length
+    };
+}
+
+/**
+ * 保守修复：对有悬空/head 悬空的链执行截断（连续前缀语义见 computeConservativeRepair）
+ *
+ * 修复前把原 chain 完整快照写入 chain._pre_repair_backup 作为持久化证据
+ * （shujuku「修复留证据」原则），同时 console.warn 原链。
+ * 单 readwrite 事务只写 active_chains — vault / delta / version 内容一概不动。
+ * _global_*_seq 不回退，防止新记录 id 复用。
+ *
+ * @param {string} chatId
+ * @returns {Promise<{repaired:string[], dropped:{state:number[],mem:number[]}, noop:boolean}>}
+ */
+export async function repairChainConservative(chatId) {
+    var db = await openDB();
+    var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
+        return tx.objectStore('active_chains').get(chatId);
+    });
+    if (!chainData) return { repaired: [], dropped: { state: [], mem: [] }, noop: true };
+    var chain = chainData.chain || chainData;
+    var deltas = await _getAllByChatIndex(db, 'state_deltas', chatId);
+    var versions = await _getAllByChatIndex(db, 'memory_versions', chatId);
+    var deltaSeqs = deltas.map(function (d) { return d.seq; });
+    var versionSeqs = versions.map(function (v) { return v.seq; });
+
+    var stDiag = diagnoseChainRefs(chain.state_active, chain.state_head_seq, deltaSeqs);
+    var memDiag = diagnoseChainRefs(chain.mem_active, chain.mem_head_seq, versionSeqs);
+    var stNeeds = stDiag.status !== 'ok';
+    var memNeeds = memDiag.status !== 'ok';
+    if (!stNeeds && !memNeeds) return { repaired: [], dropped: { state: [], mem: [] }, noop: true };
+
+    console.warn('[NE] chain repair: original chain =', JSON.stringify(chain));
+    chain._pre_repair_backup = { at: _nowISO(), chain: JSON.parse(JSON.stringify(chain)) };
+
+    var stRepair = computeConservativeRepair(chain.state_active, chain.state_head_seq, chain.state_base_seq, deltaSeqs);
+    var memRepair = computeConservativeRepair(chain.mem_active, chain.mem_head_seq, chain.mem_base_seq, versionSeqs);
+    var repaired = [];
+    if (stNeeds) {
+        chain.state_active = stRepair.newActive;
+        chain.state_head_seq = stRepair.newHead;
+        chain.state_base_seq = stRepair.newBase;
+        repaired.push('state');
+    }
+    if (memNeeds) {
+        chain.mem_active = memRepair.newActive;
+        chain.mem_head_seq = memRepair.newHead;
+        chain.mem_base_seq = memRepair.newBase;
+        repaired.push('mem');
+    }
+
+    await _tx(db, ['active_chains'], 'readwrite', function (tx) {
+        tx.objectStore('active_chains').put({ chat_id: chatId, chain: chain });
+    });
+    return {
+        repaired: repaired,
+        dropped: {
+            state: stNeeds ? stRepair.dropped : [],
+            mem: memNeeds ? memRepair.dropped : []
+        },
+        noop: false
+    };
+}
+
+/**
+ * 删除孤儿记录：seq 不在 active（state_active / mem_active）中的 delta/version
+ *
+ * 必须由 UI confirm 后调用（删除类操作强制确认）。
+ * 无 chain 记录时拒绝删除（保守：无从判定引用关系）。
+ * 单 readwrite 事务覆盖 state_deltas + memory_versions。
+ *
+ * @param {string} chatId
+ * @returns {Promise<{deltas:number, versions:number}>}
+ */
+export async function removeOrphanVersionRecords(chatId) {
+    var db = await openDB();
+    var chainData = await _tx(db, ['active_chains'], 'readonly', function (tx) {
+        return tx.objectStore('active_chains').get(chatId);
+    });
+    if (!chainData) return { deltas: 0, versions: 0 };
+    var chain = chainData.chain || chainData;
+    var stActive = new Set(chain.state_active || []);
+    var memActive = new Set(chain.mem_active || []);
+
+    var deltas = await _getAllByChatIndex(db, 'state_deltas', chatId);
+    var versions = await _getAllByChatIndex(db, 'memory_versions', chatId);
+    var orphanDeltaIds = [];
+    for (var i = 0; i < deltas.length; i++) {
+        if (!stActive.has(deltas[i].seq)) orphanDeltaIds.push(deltas[i].id);
+    }
+    var orphanVersionIds = [];
+    for (var j = 0; j < versions.length; j++) {
+        if (!memActive.has(versions[j].seq)) orphanVersionIds.push(versions[j].id);
+    }
+    if (orphanDeltaIds.length === 0 && orphanVersionIds.length === 0) return { deltas: 0, versions: 0 };
+
+    await _tx(db, ['state_deltas', 'memory_versions'], 'readwrite', function (tx) {
+        var ds = tx.objectStore('state_deltas');
+        for (var k = 0; k < orphanDeltaIds.length; k++) ds.delete(orphanDeltaIds[k]);
+        var vs = tx.objectStore('memory_versions');
+        for (var m = 0; m < orphanVersionIds.length; m++) vs.delete(orphanVersionIds[m]);
+    });
+    return { deltas: orphanDeltaIds.length, versions: orphanVersionIds.length };
 }
 
 /**

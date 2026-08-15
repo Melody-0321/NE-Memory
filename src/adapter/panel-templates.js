@@ -11,11 +11,13 @@
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock,
   editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, deleteTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
-  loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
+  loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField, readState } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';
+import { runTemplateAssistant, buildTemplateFingerprint, applyAssistantPlan, collectFieldValueSummary } from '../core/engine/template-assistant.js';
+import { collectWorldBookContent } from '../core/engine/state-pipeline.js';
 
 // ── Slide-in root state ──
 var _lastRenderTick = 0;
@@ -226,6 +228,7 @@ function _renderGlobalLibraryHTML(templates, order, cardConfig) {
     html += '<option value="fields"' + (_sortBy === 'fields' ? ' selected' : '') + '>' + escapeHtml(t('sort_fields')) + '</option>';
     html += '</select>';
     html += '<button id="ne-btn-create-template" class="ne-btn-small" data-action="create-first">+ ' + escapeHtml(t('create_template')) + '</button>';
+    html += '<button id="ne-btn-ai-template" class="ne-btn-small" data-action="ai-create" title="' + escapeHtml(t('ai_assistant_title')) + '">✨ ' + escapeHtml(t('ai_assistant_btn')) + '</button>';
     html += '</div>';
 
     // Group templates by role
@@ -444,6 +447,7 @@ function _renderTemplateCardHTML(tpl, id, cardConfig, mode) {
         }
     }
     html += '<button class="ne-btn-small ne-btn-edit" data-action="edit" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('view_edit')) + '</button>';
+    html += '<button class="ne-btn-small" data-action="ai-edit" data-template-id="' + escapeHtml(id) + '" title="' + escapeHtml(t('ai_assistant_title')) + '">✨ ' + escapeHtml(t('ai_assistant_btn')) + '</button>';
     html += '<button class="ne-btn-small" data-action="duplicate" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('duplicate')) + '</button>';
     if (!isSystem) {
         html += '<button class="ne-btn-small ne-btn-danger" data-action="delete" data-template-id="' + escapeHtml(id) + '">' + escapeHtml(t('Delete')) + '</button>';
@@ -585,6 +589,23 @@ function _hookUnifiedEvents(container, templates, order, cardConfig) {
         editBtns[ed].addEventListener('click', function () {
             var tplId = this.getAttribute('data-template-id');
             _showEditor(container, tplId, false, templates, order);
+        });
+    }
+
+    // ── AI assistant: modify from card ──
+    var aiEditBtns = container.querySelectorAll('[data-action="ai-edit"]');
+    for (var ae = 0; ae < aiEditBtns.length; ae++) {
+        aiEditBtns[ae].addEventListener('click', function () {
+            var tplId = this.getAttribute('data-template-id');
+            _showAssistant(container, 'modify', tplId, templates, order);
+        });
+    }
+
+    // ── AI assistant: create from toolbar ──
+    var aiCreateBtn = container.querySelector('#ne-btn-ai-template');
+    if (aiCreateBtn) {
+        aiCreateBtn.addEventListener('click', function () {
+            _showAssistant(container, 'create', null, templates, order);
         });
     }
 
@@ -920,6 +941,268 @@ function _applySearchFilter(container, templates) {
 // ─────────────────────────────────────
 // P5: Unified template selector modal
 // ─────────────────────────────────────
+
+// ─────────────────────────────────────
+// AI Assistant (create / modify template)
+// ─────────────────────────────────────
+
+function _aiGetChatId() {
+    try {
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            var ctx = SillyTavern.getContext();
+            if (ctx && ctx.chatId) return ctx.chatId;
+        }
+    } catch (e) {}
+    return null;
+}
+
+function _aiResolveBaseline(mode, templateId, templates, baselineSel) {
+    if (mode === 'modify') {
+        return templateId ? (templates[templateId] || null) : null;
+    }
+    if (baselineSel === 'default:pc') return DEFAULT_PC_TEMPLATE;
+    if (baselineSel === 'default:npc') return DEFAULT_NPC_TEMPLATE;
+    return null;
+}
+
+function _aiFormatMeta(meta) {
+    if (!meta) return '';
+    var parts = [meta.type];
+    if (meta.values) parts.push(meta.values.join('/'));
+    if (meta.max_length !== undefined) parts.push('≤' + meta.max_length);
+    if (meta.min !== undefined) parts.push('≥' + meta.min);
+    if (meta.max !== undefined && meta.min !== undefined) parts.push('≤' + meta.max);
+    else if (meta.max !== undefined) parts.push('≤' + meta.max);
+    return parts.join(' ');
+}
+
+function _showAssistant(container, mode, templateId, templates, order) {
+    // Clear flex styles from dual-zone layout (same as editor)
+    container.style.cssText = '';
+    var tpl = null;
+    if (mode === 'modify') {
+        tpl = templateId ? templates[templateId] : null;
+        if (!tpl) return;
+    }
+
+    var html = '<div class="ne-template-editor" id="ne-ai-assistant">';
+    // Breadcrumb
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:0.82em;">';
+    html += '<span class="ne-breadcrumb-link" id="ne-ai-bc-lib" style="cursor:pointer;color:var(--ne-info);">' + escapeHtml(t('breadcrumb_library')) + '</span>';
+    html += '<span style="color:var(--grey-50);"> › </span>';
+    html += '<span style="color:var(--grey-50);">' + escapeHtml(t('ai_assistant_title')) + (mode === 'modify' && tpl && tpl.name ? ' · ' + escapeHtml(tpl.name) : '') + '</span>';
+    html += '</div>';
+
+    // Mode info
+    html += '<div class="ne-editor-section">';
+    html += '<div class="ne-section-title">' + escapeHtml(t('ai_assistant_title')) + ' — ' + escapeHtml(mode === 'modify' ? t('ai_mode_modify') : t('ai_mode_create')) + '</div>';
+    if (mode === 'modify') {
+        if (tpl.system) {
+            html += '<div style="font-size:0.8em;color:var(--grey-50);">' + escapeHtml(t('system_template')) + ' → ' + escapeHtml(t('save_as_new')) + '</div>';
+        }
+        html += '<div style="font-size:0.8em;color:var(--grey-50);margin-top:4px;">ℹ ' + escapeHtml(t('ai_value_dist_included')) + '</div>';
+    } else {
+        html += '<label>' + escapeHtml(t('ai_baseline_label')) + '</label>';
+        html += '<select id="ne-ai-baseline" class="ne-editor-select">';
+        html += '<option value="scratch">' + escapeHtml(t('ai_baseline_scratch')) + '</option>';
+        html += '<option value="default:pc">' + escapeHtml(t('ai_baseline_default_pc')) + '</option>';
+        html += '<option value="default:npc" selected>' + escapeHtml(t('ai_baseline_default_npc')) + '</option>';
+        html += '</select>';
+    }
+    html += '</div>';
+
+    // Request input
+    html += '<div class="ne-editor-section">';
+    html += '<textarea id="ne-ai-request" class="ne-editor-textarea" rows="4" placeholder="' + escapeHtml(t('ai_requirement_placeholder')) + '"></textarea>';
+    html += '<label class="ne-preset-field" style="margin-top:6px;"><input type="checkbox" id="ne-ai-worldbook"> ' + escapeHtml(t('ai_use_worldbook')) + '</label>';
+    html += '</div>';
+
+    html += '<div style="margin-bottom:10px;">';
+    html += '<button id="ne-ai-generate" class="menu_button">✨ ' + escapeHtml(t('ai_generate')) + '</button>';
+    html += '</div>';
+    html += '<div id="ne-ai-result"></div>';
+    html += '</div>';
+    container.innerHTML = html;
+
+    var bcLib = container.querySelector('#ne-ai-bc-lib');
+    if (bcLib) bcLib.addEventListener('click', function () { renderTemplatesIntoSlide(container); });
+
+    var genBtn = container.querySelector('#ne-ai-generate');
+    if (genBtn) {
+        genBtn.addEventListener('click', function () {
+            _aiGenerate(container, mode, templateId, templates);
+        });
+    }
+}
+
+async function _aiGenerate(container, mode, templateId, templates) {
+    var requestEl = container.querySelector('#ne-ai-request');
+    var resultEl = container.querySelector('#ne-ai-result');
+    var genBtn = container.querySelector('#ne-ai-generate');
+    var request = requestEl ? requestEl.value.trim() : '';
+    if (!request) { showToast(t('ai_request_required'), 'warn'); return; }
+
+    var selEl = container.querySelector('#ne-ai-baseline');
+    var baselineSel = selEl ? selEl.value : 'scratch';
+    var baselineTemplate = _aiResolveBaseline(mode, templateId, templates, baselineSel);
+    if (mode === 'modify' && !baselineTemplate) return;
+
+    var fingerprint = (mode === 'modify')
+        ? buildTemplateFingerprint(baselineTemplate)
+        : baselineSel; // 'scratch' | 'default:pc' | 'default:npc'
+
+    // World book (read-only, opt-in)
+    var worldBookText = '';
+    var wbEl = container.querySelector('#ne-ai-worldbook');
+    if (wbEl && wbEl.checked) {
+        try {
+            var entries = await collectWorldBookContent();
+            worldBookText = (entries || []).map(function (e) { return e.content || ''; }).join('\n').trim();
+            if (worldBookText.length > 8000) worldBookText = worldBookText.slice(0, 8000) + '\n…（已截断）';
+        } catch (e) { worldBookText = ''; }
+    }
+
+    // Value distribution (modify mode, best-effort)
+    var valueSummaryText = '';
+    var valueMap = {};
+    if (mode === 'modify') {
+        try {
+            var chatId = _aiGetChatId();
+            if (chatId) {
+                var stateVault = await readState(chatId);
+                var vs = collectFieldValueSummary(stateVault, baselineTemplate);
+                valueSummaryText = vs.text;
+                valueMap = vs.map;
+            }
+        } catch (e) { /* skip L3 silently */ }
+    }
+
+    if (genBtn) { genBtn.disabled = true; genBtn.textContent = t('ai_generating'); }
+    if (resultEl) resultEl.innerHTML = '<div class="ne-editor-section"><div class="ne-hint">' + escapeHtml(t('ai_generating')) + '</div></div>';
+
+    var result;
+    try {
+        result = await runTemplateAssistant({
+            mode: mode,
+            baselineTemplate: baselineTemplate,
+            baselineLabel: (mode === 'modify') ? ((baselineTemplate && baselineTemplate.name) || templateId || '') : baselineSel,
+            fingerprint: fingerprint,
+            userRequest: request,
+            worldBookText: worldBookText,
+            valueSummaryText: valueSummaryText,
+            valueMap: valueMap,
+            chatId: _aiGetChatId()
+        });
+    } catch (e) {
+        result = { ok: false, failureKind: 'llm_error', errors: [(e && e.message) || String(e)] };
+    }
+
+    if (genBtn) { genBtn.disabled = false; genBtn.textContent = '✨ ' + t('ai_generate'); }
+    if (!result.ok) {
+        _aiRenderFailure(container, result);
+        return;
+    }
+    _aiRenderResult(container, result, mode, templateId, fingerprint, baselineTemplate);
+}
+
+function _aiRenderFailure(container, result) {
+    var resultEl = container.querySelector('#ne-ai-result');
+    if (!resultEl) return;
+    var msg = (result.failureKind === 'context_budget') ? t('ai_context_budget')
+        : (result.failureKind === 'retry_exhausted') ? t('ai_retry_exhausted')
+        : t('ai_draft_failed');
+    var html = '<div class="ne-editor-section" style="border-left:3px solid var(--ne-warn,#e0a800);">';
+    html += '<div class="ne-section-title">' + escapeHtml(msg) + '</div>';
+    if (result.errors && result.errors.length) {
+        html += '<ul style="margin:4px 0 0 16px;font-size:0.82em;color:var(--grey-50);">';
+        result.errors.slice(0, 10).forEach(function (e) { html += '<li>' + escapeHtml(String(e)) + '</li>'; });
+        html += '</ul>';
+    }
+    html += '</div>';
+    resultEl.innerHTML = html;
+}
+
+function _aiRenderResult(container, result, mode, templateId, fingerprint, baselineTemplate) {
+    var resultEl = container.querySelector('#ne-ai-result');
+    if (!resultEl) return;
+    var draft = result.draft;
+    var plan = result.plan;
+    var diff = plan.diff;
+    var html = '';
+
+    // Understanding
+    html += '<div class="ne-editor-section">';
+    html += '<div class="ne-section-title">' + escapeHtml(t('ai_understanding')) + '</div>';
+    html += '<div style="font-size:0.85em;white-space:pre-wrap;">' + escapeHtml(draft.understanding) + '</div>';
+    html += '</div>';
+
+    // Diff
+    html += '<div class="ne-editor-section">';
+    html += '<div class="ne-section-title">' + escapeHtml(t('ai_diff_summary')) + ' — ' + escapeHtml(plan.template.name) + ' (' + escapeHtml(t('role_' + plan.template.role)) + ')</div>';
+    var rows = [];
+    (diff.presetAdded || []).forEach(function (f) { rows.push('<li>＋ ' + escapeHtml(t_field(f) || f) + '</li>'); });
+    (diff.presetRemoved || []).forEach(function (f) { rows.push('<li>－ ' + escapeHtml(t_field(f) || f) + '</li>'); });
+    (diff.customAdded || []).forEach(function (m) { rows.push('<li>＋ ' + escapeHtml(m.name) + ' <span style="color:var(--grey-50);">' + escapeHtml(_aiFormatMeta(m)) + '</span></li>'); });
+    (diff.customRemoved || []).forEach(function (n) { rows.push('<li>－ ' + escapeHtml(n) + '</li>'); });
+    (diff.customModified || []).forEach(function (m) { rows.push('<li>± ' + escapeHtml(m.name) + ' <span style="color:var(--grey-50);">' + escapeHtml(_aiFormatMeta(m.before)) + ' → ' + escapeHtml(_aiFormatMeta(m.after)) + '</span></li>'); });
+    (diff.perRoundAdded || []).forEach(function (f) { rows.push('<li>＋ ' + escapeHtml(t('per_round_fields')) + ': ' + escapeHtml(t_field(f) || f) + '</li>'); });
+    (diff.perRoundRemoved || []).forEach(function (f) { rows.push('<li>－ ' + escapeHtml(t('per_round_fields')) + ': ' + escapeHtml(t_field(f) || f) + '</li>'); });
+    (diff.metaChanged || []).forEach(function (k) { rows.push('<li>± ' + escapeHtml(k) + '</li>'); });
+    if (rows.length === 0) rows.push('<li style="color:var(--grey-50);">—</li>');
+    html += '<ul style="margin:4px 0 0 16px;font-size:0.85em;">' + rows.join('') + '</ul>';
+    html += '</div>';
+
+    // High-risk confirmations
+    if (plan.highRiskItems.length > 0) {
+        html += '<div class="ne-editor-section" style="border-left:3px solid var(--ne-danger,#c04444);">';
+        html += '<div class="ne-section-title">' + escapeHtml(t('ai_risk_title')) + '</div>';
+        plan.highRiskItems.forEach(function (r, i) {
+            var kindLabel = t('ai_risk_' + ({ field_removed: 'field_removed', type_changed: 'type_changed', enum_narrowed: 'enum_narrowed', lib_update: 'lib_update' }[r.kind] || 'field_removed'));
+            html += '<label class="ne-preset-field" style="display:block;margin:2px 0;">';
+            html += '<input type="checkbox" class="ne-ai-risk-check" data-risk-idx="' + i + '"> ';
+            html += escapeHtml(kindLabel + ': ' + r.label + (r.detail ? ' — ' + r.detail : ''));
+            html += '</label>';
+        });
+        html += '</div>';
+    }
+
+    // Actions
+    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<button id="ne-ai-apply" class="menu_button"' + (plan.highRiskItems.length > 0 ? ' disabled' : '') + '>' + escapeHtml(t('ai_apply')) + '</button>';
+    html += '<button id="ne-ai-cancel" class="ne-btn-small">' + escapeHtml(t('ai_cancel')) + '</button>';
+    html += '</div>';
+    resultEl.innerHTML = html;
+
+    // Risk checkboxes gate the apply button
+    var applyBtn = resultEl.querySelector('#ne-ai-apply');
+    var riskChecks = resultEl.querySelectorAll('.ne-ai-risk-check');
+    for (var rc = 0; rc < riskChecks.length; rc++) {
+        riskChecks[rc].addEventListener('change', function () {
+            var all = true;
+            var boxes = resultEl.querySelectorAll('.ne-ai-risk-check');
+            for (var b = 0; b < boxes.length; b++) { if (!boxes[b].checked) { all = false; break; } }
+            if (applyBtn) applyBtn.disabled = !all;
+        });
+    }
+    var cancelBtn = resultEl.querySelector('#ne-ai-cancel');
+    if (cancelBtn) cancelBtn.addEventListener('click', function () { resultEl.innerHTML = ''; });
+
+    if (applyBtn) {
+        applyBtn.addEventListener('click', function () {
+            // Fingerprint re-check: template must not have changed during review
+            if (mode === 'modify' && templateId && baselineTemplate && !baselineTemplate.system) {
+                var current = getTemplate(templateId);
+                if (!current || buildTemplateFingerprint(current) !== fingerprint) {
+                    showToast(t('ai_fingerprint_changed'), 'warn', 4000);
+                    return;
+                }
+            }
+            applyAssistantPlan(plan);
+            showToast(t('ai_apply_ok'), 'success', 3000);
+            renderTemplatesIntoSlide(container);
+        });
+    }
+}
 
 /** @deprecated Replaced by inline add-to-dialogue buttons in the unified view. */
 function _showTemplateSelectorModal(opts) {

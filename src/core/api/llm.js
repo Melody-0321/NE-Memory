@@ -176,7 +176,7 @@ export async function callMemoryLLM(messages, options = {}) {
         meta_ltm_decision: 'tok_consolidate', meta_ltm_decision_retry: 'tok_consolidate',
         suspense_extract: 'tok_consolidate', suspense_extract_retry: 'tok_consolidate',
         state_extract: 'tok_state', faction_discovery: 'tok_state',
-        scheme_discovery: 'tok_tool', template_scheme: 'tok_tool', template_proposal: 'tok_tool',
+        scheme_discovery: 'tok_tool', template_scheme: 'tok_tool', template_proposal: 'tok_tool', template_assistant: 'tok_tool',
         access: 'tok_tool', recall_memory: 'tok_tool', init_power_slots: 'tok_tool'
     };
 

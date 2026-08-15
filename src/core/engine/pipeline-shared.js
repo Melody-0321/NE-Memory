@@ -1,6 +1,7 @@
-import { writeState, writeMemory, STATE_CONTENT_FIELDS } from '../vault/store.js';
+import { STATE_CONTENT_FIELDS } from '../vault/store.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
+import { writeStateWithDelta, writeMemoryWithVersion } from '../vault/state-versions.js';
 
 var _checkChatTag = '';
 
@@ -23,11 +24,19 @@ export function _checkChatIntegrity(tag) {
 
 export function _resetCheckChatTag() { _checkChatTag = ''; }
 
-export async function saveStateVault(chatId, stateVault) {
+/**
+ * 保存 State Vault。若传入 deltaData，则 vault + delta + chain 在同一事务内原子写入，
+ * 消除 vault 内容与版本链不同步的风险。
+ *
+ * @param {string} chatId
+ * @param {object} stateVault
+ * @param {object|null} [deltaData] — { source, summary, changes, message_dates }
+ */
+export async function saveStateVault(chatId, stateVault, deltaData) {
     stateVault.version = (stateVault.version || 0) + 1;
     stateVault.updated_at = new Date().toISOString();
     try {
-        await writeState(chatId, stateVault);
+        await writeStateWithDelta(chatId, stateVault, deltaData || null);
     } catch (e) {
         console.error('[NE] saveStateVault failed:', e);
         throw e;
@@ -51,12 +60,20 @@ function _stripStateFieldsForMemory(vault) {
     return Object.assign({}, vault, { content: cleanContent });
 }
 
-export async function saveMemoryVault(chatId, memoryVault) {
+/**
+ * 保存 Memory Vault。若传入 versionData，则 vault + version + chain 在同一事务内原子写入，
+ * 消除 vault 内容与版本链不同步的风险。
+ *
+ * @param {string} chatId
+ * @param {object} memoryVault
+ * @param {object|null} [versionData] — { type, summary, delta, message_dates, derived_from_stm_version }
+ */
+export async function saveMemoryVault(chatId, memoryVault, versionData) {
     var clean = _stripStateFieldsForMemory(memoryVault);
     clean.version = (clean.version || 0) + 1;
     clean.updated_at = new Date().toISOString();
     try {
-        await writeMemory(chatId, clean);
+        await writeMemoryWithVersion(chatId, clean, versionData || null);
     } catch (e) {
         console.error('[NE] saveMemoryVault failed:', e);
         throw e;

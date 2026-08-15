@@ -45,7 +45,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { setToolResultNotifier } from '../core/engine/template-llm.js';
-import { recordMemoryVersion, getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, recordStateDelta, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
+import { getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
 import { sendNeNotification } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -336,15 +336,12 @@ async function consumeNeCharBlocks(messageIndex, neId) {
         // 不再需要从 NE-CHAR 后置填充 inner_thoughts 到 STM 条目。
         charState.characters = charState.characters;
         vault.content.state = charState;
-        if (allCharChanges.length > 0) {
-            await recordStateDelta(chatId, {
-                source: 'ne_char_update',
-                summary: allCharChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
-                changes: allCharChanges,
-                message_dates: neId ? [neId] : []
-            });
-        }
-        await saveStateVault(chatId, vault);
+        await saveStateVault(chatId, vault, allCharChanges.length > 0 ? {
+            source: 'ne_char_update',
+            summary: allCharChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
+            changes: allCharChanges,
+            message_dates: neId ? [neId] : []
+        } : null);
         var summaryAfter = {};
         Object.keys(charState.characters || {}).forEach(function(n) {
             var c = charState.characters[n];
@@ -587,11 +584,8 @@ export async function runLtmConsolidation(chatId) {
                     unconsolidated_stm: JSON.parse(JSON.stringify(postStmVault.content.unconsolidated_stm || []))
                 };
                 applyBatchLtmDecision(postStmVault, decisionGroups);
-                try { await saveMemoryVault(chatId, postStmVault); } catch (e) {
-                    console.warn('[NE] LTM save failed, rolling back vault');
-                    postStmVault = await readVault(chatId);
-                }
 
+                // 基于内存中已变更的 vault 计算本次巩固的版本增量（保存前计算，以便与 vault 原子写入）
                 var content = postStmVault.content || {};
                 var beforeLtmIds = new Set(snapBefore.ltm_entries.map(function(e) { return e.id; }));
                 var ltmAdded = (content.ltm_entries || []).filter(function(e) { return !beforeLtmIds.has(e.id); });
@@ -621,13 +615,14 @@ export async function runLtmConsolidation(chatId) {
                     }
                 });
 
+                var pendingLtmVersion = null;
                 if (ltmAdded.length > 0 || stmMoved.length > 0 || ltmModified.length > 0) {
                     var chain = await getActiveChain(chatId);
                     var stmVerSeq = chain ? chain.mem_head_seq : null;
                     // P1-4: 汇总本次巩固涉及 STM 的 msg_ids，让版本链回退能正向命中 LTM 版本
                     var ltmMsgDates = [];
                     stmMoved.forEach(function(e) { (e.msg_ids || []).forEach(function(mid) { if (ltmMsgDates.indexOf(mid) === -1) ltmMsgDates.push(mid); }); });
-                    recordMemoryVersion(chatId, {
+                    pendingLtmVersion = {
                         type: 'ltm_consolidation',
                         summary: 'LTM 巩固: ' + (ltmAdded.length ? ltmAdded.length + '个新arc' : '') + (stmMoved.length ? ' ' + stmMoved.length + '条STM已巩固' : ''),
                         delta: {
@@ -637,8 +632,13 @@ export async function runLtmConsolidation(chatId) {
                         },
                         message_dates: ltmMsgDates,
                         derived_from_stm_version: stmVerSeq
-                    }).catch(function(err) { console.error('[NE] recordMemoryVersion (ltm) failed for ' + chatId, err); });
+                    };
                 }
+                try { await saveMemoryVault(chatId, postStmVault, pendingLtmVersion); } catch (e) {
+                    console.warn('[NE] LTM save failed, rolling back vault');
+                    postStmVault = await readVault(chatId);
+                }
+
                 globalThis.__ne_debug_last_ltm_decision = {
                     batch: true,
                     groups: decisionGroups.length,
@@ -1234,7 +1234,7 @@ async function _rollbackOrWarn(type, chatId, targetSeq) {
         ? await rollbackState(chatId, targetSeq)
         : await rollbackMemory(chatId, targetSeq);
     if (res && !res.ok && res.reason === 'archived') {
-        try { toastr.warning('该版本已压缩归档，无法回退到更早的版本。'); } catch (e) {}
+        try { toastr.warning('该版本已压缩归档，无法回退到更早的版本。如怀疑版本链异常，可运行 设置 → 数据 → 版本链体检 诊断。'); } catch (e) {}
         return false;
     }
     if (res && !res.ok) {

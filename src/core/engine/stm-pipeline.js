@@ -3,7 +3,7 @@ import { isStateSchemaEnabled } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
 import { groupMessagesIntoTurns, formatTurnsText, collectMsgIdsFromTurns } from './turn-segmenter.js';
-import { recordMemoryVersion, initializeMemoryChain } from '../vault/state-versions.js';
+import { initializeMemoryChain } from '../vault/state-versions.js';
 import { isLtmEnabled, findOpenLtm, formatLtmCatalog, computeClosureSignals } from './consolidate.js';
 import { saveMemoryVault, filterNewMessages } from './pipeline-shared.js';
 import { _checkChatIntegrity, _resetCheckChatTag } from './pipeline-shared.js';
@@ -614,14 +614,15 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var addedCount = appendSTMEntries(memoryVault, events);
 
             var addedEntries = events.filter(function(e) { return e && e.id; });
+            var pendingStmVersion = null;
             if (addedEntries.length > 0) {
                 var messageDates = filteredMessages.map(function(m) { return m.id || ''; }).filter(Boolean);
-                recordMemoryVersion(chatId, {
+                pendingStmVersion = {
                     type: 'stm_batch',
                     summary: 'STM batch: ' + addedEntries.length + '条新记忆',
                     delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
                     message_dates: messageDates
-                }).catch(function(err) { console.error('[NE] recordMemoryVersion (stm) failed for ' + chatId, err); });
+                };
             }
         }
 
@@ -633,7 +634,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         memoryVault._meta.last_pipeline_task = 'stm_extract';
         memoryVault._meta.last_pipeline_time = new Date().toISOString();
         _checkChatIntegrity('executeIncrementalUpdate:beforeSave');
-        try { await saveMemoryVault(chatId, memoryVault); } catch (e) { console.warn('[NE] STM save failed:', e); }
+        try { await saveMemoryVault(chatId, memoryVault, pendingStmVersion); } catch (e) { console.warn('[NE] STM save failed:', e); }
         _checkChatIntegrity('executeIncrementalUpdate:afterSave');
 
         if (events.length > 0) {

@@ -10,7 +10,7 @@ import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/par
 import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory } from '../core/vault/store.js';
 import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versions.js';
-import { getActiveChain, listStateDeltas, listMemoryVersions } from '../core/vault/state-versions.js';
+import { getActiveChain, listStateDeltas, listMemoryVersions, diagnoseChainConsistency, repairChainConservative, removeOrphanVersionRecords } from '../core/vault/state-versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { initTestRunner } from './panel-tools.js';
 
@@ -921,6 +921,7 @@ export function renderSettingsIntoSlide(container) {
         '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
         '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Export JSON') + '</button>' +
         '<button id="narrative_vault_export_diag" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + '诊断导出' + '</button>' +
+        '<button id="narrative_vault_chain_check" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + '版本链体检' + '</button>' +
         '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Import JSON') + '</button>' +
         '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Embed into Chat') + '</button>' +
         '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Clean Orphan Data') + '</button>' +
@@ -997,6 +998,49 @@ export function renderSettingsIntoSlide(container) {
                 showToast('诊断数据已导出', 'success');
             } catch (e) {
                 showToast('诊断导出失败: ' + e.message, 'error', 6000);
+            }
+        };
+    }
+
+    // Chain consistency check button
+    var chainBtn = container.querySelector('#narrative_vault_chain_check');
+    if (chainBtn) {
+        chainBtn.onclick = async function() {
+            var chatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
+            try {
+                chainBtn.disabled = true; chainBtn.textContent = '体检中...';
+                var diag = await diagnoseChainConsistency(chatId);
+                if (diag.status === 'no_chain') {
+                    showToast('无版本链（新对话属正常）', 'success');
+                    return;
+                }
+                if (diag.status === 'broken') {
+                    var lines = [];
+                    if (diag.state && diag.state.status !== 'ok') {
+                        lines.push('State 链悬空版本: [' + diag.state.dangling.join(', ') + ']' + (diag.state.headMissing ? '（head 悬空）' : ''));
+                    }
+                    if (diag.mem && diag.mem.status !== 'ok') {
+                        lines.push('Memory 链悬空版本: [' + diag.mem.dangling.join(', ') + ']' + (diag.mem.headMissing ? '（head 悬空）' : ''));
+                    }
+                    if (!confirm('检测到版本链损坏：\n' + lines.join('\n') + '\n\n修复将截断到最后一个完整版本（保留连续前缀），原链快照会写入 _pre_repair_backup 备份。\n执行修复？')) return;
+                    var rep = await repairChainConservative(chatId);
+                    if (!rep.noop) {
+                        showToast('已修复 ' + rep.repaired.join(' + ') + ' 链，截断 ' + (rep.dropped.state.length + rep.dropped.mem.length) + ' 个悬空版本', 'success');
+                    }
+                    diag = await diagnoseChainConsistency(chatId);
+                }
+                if (diag.orphanDeltas > 0 || diag.orphanVersions > 0) {
+                    if (!confirm('发现 ' + (diag.orphanDeltas + diag.orphanVersions) + ' 条未挂载在活动链上的版本记录（' + diag.orphanDeltas + ' delta / ' + diag.orphanVersions + ' version，历史残留），删除后不可恢复。\n删除？')) return;
+                    var removed = await removeOrphanVersionRecords(chatId);
+                    showToast('已删除孤儿记录：' + removed.deltas + ' delta / ' + removed.versions + ' version', 'success');
+                    diag = await diagnoseChainConsistency(chatId);
+                }
+                if (diag.status === 'ok') showToast('版本链一致性正常', 'success');
+                else showToast('体检后仍存在异常，请用「诊断导出」留档排查', 'error', 6000);
+            } catch (e) {
+                showToast('版本链体检失败: ' + e.message, 'error', 6000);
+            } finally {
+                chainBtn.disabled = false; chainBtn.textContent = '版本链体检';
             }
         };
     }

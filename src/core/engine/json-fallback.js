@@ -3,6 +3,8 @@
  * Reference: SP (5-layer sanitize), Anima (balanced bracket scan), ST-BME (5-stage fallback)
  */
 
+import { recordJsonParseResult } from './json-parse-telemetry.js';
+
 function stripThinking(raw) {
     var stripped = raw.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').trim();
     return stripped;
@@ -57,33 +59,54 @@ export function safeJsonParse(raw) {
     raw = stripThinking(raw);
 
     // Stage 1: Direct parse
-    try { return JSON.parse(raw.trim()); } catch (e) {}
+    try {
+        var direct = JSON.parse(raw.trim());
+        recordJsonParseResult('direct');
+        return direct;
+    } catch (e) {}
 
     // Stage 2: Markdown code block
     var codeBlock = extractMarkdownCodeBlock(raw);
     if (codeBlock) {
-        try { return JSON.parse(codeBlock); } catch (e) {}
+        try {
+            var cb = JSON.parse(codeBlock);
+            recordJsonParseResult('code_block');
+            return cb;
+        } catch (e) {}
     }
 
     // Stage 3: Balanced bracket scan
     var balanced = extractBalancedJson(raw);
     if (balanced) {
-        try { return JSON.parse(balanced); } catch (e) {}
+        try {
+            var bal = JSON.parse(balanced);
+            recordJsonParseResult('balanced');
+            return bal;
+        } catch (e) {}
     }
 
     // Stage 4: Trailing comma fix
     if (balanced) {
         var commaFixed = fixTrailingCommas(balanced);
         if (commaFixed !== balanced) {
-            try { return JSON.parse(commaFixed); } catch (e) {}
+            try {
+                var cf = JSON.parse(commaFixed);
+                recordJsonParseResult('trailing_comma');
+                return cf;
+            } catch (e) {}
         }
     }
 
     // Stage 5: Truncated JSON repair
     if (balanced) {
         var repaired = fixTruncatedJson(balanced);
-        try { return JSON.parse(repaired); } catch (e) {}
+        try {
+            var tr = JSON.parse(repaired);
+            recordJsonParseResult('truncated');
+            return tr;
+        } catch (e) {}
     }
 
+    recordJsonParseResult('failed');
     return null;
 }

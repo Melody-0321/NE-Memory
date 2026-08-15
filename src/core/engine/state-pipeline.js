@@ -5,7 +5,7 @@ import { callMemoryPipeline, callMemoryPipelineWithTools, recordTelemetry } from
 import { safeJsonParse } from './json-fallback.js';
 import { neSync } from '../settings-adapter.js';
 import { runtime } from '../runtime.js';
-import { recordStateDelta, buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
+import { buildStateDeltaSummary, initializeStateChain } from '../vault/state-versions.js';
 import { processToolCalls } from './template-llm.js';
 import { cleanMessageText } from './content-clean.js';
 import { readNeSettingsCached } from '../settings.js';
@@ -550,7 +550,7 @@ function autoDecayStaleCharacters(state, messages) {
     return state;
 }
 
-function collectWorldBookContent() {
+export function collectWorldBookContent() {
     var entries = [];
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
@@ -880,6 +880,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
         }
 
         var mergeResult = mergeStateChanges(stateVault.content.state || {}, result.validated);
+        var pendingStateDelta = null;
         if (!mergeResult.changed) { // D3: 免 2 次全量 stringify 比较（changed 覆盖 capturedChanges + backfill）
             console.log('[NE] State unchanged, skipping write');
         } else {
@@ -888,15 +889,12 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
 
             if (mergeResult.changes.length > 0) {
                 var aiMsgSendDate = latestAssistantMsg && latestAssistantMsg.id ? latestAssistantMsg.id : null;
-                recordStateDelta(chatId, {
+                pendingStateDelta = {
                     source: 'ai_update',
                     summary: buildStateDeltaSummary(mergeResult.changes),
                     changes: mergeResult.changes,
                     message_dates: aiMsgSendDate ? [aiMsgSendDate] : []
-                }).catch(function(err) {
-                    console.error('[NE] recordStateDelta failed for ' + chatId, err,
-                        '\n  changes:', JSON.stringify(mergeResult.changes).substring(0, 200));
-                });
+                };
             }
         }
         if (Object.keys(stateChanges).length > 0 && Object.keys(result.validated).length === 0) {
@@ -913,7 +911,7 @@ export async function extractStateChangesOnly(chatId, latestUserMsg, latestAssis
     stateVault._meta.last_state_time = new Date().toISOString();
 
     _checkChatIntegrity('extractStateChangesOnly:beforeSaveVault');
-    await saveStateVault(chatId, stateVault);
+    await saveStateVault(chatId, stateVault, pendingStateDelta);
     _checkChatIntegrity('extractStateChangesOnly:afterSaveVault');
 
     recordTelemetry({

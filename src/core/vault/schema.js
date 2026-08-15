@@ -666,6 +666,27 @@ export function ensureCharacterTemplate(state, name, schemeKey, stCharName, tplC
                 modified = true;
             }
         });
+        // D5: 孤儿字段裁剪——清理不在当前模板字段集的旧 key。
+        // 保留：当前模板字段、预定义字段全集（ALL_PREDEFINED_FIELDS，LLM 活跃写入
+        // 如 __inc 增量依赖它们，即使不在当前角色模板）、字段库已登记字段（用户自定义）、
+        // 系统键（_ 前缀）。仅裁剪纯孤儿（LLM 幻觉/手工残留/已从库删除的自定义字段）。
+        // 仅在存在候选孤儿时才读字段库，避免常态额外 localStorage 读。
+        var orphanCandidates = [];
+        Object.keys(state.characters[name]).forEach(function (ck) {
+            if (template.hasOwnProperty(ck)) return;
+            if (ALL_PREDEFINED_FIELDS.hasOwnProperty(ck)) return;
+            if (ck.charAt(0) === '_') return;
+            orphanCandidates.push(ck);
+        });
+        if (orphanCandidates.length > 0) {
+            var libFields = loadFieldLibrary();
+            var libMap = (libFields && libFields.fields) || {};
+            orphanCandidates.forEach(function (ck) {
+                if (libMap.hasOwnProperty(ck)) return;
+                delete state.characters[name][ck];
+                modified = true;
+            });
+        }
         return modified;
     }
 

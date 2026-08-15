@@ -120,10 +120,12 @@ eq(removeFieldFromLibrary('nonexistent'), false, 'remove nonexistent returns fal
 eq(removeFieldFromLibrary('custom_test'), true, 'remove existing returns true');
 eq(getFieldFromLibrary('custom_test'), null, 'removed field returns null');
 
-// Remove with usedByTemplates protection
+// Remove with usedByTemplates protection（引用须指向真实存在的模板，悬挂引用会被惰性清理）
+saveTemplate({ id: 'tmpl_1', name: 'Protecting', role: 'npc' });
 addFieldToLibrary('protected_field', { type: 'string', usedByTemplates: ['tmpl_1'] });
-eq(removeFieldFromLibrary('protected_field'), false, 'cannot remove field used by templates');
+eq(removeFieldFromLibrary('protected_field'), false, 'cannot remove field used by existing templates');
 eq(removeFieldFromLibrary('protected_field'), false, 'still cannot remove');
+deleteTemplate('tmpl_1');
 
 // ====== Template-Field reference operations ======
 console.log('\n=== store: template-field references ===');
