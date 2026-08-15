@@ -502,13 +502,13 @@ export function resolveFieldProposal(args, state, charName) {
             return { accepted: false, reason: parsed && parsed.reason ? parsed.reason : 'AI rejected the proposal.' };
         }
 
-        // 添加到字段库
-        addFieldToLibrary(fieldName, {
-            name: fieldName,
-            type: fieldType,
-            description: description,
-            usedByTemplates: []
-        });
+        // 添加到字段库（约束元数据与 UI 入口对齐：string/enum 补默认 max_length；
+        // enum 不臆造 values；number 无默认 min/max（与 UI 可选约束一致））
+        var libEntry = { name: fieldName, type: fieldType, description: description, usedByTemplates: [] };
+        if (fieldType === 'string' || fieldType === 'enum') {
+            libEntry.max_length = 200;
+        }
+        addFieldToLibrary(fieldName, libEntry);
 
         _notify('info', 'New field "' + fieldName + '" (' + fieldType + ') added to library', { _dedupKey: 'field_' + fieldName });
 

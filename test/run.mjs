@@ -46,7 +46,9 @@ var testMap = {
     'settings-cache': 'settings-cache.test.js',
     'chat-telemetry': 'chat-telemetry.test.js',
     'token-stats': 'token-stats.test.js',
-    'retrieval-cache': 'retrieval-cache.test.js'
+    'retrieval-cache': 'retrieval-cache.test.js',
+    'vault-divergence': 'vault-divergence.test.js',
+    'template-assistant-retry': 'template-assistant-retry.test.js'
 };
 
 var batchMap = {
