@@ -28,7 +28,7 @@
 
 | # | 参考项 | shujuku 中的实现 | NE 决策 | 状态 |
 |---|--------|------------------|---------|------|
-| 11 | 多槽生成门控 | `activeGenerations` 栈替代单一 `lastGeneration`，TTL 清理 + 栈配对消费 | 待讨论 | ⏳ |
+| 11 | 多槽生成门控 | `activeGenerations` 栈替代单一 `lastGeneration`，TTL 清理 + 栈配对消费 | **排除**（见 §13） | ❌ 不采用 |
 | 12 | 跨 checkpoint 分阶段提交协议 | 跨 full checkpoint 的统一分阶段提交 | 待讨论 | ⏳ |
 | 13 | 性能优化 | replay 惰性 hydrate、多 boundary 一次前向 replay、受控主线程让步(yield)、post-save 收敛 | **排除**（见 §4） | ❌ 不采用 |
 
@@ -755,7 +755,63 @@ enum/number/boolean 全量 distinct，string 取 top10；输出格式
 
 ---
 
-## 13. 待讨论项（第 11、12 项）
+## 13. 第 11 项：多槽生成门控（已讨论，排除）
+
+### 13.1 多槽是什么
+
+「槽」= ST 的**每一次 AI 生成事件**。shujuku 在 `GENERATION_STARTED` 时把每次生成推入
+`activeGenerations` 数组（`init.ts` → `recordGenerationContext_ACU`），每个槽带
+`{seq, type, params, dryRun, at}`（state-manager.ts:111-123）。
+
+「生成」不限于对话正文。ST 的任何 LLM 生成都触发 GENERATION_STARTED——**包括插件自己的
+quiet 调用**（正文优化、剧情 Agent、表格更新，shujuku 都走 ST quiet 通道）。同一时间栈里
+可能压着正文生成(dialog)、正文优化(quiet)、剧情推进(quiet) 等多个槽。
+
+### 13.2 门控控制什么
+
+**控制「这次生成结束了我该不该消费」**，解决一个平台缺陷：
+
+> ST 的 `GENERATION_ENDED` 事件**不带 generation id**——只知道「某个生成结束了」，
+> 不知道它对应哪个 STARTED。
+
+没有门控时最致命的情形：正文生成结束前，shujuku 自己发了个 quiet 优化调用，quiet 先结束
+触发 ENDED → 单靠 `lastGeneration` 误判「正文生成结束」→ 错误触发自动填表/剧情消费。
+多槽栈用**完成顺序配对**（pop 栈顶）+ `dryRun` 过滤 + TTL 清理 + GENERATION_STOPPED 时
+discard 最近未结束的，保证**每个 ENDED 恰好消费它对应的那个 STARTED**。
+
+本质：**多槽门控 = ST「ENDED 无 id」事件缺失下的栈配对补偿**。
+
+### 13.3 NE 现状：布尔守卫已有等价物
+
+NE 在 `events.js` `onBeforeGenerate` 已有同样防御，且是**布尔守卫而非多槽栈**：
+
+| shujuku 多槽栈 | NE 等价物 | 位置 |
+|---|---|---|
+| `dryRun` 不消费 | `if (dryRun) return` | events.js onBeforeGenerate |
+| quiet/非正文不消费 | `type ∈ {impersonate, quiet, continue} → return` | events.js |
+| 栈防并发错配 | `_isInjecting` 重入守卫（斩级联） | events.js |
+| TTL 清理 | `MIN_GENERATION_INTERVAL_MS` debounce | events.js |
+
+### 13.4 排除理由：消费点不同，配对信息天然充足
+
+| | shujuku | NE |
+|---|---|---|
+| 消费事件 | `GENERATION_ENDED`（**无 id**）→ 必须栈配对 | `message_received`（**带 messageIndex 精确定位消息**）+ `GENERATION_AFTER_COMMANDS`（**带 type/dryRun**） |
+| 多生成源交错 | 有（正文 + 正文优化 + 剧情 Agent 全走 ST quiet） | **无**——内部 LLM 调用走独立副 API fetch，不经过 ST 生成管线，不产生额外 STARTED/ENDED |
+| 配对信息 | 缺失 → 需要栈 | 充足（消息 id + 事件 type）→ 布尔守卫即够 |
+
+NE 管线触发点是**内容驱动**（来了条带 id 的消息就处理），不是**事件驱动**（某次无标签的
+生成结束了）。移植多槽栈对 NE 是纯死代码。
+
+### 13.5 遗留观察（未来触发条件）
+
+若 NE 将来引入**走 ST quiet 通道的并发生成源**（如剧情 Agent 化，或把某条内部 LLM 调用
+改回 generateRaw 回退路径），`_isInjecting` 布尔守卫会不够（两个 quiet 交错时最后一个
+覆盖判定）。届时再升级为栈配对即可——那是「为新前提服务」，不是现在参考 shujuku 的理由。
+
+---
+
+## 14. 待讨论项（第 12 项）
 
 按序逐项讨论，讨论完成后在此文档为每项补充「NE 现状差距 / 采纳决策 / 损益 / 实施落点」小节，
 并将结论同步到 `project_memory.md` 的 Hard Constraints（如涉及硬约束）。
