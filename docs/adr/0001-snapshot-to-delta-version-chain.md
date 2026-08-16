@@ -1,7 +1,7 @@
 # Snapshot to Delta Version Chain
 
 - 状态：已接受（v6.0 落地）
-- 日期：2026-08-16
+- 日期：2026-07-09（`568ac17` 引入 delta 版本链引擎）
 
 ## 背景（Context）
 

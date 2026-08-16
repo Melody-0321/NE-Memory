@@ -1,7 +1,7 @@
 # Open Character Schema
 
 - 状态：已接受（v7.0 落地）
-- 日期：2026-08-16
+- 日期：2026-06-10（开放角色 Schema 改造计划启动）
 
 ## 背景（Context）
 

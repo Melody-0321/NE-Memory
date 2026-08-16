@@ -1375,6 +1375,10 @@ __ne_debug.extractState()
 - [0003 State/Memory Vault 拆分](docs/adr/0003-split-state-memory-vault.md)
 - [0004 消息身份系统](docs/adr/0004-message-identity-system.md)
 - [0005 纯本地 SmartPush 检索](docs/adr/0005-local-smartpush-retrieval.md)
+- [0006 分层记忆架构](docs/adr/0006-layered-memory-architecture.md)
+- [0007 分层管线+独立锁](docs/adr/0007-layered-pipeline-and-independent-locks.md)
+- [0008 记忆生命周期=对话生命周期](docs/adr/0008-memory-lifecycle-equals-conversation-lifecycle.md)
+- [0009 自适应上下文控制](docs/adr/0009-adaptive-context-control.md)
 
 新增 ADR 时同步更新 `docs/adr/README.md` 索引与本小节。
 

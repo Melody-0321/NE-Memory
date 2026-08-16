@@ -1,7 +1,7 @@
 # Local SmartPush Retrieval
 
 - 状态：已接受（v6.0 落地）
-- 日期：2026-08-16
+- 日期：2026-07-01（`ce0fc40` 删除 LLM 检索合成）
 
 ## 背景（Context）
 

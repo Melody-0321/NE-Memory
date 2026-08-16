@@ -1,7 +1,7 @@
 # Split State / Memory Vault
 
 - 状态：已接受（v7.0 落地，v8.0 修补）
-- 日期：2026-08-16
+- 日期：2026-07-10（Vault 拆分计划启动）
 
 ## 背景（Context）
 

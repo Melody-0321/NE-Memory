@@ -1,7 +1,7 @@
 # Message Identity System
 
 - 状态：已接受（v7.0 落地，P0 强化）
-- 日期：2026-08-16
+- 日期：2026-07-09（`627adcf` 注入 `__ne_msg_id` 确立消息身份）
 
 ## 背景（Context）
 
