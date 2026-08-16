@@ -1,0 +1,17 @@
+{
+  "reporter": ["text", "lcov"],
+  "include": ["src/core/**"],
+  "exclude": [
+    "src/core/test-runner/**",
+    "src/core/build-info.js",
+    "src/core/build-info.json",
+    "src/core/i18n.js",
+    "test/**"
+  ],
+  "all": true,
+  "checkCoverage": true,
+  "lines": 44,
+  "functions": 51,
+  "branches": 72,
+  "statements": 44
+}

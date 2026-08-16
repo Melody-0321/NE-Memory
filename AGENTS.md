@@ -68,6 +68,7 @@
 | `docs/adr/` — 架构决策记录 | 🟢 | 豁免清单 |
 | `src/core/engine/.rules.md` | 🟢 | 纯规则文档 |
 | `src/core/vault/.rules.md` | 🟢 | 纯规则文档 |
+| `src/**/README.md` — 模块级文档 | 🟢 | 豁免清单 |
 
 更新后简要告知用户新增了哪个文件、归入哪一层。
 

@@ -40,3 +40,6 @@ ne_diag_*.json
 
 # git-cliff transient draft (never committed)
 CHANGELOG.draft.md
+
+# c8 coverage report
+coverage/
