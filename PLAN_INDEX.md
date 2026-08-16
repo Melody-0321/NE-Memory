@@ -1,9 +1,11 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-16 | 59 个文档 | 47% 完成
+> 自动生成 | 2026-08-16 | 65 个文档 | 51% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
+| `STATUS.md` | ❌ 已废弃 | 2026-07-10 | 2026-08-16 | P1 新模块状态 & 问题记录 |
+| `VERIFY.md` | ❌ 已废弃 | 2026-07-10 | 2026-08-16 | 大更新验证清单 |
 | `adaptive-context-control-plan.md` | ✅ 已完成 | 2026-07-17 | 2026-07-22 | 自适应上下文控制（Plan C 重构）— 事后裁剪方案 |
 | `adaptive-context-integration-test.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 自适应上下文控制集成测试改造计划 |
 | `adaptive-dryrun-chat-history.md` | ✅ 已完成 | 2026-07-24 | 2026-07-24 | 自适应压缩 DryRun 支持 — 让 ST Chat History 反映压缩结果 |
@@ -26,7 +28,7 @@
 | `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
 | `golden-context-window.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 上下文黄金窗口（Golden Context Window）实现计划 |
 | `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
-| `management-optimization-todos.md` | ❓ 未知 | 2026-08-16 | 2026-08-16 | NE-Memory 文档/代码管理优化待办 |
+| `management-optimization-todos.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | NE-Memory 文档/代码管理优化待办 |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -36,7 +38,11 @@
 | `p1-1-retrieval-cache.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-1: 检索分词 + BM25 索引缓存 |
 | `p1-2-shallow-copy.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-2: 检索结果深拷贝改浅拷贝 |
 | `performance-optimization-overview.md` | 🔄 进行中 | 2026-07-14 | 2026-07-14 | NE-Memory 性能优化总览 |
-| `plan-p0-1-github-actions-ci.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | P0-1：GitHub Actions CI 实施计划 |
+| `plan-p0-1-github-actions-ci.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P0-1：GitHub Actions CI 实施计划 |
+| `plan-p0-2-version-check-script.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P0-2：版本一致性校验脚本实施计划 |
+| `plan-p0-3-single-source-of-truth.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P0-3：文档单一事实源落地实施计划 |
+| `plan-p1-1-git-cliff-changelog.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P1-1：git-cliff 半自动 CHANGELOG |
+| `plan-p1-2-archive-status-docs.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P1-2：一次性状态文档归档（STATUS.md / VERIFY.md） |
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
@@ -69,7 +75,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：28
+- ✅ 已完成：33
 - 🔄 进行中：12
 - ⏳ 未开始：3
-- ❓ 未标记：16
+- ❓ 未标记：17
