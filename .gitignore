@@ -37,3 +37,6 @@ test5.*.json
 
 # Diagnostic export files (runtime snapshots for debugging)
 ne_diag_*.json
+
+# git-cliff transient draft (never committed)
+CHANGELOG.draft.md

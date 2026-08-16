@@ -16,6 +16,9 @@
     "build:readme": "node scripts/build-readme-html.cjs",
     "build:doc-index": "node scripts/build-doc-index.cjs",
     "check:version": "node scripts/check-version.cjs",
+    "changelog:preview": "git-cliff --unreleased",
+    "changelog:draft": "git-cliff --unreleased -o CHANGELOG.draft.md",
+    "changelog:generate": "git-cliff -o CHANGELOG.draft.md",
     "publish:extension": "node scripts/publish-extension.cjs",
     "watch": "rollup -c -w",
     "prepare": "git config core.hooksPath .githooks || true",
@@ -35,6 +38,7 @@
     "@rollup/plugin-replace": "^6.0.3",
     "@rollup/plugin-terser": "^1.0.0",
     "cross-env": "^7.0.3",
+    "git-cliff": "^2.13.1",
     "marked": "^18.0.5",
     "rollup": "^4.60.4"
   },

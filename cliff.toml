@@ -1,0 +1,57 @@
+# git-cliff 配置 — NE-Memory 半自动 CHANGELOG
+#
+# 半自动边界：git-cliff 只负责从 conventional commits 生成"自动分类草稿"，
+# CHANGELOG.md 仍为手写权威文件（保留详细用户可见摘要 + BUGS.md 编号引用）。
+# 发版时用 npm run changelog:draft 生成草稿，人工润色后合入。
+#
+# 注意：
+# - 必须用内联数组语法 `commit_parsers = [...]`；`[[commit.parsers]]` 数组表格形式
+#   在 git-cliff 2.13.1 中会被静默忽略，导致回退到内置默认分组。
+# - group 名前缀 `<!-- N -->` 用于控制分组显示顺序（striptags 过滤后不显示）。
+
+[changelog]
+# 半自动草稿：不输出头部/底部说明块
+header = ""
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+## {{ group | striptags | trim }}
+{% for commit in commits %}
+- {{ commit.message | upper_first }}
+{% endfor %}
+
+{% endfor %}
+"""
+trim = true
+footer = ""
+
+[git]
+# 基于 conventional commits 解析（自动提取 type/scope/description）
+conventional_commits = true
+# 同时匹配当前 test6.X 体系与遗留 vX.Y.Z 标签
+tag_pattern = "^(test|v)[0-9]+\\.[0-9]+(\\.[0-9]+)?$"
+skip_tags = ""
+# 非标准前缀（如 test+fix: / dev-build:）不丢弃，由兜底 parser 归类
+filter_unconventional = false
+split_commits = false
+
+# 分类映射：conventional prefix → 中文分组（与 CHANGELOG.md 三段式对齐）
+commit_parsers = [
+    # 新功能
+    { message = "^feat", group = "<!-- 0 -->新功能" },
+    # 性能优化
+    { message = "^perf", group = "<!-- 1 -->性能优化" },
+    # Bug 修复
+    { message = "^fix", group = "<!-- 2 -->Bug 修复" },
+    # 文档
+    { message = "^doc", group = "<!-- 3 -->文档" },
+    # 构建 / CI / 杂项
+    { message = "^chore|^ci|^build", group = "<!-- 4 -->构建 / CI / 杂项" },
+    # 测试
+    { message = "^test", group = "<!-- 5 -->测试" },
+    # 样式
+    { message = "^style", group = "<!-- 6 -->样式" },
+    # 重构
+    { message = "^refactor", group = "<!-- 7 -->重构" },
+    # 兜底：非标准前缀（test+fix: / dev-build: / release: 等）
+    { message = ".*", group = "<!-- 9 -->其他变更" },
+]
