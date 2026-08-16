@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-16 | 66 个文档 | 50% 完成
+> 自动生成 | 2026-08-16 | 66 个文档 | 52% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -43,7 +43,7 @@
 | `plan-p0-3-single-source-of-truth.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P0-3：文档单一事实源落地实施计划 |
 | `plan-p1-1-git-cliff-changelog.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P1-1：git-cliff 半自动 CHANGELOG |
 | `plan-p1-2-archive-status-docs.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P1-2：一次性状态文档归档（STATUS.md / VERIFY.md） |
-| `plan-p1-3-commitlint-gate.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | P1-3：commitlint 提交门禁 |
+| `plan-p1-3-commitlint-gate.md` | ✅ 已完成 | 2026-08-16 | 2026-08-16 | P1-3：commitlint 提交门禁 |
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
@@ -76,7 +76,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：33
-- 🔄 进行中：13
+- ✅ 已完成：34
+- 🔄 进行中：12
 - ⏳ 未开始：3
 - ❓ 未标记：17

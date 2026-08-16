@@ -21,3 +21,21 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build:all
+
+  commitlint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+      - run: npm ci
+      - name: commitlint (PR)
+        if: github.event_name == 'pull_request'
+        run: npx --no-install commitlint --from ${{ github.event.pull_request.base.sha }} --to ${{ github.event.pull_request.head.sha }}
+      - name: commitlint (push)
+        if: github.event_name == 'push' && github.event.before != '0000000000000000000000000000000000000000'
+        run: npx --no-install commitlint --from ${{ github.event.before }} --to ${{ github.sha }}

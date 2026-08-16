@@ -1,0 +1,11 @@
+#!/bin/sh
+# Commit-msg: 强制 conventional commit 格式（type: subject），类型白名单见 commitlint.config.cjs
+# 发版提交（release: / dev-build:）按 release-rules 用 --no-verify 跳过
+echo "[NE] commit-msg: commitlint..."
+if ! npx --no-install commitlint --edit "$1"; then
+    echo "[NE] 提交被拒：请使用 conventional commit 格式，如 feat(scope): subject"
+    echo "[NE] 合法类型: feat fix perf refactor docs test build ci chore style revert release dev-build"
+    exit 1
+fi
+echo "[NE] commit-msg: OK"
+exit 0

@@ -112,6 +112,19 @@ updated: 2026-07-09
 - 纯 UI/交互修复同样走上述三处流程
 - 根因分析**只写在 BUGS.md**，CHANGELOG / 审计表只做摘要 + 引用，避免多源真相
 
+## Commit Message 规范
+
+提交消息必须遵循 conventional commit 格式，类型白名单如下：
+
+```
+feat fix perf refactor docs test build ci chore style revert
+release dev-build    # 发版流程专用（release-rules Step 4 / Step 6）
+```
+
+- 禁止使用 `test+fix`、`fix+feat`、`debug` 等非标前缀——复合改动应拆成独立提交
+- `--no-verify` 仅限发版提交（release-rules Step 4 / Step 6），普通提交不得绕过
+- 本地 `commit-msg` 钩子 + CI 双门禁拦截，未通过时提交会被拒绝
+
 ## 项目上下文
 
 - 项目名称：NE Memory Engine
