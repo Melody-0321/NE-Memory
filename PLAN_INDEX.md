@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-15 | 57 个文档 | 49% 完成
+> 自动生成 | 2026-08-16 | 59 个文档 | 47% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -26,6 +26,7 @@
 | `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
 | `golden-context-window.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 上下文黄金窗口（Golden Context Window）实现计划 |
 | `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
+| `management-optimization-todos.md` | ❓ 未知 | 2026-08-16 | 2026-08-16 | NE-Memory 文档/代码管理优化待办 |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -35,6 +36,7 @@
 | `p1-1-retrieval-cache.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-1: 检索分词 + BM25 索引缓存 |
 | `p1-2-shallow-copy.md` | ⏳ 未开始 | 2026-07-14 | 2026-07-14 | P1-2: 检索结果深拷贝改浅拷贝 |
 | `performance-optimization-overview.md` | 🔄 进行中 | 2026-07-14 | 2026-07-14 | NE-Memory 性能优化总览 |
+| `plan-p0-1-github-actions-ci.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | P0-1：GitHub Actions CI 实施计划 |
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
@@ -68,6 +70,6 @@
 
 ### 统计
 - ✅ 已完成：28
-- 🔄 进行中：11
+- 🔄 进行中：12
 - ⏳ 未开始：3
-- ❓ 未标记：15
+- ❓ 未标记：16

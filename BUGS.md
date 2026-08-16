@@ -2,7 +2,1295 @@
 
 ---
 
-## #37 Embedding API 输入框修改不保存
+## vNext-1 resolvePipelineApi 缺 template_assistant 通道路由
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-01（审计） |
+| **解决** | 2026-08-01 |
+| **严重程度** | **High** |
+| **影响** | SHUJUKU_REFS §11.8 声明的 `ne_template_api` 专属路由实现遗漏，配置模板通道时静默落到通用副 API，模板 LLM 无法按配置的专属通道工作。 |
+
+### 根因
+
+`resolvePipelineApi` 未实现 `template_assistant` 通道分支，模板调用未命中专属路由。
+
+### 修复
+
+补 `template_assistant` 通道路由。commit: `3b84301`
+
+> 该修复未进入 CHANGELOG Unreleased 与审计追踪表，系三方台账遗漏项（git log 兜底发现）。
+
+---
+
+## vNext-2 审计 D/R 系列修复（DB 缓存/跨聊天缓存/模板回填）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-01（审计） |
+| **解决** | 2026-08-01 |
+| **严重程度** | 多项（D1/R2 Medium，D3/D4 Low） |
+| **影响** | 审计 D/R/P 系列发现的四个独立问题：① **D1** `listAllChatIds` 用独立连接，`db.close()` 会误杀 openDB 缓存连接；② **R2** 排序/消息 token 缓存未按 chatId 隔离 + 无容量上限（跨聊天缓存污染）；③ **D3** `ensureCharacterTemplate` 隐式创建/回填未标记 changed，仅输出角色名的新角色内容丢失；④ **D4** per-merge 模板解析无缓存（N 字段 → N 次 localStorage 读）。 |
+
+### 修复
+
+- D1：显式 `db.close()` 不再影响缓存连接
+- R2：sort/msg-token 缓存按 chatId 隔离 + 容量上限
+- D3：隐式创建/回填时标记 changed
+- D4：`ensureCharacterTemplate` 增加 per-merge 模板解析缓存
+- 另修复 retrieval-cache.test.js 异步调用未 await + 注册进 run.mjs（此前静默从未运行）
+- commit: `f572ba8`
+
+> 该修复未进入 CHANGELOG Unreleased 与审计追踪表，系三方台账遗漏项（git log 兜底发现）。
+
+---
+
+## vNext-3 设置页控件在 Shadow DOM 下失效（UI-11）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | panel-settings 的 `.ne-manual-controls`/`.ne-adaptive-only` 用裸 `document.querySelectorAll`，扩展模式面板在 shadow root 内查不到 → 手动控制/自适应专属选项无法切换。 |
+
+### 修复
+
+替换为 shadow-aware 的 `panelQSA`。commit: `5bc0d1d`
+
+---
+
+## vNext-4 初始化窗口期首轮消息漏记（UI-10）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | init 顺序是先 `_bootstrapVault`（loadVault + 迁移 + 渲染面板，耗时）再绑事件，期间到达的首轮 `message_received/sent` 无人监听永久漏记。 |
+
+### 修复
+
+事件绑定 + 工具注册 + ChatCompletion patch 移到 bootstrap 之前；bootstrap 首次初始化加重读保护（写前检查已有数据则跳过全量初始化写）。commit: `5bc0d1d`
+
+---
+
+## vNext-5 消息内假按钮不可点击（UI-8）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 系统消息把按钮拼成 `[文字]` 纯文本进聊天，ST 当前版本无消息内按钮机制，用户点击无反应且文本误导。 |
+
+### 修复
+
+诚实降级：按钮以 `·` 分隔的纯文本提示呈现，不再拼假按钮；`sendNeInteraction`/`sendNePopup` 接口保留，事件调用点改走 `sendNeNotification`。commit: `5bc0d1d`
+
+---
+
+## vNext-6 手动编辑保存静默失败（UI-6）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `saveCardFields`/`deleteCharacterCard` 的 `writeState` 无 catch，IndexedDB 写入失败无任何反馈（"保存无反应"）；保存后清理逻辑为死代码（`.ne-card-edit-form`/`.ne-card-edit-btns` 从不创建）。 |
+
+### 修复
+
+writeState 加 catch + toast 报错；死代码替换为显式 `exitCardEditMode`。commit: `5bc0d1d`
+
+---
+
+## vNext-7 LTM 主行未转义（UI-5）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | LTM 表主行的 title/event/period 直接拼 innerHTML，特殊字符可破坏渲染（STM 行已转义）。 |
+
+### 修复
+
+ltmTitle/ltmEvent/periodCell 统一 `escapeHtml`。commit: `5bc0d1d`
+
+---
+
+## vNext-8 确认弹窗 Promise 挂起（UIS-7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `showConfirm` 的 close 依赖 `transitionend` 事件才 resolve，若弹窗 CSS transition 被主题/样式覆盖禁用（`transition:none` 等）事件永不触发 → Promise 永久挂起，确认后的删除/保存代码不执行，弹窗瞬隐但数据未变（"点删除没反应"可疑根因）。 |
+
+### 修复
+
+close 加 300ms 超时兜底：`transitionend` 触发则即时清理，不触发则超时强制移除弹窗 + resolve。commit: `5bc0d1d`
+
+---
+
+## vNext-9 版本历史滑杆每事件落盘（UIS-6）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | panel-version-history 两个限制滑杆 oninput 每次移动都写 localStorage + neSync（与 UIP-3 同源）。 |
+
+### 修复
+
+oninput 只更新即时显示，onchange（拖动结束）才 `saveConfig`。commit: `5bc0d1d`
+
+---
+
+## vNext-10 ResizeObserver 泄漏（UIS-5）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | 移动端响应式 ResizeObserver 挂在 overlay 上但关闭时从不 disconnect；init 双跑可能重复创建。 |
+
+### 修复
+
+`stopOverlayResizeWatcher` 一并 disconnect（`closeVaultOverlay` 必经路径）；`setupMobileObserver` 防重复创建。commit: `5bc0d1d`
+
+---
+
+## vNext-11 全局键盘导航重复绑定（UIS-4）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | bootstrap 的卡片回车/空格切换 keydown 监听无去重守卫，init 双跑时按键重复触发。 |
+
+### 修复
+
+`_keyNavBound` 守卫，`_bindCardToggleKeyNav()` 只绑一次。commit: `5bc0d1d`
+
+---
+
+## vNext-12 overlay 关闭监听累积（UIS-3）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | `closeVaultOverlay` 每次调用都 `addEventListener transitionend`，若 overlay 已 `display:none`（无过渡触发）监听永留累积。 |
+
+### 修复
+
+命名 handler + 关闭前先移除 + 兜底 timer 重置。commit: `5bc0d1d`
+
+---
+
+## vNext-13 帮助卡片外部点击监听泄漏（UIS-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+
+### 修复
+
+统一 `closeCard`：X 按钮 / 外部点击 / `hideHelpCard` 三路径都 `removeEventListener`。commit: `5bc0d1d`
+
+---
+
+## vNext-14 确认弹窗 Esc 监听泄漏（UIS-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | `showConfirm` 的 document keydown 监听只在按 Esc 时移除自身，点确定/取消/遮罩关闭则每次弹窗残留一个监听。 |
+
+### 修复
+
+close 统一移除 escHandler，任何关闭路径都清理。commit: `5bc0d1d`
+
+---
+
+## vNext-15 自适应上下文空转死循环（P1-18）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | 启用自适应上下文控制后"一发消息就卡死"：对话初期 vault 记忆为空 → `expandLayers`/`compressLayers` 选中 memory_vault 层后无分支可执行，`totalTokens` 永不变化 → 无限循环冻结主线程（7.2 的 `maxIterations` 仅兜底，把卡死降级为每次空转 100-200 轮）。 |
+
+### 修复
+
+两主循环加 no-progress 检测（本轮 token 无变化即 break）；layers 构建时无缓存层不入候选（源头过滤）。commit: `a537b3e`（此前 7.2 曾以 `maxIterations` 兜底 + 无撤回分支退出，commit: `ec36b82`/`882deea`，仅把卡死降级为每次空转 100-200 轮，未根治）
+
+---
+
+## vNext-16 STM 事件 partial 语义被覆盖（P1-17）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `mapEventData` 强制 `event.status = 'closed'` 抹掉 LLM 输出的 partial（窗口内容不足以形成完整事件），跨窗口续接链路永远闭合。 |
+
+### 修复
+
+仅缺失/非法值归 closed，partial 保留。commit: `5bc0d1d`
+
+---
+
+## vNext-17 present_characters 死代码 fallback（P1-16）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | `openLtm.present_characters[0].scene`——present_characters 是字符串数组（LLM 输出全名数组）无 `.scene` 字段，fallback 恒为 `''`。 |
+
+### 修复
+
+删除，仅保留 `openLtm.scene || ''`。commit: `5bc0d1d`
+
+---
+
+## vNext-18 歧义解析语义不一致（P1-15）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 模式3 的 resolved 存"实体名+后缀"与模式1/2 只存实体名不一致；`enhancedQuery.replace` 无 `/g` 只替换第一处引用。 |
+
+### 修复
+
+只存实体名（与模式1/2 一致）；`split/join` 全局替换（避免正则转义问题）。commit: `5bc0d1d`
+
+---
+
+## vNext-19 vault 状态栏无数据（UIP-1 缓存回归）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | UIP-1 区块缓存引入后，panel-content.js 顶部仍无条件移除 `.narrative_*_block` 元素，而内层 Section 仅在缓存未命中时才重新注入 innerHTML → 任一刷新轮次若 state 数据未变（缓存命中），State 区块被先删后不重建，状态栏永久空白。 |
+
+### 修复
+
+删除冗余的区块移除循环，依赖 innerHTML 覆盖完成清理。commit: `bf94b20` / `2560b80`
+
+---
+
+## vNext-20 access 工具消息引用崩溃（P0-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `[→msgId]` 引用未声明变量（ReferenceError），`msg#N`/裸数字引用且消息存在时 100% 失败。 |
+
+### 修复
+
+改为 `numId` 回显引用数字（根因：`55f21c7` 改名时漏改此用法）；`findMessageInChat` 支持裸数字输入，走数组下标 O(1) 反问 + id 身份校验，漂移时回退全量扫描；修复 `!msgId` 守卫误拦合法下标 0。commit: `55f21c7`
+
+---
+
+## vNext-21 v6→v7 迁移在空库上永久挂起（P0-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `_migrateVaultsToSplit` 用 `verifyHashes.forEach` 逐条校验，旧 vaults store 为空（或无带 content 记录）时回调一次不执行 → `done >= checks`（0>=0）永不成立，Promise 永不 settle → `openDB` 的 `resolve(db)` 永不执行，所有 read/write 永久挂起。 |
+
+### 修复
+
+空数组早退：`checks === 0` 直接 resolve 完成迁移。commit: `5bc0d1d`
+
+---
+
+## vNext-22 单任务失败后该队列后续任务全部被跳过（P0-3）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | pipeline-guard 三个 enqueue 用 `.then(success, rejection)` 双参数链，rejection handler `throw e` 毒化队列 → 失败任务之后的任务只走 rejection 分支、`taskFn` 永不执行（记忆写入静默丢失），直到 `reset()`。 |
+
+### 修复
+
+改 `.then(success).catch(failure)` 链式结构：失败经 `addAnomaly` 入 telemetry + console.error，尾部 catch 吞错保链 resolved，后续任务照常执行。commit: `5bc0d1d`
+
+---
+
+## vNext-23 STM 校验系统性误报（P0-4）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `validateMsgRanges` 用本次增量条数（`filteredMessages.length`）校验 msgRange 的**全局绝对消息索引** → 长对话增量更新时必然报"越界 + 未覆盖"，污染 telemetry validation_warnings。 |
+
+### 修复
+
+窗口语义：`validateMsgRanges`/`validateSTMOutput` 增可选参数 `windowStart`/`windowEnd`（默认 0..messageCount-1 兼容旧签名），越界按窗口边界检查、covered 数组改连续性检查。commit: `5bc0d1d`
+
+---
+
+## vNext-24 orphaned_branches 死机制移除（P0-5）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 孤立分支 store 的写入生产者从未存在，`restoreBranch`/`cleanupBranches` 无任何调用方，`pruneOrphanedBranches` 唯一调用消费的永远为空数据。"恢复已删除记忆"与产品原则（记忆生命周期 = 对话生命周期）矛盾。 |
+
+### 修复
+
+删除 `restoreBranch`/`cleanupBranches`/`pruneOrphanedBranches` 三函数 + state-pipeline 调用 + 死变量 `BRANCH_TTL_MS`；store 定义与 `remove(chatId)` 防御性清理保留。commit: `5bc0d1d`
+
+---
+
+## vNext-25 原型链保留键 path 污染（P1-6）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `__proto__`/`constructor`/`prototype` 作为 dot-path 段时，`mergeStateChanges` 的 `current[key]` 写入会落到 `Object.prototype` 或读到原型属性（LLM 输出的恶意/异常字段名可造成校验绕过或污染）。 |
+
+### 修复
+
+schema.js merge 路径遍历 + `ensureCharacterTemplate` 调用处 + state-versions `_setByPath`/`_getByPath` 统一加 `isReservedKey` 拦截。commit: `5bc0d1d`
+
+---
+
+## vNext-26 schema 校验缺口补全（P1-7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | ① `resolveSchemaPath` 不支持 `item_schema` 步进，abilities/inventory 等 map 容器子结构校验完全无效；② `validateField` 对 object 类型零校验（任意值放行）；③ required 字段从不校验。 |
+
+### 修复
+
+① 补"动态键丢弃 + 进入 item_schema 模板"逻辑；② 补 object 类型检查（null 归 {}，数组/标量拒绝）；③ required 字段补空值拦截（`''`/`undefined`/`null`/`NaN` → 拒绝写入 + warning，保留旧值）。commit: `5bc0d1d`
+
+---
+
+## vNext-27 `__inc` 增量语法通用化（P1-8）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | merge 层对 `__inc` 只特判 `affection`，LLM 对其他 number 字段输出 `+N`/`-N` 时把 `{__inc,delta}` 对象直接写进状态。 |
+
+### 修复
+
+任意字段应用增量，affection 保留 0-100 clamp，capturedChanges 记录 old/new。commit: `5bc0d1d`
+
+---
+
+## vNext-28 token 相似度原型链误判（P1-10）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `vocabularyOverlap` 用普通对象字面量 `{}` 当 Set，token 为 `constructor`/`toString`/`valueOf` 时经 `Object.prototype` 误判命中 → 相似度虚高。 |
+
+### 修复
+
+`Object.create(null)` 无原型对象替代 `{}`（两条 token 集）。commit: `5bc0d1d`
+
+---
+
+## vNext-29 SmartPush 注入次数伪统计（P1-11）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | `total_smartpush_injections` 直接赋 `total_turns` 占位，无真实计数来源且全代码库无消费方，UI 展示误导。 |
+
+### 修复
+
+删除字段（含注释示例与 aggregate 初始化）。commit: `5bc0d1d`
+
+---
+
+## vNext-30 GC 漏 memory_vaults store（P1-12）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `listAllChatIds` 只扫 `vaults`/`state_vaults`/`active_chains`，memory_vaults 中的孤儿数据永不参与清理。 |
+
+### 修复
+
+stores 列表补 `'memory_vaults'`。commit: `5bc0d1d`
+
+---
+
+## vNext-31 时间戳 NaN 输出"NaN 个月前"（P1-13）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | `calRelativeTime` 对字符串时间戳直接相减得 `NaN`，一路比较为 false 后落到"NaN 个月前"。 |
+
+### 修复
+
+入口 `Number()` 归一化 + 空值/NaN 早退。commit: `5bc0d1d`
+
+---
+
+## vNext-32 派系扫描大小写敏感（P1-14）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `scanMessageForFactions` 用 `indexOf` 精确匹配，alias 大小写变体（如 `Order` 匹配不到 `order`）导致派系激活失败。 |
+
+### 修复
+
+文本与关键词统一 toLowerCase 比较。commit: `5bc0d1d`
+
+---
+
+## vNext-33 设置保存全量热更新（UIP-4）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 任何单项设置变更都经 `saveSettingsTab` 全量重写 `ne_settings` + channels 全量重写 5 份 API 配置 + `neSyncAll` 全量扫描 17+ key，改 1 项 = 6 份全量 JSON + 全量同步。 |
+
+### 修复
+
+增量保存：① `ne_settings` 写前变更检测（值未变不落盘不同步）② channels 4 份 API 配置拆分独立保存（`_saveChannelApiOnly`）③ embedding/secondary 复用既有拆分函数 ④ 保存后 `neSyncAll` → `neSync(key)` 精确同步，删除 `neSyncAll`。commit: `5bc0d1d`
+
+---
+
+## vNext-34 设置页滑杆拖动卡顿（UIP-3）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | 8 处滑杆 oninput 每 tick 触发全量保存（6×setItem + neSyncAll 全量扫描），拖动时 UI 卡顿。 |
+
+### 修复
+
+`_debouncedSaveSettingsTab()` 300ms 防抖，拖动结束后才写入；输入框/开关 onchange 保持直存。commit: `5bc0d1d`
+
+---
+
+## vNext-35 模板卡每卡重复读 localStorage（UIP-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | 渲染配置卡时每卡重复调用 `SillyTavern.getContext()` + `loadCardConfigSync`（localStorage 读 + JSON.parse）。 |
+
+### 修复
+
+基于渲染时已读入的 cardConfig 内联判断锁定态，一次读取全卡复用；`store.js` 的 `isDialogueTemplateLocked`（无引用）已删除。commit: `5bc0d1d`
+
+---
+
+## vNext-36 面板每轮全量重建（UIP-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | 每轮 `vault:updated` 无条件 innerHTML 全量重建 + 事件重绑，即使数据未变也触发解析/重排/失焦 → 面板卡顿。 |
+
+### 修复
+
+区块级 HTML 缓存：char/faction/quest 用渲染字符串比较、STM/LTM 用输入 JSON 签名、quick index 用内容比较，全部未变的轮次跳过 DOM 重建与重绑；移除 setTimeout(50) 二次绑定（重建时同步绑定）；热路径 console.log 改 `__NE_DEV_MODE` 守卫。commit: `5bc0d1d`
+
+---
+
+## vNext-37 移动端响应式失效（UIB-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `.ne-mobile` 类挂在 shadow host 上，注入到 shadow 内的 `.ne-mobile .xxx` 选择器无法跨边界选中宿主 → 移动端减 padding/降字号/关模糊/模板单列全部不生效。 |
+
+### 修复
+
+动态前缀：shadow 用 `:host(.ne-mobile)`、非 shadow 用 `.ne-vault-bottom-overlay.ne-mobile`；修正原两分支均不匹配的错误选择器。commit: `5bc0d1d`
+
+---
+
+## vNext-38 面板样式 token 失效（UIB-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | 所有 `--ne-*` 设计 token 只定义在 style.css 的 `:root`，但 style.css 从未被加载（manifest css 为空、rollup 无 CSS、CDN 只装 index.js）→ 所有 `var(--ne-*)` 静默失效，状态点/徽章/按钮颜色全部退色（"UI 变丑"主因）。记忆表格 th/td 边框、padding 同样缺失，内容挤压无边框。 |
+
+### 修复
+
+token 块迁移进 JS 注入（PD.head `:root`，shadow 树经 host 继承同样生效）；memory table 基础规则迁移进注入 CSS；548 行 style.css 规则经审计仅此两项存活，其余为死代码，style.css 清空为废弃说明占位。commit: `5bc0d1d`
+
+---
+
+## vNext-39 启动重复执行（UI-9）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | bootNE 无守卫，DOMContentLoaded + `readyState==='interactive'` 双触发导致工具重复注册、vault 双写。 |
+
+### 修复
+
+`window.__ne_booted` 启动守卫。commit: `5bc0d1d`
+
+---
+
+## vNext-40 编辑内容被刷新抹掉（UI-7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | panel-content.js 防刷新保护 class 列表漏 `.ne-inline-row`/`.ne-char-edit`，用户在管线运行时手改 STM/LTM 行或卡片会被 `vault:updated` 抹掉。 |
+
+### 修复
+
+编辑保护 `closest` 条件补两类编辑态 class。commit: `5bc0d1d`
+
+---
+
+## vNext-41 自定义字段误存类型名（UI-4）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 保存模板/方案时选择器同时匹配字段名 + 类型两个 span，把 `'string'/'number'` 混入字段引用并写入字段库（三处保存 + 两处查重同源）。 |
+
+### 修复
+
+选择器改 `> span:first-child`（字段名 span 均为容器首个子元素），5 处一并修正。commit: `5bc0d1d`
+
+---
+
+## vNext-42 用量图表 State 序列断档（UI-3）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Low |
+| **影响** | panel-usage.js 图表默认对象用 `sp`、消费方读 `.state`，无数据日 State 曲线断档 + state-only 月份误判"无数据"。 |
+
+### 修复
+
+默认对象与判定统一为 `state: 0`。commit: `5bc0d1d`
+
+---
+
+## vNext-43 embedding 通道鉴权失效（UI-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | key 读取取不存在的 `nes_embedding_api_key`（真实 ID 是 `nes_embedding_key`），fetch models 永远无鉴权。 |
+
+### 修复
+
+keyId 特判：`prefix === 'nes_embedding'` 时用 `nes_embedding_key`。commit: `5bc0d1d`
+
+---
+
+## vNext-44 设置保存必然报错（UI-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | panel-settings.js 引用 `setRetrievalEnabled` 但从未 import，每次保存设置抛 ReferenceError，channels 模式下 API 通道配置/neSyncAll 全部不落盘。 |
+
+### 修复
+
+L7 补 `import { setRetrievalEnabled }`。commit: `5bc0d1d`
+
+---
+
+## vNext-45 冒烟测试三项误判（smartpush-14）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | 三项独立误判导致冒烟测试结果不可靠：① LTM 断言依赖环境设置默认值（本次=6 但测试 8 轮仅 5 条 STM，必然 FAIL）；② 用 `completion_tokens>=4096` 代理判定截断，长但完整的 JSON 响应被误判；③ 语义评估器只收到累积缓冲前 3000 字符（全是首轮），永远看不到 STM 输出。 |
+
+### 修复
+
+① test-case.md 前置条件写死默认值 5；② 改为"触顶且响应无法解析为 JSON"才算真截断；③ 改收对话文本 + STM 事件结构化上下文、截取缓冲末尾，修正"(超时截断)"误导标签，测试开始时重置累积缓冲。commit: `5bc0d1d`
+
+---
+
+## vNext-46 compact 折叠后回滚越界破坏版本链（P2-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `rollbackState`/`rollbackMemory` 只挡 `target >= head`，向已折叠版本回滚时把 head 也当孤儿项删除 → `newActive=[]`、`base_seq=0`，head delta（含 folded_state）被物理删除，版本链损坏。commit: `884e474` |
+
+### 修复
+
+三层防护：①数据层 `evaluateRollbackTarget` 非 active 目标统一拒绝；②面板回滚/前进按钮按 active 链可用性置灰；③ events.js 调用点经 `_rollbackOrWarn` 处理，`archived` 时 toastr 警告弹窗。
+
+---
+
+## vNext-47 SmartPush 实体链链路恢复
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `formatSmartContext` 中 `entityChains` 初始化为 `{}` 后从未赋值，mergePipelines 三步消费点全部空转——文档宣称的实体链增强功能未接线 。 |
+
+### 修复
+
+补 `await lookupEntityChains(content, entityNames)` 接线——实体链从事件指针 `present_characters` 实时构建，非独立存储。commit: `5bc0d1d`
+
+---
+
+## vNext-48 退化日期 msgId 漂移断链（P1-5）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | 数字 id 退化格式（`3_0000-00-00T00:00:00.000Z_5_user`）在消息漂移后无法按 send_date 匹配，fallback 直接断链 → msg 引用永久丢失。 |
+
+### 修复
+
+`_legacyScan` 提取退化日期段的尾段数字 id 按 `m.id` 匹配（无 id 消息按位置即身份）。commit: `5bc0d1d`
+
+---
+
+## vNext-49 LLM 超时重试加剧延迟（P1-4）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | AbortError（超时）无条件重试 ×2 轮 × 双请求且全部等满 timeoutSec，最坏 ~19s+ 延迟。 |
+
+### 修复
+
+AbortError 不重试直接抛（仅 5xx/网络类可重试）。commit: `5bc0d1d`
+
+---
+
+## vNext-50 小模型上下文压缩永不触发（P1-3）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | Medium |
+| **影响** | `usableBase = Math.max(2000, ...)` 强抬下限，maxContext < 2300 的小模型 goldenUpper 超过模型容量 → 压缩条件恒不成立。 |
+
+### 修复
+
+下限改 1000 + `goldenUpper = Math.min(goldenUpper, usableBase)` 封顶在可用预算内。commit: `5bc0d1d`
+
+---
+
+## vNext-51 STM 事件映射全量错位（P1-2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | 事件按数组下标与 segment 一一映射，LLM 少输出事件时后续事件全部错位到错误的 turn 区间。 |
+
+### 修复
+
+优先用 LLM 返回的事件自带 `msgRange`（窗口内下标）→ 经 windowMessages（含 `_absIdx`）转换全局下标 → 与 turns 相交得覆盖轮次。commit: `5bc0d1d`
+
+---
+
+## vNext-52 超长 segment 非首位置不拆分（P1-1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23 |
+| **严重程度** | **High** |
+| **影响** | `chunkSegmentsForLLM` 仅 currentChunk 为空时才拆分超长 segment，累积场景下超长 chunk 整段提交给 LLM，触发上下文溢出。 |
+
+### 修复
+
+超长 segment 无论是否首位置都先 flush 当前 chunk 再 `splitIntraSegment` 拆分。commit: `5bc0d1d`
+
+---
+
+## v7.2-1 chat-completion 拦截器稳定性（v7.2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23（v7.2） |
+| **严重程度** | **High** |
+| **影响** | 对话轮次裁剪拦截器 hook 目标错误、NARRATOR/newMainChat 消息被误过滤、事件名大小写不匹配、模块被 ES tree-shaking 丢失，导致裁剪不生效或崩溃。 |
+
+### 修复
+
+- 修正 hook 目标与 NARRATOR/newMainChat 过滤逻辑
+- 修正事件名大小写不匹配（`CHAT_COMPLETION_PROMPT_READY` 必须小写）
+- 移至模块顶层防止 ES tree-shaking 丢失
+- commit: `993fe98` / `e01d5fd` / `45b9d0f` / `6d33767` / `fe82fcb`
+
+---
+
+## v7.2-2 import() URL 解析失败（v7.2）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-23 |
+| **解决** | 2026-07-23（v7.2） |
+| **严重程度** | **High** |
+| **影响** | ST 服务器返回 `location.origin === null` 时动态 `import()` 失败；Rollup 将绝对路径转为相对路径导致解析错误。 |
+
+### 修复
+
+多级 fallback：`location.origin` → href regex 提取 → 硬编码；阻止 Rollup 绝对路径转相对。commit: `2c9d035` / `d891a02` / `9bf02f5` / `855783d`
+
+---
+
+## v7.1-1 UI 与 Prompt 修正（v7.1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-17 |
+| **解决** | 2026-07-17（v7.1） |
+| **严重程度** | Medium |
+| **影响** | 内联版本导航按钮方向反转（与侧滑面板语义不符）；角色卡尺寸异常、inventory/power_slots 显示原始 JSON；LLM Prompt 未区分 string（填 none）与 object/array（填 []）字段，消歧义指引缺失。 |
+
+### 修复
+
+- 内联版本导航按钮方向反转修正
+- 角色卡尺寸调整，inventory/power_slots 改为 chip 样式
+- Prompt 区分 string/object/array 字段默认值 + "或"源文本消歧义指引
+- commit: `3ef1661` / `809b95b` / `167b9ac` / `ae52028` / `44dd5b6`
+
+---
+
+## v7.1-2 模板字段生命周期（v7.1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-17 |
+| **解决** | 2026-07-17（v7.1） |
+| **严重程度** | Medium |
+| **影响** | 现有角色不自动补齐新增字段（current_outfit/abilities/power_level），空字段无占位显示，编辑默认方案时直接改动默认方案。 |
+
+### 修复
+
+- 现有角色自动补齐新增字段为类型合适的默认值
+- 空字段在卡片中以占位样式显示并可点击编辑
+- 编辑默认方案时先克隆到卡片级再修改
+- commit: `7c7c46f` / `0a7d2d5`
+
+---
+
+## v7.1-3 方案持久化与渲染（v7.1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-17 |
+| **解决** | 2026-07-17（v7.1） |
+| **严重程度** | **High** |
+| **影响** | 方案编辑后仅停留在内存，未写入 state vault；角色卡按默认模板而非实际 `_scheme` 渲染；版本切换不级联 → "编辑后无变化/重载后丢失"。 |
+
+### 修复
+
+- 方案编辑后正确写入 state vault 并即时切换
+- 角色卡按实际 `_scheme` 渲染字段而非默认模板
+- 版本切换正确级联
+- commit: `71b9764` / `bcbd193` / `14f6078` / `3029671` / `e96488c` / `3853997`
+
+---
+
+## v7.1-4 自定义字段系统 5 处问题（v7.1）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-17 |
+| **解决** | 2026-07-17（v7.1） |
+| **严重程度** | **High** |
+| **影响** | 字段库回退缺失、类型选择器缺失、库写入断裂、引用追踪死码等 5 处问题，导致自定义字段无法完整添加/编辑/保存。 |
+
+### 修复
+
+修复全部 5 处问题，自定义字段可完整添加/编辑/保存。commit: `ef85d5d`
+
+---
+
+## v7.0-1 事件总线竞态（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | 侦听器注册在 `await` 之前，异步操作期间错过事件导致 UI 不刷新。 |
+
+### 修复
+
+侦听器注册移至 `await` 之前，避免事件丢失。commit: `67754ad`
+
+---
+
+## v7.0-2 版本导航按钮 Shadow DOM 查询失效（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | 版本导航按钮在 Shadow DOM 内用错误查询方式，找不到元素 → 点击无反应。 |
+
+### 修复
+
+Shadow DOM 内查询改用 `container.querySelector`。commit: `61b0cf6`
+
+---
+
+## v7.0-3 滚动位置不保存（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Low |
+| **影响** | innerHTML 重建后滚动位置重置到顶部，长列表浏览体验差。 |
+
+### 修复
+
+innerHTML 重建后恢复 `scrollTop`。commit: `66382b3` / `d7738ad`
+
+---
+
+## v7.0-4 Embedding API 验证缺失（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | 发送 Embedding 请求前不校验模型名非空 → `JSON.stringify` 省略 undefined key 导致 "Model field is required" 400 错误。 |
+
+### 修复
+
+发送前校验模型名非空；设置 UI 增加必填字段标记。commit: `1a4c538`
+
+---
+
+## v7.0-5 CORS 代理 URL 硬编码（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | CORS 代理 URL 硬编码 `http://127.0.0.1:8000`，用户修改 ST 端口/域名后代理失效。 |
+
+### 修复
+
+改为 `window.location.origin` 动态获取；错误提示补充可操作的检查项。commit: `eb8a4c2`
+
+---
+
+## v7.0-6 首次打开面板不渲染（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | 首次打开面板无内容，`open` class 与 `busEmit` 时序冲突。 |
+
+### 修复
+
+修正 `open` class 与 `busEmit` 的触发时序。commit: `8e6e3be`
+
+---
+
+## v7.0-7 Token 统计落"tok"不可见分类（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Low |
+| **影响** | 7 个管线操作（state_extract / faction_discovery / scheme_discovery / template ops / ltm_rebatch / ltm_decision_retry / init_power_slots）全部落入不可见的通用 "tok" 分类，用量图表无法体现。 |
+
+### 修复
+
+将 7 个操作映射到各自的 token 统计分类。commit: `0b4f2c0`
+
+---
+
+## v7.0-8 重掷状态丢失（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | 重掷后 State LLM 不重新运行，状态停留在旧消息。 |
+
+### 修复
+
+重掷后 State LLM 正确重新运行并重建状态。commit: `3fe9f3a`
+
+---
+
+## v7.0-9 跨类型字段泄漏（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | State LLM 向角色卡写入势力/任务/目标专属字段，跨类型字段互相污染。 |
+
+### 修复
+
+prompt 过滤 + validate 拒绝跨类型字段写入。commit: `979bb2c`
+
+---
+
+## v7.0-10 活跃角色默认状态缺失（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | 首次使用的角色无状态，面板全部显示"非活跃"。 |
+
+### 修复
+
+首次使用自动初始化 `status='活跃'`。commit: `566cd12`
+
+---
+
+## v7.0-11 NE-CHAR 合并方向反转（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | State LLM 的新状态被 NE-CHAR 过时默认值覆盖，角色状态全部显示为"非活跃"。 |
+
+### 修复
+
+合并方向反转：NE-CHAR 最新状态合入 State 状态，而非反向覆盖。commit: `7139877`
+
+---
+
+## v7.0-12 State LLM 漏轮（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | Medium |
+| **影响** | State 管线触发阈值错误（`>2`），管线排空后漏触发，部分轮次状态不更新。 |
+
+### 修复
+
+阈值修正：`>2` → `>=2`，管线排空后正确触发。commit: `b29d870`
+
+---
+
+## v7.0-13 消息接收崩溃（v7.0 复现）—— `computeWindowStartMsgId` import 再次缺失
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | 与 v6.8-3 同根因（v6.7 遗留 import 缺失），在 v7.0 窗口期再次导致 `onMessageReceived` ReferenceError。 |
+
+### 修复
+
+同 v6.8-3：补回 `computeWindowStartMsgId` import（v7.0 变更中再次确认保留）。
+
+---
+
+## v7.0-14 DB 迁移数据丢失（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | 连续升级路径中重复迁移 + 异步属性未解包导致 Vault 数据清零。 |
+
+### 修复
+
+v7 迁移完整性校验 + 损坏 store 强制重置 + 从 `chat_metadata` 恢复。commit: `5a17c71` / `8f6a682` / `b5dcada` / `bf7514d`
+
+---
+
+## v7.0-15 Firefox 面板不可见（v7.0）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-16 |
+| **解决** | 2026-07-16（v7.0） |
+| **严重程度** | **High** |
+| **影响** | Firefox Shadow DOM 不应用 `:host(.open)` CSS，面板打开后不可见/样式错乱。 |
+
+### 修复
+
+改用 inline style 绕过 `:host(.open)` CSS 不生效问题。commit: `f37915d` / `b9fb892` / `0260eff`
+
+---
+
+## v6.8-1 State LLM max_tokens 触顶
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.8） |
+| **严重程度** | Medium |
+| **影响** | `state_extract` 操作的 `max_tokens` 硬上限 2048 过紧，该操作频繁接近上限，输出被截断导致状态更新不完整。 |
+
+### 修复
+
+`max_tokens` 上限从 2048 提升至 4096，为 `state_extract` 留出足够空间。commit: `0b21551`
+
+---
+
+## v6.8-2 快照恢复被覆盖（v6.8）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.8） |
+| **严重程度** | **High** |
+| **影响** | `restoreSnapshot` 恢复 IndexedDB 后未同步 `chat_metadata`，导致 `loadVault` 在版本平局时用聊天文件中的旧缓存覆盖刚恢复的数据。 |
+
+### 修复
+
+`restoreSnapshot` 在 IndexedDB 写入后同步 `chat_metadata`，避免 `loadVault` 以旧缓存覆盖恢复结果。commit: `590582c`
+
+---
+
+## v6.8-3 消息接收崩溃（v6.8）—— `computeWindowStartMsgId` import 缺失
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.8） |
+| **严重程度** | **High** |
+| **影响** | v6.7 上下文窗口重构时误删 `computeWindowStartMsgId` 的 import，但 `computeContextPressure` 在 `onMessageReceived` 中仍调用它 → 每条消息到达都抛 `ReferenceError`，引擎完全不可用。 |
+
+### 修复
+
+在 events.js 重新补回 `computeWindowStartMsgId` import。commit: `3525039`
+
+---
+
+## v6.7-1 对话轮次剪裁修复（v6.7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.7） |
+| **严重程度** | Medium |
+| **影响** | 对话框轮次剪裁从 `chat.splice()` 直接在原始聊天数组上操作，有副作用风险。 |
+
+### 修复
+
+剪裁逻辑从 `chat.splice()` 移至 `generate_interceptor`，在 `coreChat` 副本上安全操作。commit: `42f9a56`
+
+---
+
+## v6.7-2 STM 编辑按钮缺失（v6.7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.7） |
+| **严重程度** | Low |
+| **影响** | 孤儿/LTM 子 STM 行不显示编辑按钮，无法行内修改。 |
+
+### 修复
+
+孤儿/LTM 子 STM 行现在显示编辑按钮。commit: `5c5dbd3`
+
+---
+
+## v6.7-3 快照恢复错误吞噬（v6.7）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-07-07 |
+| **解决** | 2026-07-07（v6.7） |
+| **严重程度** | Medium |
+| **影响** | `restoreSnapshot` 异步回调中的错误被静默吞掉，用户无法得知快照恢复失败。 |
+
+### 修复
+
+不再静默吞掉 `restoreSnapshot` 异步回调中的错误。commit: `5c5dbd3`
+
+---
+
+## v6.6-1 Embedding API 输入框修改不保存
 
 | 属性 | 值 |
 |---|---|
@@ -26,7 +1314,7 @@ Embedding channel-group 改为 `channelsEnabled ? ... : ''` 条件渲染。两�
 
 ---
 
-## #36 设置面板副 API 保存崩溃
+## v6.6-2 设置面板副 API 保存崩溃
 
 | 属性 | 值 |
 |---|---|
@@ -42,7 +1330,7 @@ Embedding channel-group 改为 `channelsEnabled ? ... : ''` 条件渲染。两�
 
 ---
 
-## #35 面板 overlay 与聊天窗口分层：双滚轮 + 下滑翻开面板回归
+## v6.6-3 面板 overlay 与聊天窗口分层：双滚轮 + 下滑翻开面板回归
 
 | 属性 | 值 |
 |---|---|
@@ -68,7 +1356,7 @@ v6.4 的修复依赖 `transitionend` 事件将 `display` 切回 `none`，但 `tr
 
 ---
 
-## #34 STM 分块默认值过大
+## v6.6-4 STM 分块默认值过大
 
 | 属性 | 值 |
 |---|---|
@@ -84,14 +1372,100 @@ v6.4 的修复依赖 `transitionend` 事件将 `display` 切回 `none`，但 `tr
 
 ---
 
-## 汇总
+## 汇总 (vNext – v6.6)
 
-| # | 描述 | 严重度 | 状态 |
+| 编号 | 描述 | 严重度 | 状态 |
 |---|---|---|---|
-| 37 | Embedding API 输入框修改不保存（ID 双份冲突） | **High** | ✅ 已解决 |
-| 36 | 设置面板副 API 保存崩溃（secApi 空值保护缺失） | **High** | ✅ 已解决 |
-| 35 | 面板 overlay 分层（body 挂载 + bounds 同步） | **High** | ✅ 已解决 |
-| 34 | STM 分块默认值 4000→500 | Low | ✅ 已解决 |
+| vNext-1 | resolvePipelineApi 缺 template_assistant 通道路由 | **High** | ✅ 已解决 |
+| vNext-2 | 审计 D/R 系列（DB 缓存/跨聊天缓存/模板回填） | 多项 | ✅ 已解决 |
+| vNext-3 | 设置页控件 Shadow DOM 失效（裸 querySelectorAll） | Medium | ✅ 已解决 |
+| vNext-4 | 初始化窗口期首轮消息漏记 | **High** | ✅ 已解决 |
+| vNext-5 | 消息内假按钮不可点击（[文字] 纯文本误导） | Medium | ✅ 已解决 |
+| vNext-6 | 手动编辑保存静默失败（writeState 无 catch） | **High** | ✅ 已解决 |
+| vNext-7 | LTM 主行未转义（title/event/period） | Medium | ✅ 已解决 |
+| vNext-8 | 确认弹窗 Promise 挂起（transitionend 依赖） | **High** | ✅ 已解决 |
+| vNext-9 | 版本历史滑杆每事件落盘 | Low | ✅ 已解决 |
+| vNext-10 | ResizeObserver 泄漏（close 不 disconnect） | Low | ✅ 已解决 |
+| vNext-11 | 全局键盘导航重复绑定（init 双跑） | Low | ✅ 已解决 |
+| vNext-12 | overlay 关闭监听累积（transitionend 永留） | Low | ✅ 已解决 |
+| vNext-13 | 帮助卡片外部点击监听泄漏 | Low | ✅ 已解决 |
+| vNext-14 | 确认弹窗 Esc 监听泄漏 | Low | ✅ 已解决 |
+| vNext-15 | 自适应上下文空转死循环（P1-18，空记忆冻结主线程） | **High** | ✅ 已解决 |
+| vNext-16 | STM 事件 partial 语义被覆盖（P1-17） | Medium | ✅ 已解决 |
+| vNext-17 | present_characters 死代码 fallback（P1-16） | Low | ✅ 已解决 |
+| vNext-18 | 歧义解析语义不一致（P1-15） | Medium | ✅ 已解决 |
+| vNext-19 | vault 状态栏无数据（UIP-1 缓存回归） | **High** | ✅ 已解决 |
+| vNext-20 | access 工具消息引用崩溃（P0-1，msgId 未声明） | **High** | ✅ 已解决 |
+| vNext-21 | v6→v7 迁移空库永久挂起（P0-2） | **High** | ✅ 已解决 |
+| vNext-22 | 队列 rejection 毒化后续任务跳过（P0-3） | **High** | ✅ 已解决 |
+| vNext-23 | STM 校验系统性误报（P0-4，msgRange 窗口语义） | Medium | ✅ 已解决 |
+| vNext-24 | orphaned_branches 死机制移除（P0-5） | Medium | ✅ 已解决 |
+| vNext-25 | 原型链保留键 path 污染（P1-6） | **High** | ✅ 已解决 |
+| vNext-26 | schema 校验缺口补全（P1-7） | **High** | ✅ 已解决 |
+| vNext-27 | `__inc` 增量语法通用化（P1-8） | Medium | ✅ 已解决 |
+| vNext-28 | token 相似度原型链误判（P1-10） | Medium | ✅ 已解决 |
+| vNext-29 | SmartPush 注入次数伪统计（P1-11） | Low | ✅ 已解决 |
+| vNext-30 | GC 漏 memory_vaults store（P1-12） | Medium | ✅ 已解决 |
+| vNext-31 | 时间戳 NaN 输出"NaN 个月前"（P1-13） | Low | ✅ 已解决 |
+| vNext-32 | 派系扫描大小写敏感（P1-14） | Medium | ✅ 已解决 |
+| vNext-33 | 设置保存全量热更新（UIP-4） | Medium | ✅ 已解决 |
+| vNext-34 | 设置页滑杆拖动卡顿（UIP-3） | Low | ✅ 已解决 |
+| vNext-35 | 模板卡每卡重复读 localStorage（UIP-2） | Low | ✅ 已解决 |
+| vNext-36 | 面板每轮全量重建（UIP-1） | **High** | ✅ 已解决 |
+| vNext-37 | 移动端响应式失效（UIB-2，Shadow DOM） | Medium | ✅ 已解决 |
+| vNext-38 | 面板样式 token 失效（UIB-1，style.css 未加载） | **High** | ✅ 已解决 |
+| vNext-39 | 启动重复执行（UI-9） | Medium | ✅ 已解决 |
+| vNext-40 | 编辑内容被刷新抹掉（UI-7） | **High** | ✅ 已解决 |
+| vNext-41 | 自定义字段误存类型名（UI-4） | Medium | ✅ 已解决 |
+| vNext-42 | 用量图表 State 序列断档（UI-3） | Low | ✅ 已解决 |
+| vNext-43 | embedding 通道鉴权失效（UI-2） | **High** | ✅ 已解决 |
+| vNext-44 | 设置保存必然报错（UI-1） | **High** | ✅ 已解决 |
+| vNext-45 | 冒烟测试三项误判（smartpush-14） | Medium | ✅ 已解决 |
+| vNext-46 | compact 折叠后回滚越界破坏版本链（P2-1） | **High** | ✅ 已解决 |
+| vNext-47 | SmartPush 实体链链路恢复 | **High** | ✅ 已解决 |
+| vNext-48 | 退化日期 msgId 漂移断链（P1-5） | **High** | ✅ 已解决 |
+| vNext-49 | LLM 超时重试加剧延迟（P1-4） | Medium | ✅ 已解决 |
+| vNext-50 | 小模型上下文压缩永不触发（P1-3） | Medium | ✅ 已解决 |
+| vNext-51 | STM 事件映射全量错位（P1-2） | **High** | ✅ 已解决 |
+| vNext-52 | 超长 segment 非首位置不拆分（P1-1） | **High** | ✅ 已解决 |
+| v7.2-1 | chat-completion 拦截器稳定性（hook 目标/事件名/过滤） | **High** | ✅ 已解决 |
+| v7.2-2 | import() URL 解析失败（origin null + Rollup 相对路径） | **High** | ✅ 已解决 |
+| v7.1-1 | UI 与 Prompt 修正（版本导航方向/inventory chip/Prompt 字段默认值） | Medium | ✅ 已解决 |
+| v7.1-2 | 模板字段生命周期（现有角色补字段/占位显示/克隆编辑） | Medium | ✅ 已解决 |
+| v7.1-3 | 方案持久化与渲染（_scheme 未落盘/按默认模板渲染） | **High** | ✅ 已解决 |
+| v7.1-4 | 自定义字段系统 5 处问题（库回退/选择器/写入断裂） | **High** | ✅ 已解决 |
+| v7.0-1 | 事件总线竞态（侦听器注册在 await 前） | Medium | ✅ 已解决 |
+| v7.0-2 | 版本导航按钮 Shadow DOM 查询失效 | Medium | ✅ 已解决 |
+| v7.0-3 | 滚动位置不保存（innerHTML 重建） | Low | ✅ 已解决 |
+| v7.0-4 | Embedding API 模型名校验缺失 | Medium | ✅ 已解决 |
+| v7.0-5 | CORS 代理 URL 硬编码 | Medium | ✅ 已解决 |
+| v7.0-6 | 首次打开面板不渲染（open class 时序） | **High** | ✅ 已解决 |
+| v7.0-7 | Token 统计落"tok"不可见分类（7 操作） | Low | ✅ 已解决 |
+| v7.0-8 | 重掷状态丢失 | **High** | ✅ 已解决 |
+| v7.0-9 | 跨类型字段泄漏（State LLM 写专属字段） | **High** | ✅ 已解决 |
+| v7.0-10 | 活跃角色默认状态缺失（全"非活跃"） | Medium | ✅ 已解决 |
+| v7.0-11 | NE-CHAR 合并方向反转（新状态被默认值覆盖） | **High** | ✅ 已解决 |
+| v7.0-12 | State LLM 漏轮（阈值 >2 → >=2） | Medium | ✅ 已解决 |
+| v7.0-13 | 消息接收崩溃 v7.0 复现（computeWindowStartMsgId import） | **High** | ✅ 已解决 |
+| v7.0-14 | DB 迁移数据丢失（重复迁移 + 异步属性未解包） | **High** | ✅ 已解决 |
+| v7.0-15 | Firefox 面板不可见（:host(.open) 不生效） | **High** | ✅ 已解决 |
+| v6.8-1 | State LLM max_tokens 触顶（2048→4096） | Medium | ✅ 已解决 |
+| v6.8-2 | 快照恢复被覆盖（未同步 chat_metadata） | **High** | ✅ 已解决 |
+| v6.8-3 | 消息接收崩溃（computeWindowStartMsgId import 缺失） | **High** | ✅ 已解决 |
+| v6.7-1 | 对话轮次剪裁修复（splice → generate_interceptor 副本） | Medium | ✅ 已解决 |
+| v6.7-2 | STM 编辑按钮缺失（孤儿/LTM 子行） | Low | ✅ 已解决 |
+| v6.7-3 | 快照恢复错误吞噬 | Medium | ✅ 已解决 |
+
+---
+
+## 汇总 (v6.6 及之前)
+
+| 编号 | 描述 | 严重度 | 状态 |
+|---|---|---|---|
+| v6.6-1 | Embedding API 输入框修改不保存（ID 双份冲突） | **High** | ✅ 已解决 |
+| v6.6-2 | 设置面板副 API 保存崩溃（secApi 空值保护缺失） | **High** | ✅ 已解决 |
+| v6.6-3 | 面板 overlay 分层（body 挂载 + bounds 同步） | **High** | ✅ 已解决 |
+| v6.6-4 | STM 分块默认值 4000→500 | Low | ✅ 已解决 |
 | 33 | STM 时间/场景无 Banner 时永远为 "-" | Medium | ✅ 已解决 |
 | 26 | 设置面板全部控件不持久化 | **High** | ✅ 已解决 |
 | 27 | 记忆编辑/删除不持久化（双重根因） | **High** | ✅ 已解决 |
