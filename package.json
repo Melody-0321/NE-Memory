@@ -15,6 +15,7 @@
     "build:dev:script": "node scripts/generate-test-data.cjs && cross-env BUILD_MODE=script NE_BUILD=dev rollup -c",
     "build:readme": "node scripts/build-readme-html.cjs",
     "build:doc-index": "node scripts/build-doc-index.cjs",
+    "check:version": "node scripts/check-version.cjs",
     "publish:extension": "node scripts/publish-extension.cjs",
     "watch": "rollup -c -w",
     "prepare": "git config core.hooksPath .githooks || true",
