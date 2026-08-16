@@ -7,6 +7,9 @@
 
 ## Bug 修复
 
+> 📌 本块为**用户可见摘要**，每条标注 BUGS.md 编号；完整根因见 [BUGS.md](BUGS.md)（vNext-N）。
+> 存量条目尚未补编号；新修复按 AGENTS.md Fix-Rule 写入。
+
 - **冒烟测试三项误判（smartpush-14）**：①LTM 断言依赖运行环境设置 `stmMaxUnconsolidated`（本次=6，8 轮仅 5 条 STM 不达阈值，`ltm_decision`/`ltm_state` 必然 FAIL）→ test-case.md 前置条件写死默认值 5；②truncation 用 `completion_tokens>=4096` 代理判定，长但完整的 JSON 响应被误判截断 → monitor 改为"触顶且响应无法解析为 JSON"才算真截断；③语义评估器只收到累积缓冲前 3000 字符（全是首轮 state_extract），永远看不到 stm_extract 输出 → 改收对话文本 + STM 事件结构化上下文、截取缓冲末尾，并修正"(超时截断)"误导标签（实为数据不足），测试开始时重置跨测试累积的响应缓冲
 
 - **vault 状态栏无数据（UIP-1 缓存回归）**：5bc0d1d 引入区块渲染缓存后，panel-content.js 顶部仍无条件移除 `.narrative_*_block` 元素，而内层 Section 仅在缓存未命中时才重新注入 innerHTML（innerHTML 覆盖本身会替换容器子元素）→ 任一 `vault:updated` 刷新轮次若 state 数据未变（缓存命中），State 区块被先删后不重建，状态栏永久空白（记忆 tab 用 tbody、不在此移除循环内，故正常）。已删除冗余的区块移除循环，依赖 innerHTML 覆盖完成清理（2560b80 修复 `_renderCache` 声明后，State tab 仍空即此因）
