@@ -65,6 +65,7 @@
 | `test-cases/` 集成测试 | 🟢 | 豁免清单 |
 | `.trae/documents/` | 🟢 | 豁免清单 |
 | `.github/` | 🟢 | 豁免清单 |
+| `docs/adr/` — 架构决策记录 | 🟢 | 豁免清单 |
 | `src/core/engine/.rules.md` | 🟢 | 纯规则文档 |
 | `src/core/vault/.rules.md` | 🟢 | 纯规则文档 |
 

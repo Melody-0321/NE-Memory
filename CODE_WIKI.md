@@ -1366,6 +1366,20 @@ __ne_debug.extractState()
 
 ---
 
+## ADR 架构决策记录
+
+核心架构决策的权衡记录见 [`docs/adr/`](docs/adr/)（Nygard 四段式，中文）：
+
+- [0001 快照→Delta 版本链](docs/adr/0001-snapshot-to-delta-version-chain.md)
+- [0002 开放角色 Schema](docs/adr/0002-open-character-schema.md)
+- [0003 State/Memory Vault 拆分](docs/adr/0003-split-state-memory-vault.md)
+- [0004 消息身份系统](docs/adr/0004-message-identity-system.md)
+- [0005 纯本地 SmartPush 检索](docs/adr/0005-local-smartpush-retrieval.md)
+
+新增 ADR 时同步更新 `docs/adr/README.md` 索引与本小节。
+
+---
+
 ## 8. 测试体系
 
 ### 8.1 测试层次结构
