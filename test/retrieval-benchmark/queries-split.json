@@ -1,0 +1,68 @@
+{
+  "_meta": {
+    "purpose": "dev/holdout 分离 —— 修复 train-on-test。dev 用于一切调参与探索；holdout 封存，仅在配置冻结后运行一次。",
+    "seed": 20260818,
+    "method": "按 type 分层（narrative 10→6/4，targeted 18→12/6）；narrative 唯一 hard-bone q4 固定进 holdout；targeted 保证 holdout 至少 1 条 hard-bone。",
+    "hard_bone": [
+      "q4",
+      "q23",
+      "q25",
+      "q27",
+      "q28"
+    ],
+    "hard_bone_placement": {
+      "dev": [
+        "q25",
+        "q27"
+      ],
+      "holdout": [
+        "q23",
+        "q28",
+        "q4"
+      ]
+    },
+    "counts": {
+      "dev": 18,
+      "holdout": 10,
+      "dev_narrative": 6,
+      "dev_targeted": 12,
+      "holdout_narrative": 4,
+      "holdout_targeted": 6
+    },
+    "adjustments": [],
+    "sealed_discipline": "封存纪律：holdout 只在 P0-1 封存运行时执行一次；解封前冻结全部检索配置（融合权重、BM25 参数、embedding 模型、topK）；解封后无论结果如何不得回改配置重跑。跑前冻结，跑后不挑读数。",
+    "created": "2026-08-17"
+  },
+  "dev": [
+    "q1",
+    "q10",
+    "q11",
+    "q12",
+    "q14",
+    "q15",
+    "q18",
+    "q19",
+    "q2",
+    "q20",
+    "q21",
+    "q22",
+    "q24",
+    "q25",
+    "q27",
+    "q3",
+    "q6",
+    "q8"
+  ],
+  "holdout": [
+    "q13",
+    "q16",
+    "q17",
+    "q23",
+    "q26",
+    "q28",
+    "q4",
+    "q5",
+    "q7",
+    "q9"
+  ]
+}

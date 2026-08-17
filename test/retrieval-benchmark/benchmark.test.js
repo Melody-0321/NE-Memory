@@ -9,7 +9,9 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { runBenchmark, aggregateMetrics } from './benchmark-runner.js';
 import { avg } from './metrics.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, getSplitName } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { noiseCount, allSTM } from './fixture.js';
 
 var __filename = fileURLToPath(import.meta.url);
@@ -26,7 +28,9 @@ if (existsSync(CONFIG_PATH)) {
     } catch (e) { /* ignore */ }
 }
 
-var OUTPUT_DIR = 'test/retrieval-benchmark/output';
+var OUTPUT_DIR = getSplitName() === 'holdout'
+    ? 'test/retrieval-benchmark/output/holdout'
+    : 'test/retrieval-benchmark/output';
 
 function fmt(val, decimals) {
     decimals = decimals || 3;
@@ -351,7 +355,7 @@ async function main() {
 
     var report = lines.join('\n');
     var reportPath = OUTPUT_DIR + '/report.md';
-    writeFileSync(reportPath, report, 'utf-8');
+    writeFileSync(reportPath, withProvenanceHeader('report', report), 'utf-8');
     console.log('Report written to ' + reportPath);
 
     // === Assertions ===

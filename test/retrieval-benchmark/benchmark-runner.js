@@ -3,7 +3,8 @@ import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } fro
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { buildSearchableText } from '../../src/core/engine/retrieval-text.js';
 import { allSTM, allLTM, entityToStmIds } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries } from './query-split-utils.js';
+var queries = loadSplitQueries();
 import { precisionAtK, recallAtK, ndcgAtK, mrr, hitAtK, precisionAtK_active, hitAtK_active, weightedScore, median, avg } from './metrics.js';
 import { linearFuse, cascadeBM25ToVec, cascadeVecToBM25, complementFuse, rrfFuse, rerankFuse } from './benchmark-fusions.js';
 

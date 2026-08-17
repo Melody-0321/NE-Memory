@@ -11,7 +11,8 @@ import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } fro
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { mergePipelines, groupCandidatesByEntity } from '../../src/core/engine/retrieval.js';
 import { allSTM, allLTM } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries } from './query-split-utils.js';
+var queries = loadSplitQueries();
 import { linearFuse } from './benchmark-fusions.js';
 
 var __filename = fileURLToPath(import.meta.url);

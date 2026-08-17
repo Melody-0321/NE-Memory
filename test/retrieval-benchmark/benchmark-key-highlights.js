@@ -11,7 +11,9 @@ import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { mergePipelines, groupCandidatesByEntity } from '../../src/core/engine/retrieval.js';
 import { buildEntityBlock, buildKeyHighlights } from '../../src/core/engine/injection.js';
 import { allSTM, allLTM, allChatMessages } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { linearFuse } from './benchmark-fusions.js';
 
 var __filename = fileURLToPath(import.meta.url);
@@ -406,7 +408,7 @@ async function main() {
     var tgtBL = avg(tgtResults.map(function(r) { return r.baselineScore; }));
     var tgtHL = avg(tgtResults.map(function(r) { return r.highlightScore; }));
 
-    var outDir = join(__dirname, 'output');
+    var outDir = outputDirFor(__dirname);
     try { mkdirSync(outDir, { recursive: true }); } catch (e) {}
 
     var report = [
@@ -458,7 +460,7 @@ async function main() {
     });
 
     var reportFile = join(outDir, 'key-highlights-ablation.md');
-    writeFileSync(reportFile, report, 'utf-8');
+    writeFileSync(reportFile, withProvenanceHeader('key-highlights', report, SYSTEM_PROMPT.join('\n')), 'utf-8');
 
     console.log('\n======================================================================');
     console.log('=== KEY HIGHLIGHTS ABLATION ===\n');

@@ -7,7 +7,9 @@ import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } fro
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { mergePipelines } from '../../src/core/engine/retrieval.js';
 import { allSTM, allLTM } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { linearFuse } from './benchmark-fusions.js';
 
 var __dirname = dirname(fileURLToPath(import.meta.url));
@@ -108,12 +110,12 @@ for (var i = 0; i < queries.length; i++) {
     results.push({ id: qid, type: q.type, query: qt, score: j.score, reason: j.reason, tokens: ctx.length });
 }
 
-var outDir = join(__dirname, 'output');
+var outDir = outputDirFor(__dirname);
 try { mkdirSync(outDir, { recursive: true }); } catch(e) {}
 var outFile = join(outDir, 'flat-ns-d4f.md');
 var report = ['# Flat(NS) — d4f Judge', '**Score avg**: ' + avg(scores).toFixed(2), ''];
 results.forEach(function(r) { report.push('- **' + r.id + '**: ' + r.score + '/5 — ' + r.reason.substring(0, 120)); });
-writeFileSync(outFile, report.join('\n'), 'utf-8');
+writeFileSync(outFile, withProvenanceHeader('flat-ns', report.join('\n')), 'utf-8');
 
 console.log('\n=== Flat(NS) avg: ' + avg(scores).toFixed(2) + ' ===');
 console.log('Report: ' + outFile);

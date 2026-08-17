@@ -10,7 +10,9 @@ import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } fro
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { mergePipelines, groupCandidatesByEntity } from '../../src/core/engine/retrieval.js';
 import { allSTM, allLTM, allChatMessages } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { avg } from './metrics.js';
 import { linearFuse } from './benchmark-fusions.js';
 
@@ -615,10 +617,10 @@ async function main() {
     lines.push('');
 
     var report = lines.join('\n');
-    var outDir = join(__dirname, 'output');
+    var outDir = outputDirFor(__dirname);
     mkdirSync(outDir, { recursive: true });
     var outPath = join(outDir, 'llm-judge-score-ablation.md');
-    writeFileSync(outPath, report, 'utf-8');
+    writeFileSync(outPath, withProvenanceHeader('llm-judge', report, SYSTEM_PROMPT.join('\n')), 'utf-8');
 
     console.log('\nFull report: ' + outPath);
 }

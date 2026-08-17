@@ -2,7 +2,8 @@ node_modules/
 *.log
 .DS_Store
 dist/index.js.map
-test/retrieval-benchmark/output/
+test/retrieval-benchmark/output/*
+!test/retrieval-benchmark/output/canonical-numbers.md
 test/retrieval-benchmark/config.json
 test/retrieval-benchmark/chat-messages.js
 test/retrieval-benchmark/measure-context-size.js

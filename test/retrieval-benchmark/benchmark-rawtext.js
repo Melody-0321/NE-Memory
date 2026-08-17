@@ -9,7 +9,9 @@ import { filterCandidates } from '../../src/core/vault/retrieval-filter.js';
 import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } from '../../src/core/engine/retrieval-fusion.js';
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { allSTM, allLTM, entityToStmIds } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { precisionAtK, recallAtK, ndcgAtK, mrr, hitAtK, precisionAtK_active, hitAtK_active, weightedScore, avg } from './metrics.js';
 import { linearFuse, rerankFuse } from './benchmark-fusions.js';
 
@@ -325,10 +327,10 @@ async function main() {
     lines.push('| RAW BM25 | ' + f(rawBgeResult.bm25Agg.ws) + ' | ' + f(rawBgeResult.bm25Agg.ndcg10) + ' | ' + f(rawBgeResult.bm25Agg.hit3) + ' | ' + f(rawBgeResult.bm25Agg.p5) + ' | ' + f(rawBgeResult.bm25Agg.r10) + ' |');
 
     var report = lines.join('\n');
-    var outDir = join(__dirname, 'output');
+    var outDir = outputDirFor(__dirname);
     mkdirSync(outDir, { recursive: true });
     var outPath = join(outDir, 'rawtext-benchmark.md');
-    writeFileSync(outPath, report, 'utf-8');
+    writeFileSync(outPath, withProvenanceHeader('rawtext', report), 'utf-8');
 
     // Console summary
     console.log('\n=== Summary ===');

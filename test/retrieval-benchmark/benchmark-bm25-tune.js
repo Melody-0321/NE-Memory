@@ -9,7 +9,9 @@ import { filterCandidates } from '../../src/core/vault/retrieval-filter.js';
 import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } from '../../src/core/engine/retrieval-fusion.js';
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { allSTM, allLTM, entityToStmIds } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader } from './report-provenance.js';
 import { precisionAtK, recallAtK, ndcgAtK, mrr, hitAtK, precisionAtK_active, hitAtK_active, weightedScore, avg } from './metrics.js';
 import { linearFuse } from './benchmark-fusions.js';
 
@@ -229,10 +231,10 @@ async function main() {
     });
 
     var report = lines.join('\n');
-    var outDir = join(__dirname, 'output');
+    var outDir = outputDirFor(__dirname);
     mkdirSync(outDir, { recursive: true });
     var outPath = join(outDir, 'bm25-tune.md');
-    writeFileSync(outPath, report, 'utf-8');
+    writeFileSync(outPath, withProvenanceHeader('bm25-tune', report), 'utf-8');
 
     // Console heatmap
     function printf(v, high) { var s = f(v); if (v === high) return ' \x1b[1;32m' + s + '\x1b[0m'; while (s.length < 5) s += ' '; return ' ' + s; }

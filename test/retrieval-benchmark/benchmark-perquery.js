@@ -9,7 +9,9 @@ import { filterCandidates } from '../../src/core/vault/retrieval-filter.js';
 import { resetVectorIndex, ensureVectorIndex, getVectorIndex, vectorSearch } from '../../src/core/engine/retrieval-fusion.js';
 import { computeEmbedding } from '../../src/core/engine/embedding.js';
 import { allSTM, allLTM, entityToStmIds } from './fixture.js';
-import { queries } from './queries.js';
+import { loadSplitQueries, outputDirFor, getSplitName } from './query-split-utils.js';
+var queries = loadSplitQueries();
+import { withProvenanceHeader, computeTuple } from './report-provenance.js';
 import { precisionAtK, recallAtK, ndcgAtK, mrr, hitAtK, precisionAtK_active, hitAtK_active, weightedScore, avg } from './metrics.js';
 import { linearFuse, rrfFuse, rerankFuse } from './benchmark-fusions.js';
 
@@ -425,10 +427,40 @@ async function main() {
     lines.push('');
 
     var report = lines.join('\n');
-    var outDir = join(__dirname, 'output');
+    var outDir = outputDirFor(__dirname);
     mkdirSync(outDir, { recursive: true });
     var outPath = join(outDir, 'per-query-analysis.md');
-    writeFileSync(outPath, report, 'utf-8');
+    writeFileSync(outPath, withProvenanceHeader('per-query', report), 'utf-8');
+
+    // per-query JSON dump（P0-1 bootstrap 输入：config 块 + 每查询每方法 WS + split）
+    var dump = {
+        _meta: {
+            report: 'per-query',
+            split: getSplitName(),
+            version: computeTuple(),
+            config: {
+                bm25: { k1: 1.5, b: 0.75, topK: TOP_K_BM25 },
+                vector: { model: 'BAAI/bge-m3', topK: TOP_K_VEC },
+                lin: { alpha: 0.20, k: 60 },
+                rrf: { k: 60 },
+                rerank: 'bge-reranker-v2-m3',
+            },
+        },
+        queries: perQuery.map(function (e) {
+            return {
+                id: e.queryId,
+                type: e.type,
+                BM25: e.BM25.scores.ws,
+                Vector: e.Vector.scores.ws,
+                Lin: e.Lin.scores.ws,
+                RRF: e.RRF.scores.ws,
+                LinRerank: e.LinRerank.scores.ws,
+            };
+        }),
+    };
+    var dumpPath = join(outDir, 'per-query-scores.json');
+    writeFileSync(dumpPath, JSON.stringify(dump, null, 2) + '\n', 'utf-8');
+    console.log('Per-query dump: ' + dumpPath);
 
     console.log('\n\nFull report: ' + outPath);
 }
