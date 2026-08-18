@@ -5,6 +5,10 @@
 - **NPC 长期关系网（ties 字段）**：character schema 的 social 分类新增 `ties` 字段（string max 200），记录 NPC 之间的长期关系（与主角的关系仍用 `relationship`）。格式 `"姓名:关系;姓名:关系"`，例 `"李师傅:师父;王对手:宿敌"`。提取 prompt 的 Field Rules、世界书映射指引、字段示例均已加入 ties 说明。变更追踪（summaryBefore/After）已纳入 ties。面板角色卡片自动展示（Schema 驱动遍历渲染，无需额外 UI 代码）。参考柏宝书 v1.2.4 的 NPC 长期关系图设计，采用带目标的分号格式（柏宝书是纯关系类型分号）以适配 NE 的 RPG 叙事场景
 - **仅摘要模式（summaryOnlyMode）**：新增设置开关，启用后管线照常提取状态/STM/LTM 并维护账本，但不向主对话 AI 注入任何内容。用途：角色卡自带变量系统（MVU 式）时，避免 NE 的状态注入与角色卡变量冲突，把变量空间让给角色卡。设置面板顶部黄色警示条提示当前处于仅记录模式，面板渲染时根据 `ne_settings.summaryOnlyMode` 自动显隐。参考柏宝书 v1.2.4 的 `summaryOnlyMode` 设计
 
+## 性能优化
+
+- **移除注入的关键记忆前置段**：三层仪器评测显示无收益且轻微有害（state 0.0pp / narrative -11.1pp），移除后注入文档更精简（约 -350 字）（vNext-53）
+
 ## Bug 修复
 
 > 📌 本块为**用户可见摘要**，每条标注 BUGS.md 编号；完整根因见 [BUGS.md](BUGS.md)（vNext-N）。

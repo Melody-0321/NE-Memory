@@ -846,6 +846,26 @@ AbortError 不重试直接抛（仅 5xx/网络类可重试）。commit: `5bc0d1d
 
 ---
 
+## vNext-53 key-highlights 前置段无收益且方向性负（注入精简）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-19（三层仪器评测，canonical-numbers.md §8/§8.2） |
+| **解决** | 2026-08-19 |
+| **严重程度** | Low |
+| **影响** | 注入文档前置"关键记忆"段（buildKeyHighlights）对取答正确率无收益（state 0.0pp）且方向性推后已突出事件（narrative -11.1pp，双向位移机制——前置段把原本已突出的高相关事件挤到文档后部），同时多占约 350 字注入预算。 |
+
+### 根因
+
+呈现层位置置换无信息增益：前置段内容与实体块/检索结果同源（同一 pipelineMap 按 relevance 排序取 top5），机制为双向位移——段内条目上移的同时把其余已突出事件整体推后，净收益为零且叙事类问题负向。
+
+### 修复
+
+移除 injection.js 中 buildKeyHighlights 的生产调用（entityGrouped 判断块内 5 行），原位留注释说明依据；函数定义保留供 test/retrieval-benchmark/ 两个评测脚本 import。commit: （随本次变更统一提交）
+
+---
+
 ## v7.2-1 chat-completion 拦截器稳定性（v7.2）
 
 | 属性 | 值 |
@@ -1428,6 +1448,7 @@ v6.4 的修复依赖 `transitionend` 事件将 `display` 切回 `none`，但 `tr
 | vNext-50 | 小模型上下文压缩永不触发（P1-3） | Medium | ✅ 已解决 |
 | vNext-51 | STM 事件映射全量错位（P1-2） | **High** | ✅ 已解决 |
 | vNext-52 | 超长 segment 非首位置不拆分（P1-1） | **High** | ✅ 已解决 |
+| vNext-53 | key-highlights 前置段无收益且方向性负（注入精简） | Low | ✅ 已解决 |
 | v7.2-1 | chat-completion 拦截器稳定性（hook 目标/事件名/过滤） | **High** | ✅ 已解决 |
 | v7.2-2 | import() URL 解析失败（origin null + Rollup 相对路径） | **High** | ✅ 已解决 |
 | v7.1-1 | UI 与 Prompt 修正（版本导航方向/inventory chip/Prompt 字段默认值） | Medium | ✅ 已解决 |

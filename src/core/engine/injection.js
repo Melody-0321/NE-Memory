@@ -350,11 +350,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         var activeChars = getActiveCharacters(state);
         var storyTime = (content && content.story_time) ? content.story_time : null;
 
-        var highlights = buildKeyHighlights(pipelineMerged.map, entityGrouped, 5, storyTime);
-        if (highlights) {
-            if (parts.length > 0) parts.push('<hr>');
-            parts.push(highlights);
-        }
+        // [2026-08-19] key-highlights 生产调用已移除：三层仪器评测零收益 + 方向性负（canonical §8/§8.2），函数保留供评测脚本使用
 
         var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, storyTime);
         if (entityBlock) {
