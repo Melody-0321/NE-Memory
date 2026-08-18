@@ -399,7 +399,7 @@ function computePerSegmentGuidance(segments, turns, ratio, lang, segTexts) {
     });
 }
 
-function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTexts) {
+export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTexts) {
     var content = vault.content || {};
     var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
@@ -449,6 +449,21 @@ function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTex
         segmentsText += '\n';
     }
 
+    var MODALITY_RULES_ZH = [
+        '- 情态保留：区分"事实"与"表态"，以下情态必须在 event 摘要中显式保留语义，禁止把表态写成已发生的事实：',
+        '  · 打趣/戏言（开玩笑、随口一说、说笑、自嘲）→ 标注为玩笑，不写成真实行为/决定。',
+        '  · 假设/将来意愿（如果…、想、打算、等以后）→ 标注为未发生的计划/意愿，不写成已发生。',
+        '  · 否定/反悔/状态往返（反悔、改主意、又…、还是…、和好）→ 摘要以最终状态为准。',
+        '- 最终状态优先：同一件事角色先主张、后又改口/气话/放弃/反悔时，摘要必须写清结局（当前真实状态），不得只保留最初的单方面主张。若字数紧张，优先保留情态与最终状态。'
+    ].join('\n');
+    var MODALITY_RULES_EN = [
+        '- Preserve modality: distinguish facts from attitudes. Keep the semantics of the following explicitly; never turn an attitude into an already-happened fact:',
+        '  · Teasing/banter (joking, casually said, self-deprecation) → mark as a joke, not a real action/decision.',
+        '  · Hypothesis/future intent (if…, want to, plan to, later) → mark as an un-happened plan/intent, not as done.',
+        '  · Negation/regret/state reversal (backtrack, change of mind, again, still, reconcile) → summarize from the final state.',
+        '- Final-state first: when a character first asserts something and then reverses (backtracks, reconciles, gives up, regrets), record the outcome (the actual current state), not only the initial assertion. If short on length, prioritize the modality and the final state.'
+    ].join('\n');
+
     var system;
 
     if (bannerMatched) {
@@ -460,6 +475,8 @@ function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTex
             ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Infer from the dialogue above and the recent memory entries. Only advance if the dialogue explicitly moves time forward, otherwise keep the previous value. If you cannot determine the time from context: \\"-\\"",\n      "scene": "scene. Infer from the dialogue above and the recent memory entries. Only change if the dialogue explicitly moves to a different location, otherwise keep the previous value. If you cannot determine the scene from context: \\"-\\"",\n      "present_characters": ["full names of characters who appear in this segment (dialogue or action). Empty array [] if none"],\n      "character_psyche": {"CharacterName": {"current_mood": "mood", "inner_thoughts": "inner monologue"}}\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- present_characters: only characters with actual dialogue or action in this segment. Empty array [] if none.\n- character_psyche: only for characters whose inner thoughts/mood are explicitly shown. Omit the field if none.\n- Content-heavy segments: still summarize into one event.'
             : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。从上文对话和近期记忆条目中推断当前时间（如\\"深夜\\"、\\"清晨\\"、\\"午后\\"、\\"黄昏\\"等）。仅当对话明确表明时间前进时才更新。若无法从上下文推断：\\"-\\"",\n      "scene": "场景。从上文对话和近期记忆条目中推断当前场景（如\\"客厅\\"、\\"街道\\"、\\"森林\\"、\\"宫殿\\"等）。仅当对话明确表明场景切换时才更新。若无法从上下文推断：\\"-\\"",\n      "present_characters": ["本段中明确有台词或动作的角色全名。无则空数组 []"],\n      "character_psyche": {"角色全名": {"current_mood": "情绪", "inner_thoughts": "内心想法"}}\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- present_characters：仅包含本段中真正有台词或动作的角色。无角色出场时为空数组 []。\n- character_psyche：仅为本段中明确出现心理描写的角色填写。无则省略该字段。\n- 内容较多的区间：仍只输出一条事件来概括。';
     }
+
+    system += lang === 'en' ? ('\n' + MODALITY_RULES_EN) : ('\n' + MODALITY_RULES_ZH);
 
     return { system: system, user: segmentsText };
 }

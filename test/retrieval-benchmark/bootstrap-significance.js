@@ -134,6 +134,12 @@ function scaleSection(L, scale, title, modelA, modeA, modelB, modeB, field) {
 }
 
 function main() {
+  // ─── Modality 臂评测模式（--modality [--corpus dev|holdout]）───
+  if (process.argv.includes('--modality')) {
+    modalityMain();
+    return;
+  }
+
   var split = getSplitName();
   var outDir = outputDirFor(__dirname);
   mkdirSync(outDir, { recursive: true });
@@ -203,6 +209,125 @@ function main() {
   writeFileSync(outPath, withProvenanceHeader('significance', report), 'utf-8');
   console.log('Significance report: ' + outPath);
   console.log('提示：holdout 只在配置冻结后运行一次（封存纪律）。');
+}
+
+// ─── Modality 臂评测：逐条配对符号检验 + 反悔子集 bootstrap CI ───
+function modalityMain() {
+  var corpus = process.argv.indexOf('--corpus') !== -1 ? process.argv[process.argv.indexOf('--corpus') + 1] : 'dev';
+  var baseDir = join(__dirname, 'output', 'modality-eval', corpus);
+  var summaryPath = join(baseDir, 'verdicts-summary.json');
+  if (!existsSync(summaryPath)) {
+    console.error('缺 ' + summaryPath + '，先跑 run-modality-arms.js + judge-modality-arm.js');
+    process.exit(1);
+  }
+  var summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
+  var ARMS = ['base', 'B', 'C', 'D'];
+  // 每 (arm,case) 存活编码：1=yes，0=其余（保守口径，与审计一致）
+  function scoreOf(arm, caseId) {
+    var r = summary.find(function (x) { return x.arm === arm && x.caseId === caseId; });
+    return r && r.survived === 'yes' ? 1 : 0;
+  }
+  var caseIds = [];
+  summary.forEach(function (r) { if (caseIds.indexOf(r.caseId) === -1) caseIds.push(r.caseId); });
+
+  var L = [];
+  L.push('# Modality 臂评测 · 决策统计（corpus=' + corpus + '）');
+  L.push('- 方法：逐条配对符号检验 + 配对 bootstrap（B=' + B + '）');
+  L.push('- 存活口径：yes=1，其余=0（保守）\n');
+
+  L.push('## 措辞规则（预注册）');
+  L.push('- CI 不含 0 且 |Δ|≥0.25（≥25pp，n 小）→ **显著优于/劣于**');
+  L.push('- CI 含 0 → **方向性观察（样本不足以定论）**');
+  L.push('- |Δ|<0.05 → **无可测差异**');
+  L.push('');
+
+  function pairTable(title, aArm, bArm, notes) {
+    var a = [], b = [], ids = [];
+    caseIds.forEach(function (id) {
+      var av = scoreOf(aArm, id), bv = scoreOf(bArm, id);
+      a.push(av); b.push(bv); ids.push(id);
+    });
+    var diffs = a.map(function (x, i) { return x - b[i]; });
+    var md = mean(diffs);
+    var ci = bootstrapCI(diffs, B, SEED);
+    var pSign = signTestP(diffs);
+    L.push('### ' + title + '（n=' + diffs.length + '）');
+    if (notes) { L.push(''); L.push('> ' + notes); }
+    L.push('| Δ存活率 | 95% CI | 符号检验 p | 措辞 |');
+    L.push('|---|---|---|---|');
+    L.push('| ' + (md * 100).toFixed(0) + 'pp | [' + (ci.lo * 100).toFixed(0) + ', ' + (ci.hi * 100).toFixed(0) + '] | ' + pSign.toFixed(3) + ' | ' + wording(md, ci) + ' |');
+    L.push('');
+    // 显式/隐式子组（仅反悔相关，只报 CI 不下结论）
+    [true, false].forEach(function (exp) {
+      var sA = [], sB = [];
+      ids.forEach(function (id, i) {
+        var r = summary.find(function (x) { return x.caseId === id && x.arm === bArm; });
+        if (r && r.explicit === exp) { sA.push(a[i]); sB.push(b[i]); }
+      });
+      if (sA.length > 1) {
+        var sd = sA.map(function (x, i) { return x - sB[i]; });
+        var sci = bootstrapCI(sd, B, SEED);
+        L.push('- 子组**' + (exp ? '显式' : '隐式') + '**（n=' + sd.length + '）：Δ=' + (mean(sd) * 100).toFixed(0) + 'pp，95% CI [' + (sci.lo * 100).toFixed(0) + ', ' + (sci.hi * 100).toFixed(0) + '] — **仅 CI，不下结论**');
+      }
+    });
+    L.push('');
+  }
+
+  pairTable('B vs base（全类别）', 'B', 'base', 'modality 枚举字段是否提升总存活率');
+  pairTable('C vs base（全类别）', 'C', 'base', 'modality+final_status 是否提升总存活率');
+  pairTable('B vs C（全类别）', 'B', 'C', '两者是否可区分；平手取更简单的 B（预注册规则 2）');
+  pairTable('D vs base（全类别）', 'D', 'base', 'resolve-rewrite 二段式是否提升总存活率');
+  pairTable('D vs B（全类别）', 'D', 'B', 'resolve-rewrite vs 纯字段方案');
+
+  L.push('## 反悔类（主指标）');
+  var revIds = caseIds.filter(function (id) {
+    var r = summary.find(function (x) { return x.caseId === id && x.arm === 'base'; });
+    return r && r.category === 'reversal';
+  });
+  function revPair(title, aArm, bArm) {
+    var a = revIds.map(function (id) { return scoreOf(aArm, id); });
+    var b = revIds.map(function (id) { return scoreOf(bArm, id); });
+    var diffs = a.map(function (x, i) { return x - b[i]; });
+    var md = mean(diffs), ci = bootstrapCI(diffs, B, SEED);
+    L.push('### 反悔 ' + title + '（n=' + diffs.length + '）');
+    L.push('| Δ存活率 | 95% CI | 符号检验 p | 措辞 |');
+    L.push('|---|---|---|---|');
+    L.push('| ' + (md * 100).toFixed(0) + 'pp | [' + (ci.lo * 100).toFixed(0) + ', ' + (ci.hi * 100).toFixed(0) + '] | ' + signTestP(diffs).toFixed(3) + ' | ' + wording(md, ci) + ' |');
+    L.push('');
+  }
+  revPair('B vs base', 'B', 'base');
+  revPair('C vs base', 'C', 'base');
+  revPair('C vs B', 'C', 'B');
+  revPair('D vs base', 'D', 'base');
+  revPair('D vs B', 'D', 'B');
+
+  L.push('## 决策（按预注册规则 1-4）');
+  var bRate = revIds.filter(function (id) { return scoreOf('B', id) === 1; }).length / revIds.length;
+  var cRate = revIds.filter(function (id) { return scoreOf('C', id) === 1; }).length / revIds.length;
+  var dRate = revIds.filter(function (id) { return scoreOf('D', id) === 1; }).length / revIds.length;
+  L.push('- 反悔类文本存活率：base= ' +
+    ((revIds.filter(function (id) { return scoreOf('base', id) === 1; }).length / revIds.length) * 100).toFixed(0) +
+    '%， B= ' + (bRate * 100).toFixed(0) + '%， C= ' + (cRate * 100).toFixed(0) + '%， D= ' + (dRate * 100).toFixed(0) + '%');
+  var winner = (dRate >= 0.75) ? 'D' : ((bRate >= cRate) ? 'B' : 'C');
+  L.push('- 预注册选臂：**' + winner + '**（D 达到 75% 阈值则选 D；否则在 B/C 中取更高，平手取 B）');
+  if (dRate < 0.75) {
+    L.push('- ⚠️ D 反悔类 <75% → 按规则 3 测一层 `D+E`（规则 verifier 兜底）；若仍 <75% → 按规则 4 停机回讨论窗口');
+  } else {
+    L.push('- ✅ D 反悔类 ≥75% → 选择 **D（resolve-rewrite）**，无需再测 E；进入 holdout 封存。');
+  }
+  L.push('');
+
+  var corpus2 = corpus === 'holdout' ? 'holdout' : 'dev';
+  var outPath = join(__dirname, 'output', 'modality-eval', corpus2, 'decision.md');
+  mkdirSync(join(__dirname, 'output', 'modality-eval', corpus2), { recursive: true });
+  // 使版本四元组真实反映 modality 语料 + 臂定义，避免"假一致"（默认 fixture.js/queries.js 不适用）
+  var armDef = JSON.stringify({ arms: ARMS, corpus: corpus2, modalityFixture: corpus2 === 'holdout' ? 'modality-eval-holdout.js' : 'modality-eval-dev.js' });
+  writeFileSync(outPath, withProvenanceHeader('modality-decision', L.join('\n'), null, {
+    fixturePath: join(__dirname, corpus2 === 'holdout' ? 'modality-eval-holdout.js' : 'modality-eval-dev.js'),
+    armPromptText: armDef,
+    split: corpus2,
+  }), 'utf-8');
+  console.log('Modality decision: ' + outPath);
 }
 
 main();

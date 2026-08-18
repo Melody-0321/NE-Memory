@@ -40,27 +40,48 @@ function configHash() {
 }
 
 // 当前版本四元组：fixture / queries（含 split 文件）/ split 名 / config / judge prompt
-export function computeTuple(judgePromptText) {
+// opts 可选：{ fixturePath, armPromptText, queriesOverrideHash } —— 供 modality 臂评测等非检索场景用。
+//   - fixturePath：替代默认 fixture.js 的文件路径（如 modality-eval-dev.js）
+//   - armPromptText：注入后的臂提示文本；计算其 hash 作为行内 `arm`（并入 queries 位）
+export function computeTuple(judgePromptText, opts) {
+  opts = opts || {};
+  var fixtureHashVal = opts.fixturePath
+    ? h(fileHash(opts.fixturePath))
+    : fileHash(join(__dirname, 'fixture.js'));
+  var queriesVal;
+  if (opts.armPromptText != null) {
+    // modality 臂模式：queries 位承载「arm 注入文本 hash + split」
+    queriesVal = h(opts.armPromptText) + '|arm';
+  } else {
+    queriesVal = h(fileHash(join(__dirname, 'queries.js')) + '|' + fileHash(join(__dirname, 'queries-split.json')));
+  }
   return {
-    fixture: fileHash(join(__dirname, 'fixture.js')),
-    queries: h(fileHash(join(__dirname, 'queries.js')) + '|' + fileHash(join(__dirname, 'queries-split.json'))),
-    split: getSplitName(),
+    fixture: fixtureHashVal,
+    queries: queriesVal,
+    split: (opts && opts.split) || getSplitName(),
     config: configHash(),
     judge: judgePromptText ? h(judgePromptText) : 'n/a',
   };
 }
 
 // 与 canonical-numbers.md 登记表比对，不符打印醒目警告
+// 同一 reportKey 可能登记多行（不同 split）：按当前 split 匹配对应行。
 function checkAgainstCanonical(reportKey, t) {
   if (!existsSync(CANONICAL)) return;
   var text = readFileSync(CANONICAL, 'utf-8');
-  var re = new RegExp('\\|\\s*' + reportKey + '\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([a-z]+)\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+|n/a)\\s*\\|');
-  var m = text.match(re);
+  var lines = text.split('\n');
+  var m = null;
+  for (var i = 0; i < lines.length; i++) {
+    var re = new RegExp('^\\|\\s*' + reportKey + '\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+)(?:\\|arm)?\\s*\\|\\s*(' + (t.split || '') + ')\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+|n/a)\\s*\\|');
+    var row = lines[i].match(re);
+    if (row) { m = row; break; }
+  }
   if (!m) {
     console.warn('[provenance] ' + reportKey + ' 未在 canonical-numbers.md 登记（P0-1 权威运行后登记）');
     return;
   }
-  var cur = [t.fixture, t.queries, t.split, t.config, t.judge].join('|');
+  var curQ = String(t.queries).replace(/\|arm$/, '');
+  var cur = [t.fixture, curQ, t.split, t.config, t.judge].join('|');
   var reg = [m[1], m[2], m[3], m[4], m[5]].join('|');
   if (cur !== reg) {
     console.warn(
@@ -75,9 +96,15 @@ function checkAgainstCanonical(reportKey, t) {
 }
 
 // 在报告文本前插入版本头并触发比对。脚本写文件时调用。
-export function withProvenanceHeader(reportKey, text, judgePromptText) {
-  var t = computeTuple(judgePromptText);
+// opts 透传给 computeTuple：modality 臂评测等场景传 { fixturePath, armPromptText, split } 使四元组真实反映语料。
+// 自动追加 LLM 非确定性声明（DoD：报告头含 judge 模型/temperature/是否重试）。判定依赖 GT 的脚本可传 opts.noiseHint 补充说明。
+export function withProvenanceHeader(reportKey, text, judgePromptText, opts) {
+  opts = opts || {};
+  var t = computeTuple(judgePromptText, opts);
   checkAgainstCanonical(reportKey, t);
+  var determinismLine = opts.noiseHint
+    ? '- **LLM 非确定性**：' + opts.noiseHint
+    : '- **LLM 非确定性**：检索分数/排序由确定性计算（噪声=确定性，见 canonical §0）；若判据依赖 LLM 标注的 GT，其噪声见 canonical §4.5（噪声=中）。';
   return (
     '<!-- version: report=' + reportKey +
     ' fixture=' + t.fixture +
@@ -85,6 +112,7 @@ export function withProvenanceHeader(reportKey, text, judgePromptText) {
     ' split=' + t.split +
     ' config=' + t.config +
     ' judge=' + t.judge +
-    ' -->\n' + text
+    ' -->\n' + text +
+    '\n' + determinismLine + '\n'
   );
 }

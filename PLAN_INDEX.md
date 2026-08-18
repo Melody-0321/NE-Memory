@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-17 | 71 个文档 | 51% 完成
+> 自动生成 | 2026-08-18 | 72 个文档 | 54% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -13,7 +13,7 @@
 | `api-connection-model-dropdown-plan.md` | ✅ 已完成 | 2026-06-24 | 2026-07-02 | Plan 1：API 连接检测重构 + 模型下拉改造 |
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
 | `audit-consistency.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 全量审计 — 重复造轮子 & 一致性修复 |
-| `benchmark-improvement-plan.md` | 🔄 进行中 | 2026-08-18 | 2026-08-18 | 评测体系统计补强与改进计划（v2） |
+| `benchmark-improvement-plan.md` | ✅ 已完成 | 2026-08-18 | 2026-08-18 | 评测体系统计补强与改进计划（v2） |
 | `chat-completion-round-limit-patch.md` | 🔄 进行中 | 2026-07-17 | 2026-07-17 | ChatCompletion Prototype Patch — 让对话轮数滑块在 token 显示中生效 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
 | `dialog-round-trim-via-chat-completion-event.md` | 🔄 进行中 | 2026-07-22 | 2026-07-22 | 对话轮数控制：从无效的 import() patch 迁移到 CHAT_COMPLETION_PROMPT_READY 事件裁剪 |
@@ -30,6 +30,7 @@
 | `golden-context-window.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 上下文黄金窗口（Golden Context Window）实现计划 |
 | `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
 | `management-optimization-todos.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | NE-Memory 文档/代码管理优化待办 |
+| `modality-eval-and-decision-plan.md` | ✅ 已完成 | 2026-08-18 | 2026-08-18 | Modality 修复方式评测与决策计划（用测试数据裁决 B/C/E） |
 | `modality-schema-fix-plan.md` | ⏳ 未开始 | 2026-08-18 | 2026-08-18 | NE-Memory 抽取情态 Schema 级修复计划（T1 触发） |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -53,7 +54,7 @@
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
 | `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
-| `retrieval-quality-test-plan.md` | 🔄 进行中 | 2026-08-17 | 2026-08-17 | NE-Memory 检索质量测试计划（T0 / T1 / T2） |
+| `retrieval-quality-test-plan.md` | ✅ 已完成 | 2026-08-17 | 2026-08-18 | NE-Memory 检索质量测试计划（T0 / T1 / T2） |
 | `rollback-buttons-and-scheme-editor.md` | ❓ 未知 | — | — | 计划：版本回退按钮外移 + 方案编辑器从当前状态开始 |
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `state-template-sync-fix.md` | ❓ 未知 | — | — | State-Template 同步修复计划 |
@@ -81,7 +82,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：36
-- 🔄 进行中：14
+- ✅ 已完成：39
+- 🔄 进行中：12
 - ⏳ 未开始：4
 - ❓ 未标记：17
