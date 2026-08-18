@@ -65,7 +65,7 @@ export function computeTuple(judgePromptText, opts) {
 }
 
 // 与 canonical-numbers.md 登记表比对，不符打印醒目警告
-// 同一 reportKey 可能登记多行（不同 split）：按当前 split 匹配对应行。
+// 同一 reportKey 可能登记多行（不同 split / 修订版本）：按当前 split 匹配，取**最后一行**（最新登记）。
 function checkAgainstCanonical(reportKey, t) {
   if (!existsSync(CANONICAL)) return;
   var text = readFileSync(CANONICAL, 'utf-8');
@@ -74,7 +74,7 @@ function checkAgainstCanonical(reportKey, t) {
   for (var i = 0; i < lines.length; i++) {
     var re = new RegExp('^\\|\\s*' + reportKey + '\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+)(?:\\|arm)?\\s*\\|\\s*(' + (t.split || '') + ')\\s*\\|\\s*([0-9a-f]+)\\s*\\|\\s*([0-9a-f]+|n/a)\\s*\\|');
     var row = lines[i].match(re);
-    if (row) { m = row; break; }
+    if (row) { m = row; } // 不 break：取最后命中（最新登记）
   }
   if (!m) {
     console.warn('[provenance] ' + reportKey + ' 未在 canonical-numbers.md 登记（P0-1 权威运行后登记）');
