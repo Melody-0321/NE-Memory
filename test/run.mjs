@@ -48,7 +48,8 @@ var testMap = {
     'token-stats': 'token-stats.test.js',
     'retrieval-cache': 'retrieval-cache.test.js',
     'vault-divergence': 'vault-divergence.test.js',
-    'template-assistant-retry': 'template-assistant-retry.test.js'
+    'template-assistant-retry': 'template-assistant-retry.test.js',
+    'stm-resolver': 'stm-resolver.test.js'
 };
 
 var batchMap = {

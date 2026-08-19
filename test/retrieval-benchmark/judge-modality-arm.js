@@ -22,19 +22,24 @@ var caseById = {};
 cases.forEach(function (c) { caseById[c.id] = c; });
 
 var OUT_BASE = join(__dirname, 'output', 'modality-eval', corpus);
-var ARMS = ['base', 'B', 'C', 'D'];
+var ARMS = ['base', 'B', 'C', 'D', 'D-prod'];
+var armsArg = process.argv.indexOf('--arms') !== -1 ? process.argv[process.argv.indexOf('--arms') + 1] : null;
+if (armsArg) ARMS = armsArg.split(',').map(function (s) { return s.trim(); });
 
 function callChat(messages, temperature, maxTokens) {
+    var controller = new AbortController();
+    var timer = setTimeout(function () { controller.abort(); }, 60000);
     return fetch(LLM.url, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (LLM.key || '') },
-        body: JSON.stringify({ model: LLM.model, messages: messages, temperature: temperature, max_tokens: maxTokens, response_format: { type: 'json_object' } })
-    }).then(function (resp) { if (!resp.ok) throw new Error('LLM HTTP ' + resp.status); return resp.json(); })
+        body: JSON.stringify({ model: LLM.model, messages: messages, temperature: temperature, max_tokens: maxTokens, response_format: { type: 'json_object' } }),
+        signal: controller.signal
+    }).then(function (resp) { clearTimeout(timer); if (!resp.ok) throw new Error('LLM HTTP ' + resp.status); return resp.json(); })
       .then(function (data) {
         var content = data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content;
         if (!content) throw new Error('LLM empty content');
         return content;
-    });
+    }, function (err) { clearTimeout(timer); throw err; });
 }
 
 function callChatRetry(messages, temperature, maxTokens) {
@@ -135,8 +140,8 @@ function buildReport(summary) {
     });
     L.push('');
     L.push('## 2. 逐条矩阵');
-    L.push('| case | 类别 | 显式 | base | B | C |');
-    L.push('|---|---|---|---|---|---|');
+    L.push('| case | 类别 | 显式 | ' + ARMS.join(' | ') + ' |');
+    L.push('|---|---|---|---' + ARMS.map(function () { return '---|'; }).join('') + '');
     var order = cases.map(function (c) { return c.id; });
     order.forEach(function (id) {
         var cats = (caseById[id] || {}).category, exp = (caseById[id] || {}).explicit;

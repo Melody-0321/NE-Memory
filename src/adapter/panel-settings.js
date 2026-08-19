@@ -86,6 +86,13 @@ export function renderSettingsTab() {
             '</label>' +
             '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('summary_only_mode_desc') + '</div>' +
         '</div>' +
+        // === 反悔消解（resolver）开关 ===
+        '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
+            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_stm_resolve_reversal" ' + (settings.stmResolveReversal !== false ? 'checked' : '') + '> ' + t('stm_resolve_reversal') +
+            '</label>' +
+            '<div style="color:var(--grey50);font-size:0.72em;margin:2px 0 0 20px;">' + t('stm_resolve_reversal_desc') + '</div>' +
+        '</div>' +
         // === 楼内摘要面板 开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
             '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
@@ -814,6 +821,8 @@ function saveSettingsTab() {
         settings.adaptiveContextControl = panelById('nes_adaptive_context_control').checked;
     if (panelById('nes_summary_only_mode'))
         settings.summaryOnlyMode = panelById('nes_summary_only_mode').checked;
+    if (panelById('nes_stm_resolve_reversal'))
+        settings.stmResolveReversal = panelById('nes_stm_resolve_reversal').checked;
     if (panelById('nes_floor_panel_enabled'))
         settings.floorPanelEnabled = panelById('nes_floor_panel_enabled').checked;
     if (panelById('nes_meta_ltm_enabled'))

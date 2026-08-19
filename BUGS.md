@@ -2,6 +2,26 @@
 
 ---
 
+## vNext-54 抽取记忆丢失否定/反悔的最终状态（D 方案 resolver 生产化）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-19（T1 情态存活率审计 + modality 臂评测，canonical §7.5） |
+| **解决** | 2026-08-19 |
+| **严重程度** | **High** |
+| **影响** | STM 抽取以最初主张为锚点，跨 turn 折叠时丢弃晚到的「最终状态」——反悔/否定类事件（"发誓戒烟"→"又抽了"）被存成"发誓戒烟"，反悔存活率 0%，错误状态每轮被注入。 |
+
+### 根因
+
+抽取任务框架是"编年转录"（问这段发生了什么），不要求状态消解；LLM 能力/信息都不缺（QA 探针：同对话显式反悔 100% 答对，抽取 0%）。加 modality 字段（B/C 方案）不改变任务框架故无效（评测证伪）。
+
+### 修复
+
+**resolve-rewrite 二段式（D 方案）生产化**：抽取后新增 resolver pass（`src/core/engine/stm-resolver.js`），对每个 chunk 的 events 喂「段内对话 + 事件列表」，判定最终真实状态是否反转；命中反转则重写 event 文本为最终态（"先……最终……"+ 逐字 evidence），未反转原样返回。规格（modality-schema-fix-plan §3.9.2）：K=2 批量 + max_tokens≥1800 + 降级（失败原样返回）+ 证据约束（reversed=true 必须带 evidence 否则视为未反转，防幻觉）。接线在 stm-pipeline.js 抽取后、validate 前；`stmResolveReversal` 开关默认开。验收（D-prod vs D 臂，dev+holdout）：**dev 反悔 94%、holdout 100%，与评测 D 对齐，无生产化损耗**。commit: 待提交。
+
+---
+
 ## vNext-1 resolvePipelineApi 缺 template_assistant 通道路由
 
 | 属性 | 值 |

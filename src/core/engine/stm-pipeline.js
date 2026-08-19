@@ -11,6 +11,7 @@ import { preGroupItems, formatPreGroupHint } from './bm25-grouper.js';
 import { validateSTMOutput, postFillSTM } from './validate.js';
 import { readNeSettingsCached } from '../settings.js';
 import { cleanMessageText } from './content-clean.js';
+import { resolveChunkEvents } from './stm-resolver.js';
 
 function buildCursorPrompt(windowItems, position, pendingPartials, vault, stateVault, force) {
     var content = vault.content || {};
@@ -565,9 +566,17 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                         if (responseText) {
                             var chunkParsed = safeJsonParse(responseText);
                             if (chunkParsed && chunkParsed.events) {
+                                var fbEvents = [];
                                 for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
                                     mapEventData(chunkParsed.events[ei], chunk[si], turns, segments, filteredMessages);
-                                    events.push(chunkParsed.events[ei]);
+                                    fbEvents.push(chunkParsed.events[ei]);
+                                }
+                                // [stm-resolver] fallback 分支同样接 resolver（单 segment 对话原文 = singlePrompt.user）
+                                try {
+                                    var fbRes = await resolveChunkEvents(singlePrompt.user, fbEvents, { chatId: chatId });
+                                    if (fbRes && fbRes.events) events.push.apply(events, fbRes.events);
+                                } catch (e4) {
+                                    events.push.apply(events, fbEvents); // resolver 失败则用原 events
                                 }
                             }
                         }
@@ -579,9 +588,26 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     var chunkParsed = safeJsonParse(responseText);
                     if (chunkParsed) {
                         var chunkEvents = chunkParsed.events || [];
+                        var mappedChunkEvents = [];
                         for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
                             mapEventData(chunkEvents[ei], chunk[ei], turns, segments, filteredMessages);
-                            events.push(chunkEvents[ei]);
+                            mappedChunkEvents.push(chunkEvents[ei]);
+                        }
+                        // [stm-resolver] D 方案：抽取后对 chunk 内 events 做状态消解（反悔→重写 event 为最终态）
+                        // 输入 = 该 chunk 对话原文（summaryPrompt.user）+ 该 chunk 抽取的 events；失败降级原样返回。
+                        if (mappedChunkEvents.length > 0) {
+                            try {
+                                var resolverResult = await resolveChunkEvents(summaryPrompt.user, mappedChunkEvents, { chatId: chatId });
+                                if (resolverResult && resolverResult.events) {
+                                    events.push.apply(events, resolverResult.events);
+                                    if (resolverResult.rewritten > 0) {
+                                        console.log('[NE] resolver: chunk ' + (ci+1) + ' rewritten ' + resolverResult.rewritten + '/' + resolverResult.events.length + ' events (calls=' + resolverResult.calls + ', failures=' + resolverResult.failures + ')');
+                                        recordTelemetry({ pipeline_task: 'stm_resolve', chunk: ci + 1, calls: resolverResult.calls, failures: resolverResult.failures, rewritten: resolverResult.rewritten, events: resolverResult.events.length }, chatId);
+                                    }
+                                }
+                            } catch (e3) {
+                                console.warn('[NE] resolver pass failed for chunk ' + (ci+1) + ', events kept as-is:', (e3 && e3.message) || e3);
+                            }
                         }
                     }
                 }
