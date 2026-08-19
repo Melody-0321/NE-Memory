@@ -78,7 +78,7 @@ async function phaseA() {
                 var key = L + '_' + K + '_' + M;
                 var dir = join(OUT_BASE, 'A', key);
                 mkdirSync(dir, { recursive: true });
-                var cell = { L: L, K: K, M: M, calls: 0, truncated: 0, parseFail: 0, ok: 0, promptTokens: [], finishReasons: [] };
+                var cell = { L: L, K: K, M: M, calls: 0, truncated: 0, parseFail: 0, ok: 0, promptTokens: [], completionTokens: [], finishReasons: [] };
                 for (var si = 0; si < segs.length; si++) {
                     var seg = segs[si];
                     var dp = join(dir, seg.id + '.json');
@@ -86,6 +86,7 @@ async function phaseA() {
                         var prev = JSON.parse(readFileSync(dp, 'utf-8'));
                         cell.calls++; if (prev.truncated) cell.truncated++; if (prev.parseFail) cell.parseFail++; if (prev.ok) cell.ok++;
                         if (prev.promptTokens != null) cell.promptTokens.push(prev.promptTokens);
+                        if (prev.completionTokens != null) cell.completionTokens.push(prev.completionTokens);
                         cell.finishReasons.push(prev.finishReason || 'n/a');
                         continue;
                     }
@@ -95,7 +96,7 @@ async function phaseA() {
                     var segOut = {
                         segId: seg.id, L: L, K: K, M: M,
                         ok: r.ok, truncated: r.truncated, parseFail: r.ok === false && (r.results || []).some(function (e) { return e.parseFail; }),
-                        finishReason: r.finishReason || null, promptTokens: r.promptTokens,
+                        finishReason: r.finishReason || null, promptTokens: r.promptTokens, completionTokens: r.completionTokens,
                         eventCount: seg.events.length,
                         events: seg.events.map(function (e, ei) {
                             var rr = r.results[ei] || {};
@@ -105,12 +106,14 @@ async function phaseA() {
                     writeFileSync(dp, JSON.stringify(segOut, null, 2), 'utf-8');
                     cell.calls++; if (r.truncated) cell.truncated++; if (segOut.parseFail) cell.parseFail++; if (r.ok) cell.ok++;
                     if (r.promptTokens != null) cell.promptTokens.push(r.promptTokens);
+                    if (r.completionTokens != null) cell.completionTokens.push(r.completionTokens);
                     cell.finishReasons.push(r.finishReason || 'n/a');
-                    console.log('trunc=' + r.truncated + ' ok=' + r.ok + ' tok=' + (r.promptTokens ?? 'n/a'));
+                    console.log('trunc=' + r.truncated + ' ok=' + r.ok + ' tok=' + (r.promptTokens ?? 'n/a') + '+' + (r.completionTokens ?? 'n/a'));
                 }
                 cell.truncRate = cell.calls ? (cell.truncated / cell.calls * 100).toFixed(1) + '%' : '—';
                 cell.parseFailRate = cell.calls ? (cell.parseFail / cell.calls * 100).toFixed(1) + '%' : '—';
                 cell.avgPromptTokens = cell.promptTokens.length ? (cell.promptTokens.reduce(function (a, b) { return a + b; }, 0) / cell.promptTokens.length).toFixed(1) : null;
+                cell.avgCompletionTokens = cell.completionTokens.length ? (cell.completionTokens.reduce(function (a, b) { return a + b; }, 0) / cell.completionTokens.length).toFixed(1) : null;
                 out.cells[key] = cell;
             }
         }
@@ -136,15 +139,23 @@ async function phaseB() {
             var key = L + '_' + K;
             var dir = join(OUT_BASE, 'B', key);
             mkdirSync(dir, { recursive: true });
-            var cell = { L: L, K: K, M: M_FOR_B, events: 0, parseFail: 0, yes: 0, no: 0, uncertain: 0, untested: 0 };
+            var cell = { L: L, K: K, M: M_FOR_B, events: 0, parseFail: 0, yes: 0, no: 0, uncertain: 0, untested: 0, promptTokens: [], completionTokens: [] };
             for (var si = 0; si < segs.length; si++) {
                 var seg = segs[si];
                 var dp = join(dir, seg.id + '.json');
-                if (existsSync(dp)) { mergeCell(cell, JSON.parse(readFileSync(dp, 'utf-8'))); continue; }
+                if (existsSync(dp)) {
+                    var prev = JSON.parse(readFileSync(dp, 'utf-8'));
+                    mergeCell(cell, prev);
+                    if (prev.promptTokens != null) cell.promptTokens.push(prev.promptTokens);
+                    if (prev.completionTokens != null) cell.completionTokens.push(prev.completionTokens);
+                    continue;
+                }
                 process.stdout.write('  [B][' + key + '][' + seg.id + '] ... ');
                 var dialogue = seg.messages.map(function (m) { return ((m.role === 'user') ? '用户' : (m.name || '角色')) + '：' + m.mes; }).join('\n');
                 var r = await resolveBatch(dialogue, seg.events.map(function (e) { return { idx: e.idx, eventText: e.eventText }; }), { temperature: 0.2, maxTokens: M_FOR_B });
-                var segOut = { segId: seg.id, L: L, K: K, M: M_FOR_B, truncated: r.truncated, ok: r.ok, events: [] };
+                var segOut = { segId: seg.id, L: L, K: K, M: M_FOR_B, truncated: r.truncated, ok: r.ok, promptTokens: r.promptTokens, completionTokens: r.completionTokens, events: [] };
+                if (r.promptTokens != null) cell.promptTokens.push(r.promptTokens);
+                if (r.completionTokens != null) cell.completionTokens.push(r.completionTokens);
                 var cellEv = 0, cellPF = 0;
                 for (var ei = 0; ei < seg.events.length; ei++) {
                     var e = seg.events[ei];
@@ -166,15 +177,17 @@ async function phaseB() {
                 console.log('ok=' + r.ok + ' truncated=' + r.truncated + ' → ' + summarizeVerdict(segOut));
             }
             cell.surviveRate = (cell.yes + cell.no + cell.uncertain) ? (cell.yes / (cell.yes + cell.no + cell.uncertain) * 100).toFixed(1) + '% (' + cell.yes + '/' + (cell.yes + cell.no + cell.uncertain) + ')' : '—';
+            cell.avgPromptTokens = cell.promptTokens.length ? (cell.promptTokens.reduce(function (a, b) { return a + b; }, 0) / cell.promptTokens.length).toFixed(1) : null;
+            cell.avgCompletionTokens = cell.completionTokens.length ? (cell.completionTokens.reduce(function (a, b) { return a + b; }, 0) / cell.completionTokens.length).toFixed(1) : null;
             out.cells[key] = cell;
         }
     }
     writeFileSync(join(OUT_BASE, 'B', 'aggregate.json'), JSON.stringify(out, null, 2), 'utf-8');
     console.log('\n=== 阶段 B 结果 ===');
-    console.log('L_K | 存活率 | parseFail | yes/no/unc');
+    console.log('L_K | 存活率 | parseFail | yes/no/unc | avgIn/Out');
     Object.keys(out.cells).forEach(function (k) {
         var c = out.cells[k];
-        console.log('  ' + k + ' | ' + c.surviveRate + ' | ' + c.parseFail + ' | ' + c.yes + '/' + c.no + '/' + c.uncertain);
+        console.log('  ' + k + ' | ' + c.surviveRate + ' | ' + c.parseFail + ' | ' + c.yes + '/' + c.no + '/' + c.uncertain + ' | ' + c.avgPromptTokens + '/' + c.avgCompletionTokens);
     });
 }
 
@@ -225,19 +238,19 @@ async function analyze() {
     L.push('# Resolver 容量/质量两阶段综合分析');
     L.push('');
     L.push('## 阶段 A：容量探测（截断率，finish_reason=length）');
-    L.push('| L_K_M | 截断率 | parseFail率 | 平均输入token |');
-    L.push('|---|---|---|---|');
+    L.push('| L_K_M | 截断率 | parseFail率 | 平均输入token | 平均输出token |');
+    L.push('|---|---|---|---|---|');
     Object.keys(A.cells).forEach(function (k) {
         var c = A.cells[k];
-        L.push('| ' + k + ' | ' + c.truncRate + ' | ' + c.parseFailRate + ' | ' + c.avgPromptTokens + ' |');
+        L.push('| ' + k + ' | ' + c.truncRate + ' | ' + c.parseFailRate + ' | ' + c.avgPromptTokens + ' | ' + c.avgCompletionTokens + ' |');
     });
     L.push('');
     L.push('## 阶段 B：质量测量（安全区内存活率）');
-    L.push('| L_K | 存活率 | parseFail | yes/no/unc |');
-    L.push('|---|---|---|---|');
+    L.push('| L_K | 存活率 | parseFail | yes/no/unc | avgIn/Out |');
+    L.push('|---|---|---|---|---|');
     Object.keys(B.cells).forEach(function (k) {
         var c = B.cells[k];
-        L.push('| ' + k + ' | ' + c.surviveRate + ' | ' + c.parseFail + ' | ' + c.yes + '/' + c.no + '/' + c.uncertain + ' |');
+        L.push('| ' + k + ' | ' + c.surviveRate + ' | ' + c.parseFail + ' | ' + c.yes + '/' + c.no + '/' + c.uncertain + ' | ' + c.avgPromptTokens + '/' + c.avgCompletionTokens + ' |');
     });
     L.push('');
     L.push('## 决策（预注册 §2.2/§3.2）');

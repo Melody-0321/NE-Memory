@@ -31,9 +31,13 @@ function callChat(messages, temperature, maxTokens) {
         var promptTokens = null;
         if (data.usage && data.usage.prompt_tokens != null) promptTokens = data.usage.prompt_tokens;
         else if (data.usage && data.usage.input_tokens != null) promptTokens = data.usage.input_tokens;
+        // 输出成本捕获（2026-08-19 补：让"每事件总成本"从估算变实测，canonical §8.3/§8.4 引用）
+        var completionTokens = null;
+        if (data.usage && data.usage.completion_tokens != null) completionTokens = data.usage.completion_tokens;
+        else if (data.usage && data.usage.output_tokens != null) completionTokens = data.usage.output_tokens;
         // 截断直接证据：finish_reason === 'length'（2026-08-19 探测确认 deepseek 返回该字段）
         var finishReason = data.choices && data.choices[0] ? data.choices[0].finish_reason : null;
-        return { content: content, promptTokens: promptTokens, finishReason: finishReason };
+        return { content: content, promptTokens: promptTokens, completionTokens: completionTokens, finishReason: finishReason };
     });
 }
 
@@ -84,6 +88,7 @@ export async function resolveBatch(dialogue, events, opts) {
 
     var raw;
     var promptTokens = null;
+    var completionTokens = null;
     var finishReason = null;
     try {
         var resp = await callChatRetry([
@@ -92,9 +97,10 @@ export async function resolveBatch(dialogue, events, opts) {
         ], 0.2, maxTokens);
         raw = resp.content;
         promptTokens = resp.promptTokens;
+        completionTokens = resp.completionTokens;
         finishReason = resp.finishReason;
     } catch (e) {
-        return { ok: false, promptTokens: promptTokens, finishReason: finishReason, truncated: false, results: events.map(function (e) { return { idx: e.idx, ok: false, error: 'resolver 调用失败: ' + (e && e.message) }; }) };
+        return { ok: false, promptTokens: promptTokens, completionTokens: completionTokens, finishReason: finishReason, truncated: false, results: events.map(function (e) { return { idx: e.idx, ok: false, error: 'resolver 调用失败: ' + (e && e.message) }; }) };
     }
 
     // 截断直接证据：finish_reason === 'length'（阶段 A 核心信号）
@@ -102,7 +108,7 @@ export async function resolveBatch(dialogue, events, opts) {
 
     var parsed = safeJsonParse(raw);
     if (!parsed || !Array.isArray(parsed)) {
-        return { ok: false, promptTokens: promptTokens, finishReason: finishReason, truncated: truncated, results: events.map(function (e) { return { idx: e.idx, ok: false, parseFail: true, raw: String(raw).slice(0, 150) }; }) };
+        return { ok: false, promptTokens: promptTokens, completionTokens: completionTokens, finishReason: finishReason, truncated: truncated, results: events.map(function (e) { return { idx: e.idx, ok: false, parseFail: true, raw: String(raw).slice(0, 150) }; }) };
     }
 
     var byIdx = {};
@@ -126,5 +132,5 @@ export async function resolveBatch(dialogue, events, opts) {
         };
     });
 
-    return { ok: true, promptTokens: promptTokens, finishReason: finishReason, truncated: truncated, results: results, raw: raw.slice(0, 200) };
+    return { ok: true, promptTokens: promptTokens, completionTokens: completionTokens, finishReason: finishReason, truncated: truncated, results: results, raw: raw.slice(0, 200) };
 }

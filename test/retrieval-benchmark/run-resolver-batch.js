@@ -26,6 +26,12 @@ var argv = process.argv;
 var RESOLVER_ONLY = argv.includes('--resolver-only');
 var JUDGE_ONLY = argv.includes('--judge-only');
 var DRY = argv.includes('--dry');
+// 2026-08-19：K=2 在 M=900 下 2/8 段撞 max_tokens 截断（§8.4 建议 M≥1800），加参数支持安全区重跑
+var MAX_TOKENS = 1800;
+(function () {
+    var i = argv.indexOf('--max-tokens');
+    if (i !== -1 && argv[i + 1]) MAX_TOKENS = Number(argv[i + 1]) || 1800;
+})();
 
 function callChat(messages, temperature, maxTokens) {
     return fetch(LLM.url, {
@@ -92,8 +98,8 @@ async function runResolver(corpus) {
             if (existsSync(outPath) && !DRY) { results[K].push(JSON.parse(readFileSync(outPath, 'utf-8'))); continue; }
             if (DRY) { console.log('  [dry][K=' + K + '][' + seg.id + '] ' + seg.events.length + ' events'); continue; }
             process.stdout.write('  [K=' + K + '][' + seg.id + '] ' + seg.events.length + ' events ... ');
-            var r = await resolveBatch(dialogue, seg.events.map(function (e) { return { idx: e.idx, eventText: e.eventText }; }), { temperature: 0.2 });
-            var out = { segId: seg.id, K: K, promptTokens: r.promptTokens, ok: r.ok, raw: r.raw, events: [] };
+            var r = await resolveBatch(dialogue, seg.events.map(function (e) { return { idx: e.idx, eventText: e.eventText }; }), { temperature: 0.2, maxTokens: MAX_TOKENS });
+            var out = { segId: seg.id, K: K, promptTokens: r.promptTokens, completionTokens: r.completionTokens, ok: r.ok, raw: r.raw, events: [] };
             seg.events.forEach(function (e, ei) {
                 var rr = r.results[ei] || {};
                 out.events.push({
@@ -143,12 +149,13 @@ function computeAggregate(results) {
     KS.forEach(function (K) {
         var segs = results[K];
         if (!segs || segs.length === 0) { agg.K[K] = null; return; }
-        var totalEvents = 0, totalTokens = 0, calls = segs.length, parseFail = 0;
+        var totalEvents = 0, totalTokens = 0, totalCompletion = 0, calls = segs.length, parseFail = 0;
         var survYes = 0, survNo = 0, survUnc = 0, survUnt = 0;
         var byCat = {}; // { reversal: {yes,no,judgeable}, teasing: {...}, hypothetical: {...} }
         function initCat(c) { if (!byCat[c]) byCat[c] = { yes: 0, no: 0, uncertain: 0, judgeable: 0 }; }
         segs.forEach(function (seg) {
             if (seg.promptTokens != null) totalTokens += seg.promptTokens;
+            if (seg.completionTokens != null) totalCompletion += seg.completionTokens;
             seg.events.forEach(function (ev) {
                 totalEvents++;
                 initCat(ev.category || 'other');
@@ -174,7 +181,10 @@ function computeAggregate(results) {
             segments: calls, events: totalEvents,
             callsPerEvent: (calls / Math.max(totalEvents, 1)).toFixed(3),
             avgTokensPerEvent: totalEvents ? (totalTokens / totalEvents).toFixed(1) : null,
+            avgCompletionPerEvent: totalEvents ? (totalCompletion / totalEvents).toFixed(1) : null,
+            avgTotalPerEvent: totalEvents ? ((totalTokens + totalCompletion) / totalEvents).toFixed(1) : null,
             avgTokensPerCall: calls ? (totalTokens / calls).toFixed(1) : null,
+            avgCompletionPerCall: calls ? (totalCompletion / calls).toFixed(1) : null,
             parseFail: parseFail,
             parseFailRate: totalEvents ? (parseFail / totalEvents * 100).toFixed(1) + '%' : '—',
             surviveRate: judgeable ? (survYes / judgeable * 100).toFixed(1) + '% (' + survYes + '/' + judgeable + ')' : '—',
@@ -186,7 +196,8 @@ function computeAggregate(results) {
 }
 
 async function main() {
-    var corpus = buildBatchCorpus();
+    // buildBatchCorpus() 无参 → 返回按 K 分组的对象 { K: [segs...] }
+    var corpus = buildBatchCorpus({ K: KS });
     mkdirSync(OUT_BASE, { recursive: true });
 
     var results = {};
@@ -215,15 +226,17 @@ async function main() {
     var L = [];
     L.push('# D 臂 resolver 批量粒度成本-效果（K=1/2/4/8）');
     L.push('- 合成异主题段（resolver-batch-corpus.js，种子 20260819），每 K 8 段');
-    L.push('- 成本：deepseek usage.prompt_tokens 实测；效果：盲评 judge（deepseek-v4-flash@0），与 D 臂同口径');
+    L.push('- 成本：deepseek usage.prompt_tokens + completion_tokens 实测；效果：盲评 judge（deepseek-v4-flash@0），与 D 臂同口径');
     L.push('- 存活率按 category 分桶：反悔（主）/ 打趣 / 假设（不误伤守门）');
     L.push('');
-    L.push('| K | 总存活率 | 反悔 | 打趣 | 假设 | 每事件均摊token | 每事件调用数 | parse失败 |');
+    L.push('| K | 总存活率 | 反悔 | 打趣 | 假设 | 每事件in/out/总token | 每事件调用数 | parse失败 |');
     L.push('|---|---|---|---|---|---|---|---|');
     KS.forEach(function (K) {
         var a = agg.K[K];
         if (!a) { L.push('| ' + K + ' | — | — | — | — | — | — | — |'); return; }
-        L.push('| ' + K + ' | ' + a.surviveRate + ' | ' + (a.byCategory.reversal || '—') + ' | ' + (a.byCategory.teasing || '—') + ' | ' + (a.byCategory.hypothetical || '—') + ' | ' + a.avgTokensPerEvent + ' | ' + a.callsPerEvent + ' | ' + a.parseFail + ' |');
+        var comp = (a.avgCompletionPerEvent === null || a.avgCompletionPerEvent === '0.0') ? '—' : a.avgCompletionPerEvent;
+        var total = (a.avgTotalPerEvent === null || a.avgTotalPerEvent === '0.0') ? '—' : a.avgTotalPerEvent;
+        L.push('| ' + K + ' | ' + a.surviveRate + ' | ' + (a.byCategory.reversal || '—') + ' | ' + (a.byCategory.teasing || '—') + ' | ' + (a.byCategory.hypothetical || '—') + ' | ' + a.avgTokensPerEvent + '/' + comp + '/' + total + ' | ' + a.callsPerEvent + ' | ' + a.parseFail + ' |');
     });
     L.push('');
     L.push('## 决策（预注册规则 §2.3）');

@@ -20,6 +20,7 @@ function mulberry32(seed) {
 function expandClaimToLen(caseObj, L) {
     var claimMsg = caseObj.messages.find(function (m) { return m.role === 'assistant'; }) || caseObj.messages[0];
     var base = claimMsg.mes;
+    if (L <= 0) return base; // L≤0：原样返回（buildBatchCorpus 短事件用）
     var fillers = [
         '（这是角色在对话初期立下的承诺，后来是否兑现尚待后续验证）',
         '（当时角色态度明确，语气坚决，认为自己一定能做到）',
@@ -42,6 +43,63 @@ function hashStr(s) {
     var h = 0;
     for (var i = 0; i < s.length; i++) h = ((h << 5) - h + s.charCodeAt(i)) | 0;
     return Math.abs(h);
+}
+
+// buildBatchCorpus({ K, segments, seed }) → K 粒度扫描语料（canonical §8.3，K=1/2/4/8）
+// 与 buildCapacityCorpus 同构但**不扩展长度**：eventText = 原始首条 assistant 主张（短事件）。
+// 语义与 §8.3 登记一致：合成异主题段（每段从语料池随机抽 K 个 case），种子 20260819。
+export function buildBatchCorpus(opts) {
+    opts = opts || {};
+    var K = opts.K || 2;
+    var segments = opts.segments || 8;
+    var seed = opts.seed || 20260819;
+
+    // K 为数组 → 返回按 K 分组的对象 { K: [segs...] }（run-resolver-batch.js main 期望结构）
+    if (Array.isArray(K)) {
+        var grouped = {};
+        K.forEach(function (k) { grouped[k] = buildBatchCorpus({ K: k, segments: segments, seed: seed }); });
+        return grouped;
+    }
+
+    var rnd = mulberry32(seed + K * 100 + 7);
+    var segs = [];
+    var caseIds = modalityEvalDev.map(function (c) { return c.id; });
+    for (var s = 0; s < segments; s++) {
+        var picked = [];
+        var pool = caseIds.slice();
+        for (var p = 0; p < K; p++) {
+            var idx = Math.floor(rnd() * pool.length);
+            picked.push(pool.splice(idx, 1)[0]);
+        }
+        var cases = picked.map(function (id) {
+            return modalityEvalDev.find(function (c) { return c.id === id; });
+        }).filter(Boolean);
+        var messages = [];
+        cases.forEach(function (c, ci) {
+            c.messages.forEach(function (m, mi) {
+                messages.push({
+                    role: m.role, name: m.name, mes: (ci > 0 && mi === 0 ? '\n（下一条主题）\n' : '') + m.mes,
+                });
+            });
+        });
+        segs.push({
+            id: 'K' + K + '_S' + s,
+            K: K,
+            messages: messages,
+            events: cases.map(function (c, ci) {
+                return {
+                    idx: ci,
+                    caseId: c.id,
+                    eventText: expandClaimToLen(c, 0), // 长度 0 → 原样返回首条 assistant 主张（短事件）
+                    finalState: c.finalState || null,
+                    expectedNote: c.expectedNote || '',
+                    category: c.category,
+                    explicit: c.explicit,
+                };
+            }),
+        });
+    }
+    return segs;
 }
 
 // buildCapacityCorpus({ L, K, segments }) → 该 (L,K) 下的段列表（复用 buildBatchCorpus 的分桶逻辑）
