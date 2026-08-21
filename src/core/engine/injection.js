@@ -922,6 +922,20 @@ export function buildStateAtomBlock(stateData, opts) {
  */
 var ARC_MAX_CARDS = 6; // 每锚弧卡片上限（relevance top-K，写死初值不暴露设置项）
 
+// [V5b-S1 2026-08-22] 退化标题治理：fallback 弧 title=time_range（如 ⭐ [Day 3深夜] Day 3深夜）
+// 无信息量，浪费卡片位。退化判定：title 去空格后 ⊆ time_range，或 /^Day\s*\d+/ 短标签（≤12 字）。
+// 退化时从 event 派生首个子句（到首个 。/；/，截断 ≤18 字）作标题；正常标题不动。
+function deriveArcTitle(title, timeRange, event) {
+    var t = String(title || '');
+    var tTrim = t.replace(/\s+/g, '');
+    var trTrim = String(timeRange || '').replace(/\s+/g, '');
+    var degenerate = trTrim.indexOf(tTrim) !== -1
+        || (/^Day\s*\d+/.test(t) && t.length <= 12);
+    if (!degenerate) return t;
+    var clause = String(event || '').split(/[。；，]/)[0].slice(0, 18);
+    return clause || t;
+}
+
 export function buildArcBlock(mergedMap, consumedStmIds) {
     if (!mergedMap || typeof mergedMap.forEach !== 'function') return '';
     var arcs = [];
@@ -968,7 +982,7 @@ export function buildArcBlock(mergedMap, consumedStmIds) {
     arcs.forEach(function(arc) {
         var entry = arc.entry || {};
         var tr = entry.time_range || '';
-        lines.push('⭐ ' + (tr ? '[' + tr + '] ' : '') + (entry.title || ''));
+        lines.push('⭐ ' + (tr ? '[' + tr + '] ' : '') + deriveArcTitle(entry.title, tr, entry.event));
         // [V5-B1 2026-08-22 实验证伪回滚] 曾按句拆行（每句缩进独立行）——
         // v5-arcsplit 臂 vs v5-chrono 语义口径 narrative -5pp（噪声带内），
         // 弧卡弃权 8 条零变化：弃权根因是弧卡块显著性而非句子粒度，拆行无效。

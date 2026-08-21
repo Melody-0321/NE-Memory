@@ -204,6 +204,48 @@ assert(consumed7.size === 0, '空块时 consumedStmIds 不登记');
 assert(buildArcBlock(new Map()) === '', '空 map 返回空串');
 assert(buildArcBlock(null) === '', 'null map 返回空串');
 
+console.log('\n=== arcblock: buildArcBlock 退化标题治理（V5b-S1） ===');
+
+// title=time_range 退化（实锤形态 ⭐ [Day 3深夜] Day 3深夜）→ event 首个子句派生
+var mT1 = new Map();
+mT1.set('ltm_t1', { entry: { id: 'ltm_t1', title: 'Day 3深夜', event: '林晚深夜搬家入601，两人首次相遇。', time_range: 'Day 3深夜' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT1 = buildArcBlock(mT1);
+assert(blockT1.indexOf('⭐ [Day 3深夜] 林晚深夜搬家入601') !== -1,
+    '退化标题（title=time_range）→ event 首个子句派生');
+assert(blockT1.indexOf('⭐ [Day 3深夜] Day 3深夜') === -1,
+    '退化标题原文不再出现于标题行');
+
+// Day N 短标签（≤12 字）退化；派生子句到首个 ；截断
+var mT2 = new Map();
+mT2.set('ltm_t2', { entry: { id: 'ltm_t2', title: 'Day 6', event: '安然在颁奖礼上胜出；差87票。', time_range: 'Day 5-6' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT2 = buildArcBlock(mT2);
+assert(blockT2.indexOf('⭐ [Day 5-6] 安然在颁奖礼上胜出') !== -1,
+    'Day N 短标签退化 → 派生（到首个 ；截断）');
+
+// 正常标题不动
+var mT3 = new Map();
+mT3.set('ltm_t3', { entry: { id: 'ltm_t3', title: '月票赌约', event: '赌约从成立到兑现', time_range: 'Day 11-13' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT3 = buildArcBlock(mT3);
+assert(blockT3.indexOf('⭐ [Day 11-13] 月票赌约') !== -1, '正常标题保持原样（不派生）');
+
+// 长首子句截断 ≤18 字
+var longClause = '这是一个非常非常非常非常长的首子句需要被截断掉';
+var mT4 = new Map();
+mT4.set('ltm_t4', { entry: { id: 'ltm_t4', title: 'Day 2', event: longClause + '。后续。', time_range: 'Day 2' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT4 = buildArcBlock(mT4);
+assert(blockT4.indexOf('⭐ [Day 2] ' + longClause.slice(0, 18)) !== -1,
+    '派生标题截断 ≤18 字');
+
+// 空标题（⊆ time_range）→ 同样派生；派生为空（event 首子句空）→ 回退原 title
+var mT5 = new Map();
+mT5.set('ltm_t5', { entry: { id: 'ltm_t5', title: '', event: '签约成立。', time_range: 'Day 1' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT5 = buildArcBlock(mT5);
+assert(blockT5.indexOf('⭐ [Day 1] 签约成立') !== -1, '空标题视为退化 → 派生');
+var mT6 = new Map();
+mT6.set('ltm_t6', { entry: { id: 'ltm_t6', title: 'Day 9', event: '，开头即标点的摘要。', time_range: 'Day 9' }, type: 'ltm', relevance: 0.7, sources: ['bm25'] });
+var blockT6 = buildArcBlock(mT6);
+assert(blockT6.indexOf('⭐ [Day 9] Day 9') !== -1, '派生子句为空 → 回退原 title（不产空标题）');
+
 console.log('\n=== arcblock: 接线开关语义 ===');
 // formatSmartContext 的 arcInjectionEnabled 分支卫语句：ne_settings 缺省时为 falsy（默认 off），
 // 与 stateBlockEnabled 同款对账模式（开关全 off 时的字节级回归由 mergePipelines off 用例 +
