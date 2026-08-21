@@ -48,13 +48,14 @@ export function saveEmbeddingApiConfig(config) {
     try { neSync('ne_embedding_api'); } catch (e) {}
 }
 
+// 向量检索总开关：ne_settings.enableVectorSearch 是唯一真源。
+// [2026-08-22 清理] 删除原 EMBEDDING_URL env fallback——readNeSettingsObject 永不抛异常
+// （settings.js try/catch 兜底返回 {}），该分支不可达，且造成"env 配了端点=向量已开"的
+// 误判（bench-cross 二代线 8/20-8/22 全程纯 BM25 的静默失效根因）。NE_BENCHMARK_VECTOR='0'
+// 强制关闭保留（bench 对照臂用）。
 export function isVectorSearchEnabled() {
     if (typeof process !== 'undefined' && process.env && process.env.NE_BENCHMARK_VECTOR === '0') return false;
-    try {
-        return !!readNeSettingsCached().enableVectorSearch;
-    } catch (e) {}
-    if (typeof process !== 'undefined' && process.env && process.env.EMBEDDING_URL) return true;
-    return false;
+    return !!readNeSettingsCached().enableVectorSearch;
 }
 
 export async function computeEmbedding(text) {
