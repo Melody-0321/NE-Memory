@@ -392,13 +392,39 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         }
     }
 
-    // P1 弧激活：三明治渲染（压场层，默认 off）——打分命中弧 + arc_pull 拉入弧；
-    // 目录搭车 LTM（relevance=0）不进弧块，维持原实体组折叠路径
+    // P1 弧激活：卡片渲染（压场层，默认 off）——打分命中弧 + arc_pull 拉入弧；
+    // 目录搭车 LTM（relevance=0）不进弧块，维持原实体组折叠路径。
+    // V4 唯一出现：被弧块嵌套消费的拍从实体组移除（防双现，省 token）
+    var arcConsumedStmIds = null;
     if (neSettings.arcInjectionEnabled && pipelineMerged && pipelineMerged.map) {
-        var arcBlock = buildArcBlock(pipelineMerged.map);
+        arcConsumedStmIds = new Map();
+        var arcBlock = buildArcBlock(pipelineMerged.map, arcConsumedStmIds);
         if (arcBlock) {
+            if (arcConsumedStmIds.size > 0) {
+                // 从实体分组移除已消费拍（groups + unassigned 双路径过滤）
+                var filterGrouped = function(grouped) {
+                    var out = { groups: {}, unassigned: [] };
+                    Object.keys(grouped.groups || {}).forEach(function(name) {
+                        var g = grouped.groups[name];
+                        var kept = (g.entries || []).filter(function(e) {
+                            return !(e && e.entry && arcConsumedStmIds.has(e.entry.id));
+                        });
+                        var keptRefs = (g.refs || []).filter(function(r) { return r && r.id && !arcConsumedStmIds.has(r.id); });
+                        if (kept.length > 0 || keptRefs.length > 0) {
+                            out.groups[name] = { entries: kept, refs: keptRefs };
+                        }
+                    });
+                    out.unassigned = (grouped.unassigned || []).filter(function(e) {
+                        return !(e && e.entry && arcConsumedStmIds.has(e.entry.id));
+                    });
+                    return out;
+                };
+                entityGrouped = filterGrouped(entityGrouped);
+            }
             if (parts.length > 0) parts.push('<hr>');
             parts.push(arcBlock);
+        } else {
+            arcConsumedStmIds = null;
         }
     }
 
@@ -876,32 +902,50 @@ export function buildStateAtomBlock(stateData, opts) {
 /**
  * P1 弧激活：三明治渲染（对标 LWB ⭐星号段形态）。
  *
- * 形态：弧标题（time_range + title，答案级摘要）→ 弧摘要（event 全文，因果俯瞰）
- *       → 嵌套拍（period + event，故事时序，缩进 2 格）。
+ * 形态（V4 卡片式，2026-08-22 重设计）：
+ *   ⭐ [time_range] 标题（答案级摘要）
+ *   弧摘要 event 全文（因果俯瞰）——卡片主体，~180 字/弧
+ *     › [period] 嵌套拍——仅嵌该弧下自身打分命中（relevance>0）的拍，故事时序
  *
- * 数据源：mergePipelines map 中 type='ltm' 且 relevance>0 的条目——
- *   - 打分命中弧（bm25/vector）：arc_expand 已拉全 stm_refs → 嵌该弧全部在场拍
- *   - arc_pull 拉入弧：只嵌该弧下已命中拍（relevance>0，控 token）
+ * V3 教训：arc_expand（弧命中拉全 stm_refs）在宽 query 下级联拉起全库拍
+ * （实测 5.6x 注入膨胀 + parseFail 超标）。V4 起：
+ *   - 拍的在场权完全由拍自身检索分决定（走实体组原路径），弧不携带底层条目
+ *   - 弧只出"标题+摘要"卡片（剧情脉络层）；嵌套拍为唯一出现（从实体组移除，防双现）
+ *   - K 帽（ARC_MAX_CARDS，relevance top-K）+ 空 event 弧跳过（fallback 兜底产物无信息量）
+ *
+ * 数据源：mergePipelines map 中 type='ltm' 且 relevance>0 的条目（打分命中 + arc_pull 拉入）。
  * 目录搭车（ltm_dir，relevance=0）与小池全量 LTM 不进弧块（走原有实体组折叠路径）。
  *
  * @param {Map} mergedMap mergePipelines 输出的 map（entry 包装：{entry,type,relevance,sources}）
+ * @param {Map} [consumedStmIds] 出参：被弧块嵌套消费的拍 id 集合（调用方从实体组移除，唯一出现）
  * @returns {string} 空串表示无弧（调用方跳过）
  */
-export function buildArcBlock(mergedMap) {
+var ARC_MAX_CARDS = 6; // 每锚弧卡片上限（relevance top-K，写死初值不暴露设置项）
+
+export function buildArcBlock(mergedMap, consumedStmIds) {
     if (!mergedMap || typeof mergedMap.forEach !== 'function') return '';
     var arcs = [];
     mergedMap.forEach(function(e) {
         if (!e || e.type !== 'ltm') return;
         if (!e.relevance || e.relevance <= 0) return;
         if (e.sources && e.sources.indexOf('ltm_dir') !== -1) return;
+        if (!e.entry || !e.entry.event) return; // 空 event 弧（fallback 兜底）无信息量，跳过
         arcs.push(e);
     });
     if (arcs.length === 0) return '';
 
-    // 嵌套拍收集：按 parent_ltm 分组
+    // K 帽：relevance top-K（同分按 time_range 早晚），防宽 query 全弧进块
+    arcs.sort(function(a, b) {
+        if (b.relevance !== a.relevance) return b.relevance - a.relevance;
+        return String((a.entry && a.entry.time_range) || '').localeCompare(String((b.entry && b.entry.time_range) || ''));
+    });
+    if (arcs.length > ARC_MAX_CARDS) arcs = arcs.slice(0, ARC_MAX_CARDS);
+
+    // 嵌套拍收集：按 parent_ltm 分组（只收自身打分命中的拍，relevance>0）
     var beatsByArc = {};
     mergedMap.forEach(function(e) {
         if (!e || e.type !== 'stm') return;
+        if (!e.relevance || e.relevance <= 0) return;
         var parentId = e.entry && e.entry.parent_ltm;
         if (!parentId) return;
         if (!beatsByArc[parentId]) beatsByArc[parentId] = [];
@@ -928,10 +972,6 @@ export function buildArcBlock(mergedMap) {
         if (entry.event) lines.push(String(entry.event));
 
         var beats = (beatsByArc[entry.id] || []).slice();
-        // arc_pull 拉入弧：只嵌已命中拍（relevance>0）；正向命中弧嵌全部在场拍
-        if (arc.sources && arc.sources.indexOf('arc_pull') !== -1) {
-            beats = beats.filter(function(b) { return b.relevance > 0; });
-        }
         // 故事时序排序（复用 sortStmByMsgOrder 的 absMsgStart/msgRange 语义）
         var wrapperByEntry = new Map();
         beats.forEach(function(b) { wrapperByEntry.set(b.entry, b); });
@@ -943,6 +983,7 @@ export function buildArcBlock(mergedMap) {
             var p = (b.entry && b.entry.period) || '';
             var ev = (b.entry && (b.entry.event || b.entry.summary)) || '';
             lines.push('  › ' + (p ? '[' + p + '] ' : '') + ev);
+            if (consumedStmIds && b.entry && b.entry.id) consumedStmIds.set(b.entry.id, true);
         });
         lines.push('');
     });

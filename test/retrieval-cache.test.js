@@ -189,6 +189,63 @@ console.log('\n=== retrieval-cache: filterCandidates 缓存正确性 ===');
     gt(score, 0, '附加: bm25Score 纯函数仍正确返回正分');
 })();
 
+// ── 场景 9 (bugfix 2026-08-22): LTM timestamp 为数字（consolidate 写入 Date.now()）
+//    目录排序不抛 TypeError → 不触发 fallback to all entries ──
+//    回归锚：V3/V4 bench 中 18 条数字 timestamp 弧导致 localeCompare 崩溃、
+//    全库条目进结果集（注入 5.6x 膨胀的共因之一）
+(async function() {
+    _resetRetrievalCache();
+    var stms = [
+        makeSTM('s1', '在古城找到秘境入口', '古城'),
+        makeSTM('s2', '在森林遭遇怪物袭击', '森林'),
+        makeSTM('s3', '在酒馆与商人交易', '酒馆'),
+        makeSTM('s4', '古神苏醒引发地震', '神殿'),
+        makeSTM('s5', '主角与同伴商议对策', '营地')
+    ];
+    var ltms = [
+        { id: 'l1', timestamp: 1787300000000, event: '弧一事件', title: '弧一' },
+        { id: 'l2', timestamp: 1787300001000, event: '弧二事件', title: '弧二' }
+    ];
+    var r;
+    var threw = false;
+    try { r = await filterCandidates('古城秘境', stms, ltms, 40, 3, {}, 'chat-tsnum'); }
+    catch (e) { threw = true; console.error('  unexpected throw: ' + e.message); }
+    assert(!threw, '场景9: 数字 timestamp LTM 不抛异常');
+    // 未 fallback：结果集只含打分命中 + LTM 目录搭车，而非全库 STM
+    var stmInResults = r.filter(function(e) { return e.__type !== 'ltm'; });
+    assert(stmInResults.length <= 3, '场景9: 未触发全库 fallback（STM 结果 ≤ topK 场景内命中数，实际 ' + stmInResults.length + '）');
+    var dirLtms = r.filter(function(e) { return e.__isDirectory === true; });
+    assert(dirLtms.length === 2, '场景9: LTM 目录搭车正常输出 2 条（实际 ' + dirLtms.length + '）');
+})();
+
+// ── 场景 10 (bugfix 2026-08-22): ltmDirCount 对数缩放越界
+//    computeLtmDirCount(18)=22 > 18 条弧 → ltmSorted[18..21]=undefined →
+//    JSON.parse(undefined) 抛 SyntaxError → fallback to all entries。
+//    回归锚：必须 clamp 到 ltmSorted.length ──
+(async function() {
+    _resetRetrievalCache();
+    var stms = [
+        makeSTM('s1', '在古城找到秘境入口', '古城'),
+        makeSTM('s2', '在森林遭遇怪物袭击', '森林'),
+        makeSTM('s3', '在酒馆与商人交易', '酒馆')
+    ];
+    // 18 条数字 timestamp 弧：computeLtmDirCount(18)=22 > 18（修复前越界）
+    var ltms = [];
+    for (var i = 0; i < 18; i++) {
+        ltms.push({ id: 'l' + i, timestamp: 1787300000000 + i, event: '弧事件' + i, title: '弧' + i });
+    }
+    var r;
+    var threw = false;
+    try { r = await filterCandidates('古城秘境', stms, ltms, 40, 3, {}, 'chat-dirover'); }
+    catch (e) { threw = true; console.error('  unexpected throw: ' + e.message); }
+    assert(!threw, '场景10: ltmDirCount 越界已 clamp（18 条弧不抛异常）');
+    // 3 条 STM 池走 R7 早返回路径：LTM 目录段（L453）不带 __isDirectory 标记（历史行为），
+    // 按存在性验证：18 条 LTM 全部在场且无 undefined 混入
+    var ltmInResults = r.filter(function(e) { return e.__type === 'ltm'; });
+    assert(ltmInResults.length === 18, '场景10: 目录输出 = min(18, computeLtmDirCount(18)=22) = 18（实际 ' + ltmInResults.length + '）');
+    assert(r.every(function(e) { return e != null; }), '场景10: 结果集无 undefined 混入（越界产物）');
+})();
+
 // 汇总：async IIFE 断言在 microtask 阶段执行，需推迟到微任务完成后判定
 setTimeout(function() {
     console.log('\n  ' + passed + ' passed, ' + failed + ' failed');

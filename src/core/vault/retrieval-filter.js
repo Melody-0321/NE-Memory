@@ -452,7 +452,7 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
         // LTM directory append
         if (allLTM.length > 0) {
             var ltmSorted = allLTM.slice().sort(function(a, b) {
-                return (b.timestamp || '').localeCompare(a.timestamp || '');
+                return String(b.timestamp || '').localeCompare(String(a.timestamp || ''));
             });
             var ltmDirCount = Math.min(ltmSorted.length, 20);
             for (var i = 0; i < ltmDirCount; i++) {
@@ -587,12 +587,17 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
 
     // ── LTM directory: append recent LTM entries as view-only catalog (not BM25 scored) ──
     if (allLTM.length > 0) {
+        // timestamp 类型健壮性：consolidate 写入 Date.now()（数字），旧数据可能是 ISO 字符串
+        // ——统一转字符串比较，防止数字无 localeCompare 抛 TypeError 导致整个 filter
+        // 退化到 fallback to all entries（全库进结果集，注入体积爆炸）
         var ltmSorted = allLTM.slice().sort(function(a, b) {
-            return (b.timestamp || '').localeCompare(a.timestamp || '');
+            return String(b.timestamp || '').localeCompare(String(a.timestamp || ''));
         });
-        var ltmDirCount = isAuto('ltmDirCount')
-            ? computeLtmDirCount(totalLTM)
-            : Math.min(ltmSorted.length, 20);
+        // computeLtmDirCount 只按 LTM 总数对数缩放，不保证 ≤ 数组长度
+        // （如 18 弧 → 22 > 18 越界 → JSON.parse(undefined) 抛错 → 全库 fallback）
+        // ——必须 clamp 到 ltmSorted.length
+        var ltmDirCount = Math.min(ltmSorted.length,
+            isAuto('ltmDirCount') ? computeLtmDirCount(totalLTM) : 20);
         for (var i = 0; i < ltmDirCount; i++) {
             var ltm = JSON.parse(JSON.stringify(ltmSorted[i]));
             ltm.__type = 'ltm';
