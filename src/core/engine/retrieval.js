@@ -8,6 +8,7 @@
 
 import { isAuto, computeChainDepth, computeChainRecentWindow, computeChainHeadCount } from '../params.js';
 import { sortStmByMsgOrder } from '../vault/store.js';
+import { readNeSettingsCached } from '../settings.js';
 
 // ─── Entity chain lookup ───
 
@@ -279,6 +280,72 @@ export async function mergePipelines(bm25Results, entityChains, allLTM, state, a
             parentThreadId: null
         };
     });
+
+    // ── Step 3/4: P1 弧激活双向归并（arcInjectionEnabled 开关，与打分池共用）──
+    // 打分池关时 bm25Results 无 LTM 打分命中（Step 3 自然空转），但反向拉弧只依赖
+    // STM 的 parent_ltm 指针，需显式门控保证 off 时行为逐字节不变。
+    var arcEnabled = false;
+    try { arcEnabled = readNeSettingsCached().arcInjectionEnabled === true; } catch (e) {}
+    if (arcEnabled) {
+        var stmById = {};
+        (allSTM || []).forEach(function(s) { if (s && s.id) stmById[s.id] = s; });
+        var ltmById = {};
+        (allLTM || []).forEach(function(l) { if (l && l.id) ltmById[l.id] = l; });
+
+        // Step 3: 正向归并 arc_expand——弧打分命中（bm25/vector，relevance>0）→ 拉其
+        // stm_refs 全部单拍进 map（降权 0.5：弧命中属二阶信号，拍本身未直接命中 query）。
+        // 目录搭车（sources=['ltm_dir']，relevance=0）与小池全量 LTM（无 __relevance）不触发。
+        var ARC_EXPAND_WEIGHT = 0.5; // 初值写死，不暴露设置项（避免过度配置）
+        var arcHits = [];
+        map.forEach(function(e) {
+            if (e.type === 'ltm' && e.relevance > 0 &&
+                e.sources.indexOf('ltm_dir') === -1) arcHits.push(e);
+        });
+        arcHits.forEach(function(arc) {
+            var refs = (arc.entry && arc.entry.stm_refs) || [];
+            refs.forEach(function(stmId) {
+                if (map.has(stmId)) return; // 已在场（打分/链路命中）不覆盖不降权
+                var stmEntry = stmById[stmId];
+                if (!stmEntry) return; // stm_refs 悬空（拍被裁/库外）跳过
+                map.set(stmId, {
+                    entry: stmEntry,
+                    type: 'stm',
+                    relevance: arc.relevance * ARC_EXPAND_WEIGHT,
+                    threads: [],
+                    sources: ['arc_expand'],
+                    _expanded: false,
+                    _lastDescribedVersion: 0
+                });
+            });
+        });
+
+        // Step 4: 反向归并 arc_pull——拍打分命中（relevance>0）→ 拉所属弧本体进 map
+        // （relevance 继承该弧下拍最高分，不打折）。同弧兄弟拍不自动全拉（嵌套渲染
+        // 口径控制）；弧已在场（打分命中）不覆盖。
+        var pulledArcScore = {}; // ltmId -> 该弧下已命中拍的最高分
+        map.forEach(function(e) {
+            if (e.type !== 'stm' || e.relevance <= 0) return;
+            var parentId = e.entry && e.entry.parent_ltm;
+            if (!parentId) return; // 无 parent_ltm（未归弧/独立拍）跳过
+            if (!pulledArcScore[parentId] || pulledArcScore[parentId] < e.relevance) {
+                pulledArcScore[parentId] = e.relevance;
+            }
+        });
+        Object.keys(pulledArcScore).forEach(function(ltmId) {
+            if (map.has(ltmId)) return; // 弧已在场不覆盖
+            var ltmEntry = ltmById[ltmId];
+            if (!ltmEntry) return; // 悬空 parent_ltm 防御
+            map.set(ltmId, {
+                entry: ltmEntry,
+                type: 'ltm',
+                relevance: pulledArcScore[ltmId],
+                threads: [],
+                sources: ['arc_pull'],
+                _expanded: false,
+                _lastDescribedVersion: 0
+            });
+        });
+    }
 
     return { map: map, threadIndex: threadIndex, availableChains: [] };
 }

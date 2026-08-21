@@ -1,4 +1,4 @@
-import { readMemory, readState, appendSTMEntries, collectAllMsgIds } from '../vault/store.js';
+import { readMemory, readState, appendSTMEntries, collectAllMsgIds, sortStmByMsgOrder } from '../vault/store.js';
 import { isStateSchemaEnabled } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { callMemoryPipeline, recordTelemetry } from '../api/llm.js';
@@ -383,6 +383,79 @@ export function mapEventData(event, seg, turns, allSegments, windowMessages) {
     event.status = event.status === 'partial' ? 'partial' : 'closed';
 }
 
+// period 规范化兜底：LLM 输出的 period 若缺失/"-"/裸时段词，挂到基准 Day 前缀上；
+// 基准也缺失时自设 Day 1 锚。禁止 "-"、无 Day 前缀的单独时段词进入 vault。
+export function normalizeStmPeriod(period, baselinePeriod) {
+    var p = String(period || '').trim();
+    var base = String(baselinePeriod || '').trim();
+    var baseDayMatch = base.match(/^Day\s*\d+/i);
+    if (/^Day\s*\d+/i.test(p)) return p.replace(/^Day\s+(\d+)/i, 'Day $1');
+    if (!p || p === '-' || p === '—') return baseDayMatch ? base : 'Day 1';
+    if (baseDayMatch) return baseDayMatch[0].replace(/^Day\s+/i, 'Day ') + ' ' + p;
+    return 'Day 1 ' + p;
+}
+
+// ── prompt 消融 arm（bench-cross/scripts/ablate-prompt.mjs 专用）──
+// 生产不设 globalThis.__ne_prompt_arm 时零行为变化。
+// arm 名支持 '+' 组合（如 'L1b+L2'），按序叠加：ratio/eventDesc 后者胜，extraRules 拼接。
+var PROMPT_ARM_SPECS = {
+    // C0 基线：摘掉全部密度引导（推荐字数引用 + 压缩指令），保留管线正确性依赖（schema/覆盖规则/全名规则/period/scene）
+    C0: {
+        dropGuidance: true,
+        eventDesc: { zh: '事件描述。使用角色全名，禁止代词。', en: 'event description. Use proper names, no pronouns.' },
+        dropOnePerSeg: true
+    },
+    // L1 长度档：ratio 覆盖（0.05→0.15 推荐 ~60 字 / 0.25 推荐 ~100 字）
+    L1a: { ratio: 0.15 },
+    L1b: { ratio: 0.25, dropOnePerSeg: true },
+    // L2 保留清单（BaiBai 式，摘自 prompts.ts L326 + 引语评语扩展）
+    L2: { extraRules: '保留具体数字、日期时间、人名、地名、物品名、原因与结果、关键引语/评语——压缩措辞，不丢事实。' },
+    // L3 空泛黑名单（LWB 式，摘自 atom-extraction.js L68-69）
+    L3: { extraRules: '禁止空泛写法（如"两人交谈""关系升温""发生冲突""气氛暧昧""展开互动""产生矛盾"）：必须写清谁在何处对谁做了什么、结果如何。' },
+    // L4 结构强制（BaiBai 5W1H 摘要，只取新情报/结果栏）
+    L4: { extraRules: '每条 event 须包含：核心互动（谁对谁做了什么）+ 新情报/结果（推进了什么、达成什么）。' }
+};
+
+export function resolvePromptArm(name) {
+    var raw = (name === undefined || name === null) ? globalThis.__ne_prompt_arm : name;
+    if (!raw) return null;
+    var specs = [];
+    String(raw).split('+').forEach(function (part) {
+        var s = PROMPT_ARM_SPECS[String(part).trim()];
+        if (s) specs.push(s);
+    });
+    if (specs.length === 0) return null;
+    var merged = { ratio: null, eventDesc: null, extraRules: [], dropOnePerSeg: false, dropGuidance: false };
+    specs.forEach(function (s) {
+        if (s.ratio !== undefined) merged.ratio = s.ratio;
+        if (s.eventDesc) merged.eventDesc = s.eventDesc;
+        if (s.extraRules) merged.extraRules.push(s.extraRules);
+        if (s.dropOnePerSeg) merged.dropOnePerSeg = true;
+        if (s.dropGuidance) merged.dropGuidance = true;
+    });
+    return merged;
+}
+
+// system 后处理：eventDesc 替换 / 压缩指令删除 / extraRules 追加（按 zh/en 原文精确匹配）
+var EVENT_DESC_ZH_ORIG = '事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。';
+var EVENT_DESC_EN_ORIG = 'event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.';
+var ONE_PER_SEG_ZH = '\n- 内容较多的区间：仍只输出一条事件来概括。';
+var ONE_PER_SEG_EN = '\n- Content-heavy segments: still summarize into one event.';
+
+function applyPromptArmToSystem(system, arm) {
+    if (arm.eventDesc) {
+        system = system.replace(EVENT_DESC_ZH_ORIG, arm.eventDesc.zh)
+            .replace(EVENT_DESC_EN_ORIG, arm.eventDesc.en);
+    }
+    if (arm.dropOnePerSeg) {
+        system = system.split(ONE_PER_SEG_ZH).join('').split(ONE_PER_SEG_EN).join('');
+    }
+    if (arm.extraRules.length > 0) {
+        system += '\n\n附加规则：\n' + arm.extraRules.map(function (r) { return '- ' + r; }).join('\n');
+    }
+    return system;
+}
+
 function computePerSegmentGuidance(segments, turns, ratio, lang, segTexts) {
     var CHAR_FACTOR = lang === 'en' ? 0.25 : 1.0;
     var MIN_CHARS = lang === 'en' ? 40 : 10;
@@ -400,12 +473,14 @@ function computePerSegmentGuidance(segments, turns, ratio, lang, segTexts) {
     });
 }
 
-export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTexts) {
+export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio, segTexts, baselinePeriodOverride) {
     var content = vault.content || {};
     var stateContent = stateVault && stateVault.content || {};
     var lang = content.language === 'en' ? 'en' : 'zh';
     var bannerMatched = globalThis.__ne_banner_matched;
     var _ratio = ratio || 0.05;
+    var _arm = resolvePromptArm();
+    if (_arm && _arm.ratio) _ratio = _arm.ratio;
 
     var guidance = computePerSegmentGuidance(segments, turns, _ratio, lang, segTexts);
 
@@ -421,13 +496,22 @@ export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio,
         // P5: 与 guidance 共用同一份格式化文本（segKey 命中时不再重复 formatTurnsText）
         var segText = (segTexts && segTexts[segKey(seg)]) || formatTurnsText(turns, segTurns);
         if (lang === 'en') {
-            segmentsText += '\n--- Segment ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', ~' + g.inputChars + ' input chars, recommended summary ~' + g.recommended + ' chars) ---\n';
+            segmentsText += '\n--- Segment ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', ~' + g.inputChars + ' input chars' + ((_arm && _arm.dropGuidance) ? '' : ', recommended summary ~' + g.recommended + ' chars') + ') ---\n';
         } else {
-            segmentsText += '\n--- \u533A\u95F4 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', \u539F\u6587\u7EA6 ' + g.inputChars + ' ' + unit + ', \u63A8\u8350\u6458\u8981\u7EA6 ' + g.recommended + ' ' + unit + ') ---\n';
+            segmentsText += '\n--- \u533A\u95F4 ' + si + ' (Turn ' + seg[0] + '-' + seg[1] + ', \u539F\u6587\u7EA6 ' + g.inputChars + ' ' + unit + ((_arm && _arm.dropGuidance) ? '' : ', \u63A8\u8350\u6458\u8981\u7EA6 ' + g.recommended + ' ' + unit) + ') ---\n';
         }
         segmentsText += segText;
         segmentsText += '\n';
     }
+
+    // period 基准派生：unconsolidated_stm（新条目实际写入处，appendSTMEntries）+ stm_entries，
+    // 按 msg 序取末条——旧实现只读 stm_entries，追赶批次时基准永远为空，period 退化自传播
+    var allStmForBaseline = (content.unconsolidated_stm || []).concat(content.stm_entries || []);
+    var sortedStm = sortStmByMsgOrder(allStmForBaseline);
+    var recentStm = sortedStm.slice(-3);
+    var baselinePeriod = (baselinePeriodOverride !== undefined && baselinePeriodOverride !== null)
+        ? String(baselinePeriodOverride)
+        : (recentStm.length > 0 ? (recentStm[recentStm.length - 1].period || '') : '');
 
     if (stateContent.story_date || stateContent.story_time || stateContent.story_scene) {
         segmentsText += '\n## 当前故事状态\n';
@@ -436,11 +520,15 @@ export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio,
         if (stateContent.story_scene) segmentsText += '场景: ' + stateContent.story_scene + '\n';
         segmentsText += '\n';
     } else {
-        segmentsText += '\n## 当前故事状态\n（请从上文和近期记忆条目中推断当前的时间和场景）\n\n';
+        segmentsText += '\n## 当前故事状态\n';
+        if (baselinePeriod) {
+            segmentsText += '基准 period: ' + baselinePeriod + '（period 以此为基准推进，仅当对话明确表明时间前进时才推进）\n';
+        } else {
+            segmentsText += '（无往期记忆基准：period 需自设初始锚 Day 1 + 时段）\n';
+        }
+        segmentsText += '（scene 从上文和近期记忆条目中推断）\n\n';
     }
 
-    var stmEntries = vault.content.stm_entries || [];
-    var recentStm = stmEntries.slice(-3);
     if (recentStm.length > 0) {
         segmentsText += '\n## 近期记忆条目\n';
         for (var rsi = 0; rsi < recentStm.length; rsi++) {
@@ -473,11 +561,14 @@ export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio,
             : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。以 ## 当前故事状态 中提供的时间为基准。仅当对话明确表明时间前进时才更新——保留现有命名规范。若 ## 当前故事状态 未提供时间：\\"-\\"",\n      "scene": "场景。以 ## 当前故事状态 中提供的场景为基准。仅当对话明确表明场景切换时才更新。若 ## 当前故事状态 未提供场景：\\"-\\"",\n      "present_characters": ["本段中明确有台词或动作的角色全名。无则空数组 []"],\n      "character_psyche": {"角色全名": {"current_mood": "情绪", "inner_thoughts": "内心想法"}}\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- present_characters：仅包含本段中真正有台词或动作的角色。无角色出场时为空数组 []。\n- character_psyche：仅为本段中明确出现心理描写的角色填写。无则省略该字段。\n- 内容较多的区间：仍只输出一条事件来概括。';
     } else {
         system = lang === 'en'
-            ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Infer from the dialogue above and the recent memory entries. Only advance if the dialogue explicitly moves time forward, otherwise keep the previous value. If you cannot determine the time from context: \\"-\\"",\n      "scene": "scene. Infer from the dialogue above and the recent memory entries. Only change if the dialogue explicitly moves to a different location, otherwise keep the previous value. If you cannot determine the scene from context: \\"-\\"",\n      "present_characters": ["full names of characters who appear in this segment (dialogue or action). Empty array [] if none"],\n      "character_psyche": {"CharacterName": {"current_mood": "mood", "inner_thoughts": "inner monologue"}}\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- present_characters: only characters with actual dialogue or action in this segment. Empty array [] if none.\n- character_psyche: only for characters whose inner thoughts/mood are explicitly shown. Omit the field if none.\n- Content-heavy segments: still summarize into one event.'
-            : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。从上文对话和近期记忆条目中推断当前时间（如\\"深夜\\"、\\"清晨\\"、\\"午后\\"、\\"黄昏\\"等）。仅当对话明确表明时间前进时才更新。若无法从上下文推断：\\"-\\"",\n      "scene": "场景。从上文对话和近期记忆条目中推断当前场景（如\\"客厅\\"、\\"街道\\"、\\"森林\\"、\\"宫殿\\"等）。仅当对话明确表明场景切换时才更新。若无法从上下文推断：\\"-\\"",\n      "present_characters": ["本段中明确有台词或动作的角色全名。无则空数组 []"],\n      "character_psyche": {"角色全名": {"current_mood": "情绪", "inner_thoughts": "内心想法"}}\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- present_characters：仅包含本段中真正有台词或动作的角色。无角色出场时为空数组 []。\n- character_psyche：仅为本段中明确出现心理描写的角色填写。无则省略该字段。\n- 内容较多的区间：仍只输出一条事件来概括。';
+            ? 'You are a story memory extractor.\n\nOutput JSON:\n{\n  "events": [\n    {\n      "event": "event description. The recommended summary length is shown in each segment header (e.g. ~60 chars) — aim for that length but stay concise. Use proper names, no pronouns.",\n      "period": "time. Advance from the baseline period in \'## Current Story State\': only advance when the dialogue explicitly moves time forward, keeping the baseline\'s naming convention (Day N + time-of-day). If no baseline exists, set an initial anchor yourself (Day 1 + time-of-day inferred from the dialogue). Never output \\"-\\", a bare time-of-day word, or vague expressions.",\n      "scene": "scene. Infer from the dialogue above and the recent memory entries. Only change if the dialogue explicitly moves to a different location, otherwise keep the previous value. If you cannot determine the scene from context: \\"-\\"",\n      "present_characters": ["full names of characters who appear in this segment (dialogue or action). Empty array [] if none"],\n      "character_psyche": {"CharacterName": {"current_mood": "mood", "inner_thoughts": "inner monologue"}}\n    }\n  ]\n}\n\nRules:\n- The events array must have exactly as many entries as there are segments. Segment 0 = events[0], segment 1 = events[1], etc. Do not split a segment into multiple events. Do not add extra events.\n- Use character proper names only. No pronouns.\n- present_characters: only characters with actual dialogue or action in this segment. Empty array [] if none.\n- character_psyche: only for characters whose inner thoughts/mood are explicitly shown. Omit the field if none.\n- Content-heavy segments: still summarize into one event.'
+            : '你是故事记忆提取器。\n\n输出 JSON：\n{\n  "events": [\n    {\n      "event": "事件描述。推荐摘要字数标注在各区间标题旁（如 \'推荐摘要约 60 字\'），请尽量接近推荐字数。使用角色全名，禁止代词。",\n      "period": "时间。以「## 当前故事状态」中的基准 period 为基准推进：仅当对话明确表明时间前进时才推进时段，并保持基准的命名规范（Day N + 时段）。无基准时自设初始锚（Day 1 + 从对话推断的时段）。禁止输出 \\"-\\"、无 Day 前缀的单独时段词或模糊表述。",\n      "scene": "场景。从上文对话和近期记忆条目中推断当前场景（如\\"客厅\\"、\\"街道\\"、\\"森林\\"、\\"宫殿\\"等）。仅当对话明确表明场景切换时才更新。若无法从上下文推断：\\"-\\"",\n      "present_characters": ["本段中明确有台词或动作的角色全名。无则空数组 []"],\n      "character_psyche": {"角色全名": {"current_mood": "情绪", "inner_thoughts": "内心想法"}}\n    }\n  ]\n}\n\n规则：\n- events 数组长度必须等于区间数。区间 0 = events[0]、区间 1 = events[1]……严禁拆分区间或增加额外事件。\n- 使用角色全名，禁止代词。\n- present_characters：仅包含本段中真正有台词或动作的角色。无角色出场时为空数组 []。\n- character_psyche：仅为本段中明确出现心理描写的角色填写。无则省略该字段。\n- 内容较多的区间：仍只输出一条事件来概括。';
     }
 
     system += lang === 'en' ? ('\n' + MODALITY_RULES_EN) : ('\n' + MODALITY_RULES_ZH);
+
+    // prompt 消融 arm 变换（生产不设 __ne_prompt_arm 时零行为变化）
+    if (_arm) system = applyPromptArmToSystem(system, _arm);
 
     return { system: system, user: segmentsText };
 }
@@ -533,9 +624,16 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             var chunks = chunkSegmentsForLLM(segments, turns, maxChars, segTexts);
             console.log('[NE] STM chunking: ' + segments.length + ' segments → ' + chunks.length + ' chunks (maxChars=' + maxChars + ', ratio=' + Math.round(stmRatio * 100) + '%)');
 
+            // B3 批内基准推进：vault 在运行内不更新，chunk N+1 看不到 chunk N 的 period——
+            // 用 runningBaseline 显式跨 chunk 传递（prompt 基准 + 解析后规范化锚）
+            var runningBaseline = (function () {
+                var s = sortStmByMsgOrder((memoryVault.content.unconsolidated_stm || []).concat(memoryVault.content.stm_entries || []));
+                return s.length > 0 ? (s[s.length - 1].period || '') : '';
+            })();
+
             for (var ci = 0; ci < chunks.length; ci++) {
                 var chunk = chunks[ci];
-                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio, segTexts);
+                var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio, segTexts, runningBaseline);
                 var responseText = '';
                 try {
                     _checkChatIntegrity('executeIncrementalUpdate:beforeLLM');
@@ -553,7 +651,7 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                     console.warn('[NE] Chunk ' + (ci+1) + ' failed, falling back to per-segment');
                     for (var si = 0; si < chunk.length; si++) {
                         var singleSeg = [chunk[si]];
-                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio, segTexts);
+                        var singlePrompt = buildStmSummaryPrompt(singleSeg, turns, memoryVault, stateVault, stmRatio, segTexts, runningBaseline);
                         try {
                             responseText = await callMemoryPipeline([
                                 { role: 'system', content: singlePrompt.system },
@@ -569,6 +667,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                                 var fbEvents = [];
                                 for (var ei = 0; ei < Math.min(chunkParsed.events.length, 1); ei++) {
                                     mapEventData(chunkParsed.events[ei], chunk[si], turns, segments, filteredMessages);
+                                    chunkParsed.events[ei].period = normalizeStmPeriod(chunkParsed.events[ei].period, runningBaseline);
+                                    runningBaseline = chunkParsed.events[ei].period;
                                     fbEvents.push(chunkParsed.events[ei]);
                                 }
                                 // [stm-resolver] fallback 分支同样接 resolver（单 segment 对话原文 = singlePrompt.user）
@@ -591,6 +691,8 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                         var mappedChunkEvents = [];
                         for (var ei = 0; ei < Math.min(chunkEvents.length, chunk.length); ei++) {
                             mapEventData(chunkEvents[ei], chunk[ei], turns, segments, filteredMessages);
+                            chunkEvents[ei].period = normalizeStmPeriod(chunkEvents[ei].period, runningBaseline);
+                            runningBaseline = chunkEvents[ei].period;
                             mappedChunkEvents.push(chunkEvents[ei]);
                         }
                         // [stm-resolver] D 方案：抽取后对 chunk 内 events 做状态消解（反悔→重写 event 为最终态）
@@ -645,6 +747,15 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
         }
 
         if (events.length > 0) {
+            // period 规范化兜底：以 vault 现有 STM 末条 period 为滚动基准，逐条规范化本次 events。
+            // 已按 msgRange 排序 → 每条规范化后的 period 成为下一条的基准，跨 chunk 保持 Day 链连续。
+            var normBase = sortStmByMsgOrder((memoryVault.content.unconsolidated_stm || []).concat(memoryVault.content.stm_entries || []));
+            var rollingBaseline = normBase.length > 0 ? (normBase[normBase.length - 1].period || '') : '';
+            for (var ni = 0; ni < events.length; ni++) {
+                events[ni].period = normalizeStmPeriod(events[ni].period, rollingBaseline);
+                rollingBaseline = events[ni].period;
+            }
+
             // P0-4: msgRange 是全局绝对索引，校验基准传本次输入窗口（turns 首末条全局下标）
             var winStart = turns.length > 0 ? turns[0].msgStart : 0;
             var winEnd = turns.length > 0 ? turns[turns.length - 1].msgEnd : 0;

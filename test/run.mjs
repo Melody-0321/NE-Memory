@@ -49,7 +49,13 @@ var testMap = {
     'retrieval-cache': 'retrieval-cache.test.js',
     'vault-divergence': 'vault-divergence.test.js',
     'template-assistant-retry': 'template-assistant-retry.test.js',
-    'stm-resolver': 'stm-resolver.test.js'
+    'stm-resolver': 'stm-resolver.test.js',
+    'injection-query': 'injection-query.test.js',
+    'stm-period': 'stm-period.test.js',
+    'injection-budget': 'injection-budget.test.js',
+    'injection-stateblock': 'injection-stateblock.test.js',
+    'injection-arcblock': 'injection-arcblock.test.js',
+    'consolidate-accumulate': 'consolidate-accumulate.test.js'
 };
 
 var batchMap = {

@@ -47,7 +47,12 @@ function callChatRetry(messages, temperature, maxTokens) {
     return run();
 }
 
-export async function askReader(docText, question) {
+// maxTokens 可调：默认 400（修 reader 截断假阴性——旧默认 200 会掐断长 JSON 答案）。
+// 传 maxTokens=false/0 时保留旧行为（若某处需严格复现历史 200 口径）。
+const DEFAULT_MAX_TOKENS = 400;
+
+export async function askReader(docText, question, maxTokens) {
+    var mt = (maxTokens === undefined || maxTokens === null) ? DEFAULT_MAX_TOKENS : (maxTokens === false ? 200 : maxTokens);
     var user = [
         '## 记忆文档',
         docText && docText.length > 0 ? docText : '（文档为空）',
@@ -58,7 +63,7 @@ export async function askReader(docText, question) {
     var raw = await callChatRetry([
         { role: 'system', content: READER_SYSTEM },
         { role: 'user', content: user },
-    ], 0, 200);
+    ], 0, mt);
     var p = safeJsonParse(raw);
     if (!p || typeof p.answer !== 'string') {
         return { parseOk: false, answer: raw ? raw.slice(0, 100) : '(empty)', found: false, raw: (raw || '').slice(0, 200) };

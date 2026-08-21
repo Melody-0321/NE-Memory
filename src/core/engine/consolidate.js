@@ -222,12 +222,13 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
 
     if (action === 'append') {
         if (!openLtm) {
+            // 新弧以空 title/event 起步，由下方统一的累积/定稿逻辑填入（避免首句双写）
             openLtm = {
                 id: findNextId(vault),
                 status: 'open',
                 stm_refs: [],
-                title: updatedTitle || '',
-                event: updatedEvent || '',
+                title: '',
+                event: '',
                 period: '',
                 present_characters: [],
                 timestamp: Date.now()
@@ -244,7 +245,15 @@ export function applyLtmDecision(vault, ltmDecision, consumedStmIds) {
             openLtm.stm_refs.map(function(id) { return stmSortMap[id]; }).filter(Boolean)
         ).map(function(s) { return s.id; });
         if (updatedTitle) openLtm.title = updatedTitle;
-        if (updatedEvent) openLtm.event = updatedEvent;
+        if (updatedEvent) {
+            // 累积式弧摘要：普通 append 把本轮增量句追加到现有摘要尾部（早期细节不洗）；
+            // refs 触达上限时本次 updated_event 为整弧定稿（runBatchLtmDecision 的 forceClose 路径），整体替换后随即自动闭合
+            if ((openLtm.stm_refs || []).length >= MAX_OPEN_STM_REFS) {
+                openLtm.event = updatedEvent;
+            } else {
+                openLtm.event = openLtm.event ? (openLtm.event + ' ' + updatedEvent) : updatedEvent;
+            }
+        }
         var sourceSTM = allSTM.filter(function(s) {
             return consumedStmIds.indexOf(s.id) !== -1;
         });

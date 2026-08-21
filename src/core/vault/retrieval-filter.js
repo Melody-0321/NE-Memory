@@ -15,7 +15,19 @@ import { isVectorSearchEnabled, computeEmbedding, loadEmbeddingApiConfig } from 
 import { ensureVectorIndex, vectorSearch, rrfFuse, getVectorIndex } from '../engine/retrieval-fusion.js';
 
 import { buildSearchableText, buildSearchableBaseText, buildAliasText } from '../engine/retrieval-text.js';
+import { readNeSettingsCached } from '../settings.js';
 export { buildSearchableText };
+
+// P1 弧激活：LTM 可检索文本 = title + event + time_range + present_characters。
+// title（弧标题，答案级摘要）必须可检索——LWB ⭐段标题即答案的对照形态。
+export function buildLtmSearchableText(ltm) {
+    return [ltm.title, ltm.event, ltm.time_range,
+            Array.isArray(ltm.present_characters) ? ltm.present_characters.join(' ') : ''].join('\x00');
+}
+
+function _ltmFingerprint(ltm) {
+    return [ltm.title, ltm.event, ltm.time_range].join('\x00');
+}
 
 // ─── Module-level BM25 index cache (per chatId) ───
 var _cache = {
@@ -47,6 +59,20 @@ function _addToIndex(entry) {
     var baseText = buildSearchableBaseText(entry);
     var baseTokens = tokenize(baseText);
     _cache.knownMap[entry.id] = { baseTokens: baseTokens, fingerprint: _fingerprint(entry) };
+    var seen = {};
+    for (var j = 0; j < baseTokens.length; j++) {
+        var t = baseTokens[j];
+        if (!seen[t]) { seen[t] = true; _cache.docFreq[t] = (_cache.docFreq[t] || 0) + 1; }
+    }
+    _cache.totalTokens += baseTokens.length;
+    _cache.totalDocs++;
+}
+
+// P1 弧激活：LTM 进同一 BM25 索引（与 STM 共享 docFreq/avgDocLen，保证分数可比）。
+// LTM 条目带 _ltm 标记区分子索引指纹。
+function _addLtmToIndex(ltm) {
+    var baseTokens = tokenize(buildLtmSearchableText(ltm));
+    _cache.knownMap[ltm.id] = { baseTokens: baseTokens, fingerprint: _ltmFingerprint(ltm), ltm: true };
     var seen = {};
     for (var j = 0; j < baseTokens.length; j++) {
         var t = baseTokens[j];
@@ -90,7 +116,31 @@ function _syncCache(allSTM) {
     }
     var staleIds = [];
     for (var id in _cache.knownMap) {
-        if (!currentIds[id]) staleIds.push(id);
+        if (!currentIds[id] && !_cache.knownMap[id].ltm) staleIds.push(id);
+    }
+    for (var k = 0; k < staleIds.length; k++) _removeFromIndex(staleIds[k]);
+}
+
+// P1 弧激活：LTM 索引同步（独立于 STM 的 stale 清理——LTM 数量少，全量对账）
+function _syncLtmCache(allLTM) {
+    var currentIds = {};
+    for (var i = 0; i < allLTM.length; i++) {
+        var ltm = allLTM[i];
+        if (!ltm || !ltm.id) continue;
+        currentIds[ltm.id] = true;
+        var fp = _ltmFingerprint(ltm);
+        var cached = _cache.knownMap[ltm.id];
+        if (!cached || !cached.ltm) {
+            _removeFromIndex(ltm.id); // 同 id 的 STM 索引被 LTM 覆盖时先清（id 空间不冲突，防御性）
+            _addLtmToIndex(ltm);
+        } else if (cached.fingerprint !== fp) {
+            _removeFromIndex(ltm.id);
+            _addLtmToIndex(ltm);
+        }
+    }
+    var staleIds = [];
+    for (var id in _cache.knownMap) {
+        if (_cache.knownMap[id].ltm && !currentIds[id]) staleIds.push(id);
     }
     for (var k = 0; k < staleIds.length; k++) _removeFromIndex(staleIds[k]);
 }
@@ -340,6 +390,11 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
     }
     _syncCache(allSTM);
 
+    // P1 弧激活：LTM 进打分池（与 STM 同池竞争，title/event/time_range 可检索）
+    var arcEnabled = false;
+    try { arcEnabled = readNeSettingsCached().arcInjectionEnabled === true; } catch (e) {}
+    if (arcEnabled && allLTM.length > 0) _syncLtmCache(allLTM);
+
     // R1: alias tokens 缓存——aliasesMap 指纹变化时全部重算，否则复用
     var aliasFp = _aliasMapFingerprint(aliasesMap);
 
@@ -359,6 +414,21 @@ export async function filterCandidates(query, allSTM, allLTM, topK, minResults, 
             _type: 'stm',
             _id: stm.id
         });
+    }
+
+    if (arcEnabled) {
+        for (var li = 0; li < allLTM.length; li++) {
+            var ltmEntry = allLTM[li];
+            if (!ltmEntry || !ltmEntry.id) continue;
+            var ltmCached = _cache.knownMap[ltmEntry.id];
+            if (!ltmCached || !ltmCached.ltm) continue;
+            entries.push({
+                _tokens: ltmCached.baseTokens,
+                _entry: ltmEntry,
+                _type: 'ltm',
+                _id: ltmEntry.id
+            });
+        }
     }
 
     var totalDocs = entries.length;

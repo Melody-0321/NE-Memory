@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-08-18 | 75 个文档 | 55% 完成
+> 自动生成 | 2026-08-21 | 80 个文档 | 57% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -14,6 +14,7 @@
 | `api-timeout-retry-enhancement-plan.md` | ✅ 已完成 | 2026-06-26 | 2026-07-03 | Plan 2：API 超时可配置 + 调用重试 + Key 校验 |
 | `audit-consistency.md` | ✅ 已完成 | 2026-07-15 | 2026-07-15 | 全量审计 — 重复造轮子 & 一致性修复 |
 | `benchmark-improvement-plan.md` | ✅ 已完成 | 2026-08-18 | 2026-08-18 | 评测体系统计补强与改进计划（v2） |
+| `blog-post2-resolve-rewrite-outline.md` | ⏳ 未开始 | 2026-08-20 | 2026-08-20 | 博客第二篇大纲：反悔黑洞与 resolve-rewrite（效应×成本地图 + 相关工作） |
 | `chat-completion-round-limit-patch.md` | 🔄 进行中 | 2026-07-17 | 2026-07-17 | ChatCompletion Prototype Patch — 让对话轮数滑块在 token 显示中生效 |
 | `context-window-injection-layer.md` | ✅ 已完成 | 2026-06-22 | 2026-06-28 | 修复计划：将 Context Window 裁剪从消息源改为注入层 |
 | `dialog-round-trim-via-chat-completion-event.md` | 🔄 进行中 | 2026-07-22 | 2026-07-22 | 对话轮数控制：从无效的 import() patch 迁移到 CHAT_COMPLETION_PROMPT_READY 事件裁剪 |
@@ -29,11 +30,14 @@
 | `fix-version-chain-rollback.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 修复版本链回退功能失效 |
 | `golden-context-window.md` | ✅ 已完成 | 2026-07-22 | 2026-07-22 | 上下文黄金窗口（Golden Context Window）实现计划 |
 | `injection-ablation-rerun-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | 注入侧评测仪器重审计划 —— key-highlights 消融（三层仪器：确定性度量 + 原子事实探针 + 机制归因） |
+| `injection-kscan-phaseb-plan.md` | ✅ 已完成 | 2026-08-20 | 2026-08-20 | 注入量 k 扫描 Phase B：k=40/80/100 三档对比 |
+| `injection-kscan-step0-plan.md` | 🔄 进行中 | 2026-08-20 | 2026-08-20 | 注入量 k 扫描：Step 0（确定性覆盖诊断）+ 全链路 TODO |
 | `injection-structure-comparison-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | 注入结构 6 臂横评计划 —— 现行结构 vs 替代结构的真实差距（含检索/注入损失分解） |
 | `inventory-power-slots-ui-redesign.md` | ✅ 已完成 | 2026-07-17 | 2026-07-17 | 物品栏 & 技能栏 UI 重设计 |
 | `management-optimization-todos.md` | 🔄 进行中 | 2026-08-16 | 2026-08-16 | NE-Memory 文档/代码管理优化待办 |
 | `modality-eval-and-decision-plan.md` | ✅ 已完成 | 2026-08-18 | 2026-08-18 | Modality 修复方式评测与决策计划（用测试数据裁决 B/C/E） |
-| `modality-schema-fix-plan.md` | ⏳ 未开始 | 2026-08-18 | 2026-08-18 | NE-Memory 抽取情态修复计划（T1 触发 · D 方案 = resolve-rewrite 二段式） |
+| `modality-schema-fix-plan.md` | ✅ 已完成 | 2026-08-18 | 2026-08-19 | NE-Memory 抽取情态修复计划（T1 触发 · D 方案 = resolve-rewrite 二段式） |
+| `narrative-anchor-expansion-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | Narrative 锚点扩容计划（注入侧仪器功率补齐） |
 | `ne-panel-layout-restructure.md` | ⏳ 未开始 | 2026-07-05 | 2026-07-05 | NE-Memory 面板布局重构计划 |
 | `open-character-schema-data-model.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
 | `open-character-schema-runtime.md` | 🔄 进行中 | 2026-06-10 | 2026-07-07 | 开放角色 Schema 系统改造计划 |
@@ -54,7 +58,8 @@
 | `plan-settings-persistence.md` | ❓ 未知 | — | — | 计划：NE-Memory 设置跨设备持久化 |
 | `plan-stm-llm-call-reduction.md` | ✅ 已完成 | 2026-06-15 | 2026-06-25 | STM 管线 API 调用次数优化 — 实施计划 |
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
-| `production-changes-ab-plan.md` | 🔄 进行中 | 2026-08-19 | 2026-08-19 | 生产修改双任务计划 —— A：删除 highlights 生产调用；B：D 臂（resolve-rewrite）生产化 |
+| `resolver-batch-granularity-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | D 臂 resolver 批量粒度成本-效果曲线实验（K=1/2/4/8，找最佳平衡点） |
+| `resolver-capacity-quality-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | Resolver 容量与质量两阶段测试计划（事件文本量 × 条数 × max_tokens，找处理上限） |
 | `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `retrieval-quality-test-plan.md` | ✅ 已完成 | 2026-08-17 | 2026-08-18 | NE-Memory 检索质量测试计划（T0 / T1 / T2） |
@@ -85,7 +90,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：41
+- ✅ 已完成：46
 - 🔄 进行中：13
 - ⏳ 未开始：4
 - ❓ 未标记：17

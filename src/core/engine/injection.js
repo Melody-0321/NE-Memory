@@ -1,4 +1,4 @@
-import { sortStmByMsgOrder } from '../vault/store.js';
+import { sortStmByMsgOrder, readState } from '../vault/store.js';
 import { filterCandidates } from '../vault/retrieval-filter.js';
 import { extractEntityNames, lookupEntityChains, mergePipelines, groupCandidatesByEntity } from './retrieval.js';
 import { resolveAmbiguousReferences } from './ambiguity.js';
@@ -152,6 +152,56 @@ function computeVisibleWindow(chatMessages, maxContext, chatId) {
     return visible;
 }
 
+// ── P0 query 加权融合（bench-cross W78f 消融定型：user .78 / 末条 assistant .22，ctx ≤400字）──
+// 替代旧字符串拼接形态（E1=B 消融证明拼接稀释用户意图是注入层损失的全部来源）
+var QUERY_W_USER = 0.78;
+
+// 两路信号提取：主信号=当前用户输入（不截断），辅助=末条 assistant（≤ctxMaxChars）
+export function buildWeightedQueryLegs(chatMessages, neSettings) {
+    var ctxMaxChars = (neSettings && neSettings.queryAiWeight === 'low') ? 200 : 400;
+    var userLeg = '';
+    var ctxLeg = '';
+    if (chatMessages && chatMessages.length > 0) {
+        for (var i = chatMessages.length - 1; i >= 0; i--) {
+            var mi = chatMessages[i];
+            if (!mi) continue;
+            var txt = typeof mi.mes === 'string' ? mi.mes : (mi.content || '');
+            if (!txt || txt.trim().length <= 5) continue;
+            if (mi.role === 'user' || mi.is_user) {
+                if (!userLeg) userLeg = txt.trim();
+            } else if (!ctxLeg) {
+                ctxLeg = txt.trim().substring(0, ctxMaxChars);
+            }
+            if (userLeg && ctxLeg) break;
+        }
+    }
+    return { userLeg: userLeg, ctxLeg: ctxLeg };
+}
+
+// 两路检索分数加权合并（__relevance 已是归一分数；缺腿记 0）
+export function fuseWeightedRuns(userRun, ctxRun, wUser) {
+    var wCtx = 1 - wUser;
+    var byId = new Map();
+    (userRun || []).forEach(function (c) {
+        var id = c.__id || c.id;
+        if (id) byId.set(id, { c: c, u: Number(c.__relevance) || 0, x: 0 });
+    });
+    (ctxRun || []).forEach(function (c) {
+        var id = c.__id || c.id;
+        if (!id) return;
+        if (byId.has(id)) { byId.get(id).x = Number(c.__relevance) || 0; }
+        else { byId.set(id, { c: c, u: 0, x: Number(c.__relevance) || 0 }); }
+    });
+    var fused = [];
+    byId.forEach(function (v) {
+        var f = Object.assign({}, v.c);
+        f.__relevance = wUser * v.u + wCtx * v.x;
+        fused.push(f);
+    });
+    fused.sort(function (a, b) { return b.__relevance - a.__relevance; });
+    return fused;
+}
+
 export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     if (!budget) {
         budget = estimateComplexityBudget(chatMessages);
@@ -171,43 +221,16 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     // P7: 走缓存解析，避免每轮注入全量 JSON.parse
     var neSettings = readNeSettingsCached();
 
-    var conversationContext = '';
-    var query;
-    if (chatMessages && chatMessages.length > 0) {
-        var aiTexts = [];
-        var userTexts = [];
-        var MAX_ROUNDS = 2;
-        var aiMaxRounds = (neSettings.queryAiWeight === 'low') ? 1 : 2;
-        var aiMaxChars  = (neSettings.queryAiWeight === 'low') ? 200 : 400;
-        for (var i = chatMessages.length - 1; i >= 0; i--) {
-            var mi = chatMessages[i];
-            if (!mi) continue;
-            var txt = typeof mi.mes === 'string' ? mi.mes : (mi.content || '');
-            if (!txt || txt.trim().length <= 5) continue;
-            if (mi.role === 'user' || mi.is_user) {
-                if (userTexts.length < MAX_ROUNDS) {
-                    userTexts.push(txt.trim().substring(0, 400));
-                }
-            } else {
-                if (aiTexts.length < aiMaxRounds) {
-                    aiTexts.push(txt.trim().substring(0, aiMaxChars));
-                }
-            }
-            if (userTexts.length >= MAX_ROUNDS && aiTexts.length >= aiMaxRounds) break;
-        }
-        var contextParts = [];
-        var rounds = Math.max(aiTexts.length, userTexts.length);
-        for (var ri = rounds - 1; ri >= 0; ri--) {
-            if (aiTexts[ri]) contextParts.push(aiTexts[ri]);
-            if (userTexts[ri]) contextParts.push(userTexts[ri]);
-        }
-        if (contextParts.length > 0) {
-            conversationContext = contextParts.join('\n').substring(0, 1200);
-            var prefix = buildRetrievalPrefix(content, state);
-            query = prefix ? prefix + '\n' + conversationContext : conversationContext;
-        }
+    // P0 query 加权融合：主信号=当前用户输入，辅助=末条 assistant（两路检索分数加权，见下）
+    var legs = buildWeightedQueryLegs(chatMessages, neSettings);
+    var ctxLeg = legs.ctxLeg;
+    var query = legs.userLeg;
+    if (query) {
+        var prefix = buildRetrievalPrefix(content, state);
+        if (prefix) query = prefix + '\n' + query;
     }
     if (!query) {
+        // 无用户输入兜底（narrator-only 等）：沿用故事状态构造主信号
         var queryParts = [];
         if (content.story_time) queryParts.push(content.story_time);
         if (content.story_date) queryParts.push(content.story_date);
@@ -266,7 +289,14 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         });
 
         try {
-            topCandidates = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap, chatId);
+            // P0 加权融合：user 腿与 ctx 腿各跑一路检索，分数加权合并取 top40
+            var userRun = await filterCandidates(query, allSTM, allLTM, 40, 3, aliasesMap, chatId);
+            var ctxRun = [];
+            if (ctxLeg) {
+                ctxRun = await filterCandidates(ctxLeg, allSTM, allLTM, 40, 3, aliasesMap, chatId);
+            }
+            topCandidates = fuseWeightedRuns(userRun, ctxRun, QUERY_W_USER).slice(0, 40);
+            topCandidates._vectorUsed = !!((userRun && userRun._vectorUsed) || (ctxRun && ctxRun._vectorUsed));
         } catch (e) {
             console.warn('[NE] BM25 filter failed, falling back to all entries:', e);
             topCandidates = [];
@@ -346,13 +376,43 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
         }
     }
 
+    // P0 状态原子块（压场层，默认 off）：stateVault 是 state 数据正主（memory vault 侧被剥离）
+    if (neSettings.stateBlockEnabled) {
+        try {
+            var stateVault = await readState(chatId);
+            var stateAtomBlock = buildStateAtomBlock(stateVault && stateVault.content && stateVault.content.state, {
+                valueMaxChars: neSettings.stateBlockValueMaxChars || 120
+            });
+            if (stateAtomBlock) {
+                if (parts.length > 0) parts.push('<hr>');
+                parts.push(stateAtomBlock);
+            }
+        } catch (e) {
+            console.warn('[NE] 状态原子块读取失败:', e && e.message);
+        }
+    }
+
+    // P1 弧激活：三明治渲染（压场层，默认 off）——打分命中弧 + arc_pull 拉入弧；
+    // 目录搭车 LTM（relevance=0）不进弧块，维持原实体组折叠路径
+    if (neSettings.arcInjectionEnabled && pipelineMerged && pipelineMerged.map) {
+        var arcBlock = buildArcBlock(pipelineMerged.map);
+        if (arcBlock) {
+            if (parts.length > 0) parts.push('<hr>');
+            parts.push(arcBlock);
+        }
+    }
+
     if (entityGrouped && (Object.keys(entityGrouped.groups).length > 0 || entityGrouped.unassigned.length > 0)) {
         var activeChars = getActiveCharacters(state);
         var storyTime = (content && content.story_time) ? content.story_time : null;
 
         // [2026-08-19] key-highlights 生产调用已移除：三层仪器评测零收益 + 方向性负（canonical §8/§8.2），函数保留供评测脚本使用
 
-        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, storyTime);
+        var entityBlock = buildEntityBlock(entityGrouped, {}, activeChars, storyTime, {
+            budgetChars: neSettings.injectionBudgetChars || 0,
+            entryMaxChars: neSettings.injectionEntryMaxChars || 0,
+            quoteMaxChars: neSettings.injectionQuoteMaxChars || 0,
+        });
         if (entityBlock) {
             if (parts.length > 0) parts.push('<hr>');
             parts.push(entityBlock);
@@ -443,129 +503,198 @@ export function formatStmEntry(entry, storyTime) {
     return line;
 }
 
-export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, storyTime) {
-    var lines = [];
+export function buildEntityBlock(entityGrouped, entityAnnotations, activeChars, storyTime, opts) {
+    // Stage 3 注入预算（全 0=off，输出与无 opts 调用逐字节一致）：
+    //   entryMaxChars 单条 event 文本上限；quoteMaxChars 原文引语上限；
+    //   budgetChars 实体块总量上限，超限按 relevance 升序（同分旧的先折）把命中条目
+    //   降级为 fold 标记（LWB 形态），保底全局 top-1 展开，防全折叠
+    var entryMaxChars = (opts && Number(opts.entryMaxChars)) || 0;
+    var quoteMaxChars = (opts && Number(opts.quoteMaxChars)) || 0;
+    var budgetChars = (opts && Number(opts.budgetChars)) || 0;
+    var budgetFoldIds = null;
 
-    var allGroups = entityGrouped.groups || {};
-    var activeSet = {};
-    if (activeChars && activeChars.length > 0) {
-        activeChars.forEach(function(n) { activeSet[n] = true; });
+    function capText(s, n) {
+        if (!n || !s) return s || '';
+        s = String(s);
+        return s.length > n ? s.slice(0, n) + '…' : s;
     }
 
-    var activeNames = [];
-    var externalNames = [];
-    Object.keys(allGroups).forEach(function(name) {
-        if (activeSet[name]) { activeNames.push(name); }
-        else { externalNames.push(name); }
-    });
-
-    function formatEntry(e) {
-        var line = formatStmEntry(e.entry, storyTime);
-        if (e._originalText) {
-            line += '\n   > ' + e._originalText.replace(/\n/g, '\n   > ');
-        }
-        return line;
+    function isRenderedHit(e) {
+        return e.relevance > 0 && !(budgetFoldIds && budgetFoldIds.has(e.entry.id));
     }
 
-    function foldMissRuns(entries) {
-        var folded = [];
-        var missRun = [];
-        function flushMiss() {
-            if (missRun.length === 0) return;
-            if (missRun.length === 1) {
-                var p = missRun[0].entry.period || '';
-                folded.push('[' + p + '] （' + p + ' 未展开）');
-            } else {
-                var first = missRun[0].entry.period;
-                var last = missRun[missRun.length - 1].entry.period;
-                folded.push('[' + first + '] ' + first + '-' + last + '（' + missRun.length + '条事件未展开）');
-            }
-            missRun = [];
-        }
-        for (var i = 0; i < entries.length; i++) {
-            var e = entries[i];
-            var isHit = e.relevance > 0;
-            if (isHit) {
-                flushMiss();
-                folded.push(e);
-            } else {
-                missRun.push(e);
-            }
-        }
-        flushMiss();
-        return folded;
-    }
+    function render() {
+        var lines = [];
 
-    function renderGroup(name, group, annotations) {
-        var kbLine = '';
-        if (annotations.length > 0) {
-            kbLine = ' [KB: ' + annotations.map(function(a) {
-                return a.name + '=' + a.level + (a.reason ? '(' + a.reason + ')' : '');
-            }).join(' | ') + ']';
+        var allGroups = entityGrouped.groups || {};
+        var activeSet = {};
+        if (activeChars && activeChars.length > 0) {
+            activeChars.forEach(function(n) { activeSet[n] = true; });
         }
 
-        var folded = foldMissRuns(group.entries);
-        var hitCount = 0;
-        var totalCount = group.entries.length;
-        group.entries.forEach(function(e) {
-            if (e.relevance > 0) hitCount++;
-        });
-        var refCount = group.refs ? group.refs.length : 0;
-        var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
-
-        lines.push('<h3><b>' + name + '</b> <small>(' + totalCount + ' events in chain, ' + hitCount + ' hits' + refPart + ')' + kbLine + '</small></h3>');
-
-        var idx = 0;
-        folded.forEach(function(item) {
-            idx++;
-            if (typeof item === 'string') {
-                lines.push(idx + '. ' + item);
-            } else {
-                lines.push(idx + '. ' + formatEntry(item));
-            }
+        var activeNames = [];
+        var externalNames = [];
+        Object.keys(allGroups).forEach(function(name) {
+            if (activeSet[name]) { activeNames.push(name); }
+            else { externalNames.push(name); }
         });
 
-        if (group.refs && group.refs.length > 0) {
+        function formatEntry(e) {
+            var entry = e.entry;
+            if (entryMaxChars) {
+                var ev = entry.event || entry.summary || '';
+                if (ev && String(ev).length > entryMaxChars) {
+                    entry = Object.assign({}, entry);
+                    if (entry.event) entry.event = capText(entry.event, entryMaxChars);
+                    else entry.summary = capText(entry.summary, entryMaxChars);
+                }
+            }
+            var line = formatStmEntry(entry, storyTime);
+            if (e._originalText) {
+                line += '\n   > ' + capText(e._originalText, quoteMaxChars).replace(/\n/g, '\n   > ');
+            }
+            return line;
+        }
+
+        function foldMissRuns(entries) {
+            var folded = [];
+            var missRun = [];
+            function flushMiss() {
+                if (missRun.length === 0) return;
+                if (missRun.length === 1) {
+                    var p = missRun[0].entry.period || '';
+                    folded.push('[' + p + '] （' + p + ' 未展开）');
+                } else {
+                    var first = missRun[0].entry.period;
+                    var last = missRun[missRun.length - 1].entry.period;
+                    folded.push('[' + first + '] ' + first + '-' + last + '（' + missRun.length + '条事件未展开）');
+                }
+                missRun = [];
+            }
+            for (var i = 0; i < entries.length; i++) {
+                var e = entries[i];
+                if (isRenderedHit(e)) {
+                    flushMiss();
+                    folded.push(e);
+                } else {
+                    missRun.push(e);
+                }
+            }
+            flushMiss();
+            return folded;
+        }
+
+        function renderGroup(name, group, annotations) {
+            var kbLine = '';
+            if (annotations.length > 0) {
+                kbLine = ' [KB: ' + annotations.map(function(a) {
+                    return a.name + '=' + a.level + (a.reason ? '(' + a.reason + ')' : '');
+                }).join(' | ') + ']';
+            }
+
+            var folded = foldMissRuns(group.entries);
+            var hitCount = 0;
+            var totalCount = group.entries.length;
+            group.entries.forEach(function(e) {
+                if (e.relevance > 0) hitCount++;
+            });
+            var refCount = group.refs ? group.refs.length : 0;
+            var refPart = refCount > 0 ? ', ' + refCount + ' refs' : '';
+
+            lines.push('<h3><b>' + name + '</b> <small>(' + totalCount + ' events in chain, ' + hitCount + ' hits' + refPart + ')' + kbLine + '</small></h3>');
+
+            var idx = 0;
+            folded.forEach(function(item) {
+                idx++;
+                if (typeof item === 'string') {
+                    lines.push(idx + '. ' + item);
+                } else {
+                    lines.push(idx + '. ' + formatEntry(item));
+                }
+            });
+
+            if (group.refs && group.refs.length > 0) {
+                lines.push('');
+                var refMap = {};
+                group.refs.forEach(function(r) {
+                    if (!refMap[r.primaryName]) refMap[r.primaryName] = [];
+                    refMap[r.primaryName].push(r.entryId);
+                });
+                Object.keys(refMap).forEach(function(primary) {
+                    lines.push('   关联: 见「<b>' + primary + '</b>」' + refMap[primary].join(', '));
+                });
+            }
+
             lines.push('');
-            var refMap = {};
-            group.refs.forEach(function(r) {
-                if (!refMap[r.primaryName]) refMap[r.primaryName] = [];
-                refMap[r.primaryName].push(r.entryId);
-            });
-            Object.keys(refMap).forEach(function(primary) {
-                lines.push('   关联: 见「<b>' + primary + '</b>」' + refMap[primary].join(', '));
-            });
         }
 
-        lines.push('');
-    }
-
-    activeNames.forEach(function(name) {
-        renderGroup(name, allGroups[name], entityAnnotations[name] || []);
-    });
-
-    if (entityGrouped.unassigned && entityGrouped.unassigned.length > 0) {
-        lines.push('<h3>未标注条目 <small>(' + entityGrouped.unassigned.length + ' entries)</small></h3>');
-        entityGrouped.unassigned.forEach(function(e, idx) {
-            var score = e.relevance > 0 ? ' [score:' + e.relevance.toFixed(3) + ']' : '';
-            var relative = calRelativeTime(e.entry.timestamp, storyTime);
-            var timePart = e.entry.period || '';
-            var scene = e.entry.scene || '';
-            var event = e.entry.event || e.entry.summary || '';
-            lines.push((idx + 1) + '. ' + (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score);
-        });
-        lines.push('');
-    }
-
-    if (externalNames.length > 0) {
-        lines.push('<h3>场景外角色</h3>');
-        lines.push('');
-        externalNames.forEach(function(name) {
+        activeNames.forEach(function(name) {
             renderGroup(name, allGroups[name], entityAnnotations[name] || []);
         });
+
+        if (entityGrouped.unassigned && entityGrouped.unassigned.length > 0) {
+            lines.push('<h3>未标注条目 <small>(' + entityGrouped.unassigned.length + ' entries)</small></h3>');
+            var unassignedFolded = 0;
+            entityGrouped.unassigned.forEach(function(e, idx) {
+                if (budgetFoldIds && budgetFoldIds.has(e.entry.id)) { unassignedFolded++; return; }
+                var score = e.relevance > 0 ? ' [score:' + e.relevance.toFixed(3) + ']' : '';
+                var relative = calRelativeTime(e.entry.timestamp, storyTime);
+                var timePart = e.entry.period || '';
+                var scene = e.entry.scene || '';
+                var event = e.entry.event || e.entry.summary || '';
+                lines.push((idx + 1) + '. ' + (relative ? relative + ' ' : '') + '[' + timePart + '] ' + (scene ? scene + ': ' : '') + event + score);
+            });
+            if (unassignedFolded > 0) {
+                lines.push('（' + unassignedFolded + ' 条预算内未展开）');
+            }
+            lines.push('');
+        }
+
+        if (externalNames.length > 0) {
+            lines.push('<h3>场景外角色</h3>');
+            lines.push('');
+            externalNames.forEach(function(name) {
+                renderGroup(name, allGroups[name], entityAnnotations[name] || []);
+            });
+        }
+
+        return lines.join('\n');
     }
 
-    return lines.join('\n');
+    function collectExpandableHits() {
+        var out = [];
+        var groups = entityGrouped.groups || {};
+        Object.keys(groups).forEach(function(name) {
+            var entries = (groups[name] && groups[name].entries) || [];
+            entries.forEach(function(e) {
+                if (e && e.relevance > 0 && e.entry && e.entry.id) out.push(e);
+            });
+        });
+        (entityGrouped.unassigned || []).forEach(function(e) {
+            if (e && e.relevance > 0 && e.entry && e.entry.id) out.push(e);
+        });
+        return out;
+    }
+
+    var text = render();
+    if (budgetChars > 0 && text.length > budgetChars) {
+        var expandable = collectExpandableHits();
+        expandable.sort(function(a, b) {
+            var ra = a.relevance || 0;
+            var rb = b.relevance || 0;
+            if (ra !== rb) return ra - rb;
+            var ta = a.entry.timestamp ? new Date(a.entry.timestamp).getTime() : 0;
+            var tb = b.entry.timestamp ? new Date(b.entry.timestamp).getTime() : 0;
+            return ta - tb;
+        });
+        budgetFoldIds = new Set();
+        for (var i = 0; i < expandable.length - 1; i++) {
+            budgetFoldIds.add(expandable[i].entry.id);
+            text = render();
+            if (text.length <= budgetChars) break;
+        }
+    }
+    return text;
 }
 
 
@@ -652,6 +781,173 @@ function buildMetaLtmOverview(metaLtmEntries) {
         if (event) lines.push(event);
     });
     return lines.join('\n');
+}
+
+/**
+ * P0 状态原子块：把 stateVault 的模板字段状态渲染为 LWB `[定了的事]` 形态的属性表。
+ *
+ * 压场层通道（E1 已验证形态收益：narrative 15%→28%）——持续性事实（住哪/职业/关系态度）
+ * 与事件流互补：事件只含"发生过什么"，属性表承载"现在是什么"。跨 query 恒定注入。
+ *
+ * 数据源：readState(chatId).content.state（生产上 memory vault 的 state 字段被
+ * _stripStateFieldsForMemory 剥离，stateVault 是唯一正主）。
+ * 渲染规则：跳过空值/'(未填)'/`_` 前缀系统字段；对象字段（如 affection: {安然: '好感…'}）
+ * 展开为 `k: v; k: v` 列表（避免 [object Object]）；旁白/系统等伪角色槽整卡跳过
+ * （叙述视角非故事人物，纯噪声）；单字段值超长截断（默认 120 字符）。
+ *
+ * @param {object} stateData stateVault.content.state（{ characters, factions, ... }）
+ * @param {object} [opts] { valueMaxChars }（0=不截断）
+ * @returns {string} 空串表示无内容（调用方跳过）
+ */
+var NARRATOR_NAME_RE = /^(旁白|叙述者|系统|narrator|system)$/i;
+
+export function buildStateAtomBlock(stateData, opts) {
+    var valueMaxChars = (opts && Number(opts.valueMaxChars)) || 0;
+    var state = stateData || {};
+    var lines = ['[当前状态] 已确立的事实'];
+
+    function capValue(v) {
+        var s = String(v == null ? '' : v);
+        if (valueMaxChars && s.length > valueMaxChars) return s.slice(0, valueMaxChars) + '…';
+        return s;
+    }
+
+    function isRenderableValue(v) {
+        if (v === null || v === undefined) return false;
+        var s = String(v);
+        return s !== '' && s !== '(未填)';
+    }
+
+    var chars = state.characters || {};
+    var charNames = Object.keys(chars);
+    var peopleLines = [];
+    charNames.forEach(function(name) {
+        if (NARRATOR_NAME_RE.test(name)) return; // 旁白/系统等伪角色槽：叙述视角非故事人物
+        var card = chars[name];
+        if (!card || typeof card !== 'object') return;
+        var fieldLines = [];
+        Object.keys(card).forEach(function(fk) {
+            if (fk.charAt(0) === '_') return;
+            var v = card[fk];
+            if (Array.isArray(v)) {
+                if (v.length === 0) return;
+                v = v.join('、');
+            } else if (v !== null && typeof v === 'object') {
+                // 对象字段（如 affection: {安然: '好感…'}）展开为 k: v 列表，避免 [object Object]
+                var pairs = [];
+                Object.keys(v).forEach(function(ok) {
+                    if (ok.charAt(0) === '_') return;
+                    var ov = v[ok];
+                    if (Array.isArray(ov)) {
+                        if (ov.length > 0) pairs.push(ok + ': ' + ov.join('、'));
+                    } else if (ov !== null && typeof ov !== 'object' && isRenderableValue(ov)) {
+                        pairs.push(ok + ': ' + ov);
+                    }
+                });
+                if (pairs.length === 0) return;
+                v = pairs.join('; ');
+            }
+            if (!isRenderableValue(v)) return;
+            fieldLines.push('    - ' + fk + ': ' + capValue(v));
+        });
+        if (fieldLines.length > 0) peopleLines.push('  ' + name + ':\n' + fieldLines.join('\n'));
+    });
+    if (peopleLines.length > 0) lines.push('people:\n' + peopleLines.join('\n'));
+
+    var factions = state.factions || {};
+    var worldLines = [];
+    Object.keys(factions).forEach(function(key) {
+        var f = factions[key];
+        if (!f || typeof f !== 'object' || f._hidden) return;
+        var fName = f.name || key;
+        var fieldLines = [];
+        if (isRenderableValue(f.description)) fieldLines.push('    - 描述: ' + capValue(f.description));
+        if (isRenderableValue(f.leader)) fieldLines.push('    - 领导: ' + capValue(f.leader));
+        if (isRenderableValue(f.attitude_toward_player)) fieldLines.push('    - 对主角态度: ' + capValue(f.attitude_toward_player));
+        if (isRenderableValue(f.notes)) fieldLines.push('    - 备注: ' + capValue(f.notes));
+        if (fieldLines.length > 0) worldLines.push('  ' + fName + ':\n' + fieldLines.join('\n'));
+    });
+    if (worldLines.length > 0) lines.push('world:\n' + worldLines.join('\n'));
+
+    if (lines.length === 1) return '';
+    return lines.join('\n');
+}
+
+/**
+ * P1 弧激活：三明治渲染（对标 LWB ⭐星号段形态）。
+ *
+ * 形态：弧标题（time_range + title，答案级摘要）→ 弧摘要（event 全文，因果俯瞰）
+ *       → 嵌套拍（period + event，故事时序，缩进 2 格）。
+ *
+ * 数据源：mergePipelines map 中 type='ltm' 且 relevance>0 的条目——
+ *   - 打分命中弧（bm25/vector）：arc_expand 已拉全 stm_refs → 嵌该弧全部在场拍
+ *   - arc_pull 拉入弧：只嵌该弧下已命中拍（relevance>0，控 token）
+ * 目录搭车（ltm_dir，relevance=0）与小池全量 LTM 不进弧块（走原有实体组折叠路径）。
+ *
+ * @param {Map} mergedMap mergePipelines 输出的 map（entry 包装：{entry,type,relevance,sources}）
+ * @returns {string} 空串表示无弧（调用方跳过）
+ */
+export function buildArcBlock(mergedMap) {
+    if (!mergedMap || typeof mergedMap.forEach !== 'function') return '';
+    var arcs = [];
+    mergedMap.forEach(function(e) {
+        if (!e || e.type !== 'ltm') return;
+        if (!e.relevance || e.relevance <= 0) return;
+        if (e.sources && e.sources.indexOf('ltm_dir') !== -1) return;
+        arcs.push(e);
+    });
+    if (arcs.length === 0) return '';
+
+    // 嵌套拍收集：按 parent_ltm 分组
+    var beatsByArc = {};
+    mergedMap.forEach(function(e) {
+        if (!e || e.type !== 'stm') return;
+        var parentId = e.entry && e.entry.parent_ltm;
+        if (!parentId) return;
+        if (!beatsByArc[parentId]) beatsByArc[parentId] = [];
+        beatsByArc[parentId].push(e);
+    });
+
+    // 弧排序：time_range 升序（Day 数字语义——字符串比较会把 Day 10 排到 Day 2 前）
+    function arcDayKey(timeRange) {
+        var m = String(timeRange || '').match(/Day\s*(\d+)/i);
+        return m ? Number(m[1]) : Infinity; // 无 Day 标签排最后
+    }
+    arcs.sort(function(a, b) {
+        var ka = arcDayKey(a.entry && a.entry.time_range);
+        var kb = arcDayKey(b.entry && b.entry.time_range);
+        if (ka !== kb) return ka - kb;
+        return String((a.entry && a.entry.time_range) || '').localeCompare(String((b.entry && b.entry.time_range) || ''));
+    });
+
+    var lines = ['## 剧情弧'];
+    arcs.forEach(function(arc) {
+        var entry = arc.entry || {};
+        var tr = entry.time_range || '';
+        lines.push('⭐ ' + (tr ? '[' + tr + '] ' : '') + (entry.title || ''));
+        if (entry.event) lines.push(String(entry.event));
+
+        var beats = (beatsByArc[entry.id] || []).slice();
+        // arc_pull 拉入弧：只嵌已命中拍（relevance>0）；正向命中弧嵌全部在场拍
+        if (arc.sources && arc.sources.indexOf('arc_pull') !== -1) {
+            beats = beats.filter(function(b) { return b.relevance > 0; });
+        }
+        // 故事时序排序（复用 sortStmByMsgOrder 的 absMsgStart/msgRange 语义）
+        var wrapperByEntry = new Map();
+        beats.forEach(function(b) { wrapperByEntry.set(b.entry, b); });
+        beats = sortStmByMsgOrder(beats.map(function(b) { return b.entry; }))
+            .map(function(ent) { return wrapperByEntry.get(ent); })
+            .filter(Boolean);
+
+        beats.forEach(function(b) {
+            var p = (b.entry && b.entry.period) || '';
+            var ev = (b.entry && (b.entry.event || b.entry.summary)) || '';
+            lines.push('  › ' + (p ? '[' + p + '] ' : '') + ev);
+        });
+        lines.push('');
+    });
+
+    return lines.join('\n').replace(/\n+$/, '');
 }
 
 function buildSuspenseOverview(suspenseEntries) {
