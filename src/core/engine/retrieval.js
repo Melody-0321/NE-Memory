@@ -132,6 +132,20 @@ function deriveThreadTimeRange(entries) {
 
 // ─── Entity-grouped candidate formatting ───
 
+// [V5-A 2026-08-22] wrapper 按 entry 消息时序排序（复用 sortStmByMsgOrder），
+// 与 injection.js buildArcBlock 嵌套拍同口径（wrapperByEntry 模式）。
+// 无 entry 的 wrapper 原序保留在尾部（防御，正常路径不出现）。
+function _sortWrappersByMsgOrder(wrappers) {
+    if (!wrappers || wrappers.length < 2) return wrappers;
+    var withEntry = wrappers.filter(function(w) { return w && w.entry; });
+    var noEntry = wrappers.filter(function(w) { return !(w && w.entry); });
+    var wrapperByEntry = new Map();
+    withEntry.forEach(function(w) { wrapperByEntry.set(w.entry, w); });
+    return sortStmByMsgOrder(withEntry.map(function(w) { return w.entry; }))
+        .map(function(ent) { return wrapperByEntry.get(ent); })
+        .concat(noEntry);
+}
+
 export function groupCandidatesByEntity(map, threadIndex) {
     var groups = {};
     var unassignedEntries = [];
@@ -175,16 +189,17 @@ export function groupCandidatesByEntity(map, threadIndex) {
     });
 
     Object.keys(groups).forEach(function(name) {
-        groups[name].entries.sort(function(a, b) {
-            var pa = a.entry.period || '';
-            var pb = b.entry.period || '';
-            return pa.localeCompare(pb);
-        });
+        // [V5-A 2026-08-22] period.localeCompare 字符串序会把 "Day 14" 排到 "Day 2" 前
+        // （字符 '1'<'2'）——实体组内时序乱序，reader 时序推理失败（第一次/先后类问题）。
+        // 改用 sortStmByMsgOrder 消息时序（与弧块嵌套拍同口径）；无 msg 序数据的条目
+        // 稳定排序保持相对次序（sortStmByMsgOrder 将其排 Infinity）。
+        groups[name].entries = _sortWrappersByMsgOrder(groups[name].entries);
     });
 
     unassignedEntries = unassignedEntries.filter(function(e) {
         return e.relevance > 0;
     });
+    unassignedEntries = _sortWrappersByMsgOrder(unassignedEntries);
 
     return { groups: groups, unassigned: unassignedEntries };
 }

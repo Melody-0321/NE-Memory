@@ -66,17 +66,32 @@ eq(r5.groups['李四'].refs[0].primaryName, '张三', 'ref points to primary ent
 
 var m6 = new Map();
 m6.set('stm_001', {
-    entry: { id: 'stm_001', event: 'Event A', period: 'Day 3', entities: ['张三'] },
+    entry: { id: 'stm_001', event: 'Event A', period: 'Day 3', entities: ['张三'], msg_ids: [5], msgRange: [5, 5] },
     relevance: 0.8
 });
 m6.set('stm_002', {
-    entry: { id: 'stm_002', event: 'Event B', period: 'Day 1', entities: ['张三'] },
+    entry: { id: 'stm_002', event: 'Event B', period: 'Day 1', entities: ['张三'], msg_ids: [2], msgRange: [2, 2] },
     relevance: 0.6
 });
 var r6 = groupCandidatesByEntity(m6, {});
 eq(r6.groups['张三'].entries.length, 2, '2 entries grouped under same entity');
-eq(r6.groups['张三'].entries[0].entry.period, 'Day 1', 'entries sorted by period');
-eq(r6.groups['张三'].entries[1].entry.period, 'Day 3', 'entries sorted by period');
+eq(r6.groups['张三'].entries[0].entry.period, 'Day 1', 'entries sorted by msg order');
+eq(r6.groups['张三'].entries[1].entry.period, 'Day 3', 'entries sorted by msg order');
+
+// [V5-A 2026-08-22] period 字符串序 bug 回归测试：Day 2 的消息在 Day 14 之前（字符串序
+// '1'<'2' 会把 Day 14 排到 Day 2 前），消息时序必须正确处理两位数 Day
+var m6b = new Map();
+m6b.set('stm_100', {
+    entry: { id: 'stm_100', event: 'Event late', period: 'Day 14', entities: ['李四'], msg_ids: [20], msgRange: [20, 20] },
+    relevance: 0.9
+});
+m6b.set('stm_101', {
+    entry: { id: 'stm_101', event: 'Event early', period: 'Day 2', entities: ['李四'], msg_ids: [3], msgRange: [3, 3] },
+    relevance: 0.7
+});
+var r6b = groupCandidatesByEntity(m6b, {});
+eq(r6b.groups['李四'].entries[0].entry.period, 'Day 2', 'two-digit day: Day 2 before Day 14 (msg order, not string order)');
+eq(r6b.groups['李四'].entries[1].entry.period, 'Day 14', 'two-digit day: Day 14 after Day 2');
 
 var m7 = new Map();
 m7.set('stm_low', {

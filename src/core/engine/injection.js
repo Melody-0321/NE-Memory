@@ -969,6 +969,9 @@ export function buildArcBlock(mergedMap, consumedStmIds) {
         var entry = arc.entry || {};
         var tr = entry.time_range || '';
         lines.push('⭐ ' + (tr ? '[' + tr + '] ' : '') + (entry.title || ''));
+        // [V5-B1 2026-08-22 实验证伪回滚] 曾按句拆行（每句缩进独立行）——
+        // v5-arcsplit 臂 vs v5-chrono 语义口径 narrative -5pp（噪声带内），
+        // 弧卡弃权 8 条零变化：弃权根因是弧卡块显著性而非句子粒度，拆行无效。
         if (entry.event) lines.push(String(entry.event));
 
         var beats = (beatsByArc[entry.id] || []).slice();
