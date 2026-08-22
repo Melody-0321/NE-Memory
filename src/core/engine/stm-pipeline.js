@@ -608,9 +608,9 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                 // P7: 走缓存解析，避免每轮 STM 全量 JSON.parse
                 var parsed = readNeSettingsCached();
                 if (parsed.stmChunkMaxChars) maxChars = Number(parsed.stmChunkMaxChars);
-                if (parsed.stmSummaryRatio !== undefined) var stmRatio = Number(parsed.stmSummaryRatio);
             } catch (e) {}
-            var stmRatio = stmRatio || 0.05;
+            // stmSummaryRatio 已删（L1a 消融定案固化 0.15，Stage 1 胜者；UI 详细度旋钮不再暴露）
+            var stmRatio = 0.15;
 
             // P5: 全部 segment 的格式化文本只算一次，供 chunk 边界判定与 prompt 拼装复用
             var segTexts = {};

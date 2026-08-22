@@ -14,35 +14,7 @@ import { getActiveChain, listStateDeltas, listMemoryVersions, diagnoseChainConsi
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { initTestRunner } from './panel-tools.js';
 
-// === STM 摘要三档档位（存储仍写 stmSummaryRatio，管线读取零改动）===
-var _detailLevelToRatio = { concise: 0.03, standard: 0.05, detailed: 0.10 };
-var _detailBtnIds = ['nes_stm_detail_concise', 'nes_stm_detail_standard', 'nes_stm_detail_detailed'];
-/** 把存量的 stmSummaryRatio 归一到最近档位 */
-function currentDetailLevel(ratio) {
-    var r = Number(ratio) || 0.05;
-    if (r <= 0.04) return 'concise';
-    if (r <= 0.075) return 'standard';
-    return 'detailed';
-}
-/** 点击三档按钮后高亮切换（active 类只落在一个按钮上） */
-function setActiveDetailButton(btnId) {
-    for (var i = 0; i < _detailBtnIds.length; i++) {
-        var el = panelById(_detailBtnIds[i]);
-        if (el) {
-            if (_detailBtnIds[i] === btnId) el.classList.add('active');
-            else el.classList.remove('active');
-        }
-    }
-}
-/** 读取当前高亮按钮对应的档位名，无高亮返回 null */
-function activeDetailLevel() {
-    for (var i = 0; i < _detailBtnIds.length; i++) {
-        var el = panelById(_detailBtnIds[i]);
-        if (el && el.classList.contains('active')) return _detailBtnIds[i].substring(_detailBtnIds[i].lastIndexOf('_') + 1);
-    }
-    return null;
-}
-
+// === STM 摘要详细度已删：L1a 消融定案固化 ratio=0.15（见 stm-pipeline.js），不再暴露 UI 三档 ===
 export function renderSettingsTab() {
     var container = panelById('ne_common_settings');
     var advContainer = panelById('ne_advanced_settings');
@@ -136,9 +108,6 @@ export function renderSettingsTab() {
                 '</label>' +
                 '<div style="color:var(--grey50);font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
             '</div>' +
-            '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Memory Budget') + '</span><span class="range-val" id="nes_budget_val">' + (settings.memoryBudget || 800) + ' ' + t('tok') + '</span></div>' +
-            '<input type="range" id="nes_memory_budget" min="500" max="2000" step="100" value="' + (settings.memoryBudget || 800) + '" style="width:100%;">' +
-            '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Controls max context tokens for memory injection. Higher = more memories visible, higher API cost.') + '</div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">' +
             '<span>' + t('STM Extraction Batch') + '</span>' +
@@ -166,13 +135,6 @@ export function renderSettingsTab() {
             '<input type="range" id="nes_ph_batch_slider" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(100 * Math.log10(((settings.phBatchChars || 4000) / 1000)) / Math.log10(8)))) + '" style="flex:1;">' +
         '</div>' +
         '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Summary Detail') + '</span><span class="range-val" id="nes_stm_ratio_val">' + Math.round((_detailLevelToRatio[currentDetailLevel(settings.stmSummaryRatio)] || 0.05) * 100) + '%</span></div>' +
-        '<div style="display:flex;gap:6px;margin:0 0 4px;">' +
-            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'concise' ? ' active' : '') + '" id="nes_stm_detail_concise">' + t('Concise') + '</button>' +
-            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'standard' ? ' active' : '') + '" id="nes_stm_detail_standard">' + t('Standard') + '</button>' +
-            '<button type="button" class="ne-seg-btn' + (currentDetailLevel(settings.stmSummaryRatio) === 'detailed' ? ' active' : '') + '" id="nes_stm_detail_detailed">' + t('Detailed') + '</button>' +
-        '</div>' +
-        '<div style="color:var(--grey50);font-size:0.75em;margin:0 0 8px;">' + t('STM Summary Detail Description') + '</div>' +
         // === 内容清洗（读取时清洗，不改 vault 原文）===
         '<div style="margin:8px 0 4px;"><span>' + t('Content Cleaning') + '</span></div>' +
         '<input type="text" id="nes_custom_strip_tags" placeholder="think, analysis" value="' + escapeHtml((settings.customStripTags || []).join(', ')) + '" style="width:100%;">' +
@@ -343,8 +305,6 @@ export function renderSettingsTab() {
     // Range sliders — update value display + save
     var tEl = panelById('nes_extraction_temperature');
     if (tEl) { tEl.oninput = function () { var v = panelById('nes_extraction_temp_val'); if (v) v.textContent = Number(tEl.value).toFixed(1); _debouncedSaveSettingsTab(); }; }
-    var bEl = panelById('nes_memory_budget');
-    if (bEl) { bEl.oninput = function () { var v = panelById('nes_budget_val'); if (v) v.textContent = bEl.value; _debouncedSaveSettingsTab(); }; }
     var sbEl = panelById('nes_stm_batch');
     if (sbEl) { sbEl.oninput = function () { var v = panelById('nes_stm_batch_val'); if (v) v.textContent = sbEl.value; _debouncedSaveSettingsTab(); }; }
     var suEl = panelById('nes_stm_max_unconsolidated');
@@ -361,12 +321,6 @@ export function renderSettingsTab() {
     var _phSync = false;
     if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; _debouncedSaveSettingsTab(); }; }
     if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(1000, Math.min(8000, Math.round((Number(phInput.value) || 4000) / 500) * 500)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = Math.round(100 * Math.log10(v / 1000) / Math.log10(8)); _phSync = false; saveSettingsTab(); }; }
-    for (var dbi = 0; dbi < _detailBtnIds.length; dbi++) {
-        (function (btnId) {
-            var dbEl = panelById(btnId);
-            if (dbEl) { dbEl.onclick = function () { setActiveDetailButton(btnId); var v = panelById('nes_stm_ratio_val'); if (v) v.textContent = Math.round(_detailLevelToRatio[activeDetailLevel()] * 100) + '%'; _debouncedSaveSettingsTab(); }; }
-        })(_detailBtnIds[dbi]);
-    }
     var cwEl = panelById('nes_dialog_window_rounds');
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; _debouncedSaveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
@@ -801,12 +755,8 @@ function saveSettingsTab() {
     var settings = JSON.parse(JSON.stringify(settingsPrev));
 
     settings.useDynamicState = settings.useDynamicState || false;
-    if (panelById('nes_enable_retrieval'))
-        settings.retrievalEnabled = panelById('nes_enable_retrieval').checked;
     if (panelById('nes_enable_vector_search'))
         settings.enableVectorSearch = panelById('nes_enable_vector_search').checked;
-    if (panelById('nes_memory_budget'))
-        settings.memoryBudget = Number(panelById('nes_memory_budget').value);
     if (panelById('nes_stm_batch_auto') && panelById('nes_stm_batch_auto').checked)
         settings.stmBatch = 'auto';
     else if (panelById('nes_stm_batch'))
@@ -841,8 +791,6 @@ function saveSettingsTab() {
     if (phInput2) {
         settings.phBatchChars = Math.max(1000, Math.min(8000, Number(phInput2.value) || 4000));
     }
-    var detailActive = activeDetailLevel();
-    if (detailActive && _detailLevelToRatio[detailActive]) settings.stmSummaryRatio = _detailLevelToRatio[detailActive];
     var stripEl = panelById('nes_custom_strip_tags');
     if (stripEl) {
         settings.customStripTags = stripEl.value.split(',').map(function (s) { return s.trim(); }).filter(function (s) { return s.length > 0; });
