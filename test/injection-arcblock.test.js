@@ -253,5 +253,28 @@ console.log('\n=== arcblock: 接线开关语义 ===');
 var settingsOff = {};
 assert(!settingsOff.arcInjectionEnabled, '缺省设置下 arcInjectionEnabled 为 falsy（默认 off）');
 
+console.log('\n=== arcblock: maxCards 参数化（K 敏感性扫描） ===');
+
+// 显式 K=2 截断：8 候选弧 → 只出 top-2（复用 m5 构造，高分弧8/弧7）
+var blockK2 = buildArcBlock(m5, undefined, 2);
+assert(blockK2.indexOf('弧8') !== -1 && blockK2.indexOf('弧7') !== -1,
+    'maxCards=2：top-2 高分弧在场');
+assert(blockK2.indexOf('弧6') === -1 && blockK2.indexOf('弧3') === -1,
+    'maxCards=2：top-2 外弧被裁');
+assert((blockK2.match(/⭐/g) || []).length === 2, 'maxCards=2：恰好 2 张 ⭐ 卡');
+
+// K=1 边界 + 坏值（0/undefined/NaN/负数）回退默认 6
+var blockK1 = buildArcBlock(m5, undefined, 1);
+assert((blockK1.match(/⭐/g) || []).length === 1 && blockK1.indexOf('弧8') !== -1,
+    'maxCards=1：只出最高分弧');
+assert(buildArcBlock(m5, undefined, 0) === block5, 'maxCards=0 → 回退默认 6（与 block5 全等）');
+assert(buildArcBlock(m5, undefined, NaN) === block5, 'maxCards=NaN → 回退默认 6');
+assert(buildArcBlock(m5, undefined, -3) === block5, 'maxCards=-3 → 回退默认 6');
+assert(buildArcBlock(m5, undefined, 4.9).length === buildArcBlock(m5, undefined, 4).length,
+    'maxCards=4.9 → floor 到 4（与显式 4 同长）');
+
+// 默认（不传）与显式 6 全等——回归锚：参数化未改变默认路径
+assert(buildArcBlock(m5, undefined, 6) === block5, '显式 maxCards=6 与默认（block5）输出全等');
+
 console.log('\n' + (failed === 0 ? 'ALL PASS (' + passed + ')' : 'FAILED ' + failed + '/' + (passed + failed)));
 process.exit(failed === 0 ? 0 : 1);

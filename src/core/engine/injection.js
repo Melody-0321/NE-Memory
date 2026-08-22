@@ -398,7 +398,7 @@ export async function formatSmartContext(vault, chatMessages, budget, chatId) {
     var arcConsumedStmIds = null;
     if (neSettings.arcInjectionEnabled && pipelineMerged && pipelineMerged.map) {
         arcConsumedStmIds = new Map();
-        var arcBlock = buildArcBlock(pipelineMerged.map, arcConsumedStmIds);
+        var arcBlock = buildArcBlock(pipelineMerged.map, arcConsumedStmIds, neSettings.arcMaxCards);
         if (arcBlock) {
             if (arcConsumedStmIds.size > 0) {
                 // 从实体分组移除已消费拍（groups + unassigned 双路径过滤）
@@ -920,7 +920,7 @@ export function buildStateAtomBlock(stateData, opts) {
  * @param {Map} [consumedStmIds] 出参：被弧块嵌套消费的拍 id 集合（调用方从实体组移除，唯一出现）
  * @returns {string} 空串表示无弧（调用方跳过）
  */
-var ARC_MAX_CARDS = 6; // 每锚弧卡片上限（relevance top-K，写死初值不暴露设置项）
+var ARC_MAX_CARDS = 6; // 每锚弧卡片上限（relevance top-K）——默认值，可被 neSettings.arcMaxCards 覆盖（K 敏感性扫描；UI 暴露与否待扫描裁决）
 
 // [V5b-S1 2026-08-22] 退化标题治理：fallback 弧 title=time_range（如 ⭐ [Day 3深夜] Day 3深夜）
 // 无信息量，浪费卡片位。退化判定：title 去空格后 ⊆ time_range，或 /^Day\s*\d+/ 短标签（≤12 字）。
@@ -936,8 +936,9 @@ function deriveArcTitle(title, timeRange, event) {
     return clause || t;
 }
 
-export function buildArcBlock(mergedMap, consumedStmIds) {
+export function buildArcBlock(mergedMap, consumedStmIds, maxCards) {
     if (!mergedMap || typeof mergedMap.forEach !== 'function') return '';
+    var cap = Number(maxCards) > 0 ? Math.floor(Number(maxCards)) : ARC_MAX_CARDS; // 坏值（0/undefined/NaN）回退默认 6
     var arcs = [];
     mergedMap.forEach(function(e) {
         if (!e || e.type !== 'ltm') return;
@@ -953,7 +954,7 @@ export function buildArcBlock(mergedMap, consumedStmIds) {
         if (b.relevance !== a.relevance) return b.relevance - a.relevance;
         return String((a.entry && a.entry.time_range) || '').localeCompare(String((b.entry && b.entry.time_range) || ''));
     });
-    if (arcs.length > ARC_MAX_CARDS) arcs = arcs.slice(0, ARC_MAX_CARDS);
+    if (arcs.length > cap) arcs = arcs.slice(0, cap);
 
     // 嵌套拍收集：按 parent_ltm 分组（只收自身打分命中的拍，relevance>0）
     var beatsByArc = {};
