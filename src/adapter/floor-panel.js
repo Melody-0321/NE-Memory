@@ -302,12 +302,13 @@ function _mountPanel(mesElement, mesid) {
 
     // 只挂 AI 消息（非 user）
     var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
-    if (!ctx || !ctx.chat) return;
+    if (!ctx || !ctx.chat) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': getContext/chat 不可用'); return; }
     var message = ctx.chat[mesid];
-    if (!message || message.is_user) return;
+    if (!message) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': chat[' + mesid + '] 不存在'); return; }
+    if (message.is_user) return;
 
     var mesText = mesElement.querySelector('.mes_text');
-    if (!mesText) return;
+    if (!mesText) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': .mes_text 未找到'); return; }
 
     var host = document.createElement('div');
     host.className = 'ne-fp-host';
@@ -489,12 +490,17 @@ function _onMessageDeleted() {
 // ─── 初始化 ───────────────────────────────────────────────
 export function initFloorPanel(getChatIdFn) {
     _getChatIdFn = getChatIdFn;
+    console.info('[NE floor-panel] init: es=' +
+        ((typeof SillyTavern !== 'undefined' && SillyTavern.getContext && SillyTavern.getContext().eventSource) ? 'yes' : 'no') +
+        ', #chat=' + (document.getElementById('chat') ? 'yes' : 'no'));
 
     // 1. 注册 ST 事件
     try {
         var es = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext().eventSource : null;
         if (es) {
-            var handler1 = function(_, mesid) { _onCharacterMessageRendered(mesid); };
+            // ST emitter 签名 (messageId, type)：type 是 'swipe' 等类型字符串，
+            // 旧代码 function(_, mesid) 误把 type 当 mesid → 永远扑空（2026-08-22 修复）
+            var handler1 = function(messageId, type) { _onCharacterMessageRendered(messageId); };
             es.on('character_message_rendered', handler1);
             _eventUnbinders.push(function() { try { es.off('character_message_rendered', handler1); } catch (e) {} });
 
@@ -523,8 +529,19 @@ export function initFloorPanel(getChatIdFn) {
     };
     busOn('vault:updated', _vaultUpdateListener);
 
-    // 4. 初始扫描
-    setTimeout(_scanMissing, 500);
+    // 4. 初始扫描：退避重试（500ms/1s/3s/8s）——ST 渲染长聊天是异步分批的，
+    //    单次扫描可能在 .mes 渲染完成前扑空。_scanMissing 幂等（data-ne-fp 标记），
+    //    重复扫描无害；每次输出诊断日志，断点直接可见。
+    var delays = [500, 1000, 3000, 8000];
+    delays.forEach(function(d, i) {
+        setTimeout(function() {
+            var before = _mountedHosts.size;
+            _scanMissing();
+            var mounted = _mountedHosts.size - before;
+            var mesCount = document.querySelectorAll('.mes[mesid]').length;
+            console.info('[NE floor-panel] scan#' + (i + 1) + ': .mes=' + mesCount + ', 新挂=' + mounted + ', 已挂总=' + _mountedHosts.size + (mesCount > 0 && _mountedHosts.size === 0 ? ' [WARN] 有消息但零挂载——见上方 mount 层日志' : ''));
+        }, d);
+    });
 }
 
 export function destroyFloorPanel() {

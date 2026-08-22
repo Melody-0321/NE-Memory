@@ -261,6 +261,7 @@ async function init() {
     // 楼内摘要面板（默认关闭，按设置开关启动）
     try {
         var fpSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}');
+        console.info('[NE] floor panel boot: floorPanelEnabled=' + !!fpSettings.floorPanelEnabled);
         if (fpSettings.floorPanelEnabled) {
             initFloorPanel(getChatId);
         }
