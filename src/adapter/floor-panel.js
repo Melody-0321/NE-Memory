@@ -7,16 +7,16 @@
  *
  * 挂载位置：.mes_text 的 afterend（下一个兄弟），与柏宝书一致，不嵌入 ST 按钮行。
  *
- * 交互模型：
- *   - 折叠态：▸ 按钮（有摘要可点击）/ ∅ 灰显（无摘要不可点）
- *   - 展开态：▼ 按钮 + 卡片显示 STM 摘要 + "在主面板查看 ↗"链接
- *   - vault:updated 触发刷新，已展开的卡片同步更新内容
+ * 交互模型（v2，摘要扩容 74 字后适配，参考柏宝书交互模式）：
+ *   - 折叠态：▸ 按钮 + 2 行 clamp 事件预览（收起也有信息 scent）/ ∅ 灰显（无摘要不可点）
+ *   - 展开态：▼ 按钮 + grid 0fr↔1fr 抽屉（chips 元信息 + 事件全文 + 心理行）+ "在主面板查看 ↗"链接
+ *   - 抽屉内容常驻 DOM（收起态也渲染），vault:updated 触发刷新同步更新
+ *   - 样式表共享：adoptedStyleSheets 一次解析 N 楼复用（柏宝书同款），不可用时回退每楼 <style>
  *
  * 默认关闭：设置开关 floorPanelEnabled（panel-settings.js）。
  */
 
 import { readVault } from '../core/vault/store.js';
-import { formatStmEntry } from '../core/engine/injection.js';
 import { buildMsgId } from '../core/engine/msg-id.js';
 import { on as busOn, off as busOff } from './stateBus.js';
 import { t } from '../core/i18n.js';
@@ -75,11 +75,13 @@ async function _findStmForMesid(mesid) {
 
 // ─── Shadow DOM 样式 ──────────────────────────────────────
 var FLOOR_PANEL_CSS = `
+.ne-fp-head {
+    margin-top: 6px;
+}
 .ne-fp-btn {
     display: inline-flex;
     align-items: center;
     gap: 4px;
-    margin-top: 6px;
     padding: 2px 8px;
     font-size: 0.8em;
     border: 1px solid var(--SmartThemeQuoteColor, #888);
@@ -99,6 +101,33 @@ var FLOOR_PANEL_CSS = `
 .ne-fp-btn.ne-fp-empty:hover { background: transparent; }
 .ne-fp-btn.ne-fp-open { background: var(--SmartThemeBlurTintColor, rgba(0,0,0,0.08)); }
 
+/* 收起态事件预览：2 行 clamp（74 字摘要常态下的信息 scent） */
+.ne-fp-preview {
+    margin-top: 3px;
+    font-size: 0.78em;
+    line-height: 1.45;
+    color: var(--SmartThemeBodyColor, #666);
+    opacity: 0.75;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    cursor: pointer;
+}
+.ne-fp-preview.is-hidden { display: none; }
+
+/* 抽屉：grid 0fr↔1fr 高度过渡，内容常驻不脱流（柏宝书同款） */
+.ne-fp-drawer {
+    display: grid;
+    grid-template-rows: 0fr;
+    transition: grid-template-rows 0.25s ease;
+}
+.ne-fp-drawer.is-open { grid-template-rows: 1fr; }
+.ne-fp-drawer-inner {
+    overflow: hidden;
+    min-height: 0;
+}
+
 .ne-fp-card {
     margin-top: 6px;
     padding: 8px 12px;
@@ -109,9 +138,28 @@ var FLOOR_PANEL_CSS = `
     border-radius: 0 4px 4px 0;
     line-height: 1.5;
 }
-.ne-fp-card-line { margin-bottom: 2px; }
-.ne-fp-card-psyche {
-    margin-left: 16px;
+
+/* 元信息 chips 行：时间 / 场景 / 在场角色 */
+.ne-fp-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-bottom: 6px;
+}
+.ne-fp-chip {
+    display: inline-block;
+    padding: 1px 8px;
+    border: 1px solid var(--SmartThemeQuoteColor, #ccc);
+    border-radius: 10px;
+    font-size: 0.88em;
+    opacity: 0.85;
+    white-space: nowrap;
+}
+.ne-fp-text {
+    word-break: break-word;
+}
+.ne-fp-psyche {
+    margin: 2px 0 0 16px;
     font-style: italic;
     opacity: 0.8;
 }
@@ -128,7 +176,26 @@ var FLOOR_PANEL_CSS = `
     text-decoration: underline;
 }
 .ne-fp-card-link:hover { opacity: 0.8; }
+
+@media (prefers-reduced-motion: reduce) {
+    .ne-fp-drawer { transition: none; }
+}
 `;
+
+// ─── 共享样式表（adoptedStyleSheets 一次解析 N 楼复用） ──
+var _sharedSheet = null;
+function _ensureSharedSheet() {
+    if (_sharedSheet) return _sharedSheet;
+    if (typeof CSSStyleSheet === 'undefined') return null;
+    try {
+        var sheet = new CSSStyleSheet();
+        sheet.replaceSync(FLOOR_PANEL_CSS);
+        _sharedSheet = sheet;
+    } catch (e) {
+        _sharedSheet = null;
+    }
+    return _sharedSheet;
+}
 
 // ─── 渲染按钮状态 ─────────────────────────────────────────
 function _renderButton(shadowRoot, hasStm, isOpen) {
@@ -149,7 +216,16 @@ function _renderButton(shadowRoot, hasStm, isOpen) {
     }
 }
 
-// ─── 渲染展开的卡片内容 ───────────────────────────────────
+// ─── 渲染收起态事件预览（2 行 clamp，展开态隐藏避免与全文重复） ──
+function _renderPreview(state) {
+    var entry = state.stmEntry;
+    var show = !!(entry && (entry.event || entry.summary)) && !state.isOpen;
+    state.preview.classList.toggle('is-hidden', !show);
+    if (show) state.preview.textContent = entry.event || entry.summary;
+}
+
+// ─── 渲染抽屉卡片内容（从 stmEntry 字段直取，不经过 formatStmEntry——
+//     注入侧共用格式化器需全文单行形态，此处为 UI 结构化渲染） ──
 function _renderCard(shadowRoot, stmEntry, mesid) {
     var card = shadowRoot.querySelector('.ne-fp-card');
     if (!card) return;
@@ -159,22 +235,57 @@ function _renderCard(shadowRoot, stmEntry, mesid) {
         return;
     }
 
-    var storyTime = Date.now();
-    var formatted = formatStmEntry(stmEntry, storyTime);
-    var lines = formatted.split('\n').map(function(line) {
-        if (!line) return '';
-        var cls = line.indexOf('   > ') === 0 ? 'ne-fp-card-psyche' : 'ne-fp-card-line';
-        return '<div class="' + cls + '">' + _escapeHtml(line) + '</div>';
+    // chips 行：时间 / 场景 / 在场角色（兼容旧 entities）
+    var chips = [];
+    if (stmEntry.period) chips.push('\uD83D\uDD52 ' + stmEntry.period);
+    if (stmEntry.scene) chips.push('\uD83D\uDCCD ' + stmEntry.scene);
+    var present = stmEntry.present_characters || stmEntry.entities || [];
+    if (present && present.length > 0) {
+        var names = present.map(function(p) { return typeof p === 'string' ? p : p.name; }).filter(Boolean);
+        if (names.length > 0) chips.push('\uD83D\uDC64 ' + names.join('\u3001'));
+    }
+    var chipsHtml = chips.length > 0
+        ? '<div class="ne-fp-chips">' + chips.map(function(c) {
+            return '<span class="ne-fp-chip">' + _escapeHtml(c) + '</span>';
+        }).join('') + '</div>'
+        : '';
+
+    // 事件全文
+    var textHtml = '<div class="ne-fp-text">' + _escapeHtml(stmEntry.event || stmEntry.summary || '') + '</div>';
+
+    // 角色心理（兼容旧 _inner_thoughts：{角色名: [想法...]}）
+    var psycheHtml = '';
+    var psyche = stmEntry.character_psyche;
+    var psycheLines = [];
+    if (psyche && Object.keys(psyche).length > 0) {
+        Object.keys(psyche).forEach(function(name) {
+            var p = psyche[name] || {};
+            var mood = p.current_mood || '';
+            var thoughts = p.inner_thoughts || '';
+            if (mood || thoughts) {
+                psycheLines.push(name + (mood ? ' [' + mood + ']' : '') + (thoughts ? ': ' + thoughts : ''));
+            }
+        });
+    } else if (stmEntry._inner_thoughts && Object.keys(stmEntry._inner_thoughts).length > 0) {
+        Object.keys(stmEntry._inner_thoughts).forEach(function(name) {
+            var thoughtsArr = stmEntry._inner_thoughts[name] || [];
+            if (thoughtsArr.length > 0) {
+                psycheLines.push(name + ' 内心: ' + thoughtsArr.join(' \u2192 '));
+            }
+        });
+    }
+    psycheHtml = psycheLines.map(function(l) {
+        return '<div class="ne-fp-psyche">' + _escapeHtml(l) + '</div>';
     }).join('');
 
-    // 主面板定位链接
+    // footer：主面板定位链接
     var stmId = stmEntry.id || '';
     var footer = '<div class="ne-fp-card-footer">' +
         '<span class="ne-fp-card-link" data-ne-fp-locate="' + _escapeHtml(stmId) + '">' +
         _escapeHtml(t('floor_panel_locate_in_main')) + ' \u2197</span>' +
         '</div>';
 
-    card.innerHTML = lines + footer;
+    card.innerHTML = chipsHtml + textHtml + psycheHtml + footer;
 }
 
 function _escapeHtml(s) {
@@ -203,21 +314,45 @@ function _mountPanel(mesElement, mesid) {
     host.setAttribute('data-ne-fp-floor', String(mesid));
 
     var shadowRoot = host.attachShadow({ mode: 'open' });
-    var style = document.createElement('style');
-    style.textContent = FLOOR_PANEL_CSS;
-    shadowRoot.appendChild(style);
 
-    // 按钮（默认折叠态，无摘要时灰显）
+    // 样式：优先共享样式表（一次解析 N 楼复用），失败回退每楼 <style> 副本
+    var sheet = _ensureSharedSheet();
+    if (sheet) {
+        try {
+            shadowRoot.adoptedStyleSheets = [sheet];
+        } catch (e) { sheet = null; }
+    }
+    if (!sheet) {
+        var style = document.createElement('style');
+        style.textContent = FLOOR_PANEL_CSS;
+        shadowRoot.appendChild(style);
+    }
+
+    // head（点击开合锚点）：按钮 + 事件预览
+    var head = document.createElement('div');
+    head.className = 'ne-fp-head';
+
     var btn = document.createElement('div');
     btn.className = 'ne-fp-btn ne-fp-empty'; // 初始无摘要态，refresh 后更新
     btn.textContent = '\u2205 ' + t('floor_panel_no_summary');
-    shadowRoot.appendChild(btn);
+    head.appendChild(btn);
 
-    // 卡片容器（默认隐藏）
+    var preview = document.createElement('div');
+    preview.className = 'ne-fp-preview is-hidden'; // 无摘要/展开态隐藏，refresh 后更新
+    head.appendChild(preview);
+
+    shadowRoot.appendChild(head);
+
+    // 抽屉（grid 0fr↔1fr 过渡；内容常驻 DOM，收起态也渲染）
+    var drawer = document.createElement('div');
+    drawer.className = 'ne-fp-drawer';
+    var drawerInner = document.createElement('div');
+    drawerInner.className = 'ne-fp-drawer-inner';
     var card = document.createElement('div');
     card.className = 'ne-fp-card';
-    card.style.display = 'none';
-    shadowRoot.appendChild(card);
+    drawerInner.appendChild(card);
+    drawer.appendChild(drawerInner);
+    shadowRoot.appendChild(drawer);
 
     mesText.insertAdjacentElement('afterend', host);
     mesElement.setAttribute('data-ne-fp', '1');
@@ -225,22 +360,23 @@ function _mountPanel(mesElement, mesid) {
     var state = {
         host: host,
         shadowRoot: shadowRoot,
+        head: head,
         btn: btn,
+        preview: preview,
+        drawer: drawer,
         card: card,
         lastSignature: '',
         isOpen: false,
         stmEntry: null,
     };
 
-    // 按钮点击：切换展开/折叠
-    btn.addEventListener('click', function() {
-        if (!state.stmEntry) return; // 无摘要不可点
+    // head 点击：切换展开/折叠（无摘要不可点）
+    head.addEventListener('click', function() {
+        if (!state.stmEntry) return;
         state.isOpen = !state.isOpen;
-        card.style.display = state.isOpen ? 'block' : 'none';
+        drawer.classList.toggle('is-open', state.isOpen);
         _renderButton(shadowRoot, !!state.stmEntry, state.isOpen);
-        if (state.isOpen) {
-            _renderCard(shadowRoot, state.stmEntry, mesid);
-        }
+        _renderPreview(state);
     });
 
     // 卡片内"在主面板查看"链接（事件委托，因 card 内容动态重建）
@@ -254,7 +390,7 @@ function _mountPanel(mesElement, mesid) {
 
     _mountedHosts.set(mesid, state);
 
-    // 异步查询 STM 并更新按钮状态
+    // 异步查询 STM 并更新按钮/预览/抽屉内容
     _refreshPanel(mesid);
 }
 
@@ -287,7 +423,10 @@ async function _refreshPanel(mesid) {
     if (!state) return;
     try {
         var stmEntry = await _findStmForMesid(mesid);
-        var sig = stmEntry ? (stmEntry.id + '|' + stmEntry.event) : 'null';
+        // 签名含 chips 字段（scene/period），元信息变更也触发刷新
+        var sig = stmEntry
+            ? [stmEntry.id, stmEntry.event, stmEntry.scene, stmEntry.period].join('|')
+            : 'null';
         if (sig === state.lastSignature) return; // 签名未变跳过
         state.lastSignature = sig;
         state.stmEntry = stmEntry;
@@ -295,8 +434,9 @@ async function _refreshPanel(mesid) {
         // 更新按钮状态
         _renderButton(state.shadowRoot, !!stmEntry, state.isOpen);
 
-        // 若已展开，同步更新卡片内容
-        if (state.isOpen && stmEntry) {
+        // 预览行 + 抽屉内容常驻渲染（收起态也渲染，供 grid 动画与刷新同步）
+        _renderPreview(state);
+        if (stmEntry) {
             _renderCard(state.shadowRoot, stmEntry, mesid);
         }
     } catch (e) {

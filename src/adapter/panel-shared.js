@@ -348,6 +348,10 @@ export function injectBottomDrawerCSS() {
         '.narrative_memory_table{width:100%;border-collapse:collapse;font-size:0.85em;line-height:1.5;margin-top:4px;}' +
         '.narrative_memory_table th{background:var(--black50a);padding:6px 8px;text-align:left;font-weight:bold;border-bottom:2px solid var(--black70a);white-space:nowrap;}' +
         '.narrative_memory_table td{padding:6px 8px;border-bottom:1px solid var(--black30a);vertical-align:top;word-break:break-word;}' +
+        // ── STM 事件列 clamp（摘要扩容 74 字后的扫读密度；点击行展开全文，见 renderMemoryTable 委托） ──
+        '.ne-stm-event-cell{cursor:pointer;}' +
+        '.ne-stm-event-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}' +
+        'tr.ne-stm-expanded .ne-stm-event-text{-webkit-line-clamp:unset;}' +
         '.narrative_memory_table tbody tr:nth-child(even),.narrative_ltm_sub_table tbody tr:nth-child(even),.ne-usage-chat-table tr:nth-child(even){background:var(--black10a);}' +
         '.narrative_memory_table tbody tr:hover,.narrative_ltm_sub_table tbody tr:hover,.ne-usage-chat-table tr:hover{background:var(--black20a)!important;transition:background var(--ne-transition-fast);}' +
         '.ne-accordion-chevron{transition:transform var(--ne-transition-normal);}' +

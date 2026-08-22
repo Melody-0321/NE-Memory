@@ -12,7 +12,7 @@ structural:
   - { op: exists, target: smartpush_injection }
   - { op: min_length, target: smartpush_injection, value: 50 }
   - { op: not_contains, target: smartpush_injection, value: "→stm:" }
-  - { op: contains, target: smartpush_injection, value: "<h2>关键记忆</h2>" }
+  - { op: contains, target: smartpush_injection, value: "## 剧情弧" }
   - { op: contains, target: smartpush_injection, value: "<h3>" }
   - { op: exists, target: stm_events }
   - { op: min_length, target: pipeline_responses, value: 50 }
@@ -61,7 +61,7 @@ Driver 跟随 AI 自然互动 4-7 轮。无需特殊构造。
 | `exists: smartpush_injection` | SmartPush 触发成功 |
 | `min_length: smartpush_injection >= 50` | 注入非空 |
 | `not_contains: smartpush_injection →stm:` | 无内部标记 |
-| `contains: smartpush_injection "<h2>关键记忆</h2>"` | HTML 格式标题 |
+| `contains: smartpush_injection "## 剧情弧"` | 弧卡块标题（arcInjectionEnabled on 时出现） |
 | `contains: smartpush_injection "<h3>"` | HTML 实体子标题 |
 | `exists: stm_events` | STM 提取成功 |
 | `min_length: pipeline_responses >= 50` | pipeline LLM 有输出 |

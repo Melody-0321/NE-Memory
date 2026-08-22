@@ -1720,7 +1720,10 @@ function toggleInlineEdit(row, entryId, entryType) {
         row.classList.remove('ne-inline-row');
         row.querySelector('td:nth-child(2)').textContent = period;
         row.querySelector('td:nth-child(3)').textContent = scene;
-        row.querySelector('td:nth-child(' + eventCellTarget + ')').innerHTML = escapeHtml(event);
+        // 更新事件列内容（clamp 包装层内更新，保住 .ne-stm-event-text 结构）
+        var eventTextEl = row.querySelector('td:nth-child(' + eventCellTarget + ') .ne-stm-event-text');
+        if (eventTextEl) eventTextEl.innerHTML = escapeHtml(event);
+        else row.querySelector('td:nth-child(' + eventCellTarget + ')').innerHTML = escapeHtml(event);
         // 重建 Present 列内容
         var presentCell = row.querySelector('td:nth-child(' + presentCellTarget + ')');
         if (presentCell) {
@@ -1835,7 +1838,7 @@ function renderStmRow(stm, opts) {
         + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
         + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'
         + '<td style="font-size:' + fs + ';max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td>'
-        + '<td style="font-size:' + fs + ';">' + eventHtml + '</td>'
+        + '<td class="ne-stm-event-cell" style="font-size:' + fs + ';"><div class="ne-stm-event-text">' + eventHtml + '</div></td>'
         + '<td style="font-size:' + fs + ';max-width:160px;">' + presentHtml + '</td>'
         + '<td style="font-size:' + fs + ';max-width:200px;">' + psycheHtml + '</td>'
         + editCell
@@ -1845,6 +1848,24 @@ function renderStmRow(stm, opts) {
 export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = panelQS(tbodyId);
     if (!tbody) return;
+
+    // 行点击展开（一次性 tbody 委托，跨 innerHTML 重渲染/懒加载行生效）：
+    // 事件列默认 2 行 clamp，点击行 toggle 全文。展开态为瞬态视图偏好，不持久化。
+    if (!tbody._neStmClampBound) {
+        tbody._neStmClampBound = true;
+        tbody.addEventListener('click', function(ev) {
+            var target = ev.target;
+            if (!target || !target.closest) return;
+            // 交互元素点击不触发（编辑/删除按钮、行内编辑表单、折叠开关等）
+            if (target.closest('button, a, input, textarea, select, .ne-inline-edit-btn, .ne-inline-delete, .narrative_ltm_toggle')) return;
+            var row = target.closest('tr');
+            if (!row) return;
+            if (!row.querySelector(':scope > td.ne-stm-event-cell')) return; // 仅含 clamp 事件列的 STM 行（直接子单元格，防嵌套子表误匹配）
+            if (row.classList.contains('ne-inline-row')) return; // 行内编辑态不切换
+            row.classList.toggle('ne-stm-expanded');
+        });
+    }
+
     tbody.innerHTML = '';
     if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
     var entryMap = {};
