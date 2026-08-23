@@ -295,20 +295,22 @@ function _escapeHtml(s) {
 }
 
 // ─── 挂载单个按钮 ─────────────────────────────────────────
+// 返回状态码供扫描层计数判别：'ok' | 'user' | 'marked' | 'host' |
+// 'no-ctx' | 'no-msg' | 'no-text'
 function _mountPanel(mesElement, mesid) {
-    if (!mesElement) return;
-    if (mesElement.getAttribute('data-ne-fp') === '1') return; // 已挂载
-    if (mesElement.querySelector('.ne-fp-host')) return;
+    if (!mesElement) return 'no-el';
+    if (mesElement.getAttribute('data-ne-fp') === '1') return 'marked'; // 已挂载
+    if (mesElement.querySelector('.ne-fp-host')) return 'host';
 
     // 只挂 AI 消息（非 user）
     var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
-    if (!ctx || !ctx.chat) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': getContext/chat 不可用'); return; }
+    if (!ctx || !ctx.chat) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': getContext/chat 不可用'); return 'no-ctx'; }
     var message = ctx.chat[mesid];
-    if (!message) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': chat[' + mesid + '] 不存在'); return; }
-    if (message.is_user) return;
+    if (!message) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': chat[' + mesid + '] 不存在'); return 'no-msg'; }
+    if (message.is_user) return 'user';
 
     var mesText = mesElement.querySelector('.mes_text');
-    if (!mesText) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': .mes_text 未找到'); return; }
+    if (!mesText) { console.warn('[NE floor-panel] mount 跳过 mesid=' + mesid + ': .mes_text 未找到'); return 'no-text'; }
 
     var host = document.createElement('div');
     host.className = 'ne-fp-host';
@@ -393,6 +395,7 @@ function _mountPanel(mesElement, mesid) {
 
     // 异步查询 STM 并更新按钮/预览/抽屉内容
     _refreshPanel(mesid);
+    return 'ok';
 }
 
 // ─── 主面板定位 ───────────────────────────────────────────
@@ -531,18 +534,33 @@ function _ensureObserver() {
 
 // ─── 扫描补挂缺失面板 ─────────────────────────────────────
 function _scanMissing() {
-    if (!_isEnabled()) return;
+    if (!_isEnabled()) {
+        // 判别仪器：禁用时打出原始 keys——flag 被抹/解析失败/从未写入，一眼可辨
+        try {
+            var raw0 = localStorage.getItem('ne_settings');
+            var keys0 = raw0 ? Object.keys(JSON.parse(raw0) || {}).join(',') : '(null)';
+            console.warn('[NE floor-panel] scan 跳过：已禁用。ne_settings keys=' + keys0);
+        } catch (e) { console.warn('[NE floor-panel] scan 跳过：已禁用（ne_settings 解析失败）'); }
+        return;
+    }
     if (_scanTimer) clearTimeout(_scanTimer);
     _scanTimer = setTimeout(function() {
         _scanTimer = null;
         _ensureObserver();
         var doc = _chatDoc();
         var allMes = doc.querySelectorAll('.mes[mesid]');
+        var tally = { total: allMes.length, ok: 0, user: 0, marked: 0, host: 0, 'no-ctx': 0, 'no-msg': 0, 'no-text': 0 };
         allMes.forEach(function(mesEl) {
             var mesid = Number(mesEl.getAttribute('mesid'));
             if (isNaN(mesid)) return;
-            _mountPanel(mesEl, mesid);
+            var r = _mountPanel(mesEl, mesid);
+            if (r && tally[r] !== undefined) tally[r]++;
         });
+        if (tally.total > 0 && tally.ok === 0) {
+            console.warn('[NE floor-panel] scan 完成：' + JSON.stringify(tally) + '，已挂=' + _mountedHosts.size);
+        } else {
+            console.info('[NE floor-panel] scan 完成：' + JSON.stringify(tally) + '，已挂=' + _mountedHosts.size);
+        }
         // 清理失效条目
         _mountedHosts.forEach(function(state, mesid) {
             if (!doc.body.contains(state.host)) {
@@ -582,8 +600,29 @@ function _onMessageDeleted() {
 }
 
 // ─── 初始化 ───────────────────────────────────────────────
+// 诊断陷阱（一次性）：拦截本上下文所有 ne_settings 写入，打出调用栈。
+// 用于揪出「切聊天后 floorPanelEnabled 被抹」的隐藏写入方。
+var _setItemPatched = false;
+function _patchSetItemForDiagnosis() {
+    if (_setItemPatched) return;
+    _setItemPatched = true;
+    try {
+        var orig = localStorage.setItem.bind(localStorage);
+        localStorage.setItem = function(k, v) {
+            if (k === 'ne_settings') {
+                try {
+                    var stack = (new Error()).stack || '';
+                    console.warn('[NE floor-panel] ne_settings 写入拦截：value=' + String(v).slice(0, 300) + '\n栈：' + stack.split('\n').slice(1, 5).join(' <- '));
+                } catch (e) {}
+            }
+            return orig(k, v);
+        };
+    } catch (e) { console.warn('[NE floor-panel] setItem patch 失败（不影响功能）'); }
+}
+
 export function initFloorPanel(getChatIdFn) {
     _getChatIdFn = getChatIdFn;
+    _patchSetItemForDiagnosis();
     console.info('[NE floor-panel] init: es=' +
         ((typeof SillyTavern !== 'undefined' && SillyTavern.getContext && SillyTavern.getContext().eventSource) ? 'yes' : 'no') +
         ', #chat=' + (document.getElementById('chat') ? 'yes' : 'no'));
