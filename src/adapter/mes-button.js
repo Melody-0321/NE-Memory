@@ -18,8 +18,10 @@
 
 import { readVault } from '../core/vault/store.js';
 import { buildMsgId } from '../core/engine/msg-id.js';
-import { t } from '../core/i18n.js';
-import { showToast } from './panel-shared.js';
+// t 必须取 panel-shared 的翻译查询包装（t_narrative）。
+// core/i18n.js 的 t 是 locale setter——误用会把 _locale 污染成翻译 key，
+// 导致整个面板英文回退（3aba810 回归根因）
+import { showToast, t } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
 import { locateStmEntries } from './panel-state-cards.js';
 
