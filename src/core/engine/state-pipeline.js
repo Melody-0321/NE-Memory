@@ -81,9 +81,9 @@ var FIELD_SAMPLES_EN = {
     ties: 'Mentor Li:master;Rival Wang:nemesis',
     injuries: 'none',
     status_effects: 'none',
-    abilities: [{ name: 'Empathy', type: '被动', level: 'Lv.3', effect: 'senses others emotions' }],
+    abilities: { 'Empathy': { type: '被动', level: 'Lv.3', effect: 'senses others emotions' } },
     power_level: 'ordinary human',
-    inventory: [{ name: 'notebook', description: 'leather journal', rarity: 'common', properties: 'none' }]
+    inventory: { 'notebook': { description: 'leather journal', rarity: 'common', properties: 'none' } }
 };
 
 var FIELD_SAMPLES_ZH = {
@@ -101,9 +101,9 @@ var FIELD_SAMPLES_ZH = {
     ties: '李师傅:师父;王对手:宿敌',
     injuries: '无',
     status_effects: '无',
-    abilities: [{ name: '共情', type: '被动', level: 'Lv.3', effect: '感知他人情绪' }],
+    abilities: { '共情': { type: '被动', level: 'Lv.3', effect: '感知他人情绪' } },
     power_level: '普通人',
-    inventory: [{ name: '笔记本', description: '皮质手账', rarity: '普通', properties: '无' }]
+    inventory: { '笔记本': { description: '皮质手账', rarity: '普通', properties: '无' } }
 };
 
 /**
@@ -379,7 +379,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- You manage goals: ' + goalFields + '.\n' +
         '- Field already has a specific value → only output if this round CHANGES it.\n' +
         '- Empty/(未填) fields MUST be filled this round: extract from sources above (Character Cards / World Book), or infer from dialogue + scene context. NEVER leave a template field empty.\n' +
-        '- String fields: fill "none" if nothing applicable. Object/array fields (abilities, inventory, power_slots): use [] not strings.\n' +
+        '- String fields: fill "none" if nothing applicable. Map fields (abilities, inventory, power_slots): object keyed by item/skill name, e.g. {"长剑": {"description": "...", "rarity": "普通", "properties": "..."}}. To REMOVE an entry set its value to null: {"长剑": null}.\n' +
         '- When source text says A/B or "or": resolve the ambiguity, do not copy "or" literally.\n' +
         '- Use the full dotted path as the JSON path (e.g. characters.\u89d2\u8272\u540d.' + (allCharFields[0] || 'gender_age') + ').\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去. Mention ≠ presence.\n' +
@@ -397,7 +397,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
         '- 你管理目标: ' + goalFields + '。\n' +
         '- 字段已有具体值 → 仅在本轮对话导致该值变化时输出。\n' +
         '- 空字段/(未填) 必须在本轮填充：从上方来源（角色卡 / 世界书）提取，或从对话 + 场景上下文合理推断。模板字段不得留空。\n' +
-        '- 字符串字段：若无相关内容填 "无"。对象/数组字段（abilities、inventory、power_slots）：用 [] 而非字符串。\n' +
+        '- 字符串字段：若无相关内容填 "无"。映射字段（abilities、inventory、power_slots）：用 {名称: {字段: 值}} 按物品/技能名做键，例 {"长剑": {"description": "...", "rarity": "普通", "properties": "..."}}。移除条目：将该键值置 null，如 {"长剑": null}。\n' +
         '- 原文如有 A/B 或 "或" 等选择表述：请消歧推断，不要原样照搬 "或"。\n' +
         '- JSON 路径使用完整的点分隔路径（如 characters.角色名.' + (allCharFields[0] || 'gender_age') + '）。\n' +
         '- status: 活跃/非活跃/已死亡/已归隐/已离去。提及≠在场。\n' +
@@ -457,14 +457,14 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
                 'The following characters have empty fields that MUST be filled this round:\n' +
                 lines.join('\n') + '\n' +
                 'Extract from Character Cards / World Book / dialogue where directly stated; otherwise INFER reasonable values from scene context and character role. Do NOT leave these empty.\n' +
-                'String fields: fill "none" if nothing applicable. Object/array fields: use [] not strings.\n' +
+                'String fields: fill "none" if nothing applicable. Map fields (abilities, inventory, power_slots): object keyed by item/skill name (see examples). To REMOVE an entry set its value to null.\n' +
                 'When source text says A/B/ambiguities, RESOLVE — do not copy alternatives literally.\n';
         }
         return '\n## 已有角色 — 填充空字段（必须）\n' +
             '以下角色存在空字段，必须在本轮填充：\n' +
             lines.join('\n') + '\n' +
             '能从角色卡 / 世界书 / 对话中直接提取的优先提取；未直接写出的请结合场景与角色定位合理推断。不得留空。\n' +
-            '字符串字段若无相关内容填 "无"，对象/数组字段用 []。原文中的选择表述（"或"/斜杠）请消歧推断。\n';
+            '字符串字段若无相关内容填 "无"。映射字段（abilities、inventory、power_slots）按物品/技能名做键（见示例）。移除条目：键值置 null。原文中的选择表述（"或"/斜杠）请消歧推断。\n';
     }
 
     if (lang === 'en') {
@@ -478,7 +478,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
                 'You MUST output state_changes.characters.<name> containing ALL template fields:\n' +
                 allFieldsDescEn + '\n' +
                 (worldBook ? 'Extract values from ' + sourceLabel + ' character descriptions above where directly stated; INFER the rest from dialogue + scene context.\n' : 'Extract values from ' + sourceLabel + ' above where directly stated; INFER the rest from dialogue + scene context.\n') +
-                'For string fields with nothing applicable (e.g. injuries/status_effects), use "none". For object/array fields (abilities, inventory, power_slots), use [] or {} — never fill these with a string.\n' +
+                'For string fields with nothing applicable (e.g. injuries/status_effects), use "none". For map fields (abilities, inventory, power_slots), use {"名称": {...}} keyed by item/skill name — never fill these with a plain string or array.\n' +
                 'When source text says thing1/thing2 (alternatives, often with / or "或"), RESOLVE the ambiguity: pick the most likely option, or describe both if equally uncertain. Do NOT copy the "or" literally.\n' +
                 '\nCorrect example (all fields filled):\n' + example + '\n';
         }
@@ -489,7 +489,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
                 (charCard || '') + rulesStaticEn + templateSection,
                 stateTable + worldBook + fallbackNote + newCharHintEn + emptyHintEn
             ],
-            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill all empty template fields. Extract from sources where directly stated; infer otherwise. String fields: "none" if N/A. Object/array fields: []. Resolve "or"/alternatives — do not copy literally.'
+            user: 'Recent messages:\n\n' + msgTexts + '\n\nOutput JSON with state_changes. Fill all empty template fields. Extract from sources where directly stated; infer otherwise. String fields: "none" if N/A. Map fields (abilities/inventory): {"名称": {...}} keyed by name. Resolve "or"/alternatives — do not copy literally.'
         };
     }
     var newCharHintZh = '';
@@ -502,7 +502,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             '你必须输出 state_changes.characters.<name> 包含全部模板字段：\n' +
             allFieldsDescZh + '\n' +
             (worldBook ? '从上方 ' + sourceLabelZh + ' 中提取能直接对应的值；其余字段从对话 + 场景上下文合理推断。\n' : '从上方 ' + sourceLabelZh + ' 中提取能直接对应的值；其余字段从对话 + 场景上下文合理推断。\n') +
-            '字符串字段如确实无相关内容（如 injuries/status_effects），填 "无"。对象/数组字段（abilities、inventory、power_slots）请用 [] 或 {}，不可填字符串。\n' +
+            '字符串字段如确实无相关内容（如 injuries/status_effects），填 "无"。映射字段（abilities、inventory、power_slots）用 {名称: {...}} 按物品/技能名做键，不可填字符串。\n' +
             '原文如有 "A或B"（斜杠 / "或" 等选择表述），请消歧推断，选择最可能的选项或同时描述两者。不要原样照搬 "或"。\n' +
             '\n正确示例（全部字段已填）：\n' + exampleZh + '\n';
     }
@@ -513,7 +513,7 @@ function buildStatePrompt_Preset(messages, vault, worldBookText, newNames, neCha
             (charCard || '') + rulesStaticZh + templateSection,
             stateTable + worldBook + fallbackNote + newCharHintZh + emptyHintZh
         ],
-        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。填充全部空字段：能从来源直接提取的优先，其余合理推断。字符串字段若无相关内容填"无"，对象/数组字段用 []。原文选择表述（"或"/斜杠）请消歧推断，不要原样照搬。'
+        user: '最近的对话消息：\n\n' + msgTexts + '\n\n输出包含 state_changes 的 JSON。填充全部空字段：能从来源直接提取的优先，其余合理推断。字符串字段若无相关内容填"无"，映射字段（abilities/inventory）按名称做键。原文选择表述（"或"/斜杠）请消歧推断，不要原样照搬。'
     };
 }
 

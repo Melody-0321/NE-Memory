@@ -8,6 +8,7 @@ import { filterCandidates, parseTimeConstraint, applyTimeFilter, isTimeOnlyQuery
 import { buildRetrievalMessagesLegacy } from './engine/retrieval.js';
 import { callMemoryRetrieval, recordTelemetry, callMemoryLLM } from './api/llm.js';
 import { recordChatStat } from './engine/chat-telemetry.js';
+import { formatItemContainer } from './vault/schema.js';
 
 export function registerAllTools(getChatId, getChatMessages) {
     if (typeof ToolManager === 'undefined') return;
@@ -444,6 +445,7 @@ function lookupCharacter(state, name) {
     var inv = card.inventory;
     if (inv && typeof inv === 'object') {
         var invLines = [];
+        // 遗留格式兼容：{gold, items: [{name, qty, equipped, desc}]}
         if (inv.gold !== undefined && inv.gold !== null) invLines.push('Gold: ' + inv.gold + 'G');
         var items = inv.items || [];
         if (items.length > 0) {
@@ -454,6 +456,12 @@ function lookupCharacter(state, name) {
                 return desc;
             });
             invLines.push('Items: ' + itemDescs.join('; '));
+        }
+        // schema map 格式（物品名为键）：{长剑: {description, rarity, properties}}
+        // 原先只读 inv.items，map 格式下一行都渲染不出（agent 查询看不见物品）
+        if (!inv.items) {
+            var invStr = formatItemContainer(inv);
+            if (invStr) invLines.push('Items: ' + invStr);
         }
         if (invLines.length > 0) {
             lines.push('inventory: ' + invLines.join(' | '));

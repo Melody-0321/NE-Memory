@@ -2,7 +2,7 @@ import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
-    DEFAULT_GLOBAL_SCHEMA,
+    DEFAULT_GLOBAL_SCHEMA, formatItemContainer,
     buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
     ROLE_CATEGORY_MAP, getPresetFieldsForRole
 } from '../src/core/vault/schema.js';
@@ -622,6 +622,49 @@ var sch4 = mergeStateChanges(
 );
 var heroScheme = (sch4.state.characters && sch4.state.characters['Hero']) ? sch4.state.characters['Hero']._scheme : null;
 eq(heroScheme, '_default_pc', 'protagonist _scheme backfilled (no prior _scheme), LLM change rejected');
+
+// ====== 容器字段格式契约（物品栏无回应修复回归） ======
+console.log('\n=== schema: item_schema container contract ===');
+
+// B: validateField 数组 + item_schema → 归一化为 map（key=item.name）
+var invField = { type: 'object', item_schema: { name: { type: 'string' }, description: { type: 'string' }, rarity: { type: 'string' }, properties: { type: 'string' } } };
+var arrRes = validateField([{ name: '长剑', description: '铁质长剑', rarity: '普通', properties: '无' }], invField);
+eq(arrRes.ok, true, 'array + item_schema => ok (normalized)');
+ok(arrRes.value && typeof arrRes.value === 'object' && !Array.isArray(arrRes.value), 'normalized value is map');
+eq(arrRes.value['长剑'].description, '铁质长剑', 'map keyed by item.name');
+// 字符串元素数组 → 键=值
+var strArrRes = validateField(['长剑', '盾牌'], invField);
+eq(strArrRes.ok && strArrRes.value['盾牌'], '盾牌', 'string element array => key=value map');
+// 无 item_schema 的 object 仍拒绝数组（既有语义保留）
+eq(validateField(['x'], { type: 'object' }).ok, false, 'array still rejected for plain object (no item_schema)');
+
+// D: merge 删除语义 — 容器子键 null → delete
+var invState = { characters: { 'Hero': { name: 'Hero', inventory: { '长剑': { name: '长剑', description: '铁质' }, '盾牌': { name: '盾牌' } } } } };
+var delRes = mergeStateChanges(invState, { 'characters.Hero.inventory.长剑': null });
+eq(delRes.state.characters['Hero'].inventory['长剑'], undefined, 'null item value => key deleted');
+eq(delRes.state.characters['Hero'].inventory['盾牌'].name, '盾牌', 'sibling item untouched');
+ok(delRes.changed, 'delete counts as change');
+// '' on object item → delete
+var delRes2 = mergeStateChanges(invState, { 'characters.Hero.inventory.盾牌': '' });
+eq(delRes2.state.characters['Hero'].inventory['盾牌'], undefined, 'empty string on object item => key deleted');
+// 字符串字段 null → ''（validateField 语义），非删除
+var strState = { characters: { 'Hero': { name: 'Hero', current_mood: '开心' } } };
+var moodRes = mergeStateChanges(strState, { 'characters.Hero.current_mood': '' });
+eq(moodRes.state.characters['Hero'].current_mood, '', 'string field empty => cleared to empty string (not deleted)');
+// 容器 map 整体写入 → per-item upsert（旧条目保留）
+var upsertRes = mergeStateChanges(invState, { 'characters.Hero.inventory': { '药水': { name: '药水' } } });
+eq(upsertRes.state.characters['Hero'].inventory['药水'].name, '药水', 'map container upsert adds item');
+eq(upsertRes.state.characters['Hero'].inventory['长剑'].name, '长剑', 'map container upsert keeps old items');
+
+// A: formatItemContainer 渲染
+var fmtMap = formatItemContainer({ '长剑': { description: '铁质长剑', rarity: '普通', properties: '无' } });
+eq(fmtMap, '长剑(铁质长剑;普通;无)', 'map format renders name(desc;rarity;props)');
+var fmtArr = formatItemContainer([{ name: 'notebook', description: 'journal' }]);
+eq(fmtArr, 'notebook(journal)', 'array format renders compatibly');
+var fmtStr = formatItemContainer({ '金币': 500 });
+eq(fmtStr, '金币(500)', 'scalar slot renders key(value)');
+eq(formatItemContainer({}), '', 'empty map => empty string');
+eq(formatItemContainer({ 'a': null }), '', 'null slot skipped');
 
 console.log('\n--- schema: ' + passed + ' passed, ' + failed + ' failed ---');
 if (failed > 0) process.exit(1);

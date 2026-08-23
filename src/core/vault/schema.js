@@ -409,8 +409,25 @@ export function validateField(value, fieldSchema) {
         // resolveSchemaPath 的 item_schema 步进 + 扁平化 changes 的独立路径完成
         if (value === null || value === undefined) {
             value = {};
-        } else if (typeof value !== 'object' || Array.isArray(value)) {
-            return { ok: false, value: value, error: 'Expected object, got: ' + (Array.isArray(value) ? 'array' : typeof value) };
+        } else if (Array.isArray(value)) {
+            // 容器字段（abilities/inventory/power_slots）的数组输出归一化为 map（key=item.name）。
+            // prompt 规则与 FIELD_SAMPLES 教的就是数组格式，直接拒绝会导致
+            // 物品/技能变动被静默丢弃（物品栏无回应的根因）
+            if (fieldSchema.item_schema) {
+                var normMap = {};
+                for (var ai = 0; ai < value.length; ai++) {
+                    var av = value[ai];
+                    if (av === null || av === undefined) continue;
+                    if (typeof av !== 'object') { normMap[String(av)] = String(av); continue; }
+                    var ak = (av.name !== undefined && av.name !== null && String(av.name)) || ('item_' + ai);
+                    normMap[ak] = av;
+                }
+                value = normMap;
+            } else {
+                return { ok: false, value: value, error: 'Expected object, got: array' };
+            }
+        } else if (typeof value !== 'object') {
+            return { ok: false, value: value, error: 'Expected object, got: ' + typeof value };
         }
     }
 
@@ -855,6 +872,21 @@ export function mergeStateChanges(state, validatedChanges) {
             return;
         }
         var oldVal = current[lastKey];
+        // 删除语义：null（或容器子键上的 ''）→ 删除该键。
+        // 容器字段（inventory/abilities）无其它移除语法；字符串字段的 null
+        // 在 validateField 已转为 ''，不会走到这里的 null 分支
+        if (flattened[path] === null && oldVal !== undefined) {
+            delete current[lastKey];
+            capturedChanges.push({ path: path, old: oldVal, new: null });
+            hasChanges = true;
+            return;
+        }
+        if (flattened[path] === '' && oldVal !== null && typeof oldVal === 'object') {
+            delete current[lastKey];
+            capturedChanges.push({ path: path, old: oldVal, new: null });
+            hasChanges = true;
+            return;
+        }
         if (oldVal !== flattened[path]) {
             current[lastKey] = flattened[path];
             capturedChanges.push({ path: path, old: oldVal, new: flattened[path] });
@@ -922,6 +954,41 @@ export function getCharacterInjectionFields(state, name, stCharName) {
 // D5: '本轮提及'判定窗口——最近 N 条消息 + 文本上限，避免全量历史拼接 + 每角色 indexOf 扫描
 var INJECTION_MENTION_WINDOW = 20;
 var INJECTION_MENTION_MAX_TEXT = 16000;
+
+// formatItemContainer — 容器字段（inventory/abilities/power_slots 等 item_schema map）
+// 的注入渲染：'长剑(铁质长剑;普通;无) | 盾牌(木盾;普通;无)'。
+// 兼容三种存量形态：map（schema 期望）、数组（prompt 曾教）、遗留 {gold, items} 不在此处理。
+// 注入侧原先 String(map) 渲染成 '[object Object]'，LLM 看不见当前物品内容——
+// 物品变动无回应的上游放大器。
+export function formatItemContainer(fv) {
+    if (fv === undefined || fv === null || fv === '') return '';
+    var parts = [];
+    if (Array.isArray(fv)) {
+        fv.forEach(function (it) {
+            if (it === null || it === undefined) return;
+            if (typeof it === 'object') {
+                var bits = [it.description, it.rarity, it.properties].filter(Boolean).join(';');
+                parts.push(bits ? ((it.name || '?') + '(' + bits + ')') : String(it.name || '?'));
+            } else {
+                parts.push(String(it));
+            }
+        });
+    } else if (typeof fv === 'object') {
+        Object.keys(fv).forEach(function (k) {
+            var v = fv[k];
+            if (v === null || v === undefined || v === '') return;
+            if (typeof v === 'object') {
+                var bits = [v.description, v.rarity, v.properties].filter(Boolean).join(';');
+                parts.push(bits ? (k + '(' + bits + ')') : k);
+            } else {
+                parts.push(String(v) === k ? k : (k + '(' + String(v) + ')'));
+            }
+        });
+    } else {
+        return String(fv);
+    }
+    return parts.join(' | ');
+}
 
 export function buildStateInjectionTable(state, messages, maxItems, world, stCharName) {
     if (!state) return '';
@@ -992,7 +1059,11 @@ export function buildStateInjectionTable(state, messages, maxItems, world, stCha
                 for (var j = 0; j < fields.length; j++) {
                     var fk = fields[j];
                     var fv = item.card[fk] !== undefined ? item.card[fk] : '';
-                    var valStr = (fv === undefined || fv === null || fv === '') ? '(empty)' : String(fv);
+                    var fieldDef0 = fieldDefs[fk] || {};
+                    // 容器字段渲染条目内容（原先 String(map) → '[object Object]'，LLM 看不见物品）
+                    var valStr = (fieldDef0.type === 'object' && fieldDef0.item_schema)
+                        ? (formatItemContainer(fv) || '(empty)')
+                        : ((fv === undefined || fv === null || fv === '') ? '(empty)' : String(fv));
                     var isEmpty = (fv === undefined || fv === '' || (fk === 'affection' && Number(fv) === 0));
                     var suffix = '';
                     var fieldDef = fieldDefs[fk] || {};
@@ -1003,7 +1074,7 @@ export function buildStateInjectionTable(state, messages, maxItems, world, stCha
                     else if (fieldDef.type === 'number' && fieldDef.min !== undefined && fieldDef.max !== undefined) suffix = ' (' + fieldDef.min + '-' + fieldDef.max + ')';
                     else if (fieldDef.type === 'object' && fieldDef.item_schema) {
                         var isKeys = Object.keys(fieldDef.item_schema);
-                        suffix = ' (object, 每个物品应包含: ' + isKeys.join('/') + ')';
+                        suffix = ' (object, 键为条目名, 每项含: ' + isKeys.join('/') + '; 移除条目置 null)';
                     }
                     var translatedLabel = t_field(fk);
                     if (fieldDef.required && isEmpty) {

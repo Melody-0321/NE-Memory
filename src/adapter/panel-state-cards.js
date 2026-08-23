@@ -119,12 +119,15 @@ function renderCharacterCard(name, card, schema, cardType) {
             });
         } else {
             Object.keys(card.inventory).forEach(function (slot) {
+                var slotVal = card.inventory[slot];
+                // null 占位（删除语义残留/手动编辑）不渲染
+                if (slotVal === null || slotVal === undefined) return;
                 invItems.push(
                     '<div class="ne-inv-item">' +
                     '<div class="ne-inv-item-header">' +
                     '<span class="ne-inv-name">' + escapeHtml(slot) + '</span>' +
                     '</div>' +
-                    '<div class="ne-inv-desc">' + escapeHtml(String(card.inventory[slot])) + '</div>' +
+                    '<div class="ne-inv-desc">' + escapeHtml(String(slotVal)) + '</div>' +
                     '</div>'
                 );
             });
