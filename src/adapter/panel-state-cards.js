@@ -1,4 +1,4 @@
-import { readState, writeState, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
+import { readState, writeState, readVault, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 
 function _getChatId() {
     try {
@@ -524,15 +524,65 @@ export function renderSuspensePanelHTML(content) {
     return html;
 }
 
+// 编辑路径的 vault 加载：优先用面板渲染缓存（_pendingInlineStorage），缓存
+// 缺失时读库兜底。修复「保存按钮无反应」——原先缓存缺失时静默 return，
+// 用户零反馈（连编辑态都不退出）。
+async function _loadEditVault() {
+    var stored = _pendingInlineStorage;
+    if (stored && stored.vault) return stored;
+    var chatId = _getChatId();
+    if (!chatId) throw new Error('no active chat');
+    var vault = await readVault(chatId);
+    if (!vault) throw new Error('vault not found');
+    return { vault: vault, getChatId: function () { return chatId; } };
+}
+
+// 编辑表补全行：inventory（表格渲染跳过、物品栏区编辑时隐藏）与卡片实际
+// 持有但当前模板之外的字段。沿用 .ne-char-val 结构，saveCardFields 的
+// 既有循环（object 走 JSON.parse）自动接住；exitCardEditMode 恢复
+// _neOrigTableHTML 时自动清除。
+function _buildExtraFieldRow(charName, fieldName, fieldType, value) {
+    var tr = document.createElement('tr');
+    var textVal = '';
+    if (fieldType === 'object') {
+        textVal = (value !== null && value !== undefined) ? JSON.stringify(value, null, 1) : '';
+    } else if (value !== null && value !== undefined) {
+        textVal = String(value);
+    }
+    var editor;
+    if (fieldType === 'object') {
+        editor = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(textVal) + '</textarea>';
+    } else if (fieldType === 'number') {
+        editor = '<input class="ne-char-edit" type="number" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '">';
+    } else {
+        editor = '<input class="ne-char-edit" type="text" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '">';
+    }
+    tr.innerHTML = '<td class="ne-field-label">' + escapeHtml(t_field(fieldName) || fieldName) + '</td>' +
+        '<td class="ne-char-val" data-char="' + escapeHtml(charName) + '" data-field="' + escapeHtml(fieldName) + '" data-type="' + fieldType + '">' + editor + '</td>';
+    return tr;
+}
+
 export function enterCardEditMode(editBtn) {
     var cardDiv = editBtn.closest('.ne-char-card');
     if (!cardDiv || cardDiv.classList.contains('ne-card-editing')) return;
 
     cardDiv.classList.add('ne-card-editing');
     cardDiv._neOrigEditBtnHTML = editBtn.outerHTML;
+    var charName = editBtn.getAttribute('data-char');
 
     var body = cardDiv.querySelector('.ne-char-card-body');
     if (!body) return;
+
+    // 编辑取值以 vault 实际数据为准（DOM 文本仅兜底）——DOM 展示值可能是
+    // 滞后快照或展示格式（JSON.stringify / 空值占位），直接取文本会写回错值
+    var stored = _pendingInlineStorage;
+    var cardData = null;
+    try {
+        if (stored && stored.vault && stored.vault.content && stored.vault.content.state
+            && stored.vault.content.state.characters && charName) {
+            cardData = stored.vault.content.state.characters[charName] || null;
+        }
+    } catch (e) { cardData = null; }
 
     // Hide inventory & power slots sections while editing (raw JSON is in the edit form for inventory)
     var sectionsToHide = cardDiv.querySelectorAll('.ne-inventory-section, .ne-power-slots-section, .ne-section-header');
@@ -545,25 +595,40 @@ export function enterCardEditMode(editBtn) {
     if (table) cardDiv._neOrigTableHTML = table.outerHTML;
 
     var vals = cardDiv.querySelectorAll('.ne-char-val');
+    var tableFields = {};
     vals.forEach(function(td) {
+        var fieldName = td.getAttribute('data-field');
+        if (fieldName) tableFields[fieldName] = true;
         var fieldType = td.getAttribute('data-type') || 'string';
         var span = td.querySelector('.ne-char-val-text');
-        var textVal = span ? (span.textContent || '').trim() : '';
+        if (!span) return;
+        var textVal = (span.textContent || '').trim();
         if (textVal === t('empty_value') || textVal === '(Not filled)') textVal = '';
 
-        // object/array fields: read-only, not editable as plain text
-        // Exception: inventory — editable as JSON textarea
+        // object 字段（abilities/inventory/power_slots 等）以 JSON textarea 编辑。
+        // 44dd5b6 的原始设计从未生效：textarea 分支依赖的 td[data-field=inventory]
+        // 从不存在（表格渲染跳过 inventory，其余 object 字段只做展示无编辑器）。
+        // 值从 vault 实际数据取（DOM 文本是 JSON.stringify 的展示格式）。
         if (fieldType === 'object') {
-            if (td.getAttribute('data-field') !== 'inventory') return;
-            editor = '<textarea class="ne-char-edit" rows="4" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(textVal).replace(/"/g, '&quot;') + '</textarea>';
-            span.outerHTML = editor;
+            var objVal = (cardData && cardData[fieldName] !== undefined) ? cardData[fieldName] : null;
+            var objText = (objVal !== null && objVal !== undefined && typeof objVal === 'object')
+                ? JSON.stringify(objVal, null, 1) : (textVal || '');
+            span.outerHTML = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(objText) + '</textarea>';
             return;
         }
+
+        // 标量字段：vault 实际值优先于 DOM 展示文本
+        var dataVal = (cardData && cardData[fieldName] !== undefined) ? cardData[fieldName] : undefined;
+        if (dataVal !== undefined && dataVal !== null && typeof dataVal !== 'object') textVal = String(dataVal);
 
         var editor;
         switch (fieldType) {
             case 'enum':
                 var values = (td.getAttribute('data-values') || '').split(',');
+                var trimmedVals = values.map(function(v) { return v.trim(); });
+                // 实际值不在枚举选项内（LLM 写出枚举外值）：补为首项，
+                // 防止下拉框静默选中第一项导致保存时改写原值
+                if (textVal && trimmedVals.indexOf(textVal) === -1) values.unshift(textVal);
                 editor = '<select class="ne-char-edit">';
                 values.forEach(function(v) {
                     var vv = v.trim();
@@ -587,7 +652,19 @@ export function enterCardEditMode(editBtn) {
         span.outerHTML = editor;
     });
 
-    var charName = editBtn.getAttribute('data-char');
+    // ── 编辑表补全：inventory + 模板外存量字段（修复「编辑模式显示的
+    // 字段与实际使用字段不一致」——原编辑表只含当前模板字段）──
+    if (table && cardData) {
+        if (cardData.inventory !== undefined && !tableFields.inventory) {
+            table.appendChild(_buildExtraFieldRow(charName, 'inventory', 'object', cardData.inventory));
+        }
+        Object.keys(cardData).forEach(function(k) {
+            if (k === 'status' || k.charAt(0) === '_' || tableFields[k]) return;
+            var v = cardData[k];
+            var vType = (typeof v === 'number') ? 'number' : ((v !== null && typeof v === 'object') ? 'object' : 'string');
+            table.appendChild(_buildExtraFieldRow(charName, k, vType, v));
+        });
+    }
 
     editBtn.outerHTML =
         '<button class="ne-card-save-btn">' + t('Save') + '</button>' +
@@ -608,69 +685,94 @@ export function enterCardEditMode(editBtn) {
     };
 }
 
-function saveCardFields(cardDiv) {
-    var stored = _pendingInlineStorage;
-    if (!stored || !stored.vault) return;
-    var stateVault = stored.vault;
-    var c = stateVault.content || {};
-    var state = c.state || {};
-    var chars = state.characters || {};
-
-    var vals = cardDiv.querySelectorAll('.ne-char-val');
-    var hasChanges = false;
-    var capturedChanges = [];
-    vals.forEach(function(td) {
-        var charName = td.getAttribute('data-char');
-        var fieldName = td.getAttribute('data-field');
-        var fieldType = td.getAttribute('data-type') || 'string';
-        var input = td.querySelector('.ne-char-edit');
-        if (!charName || !fieldName || !input) return;
-
-        var rawVal = input.value.trim();
-        var newVal;
-        if (fieldType === 'number') {
-            newVal = rawVal === '' ? null : Number(rawVal);
-        } else if (fieldType === 'object') {
-            // Parse JSON for object fields edited via textarea (e.g. inventory)
-            try { newVal = rawVal ? JSON.parse(rawVal) : null; } catch (e) { return; } // skip invalid JSON
-        } else {
-            newVal = rawVal === '' ? '' : rawVal;
-        }
-
-        if (!chars[charName]) chars[charName] = {};
-        var old = chars[charName][fieldName];
-        if (old !== newVal) {
-            chars[charName][fieldName] = newVal;
-            hasChanges = true;
-            capturedChanges.push({ path: 'characters.' + charName + '.' + fieldName, old: old, new: newVal });
-        }
-    });
-
-    if (!hasChanges) { exitCardEditMode(cardDiv); return; }
-
-    state.characters = chars;
-    c.state = state;
-
-    var getChatId = stored.getChatId;
-    var chatId = getChatId();
-    // UI-6: writeState 失败不再静默，报 toast 提示
-    writeState(chatId, stateVault).then(function() {
-        busEmit('vault:updated', { getChatId: getChatId });
-    }).catch(function(err) {
-        showToast(t('Save failed') + ': ' + err.message, 'error', 4000);
-    });
-
-    if (capturedChanges.length > 0) {
-        recordStateDelta(chatId, {
-            source: 'manual_edit',
-            summary: '\u624B\u52A8\u7F16\u8F91 ' + capturedChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
-            changes: capturedChanges,
-            message_dates: []
-        }).catch(function(err) { console.error('[NE] recordStateDelta (manual edit) failed for ' + chatId, err); });
+async function saveCardFields(cardDiv) {
+    // 保存永不静默：缓存缺失时读库兜底，任何异常都有 toast 反馈——
+    // 修复「保存按钮无反应」（原先 !stored 静默 return，且无 try/catch，
+    // onclick 内异常直接死亡，用户零反馈）
+    var stored;
+    try {
+        stored = await _loadEditVault();
+    } catch (e) {
+        showToast(t('Save failed') + ': ' + (e && e.message ? e.message : e), 'error', 4000);
+        return;
     }
+    var stateVault = stored.vault;
+    try {
+        var c = stateVault.content || {};
+        var state = c.state || {};
+        var chars = state.characters || {};
 
-    // UI-6: 死代码清理——.ne-card-edit-form/.ne-card-edit-btns 从不被创建，改走显式 exitCardEditMode
-    exitCardEditMode(cardDiv);
+        var vals = cardDiv.querySelectorAll('.ne-char-val');
+        var hasChanges = false;
+        var capturedChanges = [];
+        var invalidJsonFields = [];
+        vals.forEach(function(td) {
+            var charName = td.getAttribute('data-char');
+            var fieldName = td.getAttribute('data-field');
+            var fieldType = td.getAttribute('data-type') || 'string';
+            var input = td.querySelector('.ne-char-edit');
+            if (!charName || !fieldName || !input) return;
+
+            var rawVal = input.value.trim();
+            var newVal;
+            if (fieldType === 'number') {
+                newVal = rawVal === '' ? null : Number(rawVal);
+            } else if (fieldType === 'object') {
+                // Parse JSON for object fields edited via textarea (inventory/abilities/…)
+                try { newVal = rawVal ? JSON.parse(rawVal) : null; }
+                catch (e) { invalidJsonFields.push(fieldName); return; } // skip invalid JSON, but report below
+            } else {
+                newVal = rawVal === '' ? '' : rawVal;
+            }
+
+            if (!chars[charName]) chars[charName] = {};
+            var old = chars[charName][fieldName];
+            // object 字段引用比较必然不等（重新 JSON.parse 的对象），
+            // 用值级比较避免未改动时误记版本
+            var changed = old !== newVal;
+            if (changed && old !== null && typeof old === 'object' && newVal !== null && typeof newVal === 'object') {
+                changed = JSON.stringify(old) !== JSON.stringify(newVal);
+            }
+            if (changed) {
+                chars[charName][fieldName] = newVal;
+                hasChanges = true;
+                capturedChanges.push({ path: 'characters.' + charName + '.' + fieldName, old: old, new: newVal });
+            }
+        });
+
+        if (invalidJsonFields.length > 0) {
+            showToast(t('Invalid JSON') + ': ' + invalidJsonFields.join(', '), 'warn', 4000);
+        }
+        if (!hasChanges) { exitCardEditMode(cardDiv); return; }
+
+        state.characters = chars;
+        c.state = state;
+
+        var getChatId = stored.getChatId;
+        var chatId = getChatId();
+        // UI-6: writeState 失败不再静默，报 toast 提示
+        writeState(chatId, stateVault).then(function() {
+            showToast(t('Saved'), 'info', 1500);
+            busEmit('vault:updated', { getChatId: getChatId });
+        }).catch(function(err) {
+            showToast(t('Save failed') + ': ' + err.message, 'error', 4000);
+        });
+
+        if (capturedChanges.length > 0) {
+            recordStateDelta(chatId, {
+                source: 'manual_edit',
+                summary: '\u624B\u52A8\u7F16\u8F91 ' + capturedChanges.map(function(c) { return c.path.split('.').pop(); }).join(', '),
+                changes: capturedChanges,
+                message_dates: []
+            }).catch(function(err) { console.error('[NE] recordStateDelta (manual edit) failed for ' + chatId, err); });
+        }
+
+        // UI-6: 死代码清理——.ne-card-edit-form/.ne-card-edit-btns 从不被创建，改走显式 exitCardEditMode
+        exitCardEditMode(cardDiv);
+    } catch (e) {
+        showToast(t('Save failed') + ': ' + (e && e.message ? e.message : e), 'error', 4000);
+        console.error('[NE] saveCardFields failed:', e);
+    }
 }
 
 var _schemeEditStates = {};  // per-character scheme editor state
@@ -1584,9 +1686,15 @@ function exitCardEditMode(cardDiv) {
     cardDiv.classList.remove('ne-card-editing');
 }
 
-function deleteCharacterCard(cardDiv, charName) {
-    var stored = _pendingInlineStorage;
-    if (!stored || !stored.vault) return;
+async function deleteCharacterCard(cardDiv, charName) {
+    // 与 saveCardFields 同款永不静默兜底（原 !stored 静默 return）
+    var stored;
+    try {
+        stored = await _loadEditVault();
+    } catch (e) {
+        showToast(t('Delete failed') + ': ' + (e && e.message ? e.message : e), 'error', 4000);
+        return;
+    }
     var vault = stored.vault;
     var c = vault.content || {};
     var state = c.state || {};
