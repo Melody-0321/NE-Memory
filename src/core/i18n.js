@@ -787,9 +787,20 @@ export const CONFIG_I18N = {
 };
 
 let _locale = 'en';
-export function t(locale) { if (locale) _locale = locale; }
+// 规范 locale：ST getCurrentLocale 常返回语言短码（'zh'/'en'），而翻译表 key 用长码
+// （'zh-cn'/'zh-tw'）；也过滤 'null'/'undefined' 等非法值，避免整层 fallback 英文。
+function _canonLocale(lc) {
+    if (!lc) return 'en';
+    lc = String(lc).toLowerCase().trim();
+    if (lc.startsWith('zh')) {
+        return (lc.includes('tw') || lc.includes('hk')) ? 'zh-tw' : 'zh-cn';
+    }
+    if (lc.startsWith('en')) return 'en';
+    return lc;
+}
+export function t(locale) { if (locale) _locale = _canonLocale(locale); }
 export function t_narrative(key, replacements) {
-    const map = NARRATIVE_I18N[_locale] || NARRATIVE_I18N['en'] || {};
+    const map = NARRATIVE_I18N[_canonLocale(_locale)] || NARRATIVE_I18N['en'] || {};
     let text = map[key] || key;
     if (replacements) {
         Object.keys(replacements).forEach(k => { text = text.replace('{' + k + '}', replacements[k]); });
@@ -797,7 +808,7 @@ export function t_narrative(key, replacements) {
     return text;
 }
 export function t_config(key) {
-    const map = CONFIG_I18N[_locale] || CONFIG_I18N['en'] || {};
+    const map = CONFIG_I18N[_canonLocale(_locale)] || CONFIG_I18N['en'] || {};
     return map[key] || key;
 }
 
@@ -885,8 +896,8 @@ export const STATE_FIELD_I18N = {
  * 未收录的字段名 fallback 到原始 key（处理 LLM 动态发现的字段）。
  */
 let _fieldLocale = 'en';
-export function setFieldLocale(locale) { if (locale) _fieldLocale = locale; }
+export function setFieldLocale(locale) { if (locale) _fieldLocale = _canonLocale(locale); }
 export function t_field(key) {
-    const map = STATE_FIELD_I18N[_fieldLocale] || STATE_FIELD_I18N['en'] || {};
+    const map = STATE_FIELD_I18N[_canonLocale(_fieldLocale)] || STATE_FIELD_I18N['en'] || {};
     return map[key] || key;
 }

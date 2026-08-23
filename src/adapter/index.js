@@ -69,16 +69,20 @@ function getChatMessages() {
 }
 
 function getLocale() {
+    // ST getCurrentLocale 在部分宿主（酒馆助手 iframe/晚就绪）可能返回 null/空，
+    // 若强转 String → 'null'/'undefined' 会让 i18n 整层 fallback 英文。仅接受语言码形态。
+    function isLangCode(v) { return typeof v === 'string' && /^[a-z]{2,}(?:-[a-z0-9]{2,})?$/i.test(v); }
     try {
         if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
             var ctx = SillyTavern.getContext();
-            if (ctx.getCurrentLocale) {
-                var l = String(ctx.getCurrentLocale()).toLowerCase();
-                if (l) return l;
+            if (ctx && typeof ctx.getCurrentLocale === 'function') {
+                var raw = ctx.getCurrentLocale();
+                if (isLangCode(raw)) return String(raw).toLowerCase();
             }
         }
     } catch (e) {}
-    try { return localStorage.getItem('language') || 'en'; } catch (e) { return 'en'; }
+    try { var stored = localStorage.getItem('language'); if (isLangCode(stored)) return stored; } catch (e) {}
+    return 'en';
 }
 
 function getContextBudget() {
