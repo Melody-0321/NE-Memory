@@ -84,6 +84,26 @@ export function evaluateRollbackTarget(activeSeqs, headSeq, targetSeq) {
 }
 
 /**
+ * 宽松回退：目标 seq 因链上个别记录缺失（空洞）不在 active 时，
+ * 回退到 active 中「小于 target 的最大可用 seq」（空洞下界），
+ * 使删除消息回退即使命中空洞也能落到最近的合法版本；若没有更低可用
+ * 版本（target 已是 active 下界）则返回 null，由调用方维持 archived。
+ *
+ * @param {number[]} activeSeqs
+ * @param {number} targetSeq
+ * @returns {number|null}
+ */
+export function _findFallbackTarget(activeSeqs, targetSeq) {
+    var fb = null;
+    for (var i = 0; i < activeSeqs.length; i++) {
+        var s = activeSeqs[i];
+        // 只回退到 ≥1 的真实版本；0 是空根哨兵，宽松到 0 会清空整条链（过删），不采用
+        if (s > 0 && s < targetSeq && (fb === null || s > fb)) fb = s;
+    }
+    return fb;
+}
+
+/**
  * 链一致性体检（纯函数）：active 引用 vs 实际存在的记录
  *
  * seq 0 为链根哨兵，永无记录，不计悬空。
@@ -811,6 +831,11 @@ export async function rollbackState(chatId, targetSeq) {
     var chain = chainData.chain || chainData;
     // 折叠守卫：compact 后旧版本已从 active 链剔除，回滚到已折叠版本会破坏链（误删 head delta）
     var verdict = evaluateRollbackTarget(chain.state_active, chain.state_head_seq, targetSeq);
+    // 宽松回退：目标落在空洞（个别记录缺失）时，落到 active 中离其最近的下界版本
+    if (verdict === 'archived') {
+        var fbSeq = _findFallbackTarget(chain.state_active, targetSeq);
+        if (fbSeq !== null) { targetSeq = fbSeq; verdict = 'ok'; }
+    }
     if (verdict !== 'ok') return { ok: false, reason: verdict };
 
     var orphanedSeqs = [];
@@ -854,6 +879,11 @@ export async function rollbackMemory(chatId, targetSeq) {
     var chain = chainData.chain || chainData;
     // 折叠守卫：compact 后旧版本已从 active 链剔除，回滚到已折叠版本会破坏链（误删 head delta）
     var verdict = evaluateRollbackTarget(chain.mem_active, chain.mem_head_seq, targetSeq);
+    // 宽松回退：目标落在空洞（个别记录缺失）时，落到 active 中离其最近的下界版本
+    if (verdict === 'archived') {
+        var fbSeq = _findFallbackTarget(chain.mem_active, targetSeq);
+        if (fbSeq !== null) { targetSeq = fbSeq; verdict = 'ok'; }
+    }
     if (verdict !== 'ok') return { ok: false, reason: verdict };
 
     var orphanedSeqs = [];

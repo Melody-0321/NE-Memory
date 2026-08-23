@@ -1233,19 +1233,10 @@ async function _rollbackOrWarn(type, chatId, targetSeq) {
     var res = type === 'state'
         ? await rollbackState(chatId, targetSeq)
         : await rollbackMemory(chatId, targetSeq);
-    if (res && !res.ok && res.reason === 'archived') {
-        // 诊断：打印 active 与 head，区分「真压实」与「目标 seq 不在 active（如滚到 0）」
-        try {
-            var chain = await getActiveChain(chatId);
-            var activeArr = chain && chain[type === 'state' ? 'state_active' : 'mem_active'];
-            var headV = chain && (type === 'state' ? chain.state_head_seq : chain.mem_head_seq);
-            console.warn('[NE] _rollbackOrWarn ARGHIVED', type, 'target=' + targetSeq, 'head=' + headV, 'active=[' + (activeArr || []).join(',') + ']');
-        } catch (e) {}
-        try { toastr.warning('该版本已压缩归档，无法回退到更早的版本。如怀疑版本链异常，可运行 设置 → 数据 → 版本链体检 诊断。'); } catch (e) {}
-        return false;
-    }
     if (res && !res.ok) {
-        console.warn('[NE] rollback ' + type + ' skipped (reason=' + res.reason + ') target=' + targetSeq);
+        // 宽松回退已把空洞目标落到最近下界版本；此处仅剩 target 已无更低可用版本
+        // 的极端情形。不再弹「已压缩归档」误导用户（记忆由 reconcileOrphanedStm 兜底清理）。
+        console.log('[NE] rollback ' + type + ' skipped (reason=' + res.reason + ') target=' + targetSeq + ' — 由 reconcileOrphanedStm 兜底清理孤儿');
         return false;
     }
     return true;
