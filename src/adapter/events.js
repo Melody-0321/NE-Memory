@@ -1234,6 +1234,13 @@ async function _rollbackOrWarn(type, chatId, targetSeq) {
         ? await rollbackState(chatId, targetSeq)
         : await rollbackMemory(chatId, targetSeq);
     if (res && !res.ok && res.reason === 'archived') {
+        // 诊断：打印 active 与 head，区分「真压实」与「目标 seq 不在 active（如滚到 0）」
+        try {
+            var chain = await getActiveChain(chatId);
+            var activeArr = chain && chain[type === 'state' ? 'state_active' : 'mem_active'];
+            var headV = chain && (type === 'state' ? chain.state_head_seq : chain.mem_head_seq);
+            console.warn('[NE] _rollbackOrWarn ARGHIVED', type, 'target=' + targetSeq, 'head=' + headV, 'active=[' + (activeArr || []).join(',') + ']');
+        } catch (e) {}
         try { toastr.warning('该版本已压缩归档，无法回退到更早的版本。如怀疑版本链异常，可运行 设置 → 数据 → 版本链体检 诊断。'); } catch (e) {}
         return false;
     }
@@ -1297,6 +1304,10 @@ async function _detectAndRollback(chatId, chatMessages, currentVault) {
     var rolledBackState = 0;
     var rolledBackMem = 0;
     var targetStateSeq = 0;
+
+    if (affectedStateSeqs.length > 0 || affectedMemSeqs.length > 0) {
+        console.log('[NE] _detectAndRollback affected:', 'state=[' + affectedStateSeqs.join(',') + ']', 'mem=[' + affectedMemSeqs.join(',') + ']');
+    }
 
     if (affectedStateSeqs.length > 0) {
         var earliestStateSeq = Math.min.apply(null, affectedStateSeqs);
