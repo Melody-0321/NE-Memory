@@ -445,13 +445,99 @@ async function _refreshPanel(mesid) {
     }
 }
 
+// ─── 文档定位（云端嵌入场景） ─────────────────────────────
+// 实测（2026-08-22 云端日志）：init 时 #chat=no、消息已渲染但
+// document.querySelectorAll('.mes[mesid]')=0——NE 所在 document 与
+// 聊天 DOM 不在同一文档（shell 嵌 iframe 之类）。同源下优先返回
+// 持有 #chat 的文档；跨域访问 top 会抛错，回退自身（行为同旧版）。
+function _chatDoc() {
+    if (document.getElementById('chat')) return document;
+    try {
+        if (window.top && window.top !== window && window.top.document && window.top.document.getElementById('chat')) {
+            return window.top.document;
+        }
+    } catch (e) {} // 跨域 iframe
+    return document;
+}
+
+// DOM 普查：一行日志回答「消息 DOM 到底在哪、长什么样」
+function _domCensus() {
+    var inIframe;
+    try { inIframe = window.top !== window; } catch (e) { inIframe = 'unknown'; }
+    var doc = _chatDoc();
+    var chat = doc.getElementById('chat');
+    var mesAll = doc.querySelectorAll('.mes').length;
+    var mesWithId = doc.querySelectorAll('.mes[mesid]').length;
+    var anyMesid = doc.querySelectorAll('[mesid]').length;
+    var mesText = doc.querySelectorAll('.mes_text').length;
+    var chatDesc = chat
+        ? 'yes(children=' + chat.childElementCount + (chat.shadowRoot ? ',shadow=yes' : '') + ')'
+        : 'no';
+    return 'inIframe=' + inIframe + ', #chat=' + chatDesc +
+        ', .mes=' + mesAll + ', .mes[mesid]=' + mesWithId +
+        ', [mesid]=' + anyMesid + ', .mes_text=' + mesText;
+}
+
+// 异常形态采样：结构差异时直接吐出真实元素片段，不再盲猜
+function _logDomAnomalies() {
+    try {
+        var doc = _chatDoc();
+        // iframe 环境：报告主文档实况（_chatDoc 是否已切到主文档）
+        try {
+            if (window.top !== window && window.top.document) {
+                var topMes = window.top.document.querySelectorAll('.mes[mesid]').length;
+                console.warn('[NE floor-panel] iframe 环境：主文档 .mes[mesid]=' + topMes +
+                    '，_chatDoc=' + (doc === window.top.document ? '已切主文档' : '仍用自身（未找到#chat）'));
+            }
+        } catch (e) { console.warn('[NE floor-panel] iframe 环境：跨域无法访问主文档'); }
+        var mesAll = doc.querySelectorAll('.mes');
+        var mesWithId = doc.querySelectorAll('.mes[mesid]');
+        if (mesAll.length > 0 && mesWithId.length === 0) {
+            console.warn('[NE floor-panel] .mes 存在但无 mesid 属性！首元素：' + mesAll[0].outerHTML.slice(0, 300));
+        }
+        var chat = doc.getElementById('chat');
+        if (chat && chat.childElementCount > 0 && mesAll.length === 0) {
+            console.warn('[NE floor-panel] #chat 有子元素但无 .mes！首子元素：' +
+                (chat.firstElementChild ? chat.firstElementChild.outerHTML.slice(0, 300) : 'null'));
+        }
+        if (!chat && mesAll.length === 0) {
+            var kids = [];
+            for (var i = 0; i < document.body.children.length && kids.length < 15; i++) {
+                var el = document.body.children[i];
+                var desc = el.tagName.toLowerCase();
+                if (el.id) desc += '#' + el.id;
+                if (el.className && typeof el.className === 'string' && el.className.trim()) {
+                    desc += '.' + el.className.trim().split(/\s+/).slice(0, 2).join('.');
+                }
+                kids.push(desc);
+            }
+            console.warn('[NE floor-panel] #chat 与 .mes 均缺失！body 子元素：' + kids.join(' | '));
+        }
+    } catch (e) { console.warn('[NE floor-panel] 异常检测失败：', e); }
+}
+
+// observer 懒挂：init 时 #chat 可能不存在（云端嵌入/晚渲染），
+// 每次扫描自愈补挂——旧版 init 一次性 if(chat) 静默跳过后再无机会
+function _ensureObserver() {
+    if (_mutationObserver) return;
+    if (typeof MutationObserver === 'undefined') return;
+    try {
+        var chatEl = _chatDoc().getElementById('chat');
+        if (!chatEl) return;
+        _mutationObserver = new MutationObserver(function() { _scanMissing(); });
+        _mutationObserver.observe(chatEl, { childList: true, subtree: true });
+    } catch (e) { console.warn('[NE floor-panel] MutationObserver attach failed:', e); }
+}
+
 // ─── 扫描补挂缺失面板 ─────────────────────────────────────
 function _scanMissing() {
     if (!_isEnabled()) return;
     if (_scanTimer) clearTimeout(_scanTimer);
     _scanTimer = setTimeout(function() {
         _scanTimer = null;
-        var allMes = document.querySelectorAll('.mes[mesid]');
+        _ensureObserver();
+        var doc = _chatDoc();
+        var allMes = doc.querySelectorAll('.mes[mesid]');
         allMes.forEach(function(mesEl) {
             var mesid = Number(mesEl.getAttribute('mesid'));
             if (isNaN(mesid)) return;
@@ -459,7 +545,7 @@ function _scanMissing() {
         });
         // 清理失效条目
         _mountedHosts.forEach(function(state, mesid) {
-            if (!document.body.contains(state.host)) {
+            if (!doc.body.contains(state.host)) {
                 _mountedHosts.delete(mesid);
             }
         });
@@ -470,9 +556,12 @@ function _scanMissing() {
 function _onCharacterMessageRendered(mesid) {
     if (!_isEnabled()) return;
     if (mesid == null) return;
-    var mesEl = document.querySelector('.mes[mesid="' + mesid + '"]');
+    var mesEl = _chatDoc().querySelector('.mes[mesid="' + mesid + '"]');
     if (mesEl) {
         _mountPanel(mesEl, Number(mesid));
+    } else {
+        console.warn('[NE floor-panel] character_message_rendered mesid=' + mesid +
+            '：未找到对应 DOM——' + _domCensus());
     }
 }
 
@@ -481,6 +570,11 @@ function _onChatChanged() {
     _mountedHosts.forEach(function(state) { state.host.remove(); });
     _mountedHosts.clear();
     setTimeout(_scanMissing, 300);
+    // 扫描（300ms 触发 + 200ms debounce）完成后的普查快照
+    setTimeout(function() {
+        console.info('[NE floor-panel] post-chat-change：' + _domCensus() + '，已挂=' + _mountedHosts.size);
+        _logDomAnomalies();
+    }, 800);
 }
 
 function _onMessageDeleted() {
@@ -514,14 +608,9 @@ export function initFloorPanel(getChatIdFn) {
         }
     } catch (e) { console.warn('[NE floor-panel] event registration failed:', e); }
 
-    // 2. MutationObserver 兜底
-    try {
-        var chat = document.getElementById('chat');
-        if (chat && typeof MutationObserver !== 'undefined') {
-            _mutationObserver = new MutationObserver(function() { _scanMissing(); });
-            _mutationObserver.observe(chat, { childList: true, subtree: true });
-        }
-    } catch (e) { console.warn('[NE floor-panel] MutationObserver failed:', e); }
+    // 2. MutationObserver 兜底（懒挂：#chat 可能晚于 init 出现，
+    //    _scanMissing 每次调用 _ensureObserver 自愈补挂）
+    _ensureObserver();
 
     // 3. 订阅 vault:updated 刷新所有面板
     _vaultUpdateListener = function() {
@@ -531,15 +620,16 @@ export function initFloorPanel(getChatIdFn) {
 
     // 4. 初始扫描：退避重试（500ms/1s/3s/8s）——ST 渲染长聊天是异步分批的，
     //    单次扫描可能在 .mes 渲染完成前扑空。_scanMissing 幂等（data-ne-fp 标记），
-    //    重复扫描无害；每次输出诊断日志，断点直接可见。
+    //    重复扫描无害。日志在 debounce（200ms）完成后读数，含 DOM 普查。
     var delays = [500, 1000, 3000, 8000];
     delays.forEach(function(d, i) {
         setTimeout(function() {
-            var before = _mountedHosts.size;
             _scanMissing();
-            var mounted = _mountedHosts.size - before;
-            var mesCount = document.querySelectorAll('.mes[mesid]').length;
-            console.info('[NE floor-panel] scan#' + (i + 1) + ': .mes=' + mesCount + ', 新挂=' + mounted + ', 已挂总=' + _mountedHosts.size + (mesCount > 0 && _mountedHosts.size === 0 ? ' [WARN] 有消息但零挂载——见上方 mount 层日志' : ''));
+            setTimeout(function() {
+                console.info('[NE floor-panel] scan#' + (i + 1) + '：' + _domCensus() +
+                    '，已挂=' + _mountedHosts.size);
+                _logDomAnomalies();
+            }, 300);
         }, d);
     });
 }
