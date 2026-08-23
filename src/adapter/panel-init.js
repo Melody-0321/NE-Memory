@@ -178,7 +178,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;">' + t('Scene') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('Msg IDs') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="text-align:left;max-width:160px;">' + t('Present') + '</th><th style="text-align:left;max-width:200px;">' + t('Psyche') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Meta') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-ltm">' +

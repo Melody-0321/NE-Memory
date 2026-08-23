@@ -348,10 +348,13 @@ export function injectBottomDrawerCSS() {
         '.narrative_memory_table{width:100%;border-collapse:collapse;font-size:0.85em;line-height:1.5;margin-top:4px;}' +
         '.narrative_memory_table th{background:var(--black50a);padding:6px 8px;text-align:left;font-weight:bold;border-bottom:2px solid var(--black70a);white-space:nowrap;}' +
         '.narrative_memory_table td{padding:6px 8px;border-bottom:1px solid var(--black30a);vertical-align:top;word-break:break-word;}' +
-        // ── STM 事件列 clamp（摘要扩容 74 字后的扫读密度；点击行展开全文，见 renderMemoryTable 委托） ──
+        // ── STM master-detail：主行 4 列紧凑（clamp 2 行），点击行展开详情行（全文在详情行，主行保持 clamp） ──
         '.ne-stm-event-cell{cursor:pointer;}' +
         '.ne-stm-event-text{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}' +
-        'tr.ne-stm-expanded .ne-stm-event-text{-webkit-line-clamp:unset;}' +
+        '.ne-stm-meta-cell{width:150px;max-width:150px;cursor:pointer;}' +
+        '.ne-stm-meta-line{font-size:0.78em;color:var(--grey-50,#8b949e);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}' +
+        '.ne-stm-detail-row td{background:var(--black30a);padding:4px 10px 6px 2.6em;}' +
+        '.ne-stm-detail-event{font-size:0.9em;margin-top:2px;}' +
         '.narrative_memory_table tbody tr:nth-child(even),.narrative_ltm_sub_table tbody tr:nth-child(even),.ne-usage-chat-table tr:nth-child(even){background:var(--black10a);}' +
         '.narrative_memory_table tbody tr:hover,.narrative_ltm_sub_table tbody tr:hover,.ne-usage-chat-table tr:hover{background:var(--black20a)!important;transition:background var(--ne-transition-fast);}' +
         '.ne-accordion-chevron{transition:transform var(--ne-transition-normal);}' +
@@ -697,9 +700,9 @@ export function injectBottomDrawerCSS() {
         mobileSel + ' .ne-mobile-zone-tab{flex:1;text-align:center;padding:6px 0;cursor:pointer;font-size:0.85em;border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
         mobileSel + ' .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
         '@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}' +
-        // 楼内面板"在主面板查看"定位高亮
-        '@keyframes ne-fp-flash{0%,100%{background:transparent}50%{background:var(--SmartThemeQuoteColor,#ffeb3b);opacity:0.3}}' +
-        '.ne-fp-highlight{animation:ne-fp-flash 1s ease-in-out 2}';
+        // 消息栏按钮 → 主面板定位高亮
+        '@keyframes ne-stm-flash{0%,100%{background:transparent}50%{background:var(--SmartThemeQuoteColor,#ffeb3b);opacity:0.3}}' +
+        '.ne-stm-highlight{animation:ne-stm-flash 1s ease-in-out 2}';
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
 
     // Modal CSS must also be in PD.head (main document) since modals are appended to PD.body

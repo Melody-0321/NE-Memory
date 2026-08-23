@@ -23,18 +23,10 @@ import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './boots
 import { neRestoreAll } from '../core/settings-adapter.js';
 import { applyChatCompletionPatch } from './chat-completion-patch.js';
 import { registerPublicApi } from './public-api.js';
-import { initFloorPanel, destroyFloorPanel, onFloorPanelSettingChanged } from './floor-panel.js';
+import { initMesButton } from './mes-button.js';
 import { on as busOn, off as busOff } from './stateBus.js';
 
 var _retryTimer = null;
-
-// 楼内面板开关变化 handler（来自 panel-settings.js 的 busEmit）
-var _onFloorPanelToggle = function(payload) {
-    try {
-        var enabled = payload && payload.enabled;
-        onFloorPanelSettingChanged(enabled);
-    } catch (e) { console.warn('[NE] floor panel toggle failed:', e); }
-};
 
 function getChatId() {
     try {
@@ -258,17 +250,10 @@ async function init() {
     // 注册公开只读 API（window.neMemory + /ne-get slash + {{neState}} 宏）
     try { await registerPublicApi(); } catch (e) { console.warn('[NE] public API registration failed:', e); }
 
-    // 楼内摘要面板（默认关闭，按设置开关启动）
+    // 消息栏记忆按钮（AI 消息工具栏 🧠 → 点击打开主面板定位该楼 STM）
     try {
-        var fpSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}');
-        console.info('[NE] floor panel boot: floorPanelEnabled=' + !!fpSettings.floorPanelEnabled);
-        if (fpSettings.floorPanelEnabled) {
-            initFloorPanel(getChatId);
-        }
-    } catch (e) { console.warn('[NE] floor panel init failed:', e); }
-
-    // 监听设置开关变化（来自 panel-settings.js 的 busEmit）
-    busOn('ne:floor-panel-toggle', _onFloorPanelToggle);
+        initMesButton(getChatId);
+    } catch (e) { console.warn('[NE] mes button init failed:', e); }
 }
 
 function registerToolsWithRetry(getChatId, getChatMessages, retryCount) {

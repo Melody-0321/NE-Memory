@@ -1604,48 +1604,28 @@ function deleteCharacterCard(cardDiv, charName) {
 
 function toggleInlineEdit(row, entryId, entryType) {
     if (!row) return;
+    // STM master-detail 路径：从数据索引直取原始字段（4 列主行不再承载 period/scene/present/psyche）；
+    // LTM 主行仍走 DOM 反解（5 列布局未变）
+    var stmObj = (entryType === 'stm' && entryId) ? _stmEntryIndex[entryId] : null;
     var cells = row.querySelectorAll('td');
-    if (cells.length < 4) return;
-    var origPeriod = (cells[1].textContent || '').trim();
-    var origScene = (cells[2].textContent || '').trim();
-    // 新 8 列布局: [0]No [1]Period [2]Scene [3]MsgIDs [4]Event [5]Present [6]Psyche [7]Edit
-    // 旧 6 列布局: [0]No [1]Period [2]Scene [3]MsgIDs [4]Event [5]Edit
-    var hasIdColumn = cells.length > 5;
-    var origEvent = (cells[hasIdColumn ? 4 : 3].textContent || '').trim();
-
-    // 新增：从 Present 列（index 5）反解在场角色数组
-    var presentCellIdx = hasIdColumn ? 5 : 4;
-    var origPresent = '';
-    if (cells[presentCellIdx]) {
-        var pills = cells[presentCellIdx].querySelectorAll('.ne-entity-pill');
-        if (pills.length > 0) {
-            var names = [];
-            pills.forEach(function(p) { names.push((p.textContent || '').trim()); });
-            origPresent = names.join(', ');
-        } else {
-            origPresent = (cells[presentCellIdx].textContent || '').trim();
-        }
-    }
-
-    // 新增：从 Psyche 列（index 6）反解角色心理 → 序列化为 textarea 文本
-    var psycheCellIdx = hasIdColumn ? 6 : 5;
-    var origPsycheText = '';
-    if (cells[psycheCellIdx]) {
-        var items = cells[psycheCellIdx].querySelectorAll('.ne-stm-thought-item');
-        var pLines = [];
-        items.forEach(function(item) {
-            var charSpan = item.querySelector('.ne-thought-char');
-            var moodSpan = item.querySelector('.ne-psyche-mood');
-            var pName = charSpan ? (charSpan.textContent || '').trim() : '';
-            var pMood = moodSpan ? (moodSpan.textContent || '').replace(/^\[|\]$/g, '').trim() : '';
-            var fullText = (item.textContent || '').trim();
-            var pThoughts = fullText;
-            if (pName && pThoughts.indexOf(pName) === 0) pThoughts = pThoughts.substring(pName.length).trim();
-            if (pMood && pThoughts.indexOf('[' + pMood + ']') === 0) pThoughts = pThoughts.substring(('[' + pMood + ']').length).trim();
-            pThoughts = pThoughts.replace(/^[:\s]+/, '').trim();
-            pLines.push(pName + '|' + pMood + '|' + pThoughts);
-        });
-        origPsycheText = pLines.join('\n');
+    var origPeriod, origScene, origEvent, origPresent, origPsycheText;
+    if (stmObj) {
+        // 编辑态自动收起详情行（避免编辑表单与详情行视觉重叠）
+        _collapseStmDetail(row);
+        origPeriod = stmObj.period || '';
+        origScene = stmObj.scene || '';
+        origEvent = stmObj.event || stmObj.summary || '';
+        var ps = stmObj.present_characters || stmObj.entities || [];
+        origPresent = ps.map(function(en) { return typeof en === 'string' ? en : en.name; }).filter(Boolean).join(', ');
+        origPsycheText = _stmPsycheToText(stmObj);
+    } else {
+        if (cells.length < 4) return;
+        origPeriod = (cells[1].textContent || '').trim();
+        origScene = (cells[2].textContent || '').trim();
+        // LTM 主行布局: [0]No [1]Period [2]STM Refs [3]Event [4]Edit
+        origEvent = (cells[3].textContent || '').trim();
+        origPresent = '';
+        origPsycheText = '';
     }
 
     row.classList.add('ne-inline-row');
@@ -1667,11 +1647,9 @@ function toggleInlineEdit(row, entryId, entryType) {
         };
     }
 
-    var eventCellTarget = hasIdColumn ? 5 : 4;
-    var presentCellTarget = hasIdColumn ? 6 : 5;
-    var psycheCellTarget = hasIdColumn ? 7 : 6;
+    var formColspan = stmObj ? 4 : 8; // STM 主行 4 列 / LTM 主行 5 列（colspan 越界浏览器自动收敛）
 
-    row.innerHTML = '<td colspan="8" class="ne-inline-edit-cell">' +
+    row.innerHTML = '<td colspan="' + formColspan + '" class="ne-inline-edit-cell">' +
         '<div class="ne-inline-edit-grid">' +
         '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Period') + '</span><input class="ne-inline-period" value="' + escapeHtml(origPeriod) + '"></div>' +
         '<div class="ne-inline-field"><span class="ne-inline-label">' + t('Scene') + '</span><input class="ne-inline-scene" value="' + escapeHtml(origScene) + '"></div>' +
@@ -1718,36 +1696,27 @@ function toggleInlineEdit(row, entryId, entryType) {
         }
         row.innerHTML = row._neOrigHTML;
         row.classList.remove('ne-inline-row');
-        row.querySelector('td:nth-child(2)').textContent = period;
-        row.querySelector('td:nth-child(3)').textContent = scene;
-        // 更新事件列内容（clamp 包装层内更新，保住 .ne-stm-event-text 结构）
-        var eventTextEl = row.querySelector('td:nth-child(' + eventCellTarget + ') .ne-stm-event-text');
-        if (eventTextEl) eventTextEl.innerHTML = escapeHtml(event);
-        else row.querySelector('td:nth-child(' + eventCellTarget + ')').innerHTML = escapeHtml(event);
-        // 重建 Present 列内容
-        var presentCell = row.querySelector('td:nth-child(' + presentCellTarget + ')');
-        if (presentCell) {
-            presentCell.innerHTML = presentCharacters.length > 0
-                ? '<div class="ne-stm-entities-row">' + presentCharacters.map(function(n) {
-                    return '<span class="ne-entity-pill">' + escapeHtml(n) + '</span>';
-                  }).join('') + '</div>'
-                : '';
-        }
-        // 重建 Psyche 列内容
-        var psycheCell = row.querySelector('td:nth-child(' + psycheCellTarget + ')');
-        if (psycheCell) {
-            var psycheLinesHtml = [];
-            Object.keys(characterPsyche).forEach(function(cName) {
-                var cp = characterPsyche[cName];
-                var cLine = '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(cName) + '</span>';
-                if (cp.current_mood) cLine += ' <span class="ne-psyche-mood">[' + escapeHtml(cp.current_mood) + ']</span>';
-                if (cp.inner_thoughts) cLine += ': ' + escapeHtml(cp.inner_thoughts);
-                cLine += '</div>';
-                psycheLinesHtml.push(cLine);
-            });
-            psycheCell.innerHTML = psycheLinesHtml.length > 0
-                ? '<div class="ne-stm-thoughts-row">' + psycheLinesHtml.join('') + '</div>'
-                : '';
+        if (stmObj) {
+            // STM master-detail：更新 Meta 行（period·time_label·scene）+ Event 列，同步数据索引
+            // （详情行已收起，下次展开从 _stmEntryIndex 取新值）
+            var metaLine1 = row.querySelector('td:nth-child(2) .ne-stm-meta-line');
+            if (metaLine1) {
+                var metaParts = period + (stmObj.time_label ? '\u00b7' + stmObj.time_label : '') + (scene ? '\u00b7' + scene : '');
+                metaLine1.textContent = metaParts;
+            }
+            var eventTextEl = row.querySelector('td:nth-child(3) .ne-stm-event-text');
+            if (eventTextEl) eventTextEl.innerHTML = escapeHtml(event);
+            stmObj.period = period;
+            stmObj.scene = scene;
+            stmObj.event = event;
+            stmObj.present_characters = presentCharacters;
+            stmObj.character_psyche = characterPsyche;
+        } else {
+            // LTM 主行（5 列布局）：Period/Scene/Event 列直接更新
+            row.querySelector('td:nth-child(2)').textContent = period;
+            row.querySelector('td:nth-child(3)').textContent = scene;
+            var ltmEventCell = row.querySelector('td:nth-child(4)');
+            if (ltmEventCell) ltmEventCell.textContent = event;
         }
         row._neOrigPeriod = period;
         row._neOrigScene = scene;
@@ -1771,6 +1740,67 @@ function toggleInlineEdit(row, entryId, entryType) {
     };
 }
 
+// ── STM master-detail 数据索引：stmId → stm 对象 ──
+// renderMemoryTable 挂载时维护（主表 entries + LTM 嵌套 stmIndexMap 合并），
+// 供行内编辑取值与详情行构造直取原始字段（不再 DOM 反解 4 列主行）
+var _stmEntryIndex = {};
+
+// 在场角色 pills（兼容旧 entities 字段）——主行详情行共用
+function _stmPresentHtml(stm) {
+    var presentChars = stm.present_characters || stm.entities || [];
+    if (!presentChars.length) return '';
+    var html = '<div class="ne-stm-entities-row">';
+    presentChars.forEach(function(en) {
+        var name = typeof en === 'string' ? en : en.name;
+        html += '<span class="ne-entity-pill">' + escapeHtml(name) + '</span>';
+    });
+    return html + '</div>';
+}
+
+// 角色心理行（兼容旧 _inner_thoughts 字段）——主行详情行共用
+function _stmPsycheHtml(stm) {
+    var psyche = stm.character_psyche;
+    if (!psyche || Object.keys(psyche).length === 0) {
+        var oldThoughts = stm._inner_thoughts;
+        if (!oldThoughts || Object.keys(oldThoughts).length === 0) return '';
+        var html = '<div class="ne-stm-thoughts-row">';
+        Object.keys(oldThoughts).forEach(function(name) {
+            var thoughts = oldThoughts[name] || [];
+            html += '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(name) + '</span>: ' + escapeHtml(thoughts.join(' \u2192 ')) + '</div>';
+        });
+        return html + '</div>';
+    }
+    var html2 = '<div class="ne-stm-thoughts-row">';
+    Object.keys(psyche).forEach(function(name) {
+        var p = psyche[name] || {};
+        var mood = p.current_mood || '';
+        var thoughts = p.inner_thoughts || '';
+        var line = '<span class="ne-thought-char">' + escapeHtml(name) + '</span>';
+        if (mood) line += ' <span class="ne-psyche-mood">[' + escapeHtml(mood) + ']</span>';
+        if (thoughts) line += ': ' + escapeHtml(thoughts);
+        html2 += '<div class="ne-stm-thought-item">' + line + '</div>';
+    });
+    return html2 + '</div>';
+}
+
+// psyche 对象 → 行内编辑 textarea 文本（"名|情绪|想法" 每行一个，保存路径的逆序列化）
+function _stmPsycheToText(stm) {
+    var lines = [];
+    var psyche = stm.character_psyche;
+    if (psyche && Object.keys(psyche).length > 0) {
+        Object.keys(psyche).forEach(function(name) {
+            var p = psyche[name] || {};
+            lines.push(name + '|' + (p.current_mood || '') + '|' + (p.inner_thoughts || ''));
+        });
+    } else if (stm._inner_thoughts && Object.keys(stm._inner_thoughts).length > 0) {
+        Object.keys(stm._inner_thoughts).forEach(function(name) {
+            var arr = stm._inner_thoughts[name] || [];
+            if (arr.length > 0) lines.push(name + '||' + arr.join(' \u2192 '));
+        });
+    }
+    return lines.join('\n');
+}
+
 function renderStmRow(stm, opts) {
     var no = opts.no || 0;
     var fs = opts.fontSize || '0.9em';
@@ -1792,65 +1822,72 @@ function renderStmRow(stm, opts) {
         : '<td></td>';
     var eventHtml = escapeHtml(stm.event || stm.summary || '');
 
-    // 在场角色列（兼容旧 entities 字段）
-    var presentChars = stm.present_characters || stm.entities || [];
-    var presentHtml = '';
-    if (presentChars.length > 0) {
-        presentHtml = '<div class="ne-stm-entities-row">';
-        presentChars.forEach(function(en) {
-            var name = typeof en === 'string' ? en : en.name;
-            presentHtml += '<span class="ne-entity-pill">' + escapeHtml(name) + '</span>';
-        });
-        presentHtml += '</div>';
-    }
-
-    // 心理状态列（兼容旧 _inner_thoughts 字段）
-    var psyche = stm.character_psyche;
-    var psycheHtml = '';
-    if (!psyche || Object.keys(psyche).length === 0) {
-        // 兼容旧 _inner_thoughts 数据
-        var oldThoughts = stm._inner_thoughts;
-        if (oldThoughts && Object.keys(oldThoughts).length > 0) {
-            psycheHtml = '<div class="ne-stm-thoughts-row">';
-            Object.keys(oldThoughts).forEach(function(name) {
-                var thoughts = oldThoughts[name] || [];
-                var joined = thoughts.join(' \u2192 ');
-                psycheHtml += '<div class="ne-stm-thought-item"><span class="ne-thought-char">' + escapeHtml(name) + '</span>: ' + escapeHtml(joined) + '</div>';
-            });
-            psycheHtml += '</div>';
-        }
-    } else {
-        psycheHtml = '<div class="ne-stm-thoughts-row">';
-        Object.keys(psyche).forEach(function(name) {
-            var p = psyche[name] || {};
-            var mood = p.current_mood || '';
-            var thoughts = p.inner_thoughts || '';
-            var line = '<span class="ne-thought-char">' + escapeHtml(name) + '</span>';
-            if (mood) line += ' <span class="ne-psyche-mood">[' + escapeHtml(mood) + ']</span>';
-            if (thoughts) line += ': ' + escapeHtml(thoughts);
-            psycheHtml += '<div class="ne-stm-thought-item">' + line + '</div>';
-        });
-        psycheHtml += '</div>';
-    }
-
+    // master-detail 主行（4 列扫读态）：# / meta（时段·场景 + Msg 区间两行小字）/ 事件 clamp / ✎
+    // present/psyche 移入展开详情行（_expandStmDetail 构造）
+    var metaLine1 = subPeriod + (subScene ? '\u00b7' + subScene : '');
     return '<tr' + (opts.cssClass ? ' class="' + opts.cssClass + '"' : '') + ' data-ne-stm-id="' + escapeHtml(stm.id || '') + '">'
         + '<td style="text-align:center;color:#888;width:2em;font-size:' + fs + ';">' + no + '</td>'
-        + '<td style="white-space:nowrap;font-size:' + fs + ';max-width:120px;">' + subPeriod + '</td>'
-        + '<td style="font-size:' + fs + ';max-width:100px;">' + escapeHtml(subScene) + '</td>'
-        + '<td style="font-size:' + fs + ';max-width:150px;color:#888;">' + escapeHtml(subMsgDisplay) + '</td>'
+        + '<td class="ne-stm-meta-cell"><div class="ne-stm-meta-line">' + escapeHtml(metaLine1) + '</div><div class="ne-stm-meta-line">' + escapeHtml(subMsgDisplay) + '</div></td>'
         + '<td class="ne-stm-event-cell" style="font-size:' + fs + ';"><div class="ne-stm-event-text">' + eventHtml + '</div></td>'
-        + '<td style="font-size:' + fs + ';max-width:160px;">' + presentHtml + '</td>'
-        + '<td style="font-size:' + fs + ';max-width:200px;">' + psycheHtml + '</td>'
         + editCell
         + '</tr>';
+}
+
+// ── STM 详情行（master-detail 展开态） ──
+function _buildStmDetailRow(stm) {
+    var tr = document.createElement('tr');
+    tr.className = 'ne-stm-detail-row';
+    var inner = '';
+    var presentHtml = _stmPresentHtml(stm);
+    var psycheHtml = _stmPsycheHtml(stm);
+    if (presentHtml) inner += presentHtml;
+    if (psycheHtml) inner += psycheHtml;
+    if (stm.event || stm.summary) inner += '<div class="ne-stm-detail-event">' + escapeHtml(stm.event || stm.summary) + '</div>';
+    if (!inner) inner = '<div style="color:var(--grey-50,#8b949e);font-size:0.8em;">' + t('(empty)') + '</div>';
+    tr.innerHTML = '<td colspan="4">' + inner + '</td>';
+    return tr;
+}
+
+function _expandStmDetail(row) {
+    if (!row || row.classList.contains('ne-stm-expanded')) return;
+    var stmId = row.getAttribute('data-ne-stm-id');
+    var stm = stmId ? _stmEntryIndex[stmId] : null;
+    row.classList.add('ne-stm-expanded');
+    if (stm) row.insertAdjacentElement('afterend', _buildStmDetailRow(stm));
+}
+
+function _collapseStmDetail(row) {
+    if (!row) return;
+    row.classList.remove('ne-stm-expanded');
+    var detail = row.nextElementSibling;
+    if (detail && detail.classList.contains('ne-stm-detail-row')) detail.remove();
+}
+
+// 供消息栏按钮调用：定位 STM 条目（高亮全部 + 滚动第一条 + 展开第一条详情）
+export function locateStmEntries(stmIds) {
+    if (!stmIds || stmIds.length === 0) return;
+    var firstRow = null;
+    stmIds.forEach(function(id) {
+        var rows = panelQSA('[data-ne-stm-id="' + id + '"]');
+        if (!rows || rows.length === 0) return;
+        rows.forEach(function(row) {
+            row.classList.add('ne-stm-highlight');
+            setTimeout(function() { row.classList.remove('ne-stm-highlight'); }, 2000);
+            if (!firstRow) firstRow = row;
+        });
+    });
+    if (firstRow) {
+        firstRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        _expandStmDetail(firstRow);
+    }
 }
 
 export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     var tbody = panelQS(tbodyId);
     if (!tbody) return;
 
-    // 行点击展开（一次性 tbody 委托，跨 innerHTML 重渲染/懒加载行生效）：
-    // 事件列默认 2 行 clamp，点击行 toggle 全文。展开态为瞬态视图偏好，不持久化。
+    // 行点击展开 master-detail（一次性 tbody 委托，跨 innerHTML 重渲染/懒加载/嵌套子表行生效）：
+    // 点击主行 toggle 详情行（present pills + psyche + 事件全文）。展开态为瞬态视图偏好，不持久化。
     if (!tbody._neStmClampBound) {
         tbody._neStmClampBound = true;
         tbody.addEventListener('click', function(ev) {
@@ -1860,16 +1897,24 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
             if (target.closest('button, a, input, textarea, select, .ne-inline-edit-btn, .ne-inline-delete, .narrative_ltm_toggle')) return;
             var row = target.closest('tr');
             if (!row) return;
-            if (!row.querySelector(':scope > td.ne-stm-event-cell')) return; // 仅含 clamp 事件列的 STM 行（直接子单元格，防嵌套子表误匹配）
+            if (!row.querySelector(':scope > td.ne-stm-event-cell')) return; // 仅 STM 主行（直接子单元格，防详情行/嵌套子表误匹配）
             if (row.classList.contains('ne-inline-row')) return; // 行内编辑态不切换
-            row.classList.toggle('ne-stm-expanded');
+            if (row.classList.contains('ne-stm-expanded')) _collapseStmDetail(row);
+            else _expandStmDetail(row);
         });
     }
 
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="8" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
+    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td colspan="4" style="color:#888;">' + t('(empty)') + '</td></tr>'; return; }
     var entryMap = {};
     entries.forEach(function(e) { if (e && e.id) entryMap[e.id] = e; });
+
+    // 维护 STM 数据索引（master-detail 数据源）：主表 entries + LTM 嵌套 stmIndexMap 合并
+    if (type === 'stm') {
+        entries.forEach(function(e) { if (e && e.id) _stmEntryIndex[e.id] = e; });
+    } else if (stmIndexMap) {
+        Object.keys(stmIndexMap).forEach(function(k) { _stmEntryIndex[k] = stmIndexMap[k]; });
+    }
 
     var rows = [];
     entries.forEach(function (entry, i) {
