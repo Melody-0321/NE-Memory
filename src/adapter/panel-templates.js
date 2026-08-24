@@ -10,7 +10,7 @@
 
 import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
   loadCardConfig, saveCardConfig, loadCardConfigSync, setDialogueTemplateLock,
-  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, restoreTemplateVersion, deleteTemplateVersion, getActiveVersionKey, cloneTemplateToCard,
+  editTemplateInCard, forkTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, getTemplateCopyByTemplateId,
   loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField, readState } from '../core/vault/store.js';
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
@@ -366,7 +366,7 @@ function _getInUseTemplateIds(cardConfig) {
  */
 function _getDialogueTemplateState(cardConfig, templateId) {
     if (!cardConfig || !cardConfig._dialogueTemplates) return null;
-    var activeKey = getActiveVersionKey(cardConfig._dialogueTemplates, templateId);
+    var activeKey = getTemplateCopyByTemplateId(cardConfig._dialogueTemplates, templateId);
     if (!activeKey) return null;
     var dt = cardConfig._dialogueTemplates[activeKey];
     return dt ? (dt._state || 'synced') : null;
@@ -377,7 +377,7 @@ function _getDialogueTemplateState(cardConfig, templateId) {
  */
 function _getActiveDialogueTemplateKey(cardConfig, templateId) {
     if (!cardConfig || !cardConfig._dialogueTemplates) return null;
-    return getActiveVersionKey(cardConfig._dialogueTemplates, templateId);
+    return getTemplateCopyByTemplateId(cardConfig._dialogueTemplates, templateId);
 }
 
 // P4: Template card redesign
@@ -1309,8 +1309,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
             description: (templates[dt._templateId] && templates[dt._templateId].description) || '',
             source: dt.source || 'user_created',
             createdAt: dt.createdAt,
-            _state: dt._state || 'synced',
-            _active: dt._active
+            _state: dt._state || 'synced'
         };
     } else {
         tpl = templateId ? templates[templateId] : null;
@@ -1451,11 +1450,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         html += '</div>';
     }
 
-    // Version history - always check for non-new templates (reads from cardConfig._dialogueTemplates)
-    if (!isNew) {
-        var vhHtml = _renderVersionHistoryHTML(tpl);
-        if (vhHtml) html += vhHtml;
-    }
+    // 单一副本模型：无版本历史 UI（版本链已删除）
 
     // Lock toggle (hidden in card-level mode - lock is managed from config panel)
     if (!isCardLevel) {
@@ -1599,59 +1594,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         });
     }
 
-    // N3: Rollback button binding
-    var rollbackBtns = container.querySelectorAll('[data-rollback-version]');
-    for (var rb = 0; rb < rollbackBtns.length; rb++) {
-        rollbackBtns[rb].addEventListener('click', function () {
-            var versionKey = this.getAttribute('data-rollback-version');
-            var charName = _getCurrentCharName();
-            if (!charName || !versionKey) return;
-            showConfirm(t('rollback_to_version'), t('confirm_rollback'), t('rollback_to_version'), t('Cancel'), false).then(function (confirmed) {
-                if (!confirmed) return;
-                restoreTemplateVersion(charName, versionKey);
-                showToast(t('rollback_to_version') + ': OK', 'success', 3000);
-                renderTemplatesIntoSlide(container);
-            });
-        });
-    }
-
-    // 历史副本折叠/展开
-    var vhToggle = container.querySelector('.ne-vh-toggle');
-    if (vhToggle) {
-        vhToggle.addEventListener('click', function() {
-            var list = container.querySelector('.ne-vh-list');
-            var arrow = container.querySelector('.ne-vh-arrow');
-            if (list) {
-                if (list.style.display === 'none') {
-                    list.style.display = '';
-                    if (arrow) arrow.textContent = '\u25BC';
-                } else {
-                    list.style.display = 'none';
-                    if (arrow) arrow.textContent = '\u25B6';
-                }
-            }
-        });
-    }
-
-    // 删除副本按钮
-    var deleteVerBtns = container.querySelectorAll('[data-delete-version]');
-    for (var dv = 0; dv < deleteVerBtns.length; dv++) {
-        deleteVerBtns[dv].addEventListener('click', function () {
-            var versionKey = this.getAttribute('data-delete-version');
-            var charName = _getCurrentCharName();
-            if (!charName || !versionKey) return;
-            showConfirm(t('Delete'), t('confirm_delete_copy'), t('Delete'), t('Cancel'), true).then(function (confirmed) {
-                if (!confirmed) return;
-                var ok = deleteTemplateVersion(charName, versionKey);
-                if (ok) {
-                    showToast(t('copy_deleted'), 'info', 2000);
-                    renderTemplatesIntoSlide(container);
-                } else {
-                    showToast(t('cannot_delete_active'), 'warn', 3000);
-                }
-            });
-        });
-    }
+    // 单一副本模型：无回滚 / 历史副本折叠 / 删除副本按钮（版本链已删除）
 
     // N7: Push to global library button
     var pushBtn = container.querySelector('#ne-editor-push-global');
@@ -1692,62 +1635,6 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
             });
         });
     }
-}
-
-function _renderVersionHistoryHTML(tpl) {
-    var cardConfig = null;
-    var charName = _getCurrentCharName();
-    try { if (charName) cardConfig = loadCardConfigSync(charName); } catch (e) {}
-    if (!cardConfig || !cardConfig._dialogueTemplates) return '';
-
-    // 收集同 _templateId 的所有副本
-    var versions = [];
-    Object.keys(cardConfig._dialogueTemplates).forEach(function (k) {
-        var dt = cardConfig._dialogueTemplates[k];
-        if (dt._templateId === tpl.id) {
-            versions.push({ key: k, tpl: dt });
-        }
-    });
-    if (versions.length === 0) return '';
-
-    // 分离主副本和历史副本
-    var main = null;
-    var history = [];
-    versions.forEach(function (v) {
-        if (v.tpl._active) main = v;
-        else history.push(v);
-    });
-    if (!main) { main = versions[0]; history = versions.slice(1); }
-
-    var html = '<div class="ne-editor-section">';
-    html += '<div class="ne-section-title">' + escapeHtml(t('version_history')) + '</div>';
-
-    // 主副本
-    if (main) {
-        html += '<div style="padding:8px;border:1px solid var(--ne-info-border);border-radius:6px;background:var(--ne-info-bg);margin-bottom:8px;">';
-        html += '<div style="font-weight:bold;color:var(--ne-info);">' + escapeHtml(t('current')) + '</div>';
-        html += '<div style="font-size:0.78em;color:var(--grey-50);margin-top:2px;">' + escapeHtml(main.tpl.createdAt ? formatLocalTime(main.tpl.createdAt) : '?') + '</div>';
-        html += '</div>';
-    }
-
-    // 历史副本（折叠）
-    if (history.length > 0) {
-        html += '<div style="margin-bottom:8px;">';
-        html += '<div class="ne-vh-toggle" style="cursor:pointer;padding:4px 6px;font-size:0.8em;color:var(--grey-50);user-select:none;">';
-        html += '<span class="ne-vh-arrow">\u25B6</span> ' + escapeHtml(t('history_copies')) + ' (' + history.length + ')</div>';
-        html += '<div class="ne-vh-list" style="display:none;max-height:200px;overflow-y:auto;font-size:0.78em;">';
-        history.forEach(function (ver) {
-            html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:4px;border-bottom:1px solid var(--black20a);">';
-            html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
-            html += '<button class="ne-btn-small" data-rollback-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('rollback_to_version')) + '</button>';
-            html += '<button class="ne-btn-small ne-btn-danger" data-delete-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;color:var(--ne-error);">' + escapeHtml(t('Delete')) + '</button>';
-            html += '</div>';
-        });
-        html += '</div></div>';
-    }
-
-    html += '</div>';
-    return html;
 }
 
 function _saveCardLevelEditor(container, charName, cardDtKey, cardConfig, templates, order) {
@@ -1965,7 +1852,6 @@ function _duplicateTemplate(templateId, templates, container) {
         newTpl.createdAt = new Date().toISOString();
         newTpl.updatedAt = new Date().toISOString();
         delete newTpl.versions;
-        delete newTpl._activeVersion;
         saveTemplate(newTpl);
         showToast(t('template_saved'), 'success', 3000);
         renderTemplatesIntoSlide(container || panelById('ne-slide-panel-content'));

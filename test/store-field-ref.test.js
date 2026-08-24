@@ -2,7 +2,8 @@
 //   1. templateIdExists 存在性校验（系统默认 / 全局库 / 卡片副本）
 //   2. deleteTemplate 删除时清理 customFieldRefs 引用（源头防新增悬挂）
 //   3. removeFieldFromLibrary 惰性过滤悬挂引用（存量解锁）
-//   4. deleteTemplateVersion 删除非主副本时清理引用
+//   4. getTemplateCopyByTemplateId 单副本查找（存量多副本优先 _active）
+//   5. 单一副本模型：cloneTemplateToCard 复用副本 + editTemplateInCard 可变就地编辑
 if (typeof localStorage === 'undefined') {
     var _store = {};
     globalThis.localStorage = {
@@ -17,9 +18,8 @@ if (typeof localStorage === 'undefined') {
 
 import {
     templateIdExists, saveTemplate, deleteTemplate, getTemplate, getEffectiveTemplates,
-    deleteTemplateVersion,
     loadFieldLibrary, addFieldToLibrary, removeFieldFromLibrary, getFieldFromLibrary,
-    addTemplateRefToField
+    addTemplateRefToField, cloneTemplateToCard, editTemplateInCard, getTemplateCopyByTemplateId
 } from '../src/core/vault/store.js';
 
 var passed = 0, failed = 0;
@@ -116,8 +116,8 @@ eq(removeFieldFromLibrary('f_mix'), false, 'still protected with only live ref')
 deleteTemplate('tpl_live');
 eq(removeFieldFromLibrary('f_mix'), true, 'deletable once live template removed');
 
-// ====== D. deleteTemplateVersion 清理副本引用 ======
-console.log('\n=== store-field-ref: deleteTemplateVersion clears refs ===');
+// ====== D. getTemplateCopyByTemplateId 单副本查找 ======
+console.log('\n=== store-field-ref: getTemplateCopyByTemplateId single-copy lookup ===');
 
 localStorage.setItem('ne_card_templates_refchar', JSON.stringify({
     _dialogueTemplates: {
@@ -130,18 +130,54 @@ localStorage.setItem('ne_card_templates_refchar', JSON.stringify({
 addFieldToLibrary('f_ver', { type: 'string' });
 addTemplateRefToField('f_ver', 'dt_main');
 addTemplateRefToField('f_ver', 'dt_hist');
-eq(getFieldFromLibrary('f_ver').usedByTemplates.length, 2, 'both version refs registered');
+eq(getFieldFromLibrary('f_ver').usedByTemplates.length, 2, 'both refs registered');
 
-eq(deleteTemplateVersion('refchar', 'dt_hist'), true, 'non-active version deletable');
-var verAfter = getFieldFromLibrary('f_ver');
-eq(verAfter.usedByTemplates.length, 1, 'deleted version ref cleared');
-eq(verAfter.usedByTemplates[0], 'dt_main', 'main version ref kept');
-eq(removeFieldFromLibrary('f_ver'), false, 'field protected while main copy exists');
+// 存量多副本：优先返回 _active 标记的副本（惰性兼容旧版本链数据）
+eq(getTemplateCopyByTemplateId(JSON.parse(localStorage.getItem('ne_card_templates_refchar'))._dialogueTemplates, 'tpl_v'), 'dt_main', 'multi-copy lookup prefers _active marker');
 
-eq(deleteTemplateVersion('refchar', 'dt_main'), false, 'active main copy not deletable');
-eq(deleteTemplateVersion('refchar', 'no_such_key'), false, 'nonexistent version key returns false');
+// 单一副本：无 _active 标记时返回唯一匹配
+localStorage.setItem('ne_card_templates_refchar', JSON.stringify({
+    _dialogueTemplates: {
+        'dt_only': { _templateId: 'tpl_single', presetFields: [], customFieldRefs: [] }
+    },
+    _templateConfig: {},
+    _version: 0
+}));
+eq(getTemplateCopyByTemplateId(JSON.parse(localStorage.getItem('ne_card_templates_refchar'))._dialogueTemplates, 'tpl_single'), 'dt_only', 'single-copy lookup returns the only copy');
+
+// 无匹配 → null
+eq(getTemplateCopyByTemplateId(JSON.parse(localStorage.getItem('ne_card_templates_refchar'))._dialogueTemplates, 'tpl_missing'), null, 'no match returns null');
+
 localStorage.removeItem('ne_card_templates_refchar');
 eq(removeFieldFromLibrary('f_ver'), true, 'field deletable after card copy removed');
+
+// ====== E. 单一副本模型：cloneTemplateToCard 复用 + editTemplateInCard 可变就地编辑 ======
+console.log('\n=== store-field-ref: single-copy model (clone reuse + in-place edit) ===');
+
+saveTemplate({ id: 'tpl_sc', name: 'SC', role: 'npc', presetFields: ['status'], customFieldRefs: [] });
+
+var k1 = cloneTemplateToCard('refchar', { id: 'tpl_sc', name: 'SC', role: 'npc', presetFields: ['status'], customFieldRefs: [], _locked: false });
+ok(k1, 'first clone returns a key');
+var k2 = cloneTemplateToCard('refchar', { id: 'tpl_sc', name: 'SC', role: 'npc', presetFields: ['status', 'personality'], customFieldRefs: ['c1'], _locked: false });
+eq(k2, k1, 're-clone reuses the same copy key (single-copy model)');
+
+var cfg = JSON.parse(localStorage.getItem('ne_card_templates_refchar'));
+var sameTidCount = Object.keys(cfg._dialogueTemplates).filter(function(k) { return cfg._dialogueTemplates[k]._templateId === 'tpl_sc'; }).length;
+eq(sameTidCount, 1, 'only one copy per _templateId (no multi-copy explosion)');
+
+// editTemplateInCard：可变就地编辑，返回原 key，不新建副本
+var retKey = editTemplateInCard('refchar', k1, ['status', 'personality', 'inventory'], ['c1', 'c2']);
+eq(retKey, k1, 'editTemplateInCard returns the original key');
+var cfg2 = JSON.parse(localStorage.getItem('ne_card_templates_refchar'));
+var edited = cfg2._dialogueTemplates[k1];
+eq(edited.presetFields.length, 3, 'presetFields updated in place');
+eq(edited.customFieldRefs.length, 2, 'customFieldRefs updated in place');
+eq(edited.source, 'user_created', 'edit marks source user_created');
+var stillSingle = Object.keys(cfg2._dialogueTemplates).filter(function(k) { return cfg2._dialogueTemplates[k]._templateId === 'tpl_sc'; }).length;
+eq(stillSingle, 1, 'edit does not create a new copy');
+
+deleteTemplate('tpl_sc');
+localStorage.removeItem('ne_card_templates_refchar');
 
 // Cleanup
 resetLibraries();

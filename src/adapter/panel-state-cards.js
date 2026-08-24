@@ -1,4 +1,4 @@
-import { readState, writeState, readVault, getEffectiveTemplates, loadCardConfigSync, getActiveVersion, getActiveVersionKey, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, restoreTemplateVersion, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
+import { readState, writeState, readVault, getEffectiveTemplates, loadCardConfigSync, editTemplateInCard, pushTemplateToGlobal, cloneTemplateToCard, getTemplateCopyByTemplateId, loadFieldLibrary, addFieldToLibrary, getFieldFromLibrary, addTemplateRefToField, removeTemplateRefFromField } from '../core/vault/store.js';
 
 function _getChatId() {
     try {
@@ -879,63 +879,21 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     });
     html += '<div class="ne-scheme-section" id="ne-scheme-tpl-section" style="margin-bottom:8px;' + tplDisplay + '">';
 
-    // Primary: list of copies/versions — grouped by _templateId
-    var allDtKeys = Object.keys(dialogueTemplates);
-    if (allDtKeys.length > 0) {
-        // Determine current templateId (if any)
-        var curSwTplId = (dtKey && dialogueTemplates[dtKey]) ? dialogueTemplates[dtKey]._templateId : null;
-
-        // Group dialogueTemplates by _templateId
-        var swGroups = {};
-        allDtKeys.forEach(function(k) {
-            var d = dialogueTemplates[k];
-            if (!d || !d._templateId) return;
-            if (!swGroups[d._templateId]) swGroups[d._templateId] = [];
-            swGroups[d._templateId].push({ key: k, tpl: d });
-        });
-
-        var swGroupIds = Object.keys(swGroups);
-        if (swGroupIds.length > 0) {
-            // Sort groups: current template first, then by latest createdAt
-            swGroupIds.sort(function(a, b) {
-                if (a === curSwTplId) return -1;
-                if (b === curSwTplId) return 1;
-                var aMax = 0, bMax = 0;
-                swGroups[a].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > aMax) aMax = t; });
-                swGroups[b].forEach(function(v) { var t = new Date(v.tpl.createdAt || 0).getTime(); if (t > bMax) bMax = t; });
-                return bMax - aMax;
-            });
-
-            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + '</div>';
-            html += '<div style="max-height:240px;overflow-y:auto;font-size:0.8em;">';
-
-            swGroupIds.forEach(function(gid) {
-                var versions = swGroups[gid];
-                versions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
-                var gt = templates[gid];
-                var gName = (gt && gt.name) ? gt.name : gid;
-                var isCurGroup = (gid === curSwTplId);
-                html += '<div style="padding:4px 6px;font-weight:bold;color:var(--grey-50);border-bottom:1px solid var(--grey-20);background:var(--grey-10);">' + escapeHtml(gName) + (isCurGroup ? ' (' + escapeHtml(t('current')) + ')' : '') + '</div>';
-                versions.forEach(function(ver) {
-                    var vActive = !!ver.tpl._active && isCurGroup;
-                    html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);' + (vActive ? 'background:var(--grey-10);' : '') + '">';
-                    html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
-                    var vSource = ver.tpl.source || 'user_created';
-                    var vSourceLabel = vSource === 'ai_generated' ? t('ai_generated') : (vSource === 'user_rollback' ? t('rollback') : t('user_created'));
-                    html += '<span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(vSourceLabel) + '</span>';
-                    if (vActive) {
-                        html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
-                    } else {
-                        html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
-                    }
-                    html += '</div>';
-                });
-            });
-
-            html += '</div>';
-        } else {
-            html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
+    // Primary: 只读展示当前 _scheme 指向的副本信息（单一副本模型，无版本历史）
+    if (dtKey && dialogueTemplates[dtKey]) {
+        var curCopy = dialogueTemplates[dtKey];
+        var curCopySource = curCopy.source || 'user_created';
+        var curCopySourceLabel = curCopySource === 'ai_generated' ? t('ai_generated') : (curCopySource === 'user_rollback' ? t('rollback') : t('user_created'));
+        html += '<div class="ne-scheme-section-title">' + escapeHtml(t('current_template')) + '</div>';
+        html += '<div style="max-height:160px;overflow-y:auto;font-size:0.8em;">';
+        html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);">';
+        html += '<span style="color:var(--grey-50);flex:1;">' + escapeHtml(curCopy.createdAt ? formatLocalTime(curCopy.createdAt) : '?') + '</span>';
+        html += '<span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(curCopySourceLabel) + '</span>';
+        if (curCopy._state && curCopy._state !== 'synced') {
+            html += '<span style="font-size:0.85em;color:var(--ne-warn);">' + escapeHtml(curCopy._state) + '</span>';
         }
+        html += '</div>';
+        html += '</div>';
     } else {
         html += '<div style="padding:8px;color:var(--grey-50);font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
     }
@@ -1033,44 +991,24 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '</div>';
     html += '</div>';
 
-    // Version history — edit_current mode only (same-template copies)
+    // Current copy info — edit_current mode only (single-copy model, read-only)
     var vhDisplay = (defaultMode === 'edit_current') ? '' : ' display:none;';
     if (dtKey && dialogueTemplates[dtKey]) {
         var currentDt = dialogueTemplates[dtKey];
-        var currentTplId = currentDt._templateId || null;
-        var allVersions = [];
-        if (currentTplId) {
-            Object.keys(dialogueTemplates).forEach(function(k) {
-                var dt = dialogueTemplates[k];
-                if (dt && dt._templateId === currentTplId) {
-                    allVersions.push({ key: k, tpl: dt });
-                }
-            });
+        var curSrc = currentDt.source || 'user_created';
+        var curSrcLabel = curSrc === 'ai_generated' ? t('ai_generated') : (curSrc === 'user_rollback' ? t('rollback') : t('user_created'));
+        html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
+        html += '<div class="ne-scheme-section-title">' + escapeHtml(t('current_template')) + '</div>';
+        html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
+        html += '<div style="padding:2px 4px;display:flex;align-items:center;gap:4px;">';
+        html += '<span style="color:var(--grey-50);">' + escapeHtml(currentDt.createdAt ? formatLocalTime(currentDt.createdAt) : '?') + '</span>';
+        html += '<span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(curSrcLabel) + '</span>';
+        if (currentDt._state && currentDt._state !== 'synced') {
+            html += ' <span style="font-size:0.85em;color:var(--ne-warn);">' + escapeHtml(currentDt._state) + '</span>';
         }
-        if (allVersions.length > 1) {
-            allVersions.sort(function(a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
-            html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
-            html += '<div class="ne-scheme-section-title">' + escapeHtml(t('version_history')) + ' (' + allVersions.length + ')</div>';
-            html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
-            allVersions.slice(0, 5).forEach(function(ver) {
-                var isActive = !!ver.tpl._active;
-                html += '<div style="padding:2px 4px;display:flex;align-items:center;gap:4px;' + (isActive ? 'background:var(--grey-10);' : '') + '">';
-                html += '<span style="color:var(--grey-50);">' + escapeHtml(ver.tpl.createdAt ? formatLocalTime(ver.tpl.createdAt) : '?') + '</span>';
-                if (isActive) {
-                    html += '<span style="color:var(--ne-info);font-weight:bold;">' + escapeHtml(t('active')) + '</span>';
-                } else {
-                    html += '<button class="ne-btn-small" data-switch-version="' + escapeHtml(ver.key) + '" style="font-size:0.75em;">' + escapeHtml(t('switch_to')) + '</button>';
-                }
-                var verSource = ver.tpl.source || 'user_created';
-                var verSourceLabel = verSource === 'ai_generated' ? t('ai_generated') : (verSource === 'user_rollback' ? t('rollback') : t('user_created'));
-                html += ' <span style="font-size:0.85em;color:var(--grey-50);">' + escapeHtml(verSourceLabel) + '</span>';
-                if (ver.tpl._state && ver.tpl._state !== 'synced') {
-                    html += ' <span style="font-size:0.85em;color:var(--ne-warn);">' + escapeHtml(ver.tpl._state) + '</span>';
-                }
-                html += '</div>';
-            });
-            html += '</div></div>';
-        }
+        html += '</div>';
+        html += '</div>';
+        html += '</div>';
     }
 
     html += '</div>'; // close #ne-scheme-fields-editor
@@ -1292,68 +1230,7 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
         });
     }
 
-    // P9: Version switch buttons - same template = switch main copy (cascade), different template = switch template (current only)
-    var switchBtns = cardEl.querySelectorAll('[data-switch-version]');
-    for (var j = 0; j < switchBtns.length; j++) {
-        switchBtns[j].addEventListener('click', function() {
-            var versionKey = this.getAttribute('data-switch-version');
-            if (!versionKey || !protoName) return;
-            var freshConfig = loadCardConfigSync(protoName) || cardConfig || {};
-            var dtMap = freshConfig._dialogueTemplates || {};
-            var targetTid = dtMap[versionKey] && dtMap[versionKey]._templateId;
-            var chatId = _getChatId();
-            console.log('[NE Scheme Switch] versionKey:', versionKey, '| targetTid:', targetTid, '| chatId:', chatId);
-            if (!chatId) {
-                console.warn('[NE Scheme Switch] chatId null — state NOT persisted');
-                restoreTemplateVersion(protoName, versionKey);
-                showToast(t('version_switched'), 'success', 2000);
-                busEmit('vault:updated', {});
-                return;
-            }
-            readState(chatId).then(function(vault) {
-                console.log('[NE Scheme Switch] readState:', vault ? 'OK' : 'null');
-                if (!vault || !vault.content || !vault.content.state) {
-                    console.warn('[NE Scheme Switch] vault invalid — state NOT persisted');
-                    restoreTemplateVersion(protoName, versionKey);
-                    busEmit('vault:updated', {});
-                    return;
-                }
-                var state = vault.content.state;
-                var curScheme = state.characters && state.characters[charName] && state.characters[charName]._scheme;
-                var curTid = curScheme && dtMap[curScheme] && dtMap[curScheme]._templateId;
-                // Same _templateId → switch main copy (propagate to all non-locked users of this template)
-                if (targetTid && curTid && targetTid === curTid) {
-                    var oldScheme = curScheme;
-                    var ok = restoreTemplateVersion(protoName, versionKey, state);
-                    console.log('[NE Scheme Switch] restoreTemplateVersion (same template):', ok, '| old _scheme:', oldScheme);
-                    if (!ok) {
-                        showToast(t('Save failed'), 'error', 3000);
-                        return;
-                    }
-                    return writeState(chatId, vault).then(function() {
-                        console.log('[NE Scheme Switch] state persisted OK (main copy switched)');
-                        showToast(t('version_switched'), 'success', 2000);
-                        busEmit('vault:updated', { getChatId: chatId });
-                    });
-                }
-                // Different _templateId → switch template: only current character, no cascade, no _active change
-                var activeKey = (targetTid && getActiveVersionKey(dtMap, targetTid)) || versionKey;
-                if (state.characters && state.characters[charName]) {
-                    var prevScheme = state.characters[charName]._scheme;
-                    state.characters[charName]._scheme = activeKey;
-                    console.log('[NE Scheme Switch] switch template (current only):', prevScheme, '->', activeKey);
-                }
-                return writeState(chatId, vault).then(function() {
-                    console.log('[NE Scheme Switch] state persisted OK (template switched)');
-                    showToast(t('version_switched'), 'success', 2000);
-                    busEmit('vault:updated', { getChatId: chatId });
-                });
-            }).catch(function(err) {
-                console.error('[NE Scheme Switch] error:', err);
-                showToast(t('Save failed'), 'error', 3000);
-            });
-        });
-    }
+    // P9: 单一副本模型 — 无版本链，无版本切换按钮；版本历史 UI 已改为只读展示当前副本
 }
 
 function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
@@ -1370,11 +1247,11 @@ function _applyTemplateSwitch(cardEl, charName, protoName, cardConfig) {
     if (!template) { showToast('Template not found', 'error', 3000); return; }
 
     // Switch template (different _templateId): only affects current character, no cascade.
-    // If the global template already has a card-level copy, reuse its active main copy;
+    // If the global template already has a card-level copy, reuse it (single-copy model);
     // otherwise pull (clone) it into card-level dialogue templates first.
     var freshConfig = loadCardConfigSync(protoName) || cardConfig || {};
     var dt = freshConfig._dialogueTemplates || {};
-    var activeKey = getActiveVersionKey(dt, globalTplId);
+    var activeKey = getTemplateCopyByTemplateId(dt, globalTplId);
     if (!activeKey) {
         activeKey = cloneTemplateToCard(protoName, template);
         if (!activeKey) { showToast(t('Save failed'), 'error', 3000); return; }

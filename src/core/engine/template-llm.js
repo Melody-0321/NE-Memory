@@ -15,7 +15,7 @@ import {
 import { getPresetFieldsForRole } from '../vault/schema.js';
 import {
     loadCardConfigSync, saveCardConfig, loadFieldLibrary, addFieldToLibrary,
-    cloneTemplateToCard, getActiveVersion, upgradeTemplateVersion, saveTemplate
+    cloneTemplateToCard, saveTemplate
 } from '../vault/store.js';
 import { readNeSettingsCached } from '../settings.js';
 

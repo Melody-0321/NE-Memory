@@ -479,7 +479,7 @@ NE 的等价问题面已覆盖：副本重复（模板副本去重）、残留�
 |------|------|
 | `store.js` 新增 `templateIdExists` | 有效模板 id 全集 = 系统默认 ∪ 全局模板库 ∪ 所有卡片 `_dialogueTemplates` key；不在全集即悬挂 |
 | `store.js` `removeFieldFromLibrary` | guard 改为惰性过滤：删字段时先清悬挂 ref（存量自动解锁），仅剩有效 ref > 0 才拒绝 |
-| `store.js` `deleteTemplate`（含 override 分支）+ `deleteTemplateVersion` | 删除前按 `customFieldRefs` 对称清 ref（源头防新增悬挂） |
+| `store.js` `deleteTemplate`（含 override 分支） | 删除前按 `customFieldRefs` 对称清 ref（源头防新增悬挂） |
 
 ### 8.4 损益评估
 
@@ -493,8 +493,8 @@ NE 的等价问题面已覆盖：副本重复（模板副本去重）、残留�
 
 | 文件 | 改动 |
 |------|------|
-| `src/core/vault/store.js` | `templateIdExists` 存在性校验；`removeFieldFromLibrary` 惰性过滤悬挂 ref；`deleteTemplate` / `deleteTemplateVersion` 删除前清 customFieldRefs 对应的字段库 ref |
-| `test/store-field-ref.test.js` | 36 用例：存在性校验 / 删除清 ref / 共享字段保护 / override 分支 / 存量解锁 / 混合 ref 清理 / 副本删除 |
+| `src/core/vault/store.js` | `templateIdExists` 存在性校验；`removeFieldFromLibrary` 惰性过滤悬挂 ref；`deleteTemplate` 删除前清 customFieldRefs 对应的字段库 ref |
+| `test/store-field-ref.test.js` | 36 用例：存在性校验 / 删除清 ref / 共享字段保护 / override 分支 / 存量解锁 / 混合 ref 清理 / `getTemplateCopyByTemplateId` 单副本查找 |
 | `test/store.test.js` | 保护语义断言更新为引用真实存在的模板（悬挂引用不再构成保护） |
 
 ---

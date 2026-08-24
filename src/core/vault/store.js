@@ -983,15 +983,33 @@ export function cloneTemplateToCard(charName, template) {
     var config = loadCardConfigSync(charName) || { _dialogueTemplates: {}, _templateConfig: {}, _version: 0 };
     if (!config._dialogueTemplates) config._dialogueTemplates = {};
     var now = new Date().toISOString();
-    var suffix = Math.random().toString(36).slice(2, 8);
-    var key = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
 
-    // N3: Deactivate previous versions with the same _templateId
+    // 单一副本模型：同 _templateId 已有副本则就地覆盖复用（优先覆盖 active 主副本），
+    // 不再生成同族多副本。存量数据里的历史残留（_active=false 的惰性副本）保持不动。
+    var existingKey = null;
+    var existingActiveKey = null;
     Object.keys(config._dialogueTemplates).forEach(function (k) {
-        if (config._dialogueTemplates[k]._templateId === template.id) {
-            config._dialogueTemplates[k]._active = false;
+        var t = config._dialogueTemplates[k];
+        if (t._templateId === template.id) {
+            if (!existingKey) existingKey = k;
+            if (t._active) existingActiveKey = k;
         }
     });
+    if (existingActiveKey) existingKey = existingActiveKey;
+    if (existingKey) {
+        var existing = config._dialogueTemplates[existingKey];
+        existing.presetFields = (template.presetFields || []).slice();
+        existing.customFieldRefs = (template.customFieldRefs || []).slice();
+        existing._locked = template._locked || false;
+        existing.source = template.source || 'user_created';
+        existing._state = existing._state || 'synced';
+        existing.updatedAt = now;
+        saveCardConfig(charName, config);
+        return existingKey;
+    }
+
+    var suffix = Math.random().toString(36).slice(2, 8);
+    var key = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
 
     config._dialogueTemplates[key] = {
         _templateId: template.id,
@@ -1000,7 +1018,6 @@ export function cloneTemplateToCard(charName, template) {
         presetFields: (template.presetFields || []).slice(),
         customFieldRefs: (template.customFieldRefs || []).slice(),
         _state: 'synced',
-        _active: true,
         source: template.source || 'user_created'
     };
     saveCardConfig(charName, config);
@@ -1067,127 +1084,25 @@ export function getLockedTemplateCharacters(cardConfig, state) {
     return lockedChars;
 }
 
-export function getActiveVersion(dialogueTemplates, templateId) {
-    var matches = [];
-    Object.keys(dialogueTemplates).forEach(function (k) {
-        var t = dialogueTemplates[k];
-        if (t._templateId === templateId) matches.push({ key: k, tpl: t });
-    });
-    if (matches.length === 0) return null;
-    // N3: prefer explicit _active marker
-    for (var i = 0; i < matches.length; i++) {
-        if (matches[i].tpl._active) return matches[i].tpl;
-    }
-    // Fallback: most recent createdAt (backward compat)
-    matches.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
-    return matches[0].tpl;
-}
-
 /**
- * N3: Get the key (not the template) of the active version for a given templateId.
+ * Find the current copy key for a given global templateId in card-level
+ * dialogue templates. Single-copy model: one copy per _templateId. Legacy
+ * multi-copy data (old version chain) is tolerated — prefer _active marker,
+ * else the most recently created copy. Returns null if not found.
  */
-export function getActiveVersionKey(dialogueTemplates, templateId) {
+export function getTemplateCopyByTemplateId(dialogueTemplates, templateId) {
+    if (!dialogueTemplates) return null;
     var matches = [];
     Object.keys(dialogueTemplates).forEach(function (k) {
         var t = dialogueTemplates[k];
-        if (t._templateId === templateId) matches.push({ key: k, tpl: t });
+        if (t && t._templateId === templateId) matches.push({ key: k, tpl: t });
     });
     if (matches.length === 0) return null;
     for (var i = 0; i < matches.length; i++) {
         if (matches[i].tpl._active) return matches[i].key;
     }
-    matches.sort(function (a, b) { return new Date(b.tpl.createdAt) - new Date(a.tpl.createdAt); });
+    matches.sort(function (a, b) { return new Date(b.tpl.createdAt || 0) - new Date(a.tpl.createdAt || 0); });
     return matches[0].key;
-}
-
-/**
- * N3: Set a specific version as active, deactivating all other versions with the same _templateId.
- */
-export function setActiveTemplateVersion(charName, templateId, versionKey) {
-    var config = loadCardConfigSync(charName);
-    if (!config || !config._dialogueTemplates) return false;
-    var changed = false;
-    Object.keys(config._dialogueTemplates).forEach(function (k) {
-        var dt = config._dialogueTemplates[k];
-        if (dt._templateId === templateId) {
-            var shouldActive = (k === versionKey);
-            if (dt._active !== shouldActive) {
-                dt._active = shouldActive;
-                changed = true;
-            }
-        }
-    });
-    if (changed) saveCardConfig(charName, config);
-    return changed;
-}
-
-/**
- * N3: Restore a template to a specific historical version.
- * Sets the target version as active, deactivates others. Old active is preserved as history.
- * Also migrates character references via upgradeTemplateVersion.
- */
-export function restoreTemplateVersion(charName, versionKey, state) {
-    var config = loadCardConfigSync(charName);
-    if (!config || !config._dialogueTemplates || !config._dialogueTemplates[versionKey]) return false;
-    var targetTpl = config._dialogueTemplates[versionKey];
-    var templateId = targetTpl._templateId;
-    if (!templateId) return false;
-
-    // Find current active key
-    var oldActiveKey = null;
-    Object.keys(config._dialogueTemplates).forEach(function (k) {
-        var dt = config._dialogueTemplates[k];
-        if (dt._templateId === templateId && dt._active) oldActiveKey = k;
-    });
-
-    // Set new active
-    Object.keys(config._dialogueTemplates).forEach(function (k) {
-        var dt = config._dialogueTemplates[k];
-        if (dt._templateId === templateId) {
-            dt._active = (k === versionKey);
-        }
-    });
-
-    // Mark source
-    targetTpl.source = 'user_rollback';
-    saveCardConfig(charName, config);
-
-    // Migrate character references from old key to new key
-    if (state && oldActiveKey && oldActiveKey !== versionKey) {
-        upgradeTemplateVersion(state, oldActiveKey, versionKey);
-    }
-
-    return true;
-}
-
-export function deleteTemplateVersion(charName, versionKey) {
-    var config = loadCardConfigSync(charName);
-    if (!config || !config._dialogueTemplates) return false;
-    var dt = config._dialogueTemplates[versionKey];
-    if (!dt) return false;
-    if (dt._active) return false; // 禁止删除主副本
-    // 清字段库中该副本登记的引用，防止悬挂 ref 阻塞字段删除
-    (dt.customFieldRefs || []).forEach(function (fn) {
-        removeTemplateRefFromField(fn, versionKey);
-    });
-    delete config._dialogueTemplates[versionKey];
-    return saveCardConfig(charName, config);
-}
-
-export function upgradeTemplateVersion(state, oldKey, newKey, lockedCharName) {
-    if (!state || !state.characters) return;
-    var lockedNames = [];
-    Object.keys(state.characters).forEach(function (name) {
-        var charData = state.characters[name];
-        if (charData._scheme === oldKey) {
-            if (charData._templateLocked) {
-                lockedNames.push(name);
-            } else {
-                charData._scheme = newKey;
-            }
-        }
-    });
-    return lockedNames;
 }
 
 /**
@@ -1224,8 +1139,9 @@ export function unregisterFieldFromTemplate(templateId, fieldName) {
 }
 
 /**
- * N3: Edit a card-level template by creating a new version copy (immutable model).
- * The old version is preserved with _active: false; the new copy gets _active: true.
+ * Edit a card-level template in place (single mutable copy model).
+ * No version chain: edits the copy the character's _scheme points to directly,
+ * returns the same key. Removed the previous immutable/version-chain behavior.
  */
 export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, customFieldRefs) {
     var config = loadCardConfigSync(charName);
@@ -1233,50 +1149,13 @@ export function editTemplateInCard(charName, dialogueTemplateKey, presetFields, 
     var dt = config._dialogueTemplates[dialogueTemplateKey];
     if (!dt) return false;
 
-    // 去重：扫描同 _templateId 下所有副本，找字段完全相同的
-    var newPreset = (presetFields || []).slice().sort();
-    var newCustom = (customFieldRefs || []).slice().sort();
-    var dedupKey = null;
-    Object.keys(config._dialogueTemplates).forEach(function(k) {
-        if (k === dialogueTemplateKey) return;
-        var existing = config._dialogueTemplates[k];
-        if (existing._templateId !== dt._templateId) return;
-        var exPreset = (existing.presetFields || []).slice().sort();
-        var exCustom = (existing.customFieldRefs || []).slice().sort();
-        if (JSON.stringify(exPreset) === JSON.stringify(newPreset) &&
-            JSON.stringify(exCustom) === JSON.stringify(newCustom)) {
-            dedupKey = k;
-        }
-    });
-
-    if (dedupKey) {
-        // 找到重复：激活已有副本，停用当前，不创建新副本
-        dt._active = false;
-        config._dialogueTemplates[dedupKey]._active = true;
-        config._dialogueTemplates[dedupKey].source = 'user_created';
-        saveCardConfig(charName, config);
-        return dedupKey;
-    }
-
-    // 无重复：创建新版本
-    var now = new Date().toISOString();
-    var suffix = Math.random().toString(36).slice(2, 8);
-    var newKey = 'tmpl_' + now.replace(/[-:T]/g, '').slice(0, 8) + '_' + suffix;
-
-    // Deactivate old version
-    dt._active = false;
-
-    config._dialogueTemplates[newKey] = {
-        _templateId: dt._templateId,
-        createdAt: now,
-        _locked: dt._locked || false,
-        presetFields: presetFields.slice(),
-        customFieldRefs: (customFieldRefs || []).slice(),
-        _state: 'forked',
-        _active: true,
-        source: 'user_created'
-    };
-    return saveCardConfig(charName, config) ? newKey : false;
+    // 可变就地编辑：直接改写该副本的字段集，保持原 key（不新建版本、不保留历史）
+    dt.presetFields = (presetFields || []).slice();
+    dt.customFieldRefs = (customFieldRefs || []).slice();
+    dt.source = 'user_created';
+    dt.updatedAt = new Date().toISOString();
+    if (dt._state === 'synced') dt._state = 'forked';
+    return saveCardConfig(charName, config) ? dialogueTemplateKey : false;
 }
 
 export function swapTemplateInPool(charName, poolIndex, templateId) {

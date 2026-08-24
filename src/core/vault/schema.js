@@ -6,7 +6,7 @@
 import { t_field } from '../i18n.js';
 import { neSync } from '../settings-adapter.js';
 import { invalidateNeSettingsCache } from '../settings.js';
-import { loadCardConfigSync, getActiveVersion, getEffectiveTemplates, loadFieldLibrary, saveFieldLibrary, addFieldToLibrary, addTemplateRefToField, removeTemplateRefFromField } from './store.js';
+import { loadCardConfigSync, getTemplateCopyByTemplateId, getEffectiveTemplates, loadFieldLibrary, saveFieldLibrary, addFieldToLibrary, addTemplateRefToField, removeTemplateRefFromField } from './store.js';
 import { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE } from './template-defs.js';
 export { DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE };
 // 功能：
@@ -560,13 +560,12 @@ export function resolveActiveTemplateFields(stCharName, schemeKey, charData) {
 }
 
 /**
- * Resolve the active template COPY object (the single source of truth for
- * "which template does this character currently use"). Lock-aware:
- *   1. cardConfig._dialogueTemplates:
- *      - schemeKey 直接命中副本：锁定角色钉在该副本；非锁定角色按其 _templateId
- *        解析到当前 _active 主副本（跟随主本）。
- *      - 未直接命中（哨兵 _default_pc / _default_npc 或 KEY 已删除）：按 _templateId
- *        取当前 _active 主副本。
+ * Resolve the template COPY object actually used by a character — the single
+ * source of truth for "which template does this character currently use".
+ * Single-copy model (version chain removed):
+ *   1. cardConfig._dialogueTemplates: _scheme 指向的 key 就是实际使用的副本，
+ *      直接返回它；未直接命中（哨兵如 _default_pc/_default_npc 或 key 已删除）
+ *      则按 _templateId 找当前副本（惰性兼容旧版本链数据）。
  *   2. Global template library (getEffectiveTemplates) by schemeKey as global ID
  *   3. System default by role (PC->DEFAULT_PC_TEMPLATE, NPC->DEFAULT_NPC_TEMPLATE)
  *
@@ -581,21 +580,19 @@ export function resolveActiveTemplateFields(stCharName, schemeKey, charData) {
 export function resolveActiveTemplateCopy(stCharName, schemeKey, charData) {
     charData = charData || {};
     var isPC = charData._role === 'protagonist' || schemeKey === '_default_pc';
-    var locked = !!charData._templateLocked;
 
     if (stCharName) {
         var cardConfig = loadCardConfigSync(stCharName);
         if (cardConfig && cardConfig._dialogueTemplates && schemeKey) {
             var dt = cardConfig._dialogueTemplates;
+            // 单一副本模型：_scheme 指向的 key 就是实际使用的副本，直接返回。
+            // 不再有 direct/active-version 双分支（版本链已移除）。
             var direct = dt[schemeKey];
-            if (direct) {
-                if (locked) return direct;
-                var tid = direct._templateId;
-                var active = (tid && getActiveVersion(dt, tid)) || direct;
-                return active;
-            }
-            var sentinelActive = getActiveVersion(dt, schemeKey);
-            if (sentinelActive) return sentinelActive;
+            if (direct) return direct;
+            // sentinel（如 _default_faction）在存量数据里可能对应一个真实副本 key，
+            // 按 templateId 找当前副本（惰性兼容旧版本链数据）。
+            var copyKey = getTemplateCopyByTemplateId(dt, schemeKey);
+            if (copyKey) return dt[copyKey];
         }
     }
     // Fallback 2: global template library lookup by schemeKey as global template ID
@@ -620,7 +617,8 @@ function _resolveFactionTemplateFields(stCharName) {
     if (stCharName) {
         var cardConfig = loadCardConfigSync(stCharName);
         if (cardConfig && cardConfig._dialogueTemplates) {
-            var activeTemplate = getActiveVersion(cardConfig._dialogueTemplates, '_default_faction');
+            var factionKey = getTemplateCopyByTemplateId(cardConfig._dialogueTemplates, '_default_faction');
+            var activeTemplate = factionKey ? cardConfig._dialogueTemplates[factionKey] : null;
             if (activeTemplate) return expandTemplateFields(activeTemplate);
         }
     }

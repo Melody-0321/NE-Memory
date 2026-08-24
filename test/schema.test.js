@@ -2,10 +2,25 @@ import {
     validateField, resolveSchemaPath, validateStateChanges, mergeStateChanges,
     rebuildPresentCharacters, ensureCharacterTemplate,
     getNpcInjectionFields, getCharacterInjectionFields, buildStateInjectionTable,
+    resolveActiveTemplateCopy,
     DEFAULT_GLOBAL_SCHEMA, formatItemContainer,
     buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE,
     ROLE_CATEGORY_MAP, getPresetFieldsForRole
 } from '../src/core/vault/schema.js';
+
+// Node 无内置 localStorage：提供内存 shim，否则测试里 try/catch 包裹的
+// localStorage.setItem 会被静默吞掉，卡片配置相关的断言全部退化为默认模板。
+if (typeof localStorage === 'undefined') {
+    var _schemaStore = {};
+    globalThis.localStorage = {
+        getItem: function(k) { return _schemaStore.hasOwnProperty(k) ? _schemaStore[k] : null; },
+        setItem: function(k, v) { _schemaStore[k] = String(v); },
+        removeItem: function(k) { delete _schemaStore[k]; },
+        clear: function() { _schemaStore = {}; },
+        get length() { return Object.keys(_schemaStore).length; },
+        key: function(i) { return Object.keys(_schemaStore)[i] || null; }
+    };
+}
 
 var passed = 0, failed = 0;
 function assert(cond, msg) { if (cond) passed++; else { failed++; console.error('  FAIL: ' + msg); } }
@@ -585,6 +600,37 @@ assert(Array.isArray(pcNoStChar), 'PC without stCharName still returns array');
 assert(pcNoStChar.indexOf('personality') !== -1, 'PC fallback includes personality');
 
 try { localStorage.removeItem('ne_card_templates_' + _stChar2); } catch(e) {}
+
+// ====== 单一副本模型：resolveActiveTemplateCopy 锁定/非锁定都返回 _scheme 指向副本 ======
+console.log('\n=== schema: resolveActiveTemplateCopy single-copy resolution ===');
+
+var _stChar3 = '__test_proto3__';
+try {
+    localStorage.setItem('ne_card_templates_' + _stChar3, JSON.stringify({
+        _dialogueTemplates: {
+            'dt_free': { _templateId: 'tpl_r1', _locked: false, presetFields: ['status'], customFieldRefs: [] },
+            'dt_locked': { _templateId: 'tpl_r1', _locked: true, presetFields: ['status', 'personality'], customFieldRefs: [] }
+        },
+        _templateConfig: {},
+        _version: 0
+    }));
+} catch(e) {}
+
+// 非锁定角色：_scheme 指向 dt_free → 返回 dt_free（而非同族 active 主副本）
+var freeCopy = resolveActiveTemplateCopy(_stChar3, 'dt_free', { _role: 'npc' });
+eq(freeCopy && freeCopy._locked, false, 'non-locked char resolves to its _scheme copy');
+eq(freeCopy && freeCopy.presetFields.length, 1, 'resolved copy carries its own fields');
+
+// 锁定角色：_scheme 指向 dt_locked → 返回 dt_locked
+var lockedCopy = resolveActiveTemplateCopy(_stChar3, 'dt_locked', { _role: 'npc' });
+eq(lockedCopy && lockedCopy._locked, true, 'locked char resolves to its _scheme copy');
+eq(lockedCopy && lockedCopy.presetFields.length, 2, 'locked copy carries its own fields');
+
+// 无 _scheme → 全局/默认 fallback 仍可用
+var fallbackCopy = resolveActiveTemplateCopy(_stChar3, '', { _role: 'npc' });
+ok(fallbackCopy, 'no scheme falls back to default');
+
+try { localStorage.removeItem('ne_card_templates_' + _stChar3); } catch(e) {}
 
 // ====== N5: mergeStateChanges _scheme protection for non-protagonist ======
 console.log('\n=== schema: mergeStateChanges _scheme protection ===');
