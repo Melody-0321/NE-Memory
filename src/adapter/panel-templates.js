@@ -1354,11 +1354,13 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     var existingPresets = (tpl.presetFields && Array.isArray(tpl.presetFields)) ? tpl.presetFields : [];
     var role = tpl.role || 'npc';
     var allowedCats = ROLE_CATEGORY_MAP[role] || ROLE_CATEGORY_MAP.npc;
+    var _renderedVals = {};
     Object.keys(PRESET_FIELDS).forEach(function (cat) {
         if (allowedCats.indexOf(cat) === -1) return;
         html += '<div class="ne-preset-category">';
         html += '<div class="ne-npc-category-title">' + escapeHtml(cat) + '</div>';
         Object.keys(PRESET_FIELDS[cat]).forEach(function (fn) {
+            _renderedVals[fn] = true;
             var checked = existingPresets.indexOf(fn) !== -1;
             html += '<label class="ne-preset-field">' +
                 '<input type="checkbox" class="ne-preset-checkbox" value="' + escapeHtml(fn) + '"' + (checked ? ' checked' : '') + '> ' +
@@ -1367,6 +1369,21 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         });
         html += '</div>';
     });
+    // 类别外/已下架字段保真：模板持有但当前 role 类别未渲染的字段必须可见，
+    // 否则"进入编辑后字段数变少"且保存时静默丢失（模板卡显示 12 字段、编辑器只渲染部分）
+    var _otherFields = existingPresets.filter(function (fn) { return !_renderedVals[fn]; });
+    if (_otherFields.length > 0) {
+        html += '<div class="ne-preset-category">';
+        html += '<div class="ne-npc-category-title">' + escapeHtml(t('other_preset_fields')) + '</div>';
+        _otherFields.forEach(function (fn) {
+            var fd = (ALL_PREDEFINED_FIELDS && ALL_PREDEFINED_FIELDS[fn]) || getFieldFromLibrary(fn) || null;
+            html += '<label class="ne-preset-field">' +
+                '<input type="checkbox" class="ne-preset-checkbox" value="' + escapeHtml(fn) + '" checked> ' +
+                escapeHtml(t_field(fn) || fn) + ' (' + escapeHtml((fd && fd.type) || 'string') + ')' +
+                '</label>';
+        });
+        html += '</div>';
+    }
     html += '</div>';
 
     // Custom fields

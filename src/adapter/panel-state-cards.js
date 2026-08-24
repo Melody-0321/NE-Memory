@@ -983,10 +983,12 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     html += '<div class="ne-scheme-hint">' + escapeHtml('Unchecking preserves existing data but stops tracking new changes.') + '</div>';
     html += '<div class="ne-scheme-fields">';
     var allowedCats = ROLE_CATEGORY_MAP[role] || ROLE_CATEGORY_MAP.npc;
+    var _renderedPresetVals = {};
     Object.keys(PRESET_FIELDS).forEach(function(cat) {
         if (allowedCats.indexOf(cat) === -1) return;
         html += '<div class="ne-scheme-category">' + escapeHtml(cat) + '</div>';
         Object.keys(PRESET_FIELDS[cat]).forEach(function(fn) {
+            _renderedPresetVals[fn] = true;
             var checked = currentPresets.indexOf(fn) !== -1;
             var fd = PRESET_FIELDS[cat][fn];
             html += '<label class="ne-scheme-field">' +
@@ -995,6 +997,19 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
                 '</label>';
         });
     });
+    // 类别外/已下架字段：旧模板持有但当前 role 类别未渲染的字段必须可见可编辑，
+    // 否则编辑器字段数 < 模板实际字段数，且保存时静默丢失（字段保真）
+    var _otherPresets = currentPresets.filter(function(fn) { return !_renderedPresetVals[fn]; });
+    if (_otherPresets.length > 0) {
+        html += '<div class="ne-scheme-category">' + escapeHtml(t('other_preset_fields')) + '</div>';
+        _otherPresets.forEach(function(fn) {
+            var libFd = ALL_PREDEFINED_FIELDS[fn] || getFieldFromLibrary(fn) || null;
+            html += '<label class="ne-scheme-field">' +
+                '<input type="checkbox" class="ne-scheme-checkbox" value="' + escapeHtml(fn) + '" checked> ' +
+                escapeHtml(t_field(fn) || fn) + ' <span class="ne-scheme-field-type">' + escapeHtml((libFd && libFd.type) || 'string') + '</span>' +
+                '</label>';
+        });
+    }
     html += '</div></div>';
 
     // Custom fields section
@@ -1147,6 +1162,10 @@ function _exitSchemeEditMode(cardEl) {
 
 function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKey, tpl, cardConfig, templates) {
     var dialogueTemplates = cardConfig._dialogueTemplates || {};
+    // charData：257121e 重构时 resolveActiveTemplateCopy 调用被搬进本函数但丢了
+    // 参数上下文，L1192 引用未定义变量 → ReferenceError（"编辑当前"tab 切换中断）
+    var _st = _getCurrentState();
+    var charData = (_st && _st.characters && _st.characters[charName]) || {};
 
     // Mode tab switching — controls visibility of template dropdown, field editor, and action buttons
     var modeTabs = cardEl.querySelectorAll('.ne-scheme-mode-tab');
@@ -1222,7 +1241,13 @@ function _bindSchemeEditorEvents(cardEl, charName, charCardType, protoName, dtKe
     var saveBtn = cardEl.querySelector('#ne-scheme-save');
     if (saveBtn) {
         saveBtn.addEventListener('click', function() {
-            _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig);
+            // 永不静默：任何异常（含历史 ReferenceError 类 bug）都给用户反馈
+            try {
+                _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig);
+            } catch (e) {
+                console.error('[NE] _saveSchemeChanges crashed:', e);
+                showToast(t('Save failed') + ': ' + (e && e.message ? e.message : e), 'error', 4000);
+            }
         });
     }
     // Apply template (switch_template mode only)
@@ -1404,11 +1429,29 @@ function _saveSchemeChanges(cardEl, charName, protoName, dtKey, cardConfig) {
         customFieldRefs.push(customItems[j].textContent);
     }
 
+    // 257121e 回归修复：resolveActiveTemplateCopy 需要 charData（锁定/角色判定），
+    // 此前引用未定义变量 → ReferenceError → 保存按钮点击即死（无 toast 无退出）
+    var _st = _getCurrentState();
+    var charData = (_st && _st.characters && _st.characters[charName]) || {};
+
+    // 字段保真：旧模板中未被渲染为 checkbox 的字段（role 类别外/已下架预设）
+    // 自动保留，防止"编辑后字段变少"的静默丢失
+    var _resolvedForMerge = dtKey ? resolveActiveTemplateCopy(protoName, dtKey, charData) : null;
+    var _oldPresets = (_resolvedForMerge && _resolvedForMerge.presetFields) || [];
+    if (_oldPresets.length > 0) {
+        var _renderedVals = {};
+        var _allBoxes = cardEl.querySelectorAll('.ne-scheme-checkbox');
+        for (var _rb = 0; _rb < _allBoxes.length; _rb++) _renderedVals[_allBoxes[_rb].value] = true;
+        _oldPresets.forEach(function(fn) {
+            if (!_renderedVals[fn] && presetFields.indexOf(fn) === -1) presetFields.push(fn);
+        });
+    }
+
     if (dtKey) {
         // Default sentinels (_default_pc/_default_npc/...) are virtual — not in cardConfig._dialogueTemplates.
         // If the resolved active copy is a card-level copy, edit it directly by its key;
         // otherwise (sentinel resolved to DEFAULT/global) clone DEFAULT to card-level first.
-        var resolvedCopy = resolveActiveTemplateCopy(protoName, dtKey, charData);
+        var resolvedCopy = _resolvedForMerge;
         var resolvedIsCardLevel = !!(resolvedCopy && resolvedCopy._templateId &&
             cardConfig._dialogueTemplates &&
             Object.keys(cardConfig._dialogueTemplates).some(function(k) {
@@ -1549,13 +1592,44 @@ function _saveSchemeAsTemplate(cardEl, charName, protoName, dtKey, cardConfig) {
         showToast(t('save_scheme_first'), 'error', 3000);
         return;
     }
+    // 哨兵 key（_default_pc/_default_npc，角色 _scheme 为空时的推断值）是虚拟键，
+    // 不存在于 cardConfig._dialogueTemplates——pushTemplateToGlobal 会查表失败返回
+    // null（"另存为方案"保存失败根因）。与 _saveSchemeChanges 同款防御：
+    // 哨兵先 clone DEFAULT 到卡片级拿到真实 key；解析到卡片级副本则用真实 key。
+    var _st = _getCurrentState();
+    var charData = (_st && _st.characters && _st.characters[charName]) || {};
+    var resolvedCopy = resolveActiveTemplateCopy(protoName, dtKey, charData);
+    var realKey = dtKey;
+    if (resolvedCopy && cardConfig && cardConfig._dialogueTemplates) {
+        var foundKey = Object.keys(cardConfig._dialogueTemplates).filter(function(k) {
+            return cardConfig._dialogueTemplates[k] === resolvedCopy;
+        })[0];
+        if (foundKey) realKey = foundKey;
+    }
+    if (realKey.indexOf('_default_') === 0) {
+        var defaultMap = {
+            '_default_pc': DEFAULT_PC_TEMPLATE,
+            '_default_npc': DEFAULT_NPC_TEMPLATE,
+            '_default_faction': DEFAULT_FACTION_TEMPLATE,
+            '_default_task': DEFAULT_TASK_TEMPLATE,
+            '_default_goal': DEFAULT_GOAL_TEMPLATE
+        };
+        var defaultTpl = defaultMap[realKey];
+        if (defaultTpl) {
+            var clonedKey = cloneTemplateToCard(protoName, defaultTpl);
+            if (clonedKey) {
+                realKey = clonedKey;
+                cardConfig = loadCardConfigSync(protoName) || cardConfig;
+            }
+        }
+    }
     showConfirm(
         t('save_as_template'),
         'Push current card template to global library?',
         t('Save'), t('Cancel')
     ).then(function(confirmed) {
         if (!confirmed) return;
-        var result = pushTemplateToGlobal(protoName, dtKey);
+        var result = pushTemplateToGlobal(protoName, realKey);
         if (result) {
             showToast(t('template_saved'), 'success', 3000);
             _exitSchemeEditMode(cardEl);
