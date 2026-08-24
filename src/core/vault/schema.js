@@ -1251,7 +1251,15 @@ export function expandTemplateFields(template) {
     if (template.presetFields) {
         template.presetFields.forEach(function(fn) {
             var def = ALL_PREDEFINED_FIELDS[fn];
-            if (def) fields[fn] = Object.assign({}, def);
+            if (def) {
+                fields[fn] = Object.assign({}, def);
+            } else {
+                // 与 customFieldRefs 同款 fallback：presetFields 里的字段名若
+                // 不在 ALL_PREDEFINED_FIELDS（已下架/重命名），仍以 string fallback
+                // 保留，不静默跳过——否则模板 presetFields.length=12 但展开后
+                // fields 数更少，导致模板库字段数 ≠ 编辑器字段数 ≠ 角色卡渲染行数
+                fields[fn] = { type: 'string', max_length: 200, category: 'custom' };
+            }
         });
     }
     if (template.customFieldRefs) {

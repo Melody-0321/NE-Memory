@@ -91,6 +91,30 @@ function renderCharacterCard(name, card, schema, cardType) {
         }
     });
 
+    // cardData 有但 cardSchema.fields 没有的字段（LLM 写入模板外字段、
+    // 或模板已切换但旧字段数据残留）：也渲染为表格行（编辑模式遍历 DOM
+    // .ne-char-val 即得到同一集合 → 常态与编辑恒一致）。
+    var _schemaKeys = {};
+    Object.keys(cardSchema.fields).forEach(function(k) { _schemaKeys[k] = true; });
+    Object.keys(card).forEach(function(key) {
+        if (_schemaKeys[key]) return;
+        if (key === 'status' || key.charAt(0) === '_') return;
+        var val = card[key];
+        var displayVal;
+        if (typeof val === 'object' && val !== null) {
+            try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
+        } else if (val === undefined || val === null || val === '') {
+            displayVal = '<span class="ne-empty-value">' + t('empty_value') + '</span>';
+        } else {
+            displayVal = String(val);
+        }
+        var fieldType = (typeof val === 'number') ? 'number' : ((val !== null && typeof val === 'object') ? 'object' : 'string');
+        var dataAttrs = 'data-char="' + escapeHtml(name) + '" data-field="' + escapeHtml(key) + '" data-type="' + fieldType + '"';
+        var label = t_field(key) || key;
+        var row = '<tr><td class="ne-field-label">' + escapeHtml(label) + '</td><td class="ne-char-val" ' + dataAttrs + '><span class="ne-char-val-text">' + escapeHtml(displayVal).replace('&lt;span class=&quot;ne-empty-value&quot;&gt;', '<span class="ne-empty-value">').replace('&lt;/span&gt;', '</span>') + '</span></td></tr>';
+        optionalFields.push(row);
+    });
+
     var allRows = requiredFields.concat(optionalFields);
     if (allRows.length === 0) return '';
 
@@ -543,31 +567,6 @@ async function _loadEditVault() {
     return { vault: vault, getChatId: function () { return chatId; } };
 }
 
-// 编辑表补全行：inventory（表格渲染跳过、物品栏区编辑时隐藏）与卡片实际
-// 持有但当前模板之外的字段。沿用 .ne-char-val 结构，saveCardFields 的
-// 既有循环（object 走 JSON.parse）自动接住；exitCardEditMode 恢复
-// _neOrigTableHTML 时自动清除。
-function _buildExtraFieldRow(charName, fieldName, fieldType, value) {
-    var tr = document.createElement('tr');
-    var textVal = '';
-    if (fieldType === 'object') {
-        textVal = (value !== null && value !== undefined) ? JSON.stringify(value, null, 1) : '';
-    } else if (value !== null && value !== undefined) {
-        textVal = String(value);
-    }
-    var editor;
-    if (fieldType === 'object') {
-        editor = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(textVal) + '</textarea>';
-    } else if (fieldType === 'number') {
-        editor = '<input class="ne-char-edit" type="number" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '">';
-    } else {
-        editor = '<input class="ne-char-edit" type="text" value="' + escapeHtml(textVal).replace(/"/g, '&quot;') + '">';
-    }
-    tr.innerHTML = '<td class="ne-field-label">' + escapeHtml(t_field(fieldName) || fieldName) + '</td>' +
-        '<td class="ne-char-val" data-char="' + escapeHtml(charName) + '" data-field="' + escapeHtml(fieldName) + '" data-type="' + fieldType + '">' + editor + '</td>';
-    return tr;
-}
-
 export function enterCardEditMode(editBtn) {
     var cardDiv = editBtn.closest('.ne-char-card');
     if (!cardDiv || cardDiv.classList.contains('ne-card-editing')) return;
@@ -590,21 +589,16 @@ export function enterCardEditMode(editBtn) {
         }
     } catch (e) { cardData = null; }
 
-    // Hide inventory & power slots sections while editing (raw JSON is in the edit form for inventory)
-    var sectionsToHide = cardDiv.querySelectorAll('.ne-inventory-section, .ne-power-slots-section, .ne-section-header');
-    for (var si = 0; si < sectionsToHide.length; si++) {
-        sectionsToHide[si].style.display = 'none';
-    }
-    if (sectionsToHide.length > 0) cardDiv._neHadSections = true;
+    // 编辑态保持与常态同构：物品栏/能力区等独立区块照常显示（常态在独立
+    // 区展示 inventory 而非表格行，编辑也保持一致，不把它塞进表格）。
+    // 原注释声称"raw JSON is in the edit form"已失效——inventory 不进表格。
 
     var table = body.querySelector('table');
     if (table) cardDiv._neOrigTableHTML = table.outerHTML;
 
     var vals = cardDiv.querySelectorAll('.ne-char-val');
-    var tableFields = {};
     vals.forEach(function(td) {
         var fieldName = td.getAttribute('data-field');
-        if (fieldName) tableFields[fieldName] = true;
         var fieldType = td.getAttribute('data-type') || 'string';
         var span = td.querySelector('.ne-char-val-text');
         if (!span) return;
@@ -657,20 +651,6 @@ export function enterCardEditMode(editBtn) {
         }
         span.outerHTML = editor;
     });
-
-    // ── 编辑表补全：inventory + 模板外存量字段（修复「编辑模式显示的
-    // 字段与实际使用字段不一致」——原编辑表只含当前模板字段）──
-    if (table && cardData) {
-        if (cardData.inventory !== undefined && !tableFields.inventory) {
-            table.appendChild(_buildExtraFieldRow(charName, 'inventory', 'object', cardData.inventory));
-        }
-        Object.keys(cardData).forEach(function(k) {
-            if (k === 'status' || k.charAt(0) === '_' || tableFields[k]) return;
-            var v = cardData[k];
-            var vType = (typeof v === 'number') ? 'number' : ((v !== null && typeof v === 'object') ? 'object' : 'string');
-            table.appendChild(_buildExtraFieldRow(charName, k, vType, v));
-        });
-    }
 
     editBtn.outerHTML =
         '<button class="ne-card-save-btn">' + t('Save') + '</button>' +
@@ -1748,15 +1728,6 @@ function exitCardEditMode(cardDiv) {
     if (saveBtn) saveBtn.outerHTML = cardDiv._neOrigEditBtnHTML || '';
     if (cancelBtn && cancelBtn.parentNode) cancelBtn.remove();
     if (deleteBtn && deleteBtn.parentNode) deleteBtn.remove();
-
-    // Restore inventory & power slots sections if they were hidden during edit
-    if (cardDiv._neHadSections) {
-        var hiddenSections = cardDiv.querySelectorAll('.ne-inventory-section, .ne-power-slots-section, .ne-section-header');
-        for (var hj = 0; hj < hiddenSections.length; hj++) {
-            hiddenSections[hj].style.display = '';
-        }
-        cardDiv._neHadSections = false;
-    }
 
     var restoredEditBtn = cardDiv.querySelector('.ne-card-edit-btn');
     if (restoredEditBtn) {
