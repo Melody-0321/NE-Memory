@@ -476,8 +476,17 @@ function _renderConfigCardHTML(tpl, id, cardConfig, roleType) {
     if (!tpl) return '';
     var name = tpl.name || id;
     var desc = tpl.description || '';
-    var presetCount = (tpl.presetFields && Array.isArray(tpl.presetFields)) ? tpl.presetFields.length : 0;
-    var customCount = (tpl.customFieldRefs && Array.isArray(tpl.customFieldRefs)) ? tpl.customFieldRefs.length : 0;
+    var dtLocked = _tplConfigLocked(cardConfig, id);
+    var activeDtKey = _getActiveDialogueTemplateKey(cardConfig, id);
+    // 字段数 chips 从实际生效的卡片级副本取（与 ✎ 编辑器同数据源）。
+    // 副本 forked 后字段数与全局模板分叉，若显示全局数会造成
+    // "模板库显示的字段数 ≠ 进入编辑模式后的字段数"
+    var effectiveSrc = tpl;
+    if (activeDtKey && cardConfig && cardConfig._dialogueTemplates && cardConfig._dialogueTemplates[activeDtKey]) {
+        effectiveSrc = cardConfig._dialogueTemplates[activeDtKey];
+    }
+    var presetCount = (effectiveSrc.presetFields && Array.isArray(effectiveSrc.presetFields)) ? effectiveSrc.presetFields.length : 0;
+    var customCount = (effectiveSrc.customFieldRefs && Array.isArray(effectiveSrc.customFieldRefs)) ? effectiveSrc.customFieldRefs.length : 0;
     var source = tpl.source || (tpl.system ? 'system' : 'user_created');
     var sourceLabel = source === 'ai_generated' ? t('ai_generated') : (source === 'system' ? t('system_template') : t('user_created'));
     var sourceClass = source === 'ai_generated' ? 'src-ai' : (source === 'system' ? 'src-system' : 'src-user');
@@ -485,8 +494,6 @@ function _renderConfigCardHTML(tpl, id, cardConfig, roleType) {
     var stateClass = dtState === 'forked' ? 'state-forked' : (dtState === 'orphaned' ? 'state-orphaned' : 'state-synced');
     var stateLabel = dtState === 'forked' ? t('forked') : (dtState === 'orphaned' ? t('orphaned') : t('version_synced'));
     var stateTooltip = dtState === 'forked' ? t('forked_tooltip') : (dtState === 'orphaned' ? t('orphaned_tooltip') : t('synced_tooltip'));
-    var dtLocked = _tplConfigLocked(cardConfig, id);
-    var activeDtKey = _getActiveDialogueTemplateKey(cardConfig, id);
 
     var html = '<div class="ne-config-card ' + stateClass + '" data-template-id="' + escapeHtml(id) + '" data-role-type="' + escapeHtml(roleType) + '">';
     html += '<div class="ne-config-card-header">';

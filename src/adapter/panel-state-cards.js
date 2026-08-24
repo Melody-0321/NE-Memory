@@ -137,6 +137,12 @@ function renderCharacterCard(name, card, schema, cardType) {
                             '<div class="ne-inventory-section">' + invItems.join('') + '</div>';
         }
     }
+    // 方案启用物品栏但暂无数据：渲染空态区。方案有 → 卡有，
+    // 消除"方案里有物品栏，实际角色卡没有"的不一致
+    if (!inventoryHtml && cardSchema.fields.inventory) {
+        inventoryHtml = '<div class="ne-section-header">' + t_field('inventory') + ' <span class="ne-section-count">0</span></div>' +
+                        '<div class="ne-inventory-section"><span class="ne-empty-value">' + t('empty_value') + '</span></div>';
+    }
 
     var displayName = card.name || name;
     var html = '<div class="ne-char-card">';
