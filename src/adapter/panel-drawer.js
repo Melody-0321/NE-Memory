@@ -1,4 +1,4 @@
-import { write } from '../core/vault/store.js';
+import { write, readVault } from '../core/vault/store.js';
 import { recordMemoryVersion } from '../core/vault/state-versions.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
@@ -177,9 +177,22 @@ export function setupSlidePanel() {
 export var _pendingInlineStorage = null;
 export function setPendingInlineStorage(v) { _pendingInlineStorage = v; }
 
-export async function saveSingleEntry(entryType, entryId, updates) {
+// 条目编辑路径兜底：_pendingInlineStorage 缺失时读库再写回，失败则 throw
+// 让调用方（inline 保存/删除的 try/catch+toast）反馈。消除原先「!stored
+// 静默 return」导致的「编辑了但没保存、界面无任何反应」——与 saveCardFields
+// 旧 bug 同款。
+async function _loadEntryVault() {
     var stored = _pendingInlineStorage;
-    if (!stored || !stored.vault) return;
+    if (stored && stored.vault) return stored;
+    var chatId = (_currentGetChatId && typeof _currentGetChatId === 'function') ? _currentGetChatId() : '';
+    if (!chatId) throw new Error('no active chat');
+    var vault = await readVault(chatId);
+    if (!vault) throw new Error('vault not found');
+    return { vault: vault, getChatId: function() { return chatId; } };
+}
+
+export async function saveSingleEntry(entryType, entryId, updates) {
+    var stored = await _loadEntryVault();
     var vault = stored.vault;
     var getChatId = stored.getChatId;
     var c = vault.content || {};
@@ -212,8 +225,7 @@ export async function saveSingleEntry(entryType, entryId, updates) {
 }
 
 export async function deleteSingleEntry(entryType, entryId) {
-    var stored = _pendingInlineStorage;
-    if (!stored || !stored.vault) return;
+    var stored = await _loadEntryVault();
     var vault = stored.vault;
     var getChatId = stored.getChatId;
     var c = vault.content || {};
