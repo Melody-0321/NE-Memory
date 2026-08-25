@@ -54,7 +54,7 @@ function _updatePipelineUI(status) {
     ];
     var activeCount = dots.filter(function(d) { return status[d.key] === 'active'; }).length;
     if (activeCount === 0) {
-        el.innerHTML = '<span style="color:var(--grey-50);">\u25CF</span> ' + t('Idle');
+        el.innerHTML = '<span class="ne-text-soft">\u25CF</span> ' + t('Idle');
         el.style.color = 'var(--grey-50)';
     } else {
         var parts = dots.map(function(d) {
@@ -97,11 +97,11 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div class="ne-vault-pin-row" style="padding:4px 12px 0;display:flex;align-items:center;">' +
             '<h3 class="margin0" style="white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;">' + t('NE Narrative Engine') + '</h3>' +
-            '<span id="ne_pipeline_status" style="font-size:0.75em;color:var(--grey-50);white-space:nowrap;margin-left:6px;"></span>' +
+            '<span id="ne_pipeline_status" class="ne-text-soft" style="font-size:0.75em;white-space:nowrap;margin-left:6px;"></span>' +
             '<div style="display:flex;align-items:center;margin-left:auto;gap:8px;">' +
-            '<span id="ne_pin_templates" class="ne-pin-icon" title="' + t('template_library') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u{1F4CB}</span>' +
-            '<span id="ne_pin_usage" class="ne-pin-icon" title="' + t('Usage Statistics') + '" style="font-size:0.78em;color:var(--grey-60);cursor:pointer;white-space:nowrap;">\u{1F4CA} --</span>' +
-            '<span id="ne_pin_settings" class="ne-pin-icon" title="' + t('Settings & Data Management') + '" style="font-size:1em;cursor:pointer;color:var(--grey-60);padding:0 2px;">\u2699</span>' +
+            '<span id="ne_pin_templates" class="ne-pin-icon ne-text-soft" title="' + t('template_library') + '" style="font-size:1em;cursor:pointer;padding:0 2px;">\u{1F4CB}</span>' +
+            '<span id="ne_pin_usage" class="ne-pin-icon ne-text-soft" title="' + t('Usage Statistics') + '" style="font-size:0.78em;cursor:pointer;white-space:nowrap;">\u{1F4CA} --</span>' +
+            '<span id="ne_pin_settings" class="ne-pin-icon ne-text-soft" title="' + t('Settings & Data Management') + '" style="font-size:1em;cursor:pointer;padding:0 2px;">\u2699</span>' +
             '</div></div>' +
             // ── 仅摘要模式警示条 ──
             '<div id="ne_summary_only_notice" class="ne-summary-only-notice" style="display:none;">' +
@@ -117,8 +117,8 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading"></div>' +
-            '<div id="narrative_vault_panel_error" style="display:none;color:var(--ne-danger);"></div>' +
-            '<div id="narrative_vault_panel_storage_warn" style="display:none;color:var(--ne-warning);font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
+            '<div id="narrative_vault_panel_error" class="ne-text-danger" style="display:none;"></div>' +
+            '<div id="narrative_vault_panel_storage_warn" class="ne-text-warning" style="display:none;font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
             // ── State tab ──
             '<div id="tab-state" class="ne-vault-tab-content active">' +
             '<div id="ne-state-search-bar" style="padding:4px 12px 6px;">' +
@@ -126,7 +126,7 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
             '<div style="padding:0 12px 4px;display:flex;align-items:center;gap:6px;">' +
-            '<span id="ne-state-scene" style="font-size:0.82em;color:var(--grey-60);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"></span>' +
+            '<span id="ne-state-scene" class="ne-text-soft" style="font-size:0.82em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;"></span>' +
             '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
@@ -134,23 +134,23 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             // State accordion: Characters / Quests / Factions
             '<div class="ne-accordion open" id="ne-acc-characters">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
-            '<div id="ne-state-template-entry" style="padding:2px 0 8px;font-size:0.82em;color:var(--grey-50);cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
+            '<div id="ne-state-template-entry" class="ne-text-soft" style="padding:2px 0 8px;font-size:0.82em;cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
             '<div id="ne_character_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-quests">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_quest_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-factions">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_faction_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-suspense">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('suspense_section_title') + ' <span id="ne-suspense-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('suspense_section_title') + ' <span id="ne-suspense-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_suspense_block_container"></div>' +
             '</div></div>' +
@@ -174,7 +174,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-accordion open" id="ne-acc-stm">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
@@ -182,7 +182,7 @@ export async function renderVaultPanel(getChatId) {
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-ltm">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Long-term Memory (LTM)') + ' <span id="ne-ltm-count" style="margin-left:4px;font-weight:normal;color:var(--grey-50);font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Long-term Memory (LTM)') + ' <span id="ne-ltm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +

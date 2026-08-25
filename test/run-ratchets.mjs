@@ -8,7 +8,8 @@ var __dirname = path.dirname(fileURLToPath(import.meta.url));
 var ratchets = [
     'ratchet-arch-layers.test.js',
     'ratchet-empty-catch.test.js',
-    'ratchet-dead-exports.test.js'
+    'ratchet-dead-exports.test.js',
+    'ratchet-color-literals.test.js'
 ];
 
 var totalFailed = 0;

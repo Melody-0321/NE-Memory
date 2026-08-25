@@ -1,0 +1,90 @@
+/*
+ * ════════════════════════════════════════════════════════════════
+ *   NE Memory Engine — Design Tokens（唯一真源）
+ * ════════════════════════════════════════════════════════════════
+ *
+ * 本文件是 --ne-* 设计 token 的唯一真源。通过 rollup cssString 插件
+ * 内联进 bundle，运行时注入 PD.head :root（ne_vars_style）。
+ * 自定义属性沿继承链穿透 shadow boundary，shadow 面板同样生效。
+ *
+ * 纪律（参照柏宝书 base.css「不写颜色字面量」）：
+ *   - 所有颜色/间距/圆角/动效一律引用 --ne-* token
+ *   - 本文件之外不得出现颜色字面量（由 ratchet-color-literals 门禁）
+ *   - 状态色（--ne-success 等）保持品牌硬值；其余 token 默认值跟随 ST 主题变量
+ */
+
+:root{
+    /* ── 状态色（品牌硬值，暗亮主题通用） ── */
+    --ne-success:#4caf50;
+    --ne-success-bg:rgba(76,175,80,0.12);
+    --ne-success-border:rgba(76,175,80,0.3);
+    --ne-warning:#f0ad4e;
+    --ne-warning-bg:rgba(240,173,78,0.12);
+    --ne-warning-border:rgba(240,173,78,0.3);
+    --ne-danger:#e53935;
+    --ne-danger-bg:rgba(229,57,53,0.12);
+    --ne-danger-border:rgba(229,57,53,0.3);
+    --ne-info:#2196f3;
+    --ne-info-bg:rgba(33,150,243,0.12);
+    --ne-info-border:rgba(33,150,243,0.3);
+    --ne-muted:#888;
+    --ne-muted-bg:rgba(136,136,136,0.08);
+
+    /* ── 文本 ── */
+    --ne-ink:var(--text,#ddd);
+    --ne-ink-soft:var(--grey-50,#888);
+
+    /* ── 表面（跟随 ST 半透明黑分层） ── */
+    --ne-surface-0:var(--black10a,transparent);
+    --ne-surface-1:var(--black30a,rgba(0,0,0,.3));
+    --ne-surface-2:var(--black50a,rgba(0,0,0,.5));
+
+    /* ── 线条 / 强调 ── */
+    --ne-line:var(--SmartThemeBorderColor,#333);
+    --ne-accent:var(--SmartThemeQuoteColor,#2196f3);
+
+    /* ── 输入控件（跟随 ST 主题；保留 !important 压制 ST 直接作用于 input 的规则） ── */
+    --ne-input-bg:var(--SmartThemeBlurTintColor,#1e1e1e);
+    --ne-input-ink:var(--text,#ddd);
+    --ne-input-line:var(--SmartThemeBorderColor,#333);
+    --ne-input-placeholder:var(--grey-30,#999);
+
+    /* ── 滚动条（中性灰，暗/亮主题均可见） ── */
+    --ne-scroll-thumb:rgba(128,128,128,.35);
+    --ne-scroll-thumb-hover:rgba(128,128,128,.55);
+    --ne-scroll-track:transparent;
+
+    /* ── 间距 ── */
+    --ne-space-xs:4px;
+    --ne-space-sm:8px;
+    --ne-space-md:12px;
+    --ne-space-lg:16px;
+    --ne-space-xl:20px;
+    --ne-space-2xl:24px;
+    --ne-space-3xl:32px;
+
+    /* ── 字号档位 ── */
+    --ne-text-xs:0.75em;
+    --ne-text-sm:0.82em;
+    --ne-text-base:0.9em;
+    --ne-text-lg:1em;
+    --ne-text-xl:1.1em;
+
+    /* ── 圆角 ── */
+    --ne-radius-sm:4px;
+    --ne-radius-md:8px;
+    --ne-radius-lg:12px;
+
+    /* ── 动效 ── */
+    --ne-transition-fast:0.15s;
+    --ne-transition-normal:0.2s;
+    --ne-transition-slow:0.35s;
+    --ne-easing-standard:cubic-bezier(0.4,0,0.2,1);
+    --ne-easing-decelerate:cubic-bezier(0,0,0.2,1);
+    --ne-easing-accelerate:cubic-bezier(0.4,0,1,1);
+
+    /* ── 阴影 / 层级 ── */
+    --ne-shadow-sm:0 1px 3px rgba(0,0,0,0.12);
+    --ne-shadow-md:0 4px 12px rgba(0,0,0,0.15);
+    --ne-z-overlay:1000;
+}
