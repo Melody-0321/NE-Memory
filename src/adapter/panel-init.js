@@ -115,6 +115,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-tab active" data-tab="state">\u{1F4CB} ' + t('State') + '</div>' +
             '<div class="ne-vault-tab" data-tab="memory">\u{1F9E0} ' + t('Memory') + '</div>' +
             '</div>' +
+            '<div class="ne-drawer-body">' +
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading"></div>' +
             '<div id="narrative_vault_panel_error" class="ne-text-danger" style="display:none;"></div>' +
@@ -191,6 +192,9 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div></div>' +
             '</div>' +
+            '</div>' +
+            '<div id="ne-page-layer" class="ne-page-layer"></div>' +
+            '</div>' +
             // ── Slide-in panel infrastructure ──
             '<div id="ne-slide-backdrop" class="ne-slide-backdrop"></div>' +
             '<div id="ne-slide-panel" class="ne-slide-panel">' +
@@ -198,7 +202,7 @@ export async function renderVaultPanel(getChatId) {
             '<span class="ne-slide-close" id="ne-slide-close" title="' + t('Close') + '">\u2715</span>' +
             '<div id="ne-slide-panel-content"></div>' +
             '</div>' +
-            '</div></div>';
+            '</div>';
 
         var sheld = byId('sheld');
         if (!sheld) {
