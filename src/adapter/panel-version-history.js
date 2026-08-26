@@ -1,7 +1,7 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
 import { readVault, write } from '../core/vault/store.js';
-import { qs, qsa, byId, pdCreate, t, PD, closeSlidePanel, emptyStateHtml, busEmit, busOn, busOff } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, PD, emptyStateHtml, busEmit, busOn, busOff } from './panel-shared.js';
 import { neSync } from '../core/settings-adapter.js';
 
 var STATE_VERSION_LIMIT_KEY = 'ne_state_version_limit';

@@ -107,19 +107,13 @@ export function injectBottomDrawerCSS() {
         mobileSel + ' .ne-vault-tab{font-size:0.82em;padding:6px 0;}' +
         (isShadow ? ':host{' : '.ne-vault-bottom-overlay{') + 'touch-action:manipulation;}' +
         // ── 自定义滚动条（动态：isShadow 宿主前缀；--ne-scroll-* 值由 tokens.css :root 单点供血，此处不再覆盖）──
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar,' +
-        '.ne-slide-panel *::-webkit-scrollbar{width:8px;height:8px;}' +
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-track,' +
-        '.ne-slide-panel *::-webkit-scrollbar-track{background:var(--ne-scroll-track);border-radius:4px;}' +
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb,' +
-        '.ne-slide-panel *::-webkit-scrollbar-thumb{background:var(--ne-scroll-thumb);border-radius:4px;' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar{width:8px;height:8px;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-track{background:var(--ne-scroll-track);border-radius:4px;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb{background:var(--ne-scroll-thumb);border-radius:4px;' +
         'border:2px solid transparent;background-clip:padding-box;transition:background .15s;}' +
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb:hover,' +
-        '.ne-slide-panel *::-webkit-scrollbar-thumb:hover{background:var(--ne-scroll-thumb-hover);background-clip:padding-box;}' +
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-corner,' +
-        '.ne-slide-panel *::-webkit-scrollbar-corner{background:transparent;}' +
-        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *,' +
-        '.ne-slide-panel *{scrollbar-width:thin;scrollbar-color:var(--ne-scroll-thumb) var(--ne-scroll-track);}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-thumb:hover{background:var(--ne-scroll-thumb-hover);background-clip:padding-box;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *::-webkit-scrollbar-corner{background:transparent;}' +
+        (isShadow ? ':host' : '.ne-vault-bottom-overlay') + ' *{scrollbar-width:thin;scrollbar-color:var(--ne-scroll-thumb) var(--ne-scroll-track);}' +
         // ── 响应式：768px two-col -> stacked（动态：mobileSel 前缀）──
         mobileSel + ' .ne-template-grid{grid-template-columns:1fr;}' +
         // ── Mobile dual-zone switcher（动态：mobileSel 前缀 + media query）──
@@ -350,10 +344,6 @@ export var _updatingPopout = false;
 export var _currentGetChatId = null;
 export var _vaultChangeBound = false;
 
-// ── Slide-in panel manager ──
-var _slideType = null;
-var _slideRenderers = {};
-
 // ── Tooltip system (G6) ──
 var _tooltipTimer = null;
 var _tooltipEl = null;
@@ -466,57 +456,6 @@ export function showGuideBanner(container, text, storageKey) {
         '.ne-guide-banner-close:hover{opacity:1;}';
     pdHead().appendChild(style);
 })();
-
-export function registerSlideRenderer(type, fn) {
-    _slideRenderers[type] = fn;
-}
-
-export function openSlidePanel(type) {
-    if (_slideType === type) return; // already open
-    // Close current panel if different
-    if (_slideType) closeSlidePanel();
-    _slideType = type;
-
-    var backdrop = panelById('ne-slide-backdrop');
-    var panel = panelById('ne-slide-panel');
-    if (!backdrop || !panel) return;
-
-    // Prevent collapse bar interaction while slide panel is open
-    var collapseBar = panelQS('.ne-vault-collapse-bar');
-    if (collapseBar) collapseBar.style.pointerEvents = 'none';
-
-    backdrop.classList.add('open');
-    panel.classList.add('open');
-
-    // Update title
-    var titleEl = panelById('ne-slide-title');
-    if (titleEl) {
-        if (type === 'usage') titleEl.textContent = t('Usage Statistics');
-        else if (type === 'templates') titleEl.textContent = t('template_library');
-        else titleEl.textContent = t('Settings & Data Management');
-    }
-
-    // Call registered renderer
-    if (_slideRenderers[type]) {
-        var container = panelById('ne-slide-panel-content');
-        if (container) _slideRenderers[type](container);
-    }
-}
-
-function closeSlidePanel() {
-    _slideType = null;
-    var backdrop = panelById('ne-slide-backdrop');
-    var panel = panelById('ne-slide-panel');
-    if (!backdrop || !panel) return;
-
-    backdrop.classList.remove('open');
-    panel.classList.remove('open');
-
-    var collapseBar = panelQS('.ne-vault-collapse-bar');
-    if (collapseBar) collapseBar.style.pointerEvents = '';
-}
-
-export { closeSlidePanel };
 
 // ── L3: Empty state helper ──
 export function emptyStateHtml(icon, text, hint) {

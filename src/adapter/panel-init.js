@@ -11,15 +11,15 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   vaultLLMLog, lastVaultStateJson, closeVaultOverlay, _currentGetChatId,
   _vaultChangeBound, _updatingPopout, setCurrentGetChatId, setVaultChangeBound,
   busOn, busEmit,
-  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast,
-  openSlidePanel, closeSlidePanel, registerSlideRenderer } from './panel-shared.js';
+  setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { _currentChatIdForCollapse, _currentCollapseState,
   _lazyRendered, _pendingInlineStorage,
   saveCollapseState, loadCollapseState, navigateToAccordion,
-  setupAccordionHandlers, setupTabSwitching, setupSlidePanel, renderMemoryButton,
+  setupAccordionHandlers, setupTabSwitching, renderMemoryButton,
   saveSingleEntry, injectStateBanner, deleteSingleEntry,
   renderQuickIndex, setCurrentChatIdForCollapse,
   setupMobileGestureClose } from './panel-drawer.js';
+import { registerNavPage, openNavPage } from './nav-registry.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   enterCardEditMode } from './panel-state-cards.js';
 import { updateVaultViewerPopout } from './panel-content.js';
@@ -131,7 +131,7 @@ export async function renderVaultPanel(getChatId) {
             '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-            '<button id="ne-state-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '<button id="ne-state-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">\u{1F4CB} ' + t('Version History') + '</button>' +
             '</div>' +
             // State accordion: Characters / Quests / Factions
             '<div class="ne-accordion open" id="ne-acc-characters">' +
@@ -169,7 +169,7 @@ export async function renderVaultPanel(getChatId) {
             '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-            '<button id="ne-memory-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">' + '\u{1F4CB} ' + '\u7248\u672C\u5386\u53F2' + '</button>' +
+            '<button id="ne-memory-history-btn" class="menu_button" style="margin-left:auto;font-size:0.78em;padding:2px 8px;white-space:nowrap;">' + '\u{1F4CB} ' + t('Version History') + '</button>' +
             '</div>' +
             '<div class="ne-accordion open" id="ne-acc-memory-list">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
@@ -194,14 +194,6 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             '</div>' +
             '<div id="ne-page-layer" class="ne-page-layer"></div>' +
-            '</div>' +
-            // ── Slide-in panel infrastructure ──
-            '<div id="ne-slide-backdrop" class="ne-slide-backdrop"></div>' +
-            '<div id="ne-slide-panel" class="ne-slide-panel">' +
-            '<div class="ne-slide-title" id="ne-slide-title">' + t('Settings') + '</div>' +
-            '<span class="ne-slide-close" id="ne-slide-close" title="' + t('Close') + '">\u2715</span>' +
-            '<div id="ne-slide-panel-content"></div>' +
-            '</div>' +
             '</div>';
 
         var sheld = byId('sheld');
@@ -245,16 +237,15 @@ export async function renderVaultPanel(getChatId) {
 
         renderMemoryButton(getChatId);
         setupTabSwitching();
-        setupSlidePanel();
 
-        // Register slide-in panel renderers
-        registerSlideRenderer('usage', renderUsageIntoContainer);
-        registerSlideRenderer('settings', renderSettingsIntoSlide);
-        registerSlideRenderer('templates', renderTemplatesIntoSlide);
-        registerSlideRenderer('versions', function(container) {
+        // Register system function pages into the nav registry (Tab + page stack)
+        registerNavPage({ id: 'usage', titleKey: 'Usage Statistics', render: renderUsageIntoContainer });
+        registerNavPage({ id: 'settings', titleKey: 'Settings & Data Management', render: renderSettingsIntoSlide });
+        registerNavPage({ id: 'templates', titleKey: 'template_library', render: renderTemplatesIntoSlide });
+        registerNavPage({ id: 'versions', titleKey: 'Version History', render: function(container) {
             var cid = typeof getChatId === 'function' ? getChatId() : getChatId;
             renderVersionHistoryPanel(container, cid);
-        });
+        } });
 
         var collapseBar = panelQS('.ne-vault-collapse-bar');
         if (collapseBar) collapseBar.onclick = function () { closeVaultOverlay(); };
@@ -584,17 +575,17 @@ export async function renderVaultPanel(getChatId) {
 
         // ── Pin row: templates, usage & settings icons ──
         var tmplPin = panelById('ne_pin_templates');
-        if (tmplPin) tmplPin.onclick = function() { openSlidePanel('templates'); };
+        if (tmplPin) tmplPin.onclick = function() { openNavPage('templates'); };
         var stateTmplEntry = panelById('ne-state-template-entry');
-        if (stateTmplEntry) stateTmplEntry.onclick = function() { openSlidePanel('templates'); };
+        if (stateTmplEntry) stateTmplEntry.onclick = function() { openNavPage('templates'); };
         var usagePin = panelById('ne_pin_usage');
-        if (usagePin) usagePin.onclick = function() { openSlidePanel('usage'); };
+        if (usagePin) usagePin.onclick = function() { openNavPage('usage'); };
         var settingsPin = panelById('ne_pin_settings');
-        if (settingsPin) settingsPin.onclick = function() { openSlidePanel('settings'); };
+        if (settingsPin) settingsPin.onclick = function() { openNavPage('settings'); };
         var stateHistoryBtn = panelById('ne-state-history-btn');
-        if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+        if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openNavPage('versions'); };
         var memHistoryBtn = panelById('ne-memory-history-btn');
-        if (memHistoryBtn) memHistoryBtn.onclick = function() { openSlidePanel('versions'); };
+        if (memHistoryBtn) memHistoryBtn.onclick = function() { openNavPage('versions'); };
 
         var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
         if (chatId) {

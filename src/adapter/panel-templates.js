@@ -15,11 +15,11 @@ import { loadTemplateLibrary, saveTemplateLibrary, saveTemplate, deleteTemplate,
 import { PRESET_FIELDS, ALL_PREDEFINED_FIELDS, buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, ROLE_CATEGORY_MAP, getPresetFieldsForRole } from '../core/vault/schema.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit, openSlidePanel, closeSlidePanel } from './panel-shared.js';
+import { PD, pdCreate, panelById, t, showToast, showConfirm, busEmit } from './panel-shared.js';
 import { runTemplateAssistant, buildTemplateFingerprint, applyAssistantPlan, collectFieldValueSummary } from '../core/engine/template-assistant.js';
 import { collectWorldBookContent } from '../core/engine/state-pipeline.js';
 
-// ── Slide-in root state ──
+// ── Page root state ──
 var _lastRenderTick = 0;
 var _renderTicket = 0;
 var _searchQuery = '';
@@ -44,11 +44,11 @@ function _getCurrentCharName() {
 }
 
 /**
- * Main slide-in entry point. Called by registerSlideRenderer('templates', ...).
+ * Main nav page entry point. Called by registerNavPage('templates', ...).
  * Renders a unified dual-zone view:
  *   TOP half: Global template library (cards grouped by role in accordions)
  *   BOTTOM half: Current dialogue config (cards showing what's in use + template mode + world context)
- * @param {HTMLElement} container - #ne-slide-panel-content
+ * @param {HTMLElement} container - #ne-page-content
  */
 export function renderTemplatesIntoSlide(container) {
     if (!container) return;
@@ -1832,7 +1832,7 @@ function _deleteTemplateConfirm(templateId, templates, order, container) {
         if (confirmed) {
             deleteTemplate(templateId);
             showToast(t('template_deleted'), 'info', 3000);
-            renderTemplatesIntoSlide(container || panelById('ne-slide-panel-content'));
+            renderTemplatesIntoSlide(container || panelById('ne-page-content'));
         }
     });
 }
@@ -1854,7 +1854,7 @@ function _duplicateTemplate(templateId, templates, container) {
         delete newTpl.versions;
         saveTemplate(newTpl);
         showToast(t('template_saved'), 'success', 3000);
-        renderTemplatesIntoSlide(container || panelById('ne-slide-panel-content'));
+        renderTemplatesIntoSlide(container || panelById('ne-page-content'));
     });
 }
 
@@ -1944,6 +1944,6 @@ function _addNpcToPool(templateId, cardConfig, templates) {
 }
 
 function _refreshCurrentPanel() {
-    var container = panelById('ne-slide-panel-content');
+    var container = panelById('ne-page-content');
     if (container) renderTemplatesIntoSlide(container);
 }

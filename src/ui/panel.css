@@ -123,16 +123,16 @@
 .ne-inline-save,.ne-inline-cancel,.ne-inline-delete{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}
 .ne-inline-save{background:var(--ne-success);color:#fff;border:none;}
 
-/* ── Settings (#tab-settings / .ne-slide-panel 输入控件) ── */
+/* ── Settings (#tab-settings / .ne-page-content 输入控件) ── */
 .ne-settings-section{margin-bottom:8px;}
 #tab-settings .ne-accordion-body{padding:8px 12px;}
-#tab-settings label, .ne-slide-panel label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}
+#tab-settings label, .ne-page-content label{display:block;padding:6px 0;font-size:0.9em;color:var(--text);cursor:pointer;}
 #tab-settings input[type=text],#tab-settings input[type=password],#tab-settings input[type=number],
-.ne-slide-panel input[type=text],.ne-slide-panel input[type=password],.ne-slide-panel input[type=number]{
+.ne-page-content input[type=text],.ne-page-content input[type=password],.ne-page-content input[type=number]{
     width:100%;background:var(--ne-input-bg) !important;border:1px solid var(--ne-input-line);color:var(--ne-input-ink) !important;-webkit-text-fill-color:var(--ne-input-ink) !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-size:0.9em;}
 #tab-settings input::placeholder{color:var(--ne-input-placeholder) !important;opacity:1 !important;-webkit-text-fill-color:var(--ne-input-placeholder) !important;}
-.ne-slide-panel input::placeholder,.ne-slide-panel textarea::placeholder{color:var(--ne-input-placeholder) !important;opacity:1 !important;-webkit-text-fill-color:var(--ne-input-placeholder) !important;}
-#tab-settings textarea,.ne-slide-panel textarea{width:100%;background:var(--ne-input-bg) !important;border:1px solid var(--ne-input-line);color:var(--ne-input-ink) !important;-webkit-text-fill-color:var(--ne-input-ink) !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;}
+.ne-page-content input::placeholder,.ne-page-content textarea::placeholder{color:var(--ne-input-placeholder) !important;opacity:1 !important;-webkit-text-fill-color:var(--ne-input-placeholder) !important;}
+#tab-settings textarea,.ne-page-content textarea{width:100%;background:var(--ne-input-bg) !important;border:1px solid var(--ne-input-line);color:var(--ne-input-ink) !important;-webkit-text-fill-color:var(--ne-input-ink) !important;padding:6px 10px;border-radius:4px;margin:2px 0 8px;font-family:monospace;font-size:0.8em;resize:vertical;}
 #tab-settings input[type=range]{width:100%;margin:4px 0;-webkit-appearance:none;appearance:none;height:5px;background:var(--SmartThemeBodyColor);border-radius:15px;box-shadow:inset 0 0 2px black;cursor:ew-resize;filter:brightness(0.75);}
 #tab-settings input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;height:15px;width:15px;border-radius:50%;background:var(--SmartThemeCheckboxTickColor);border:2px solid var(--SmartThemeBodyColor);}
 #tab-settings input[type=range]::-moz-range-thumb{height:15px;width:15px;border-radius:50%;background:var(--SmartThemeCheckboxTickColor);border:2px solid var(--SmartThemeBodyColor);box-sizing:border-box;}
@@ -431,15 +431,6 @@
 /* ── L3: Search / Filter ── */
 .ne-search-hidden{display:none!important;}
 .ne-search-no-match{color:var(--ne-muted);font-style:italic;padding:8px;text-align:center;}
-
-/* ── Slide-in panel ── */
-.ne-slide-panel{position:absolute;top:0;right:0;bottom:0;width:85%;background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-left:1px solid var(--SmartThemeBorderColor);transform:translateX(100%);transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);z-index:40;overflow-y:auto;padding:12px;}
-.ne-slide-panel.open{transform:translateX(0);}
-.ne-slide-backdrop{position:absolute;inset:0;background:var(--ne-surface-2);opacity:0;pointer-events:none;transition:opacity 0.2s;z-index:39;}
-.ne-slide-backdrop.open{opacity:1;pointer-events:auto;}
-.ne-slide-panel .ne-slide-close{position:sticky;top:0;float:right;font-size:1.2em;cursor:pointer;color:var(--grey-50);padding:4px 8px;border-radius:4px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);z-index:1;line-height:1;}
-.ne-slide-panel .ne-slide-close:hover{background:var(--black50a);color:var(--text);}
-.ne-slide-panel .ne-slide-title{font-size:1em;font-weight:bold;margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--SmartThemeBorderColor);}
 
 /* ── P1 导航页栈（Tab + 页栈：系统功能全屏子页） ── */
 .ne-drawer-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;}

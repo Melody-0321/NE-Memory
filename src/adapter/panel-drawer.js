@@ -2,7 +2,7 @@ import { write, readVault } from '../core/vault/store.js';
 import { recordMemoryVersion } from '../core/vault/state-versions.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast, closeSlidePanel } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
 import { neSync } from '../core/settings-adapter.js';
 import { renderUsageTab } from './panel-usage.js';
@@ -165,13 +165,6 @@ export function setupTabSwitching() {
             }
         };
     });
-}
-
-export function setupSlidePanel() {
-    var backdrop = panelById('ne-slide-backdrop');
-    var closeBtn = panelById('ne-slide-close');
-    if (backdrop) backdrop.onclick = closeSlidePanel;
-    if (closeBtn) closeBtn.onclick = closeSlidePanel;
 }
 
 export var _pendingInlineStorage = null;
