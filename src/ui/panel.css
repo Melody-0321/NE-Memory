@@ -434,8 +434,7 @@
 
 /* ── P1 导航页栈（Tab + 页栈：系统功能全屏子页） ── */
 .ne-drawer-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;}
-.ne-page-layer{position:absolute;inset:0;z-index:40;isolation:isolate;background:transparent;display:none;flex-direction:column;opacity:0;transition:opacity var(--ne-transition-fast) var(--ne-easing-standard);}
-.ne-page-layer::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--SmartThemeBlurTintColor,var(--ne-surface-2));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
+.ne-page-layer{position:absolute;inset:0;z-index:40;background:var(--ne-surface-1);display:none;flex-direction:column;opacity:0;transition:opacity var(--ne-transition-fast) var(--ne-easing-standard);}
 .ne-page-layer.open{display:flex;opacity:1;}
 .ne-page-header{display:flex;align-items:center;gap:8px;padding:10px 12px;border-bottom:1px solid var(--ne-line);flex-shrink:0;}
 .ne-page-back{background:var(--ne-surface-2);color:var(--ne-ink);border:1px solid var(--ne-line);border-radius:var(--ne-radius-sm);padding:3px 10px;font-size:var(--ne-text-sm);cursor:pointer;font-family:inherit;line-height:1.5;}
@@ -727,3 +726,13 @@
 .ne-btn-inline-danger{background:var(--ne-danger);color:#fff;border:none;} /* 内联删除按钮（替代 background:#d32f2f;color:#fff;border:none） */
 .ne-btn-inline-cancel{background:var(--grey-40);color:#fff;border:none;} /* 内联取消按钮（替代 background:var(--grey-40);color:#fff;border:none） */
 .ne-empty-cell{color:var(--ne-ink-soft);font-style:italic;} /* 空/占位单元格（替代 color:#888;font-style:italic） */
+
+/* ── P2-G2: 首开骨架屏 ── */
+.ne-skeleton-overlay{position:absolute;inset:0;z-index:30;background:var(--ne-surface-1);display:flex;flex-direction:column;gap:12px;padding:24px 16px;}
+.ne-skeleton-line{height:14px;border-radius:var(--ne-radius-sm);background:linear-gradient(90deg,var(--black20a) 25%,var(--black30a) 50%,var(--black20a) 75%);background-size:200% 100%;animation:ne_skeleton_shimmer 1.2s linear infinite;}
+@keyframes ne_skeleton_shimmer{0%{background-position:200% 0;}100%{background-position:-200% 0;}}
+
+/* ── P2-G2: 动效可访问性（系统级减少动效偏好） ── */
+@media (prefers-reduced-motion:reduce){
+    .ne-vault-bottom-overlay *{transition-duration:0.01ms!important;animation-duration:0.01ms!important;animation-iteration-count:1!important;}
+}

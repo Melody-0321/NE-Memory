@@ -14,6 +14,12 @@ import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
 // ── UIP-1: 区块渲染输入签名缓存（undefined = 从未渲染，首次必渲染） ──
 var _renderCache = {};
 
+// ── P2-G2: 首开骨架屏移除（幂等：任意渲染完成/终止路径都会调用） ──
+function _removeSkeleton() {
+    var sk = panelById('ne-skeleton-overlay');
+    if (sk && sk.parentNode) sk.parentNode.removeChild(sk);
+}
+
 export async function updateVaultViewerPopout(getChatId) {
     if (_updatingPopout) return;
     var _overlay = byId('ne_vault_bottom_overlay');
@@ -47,6 +53,7 @@ export async function updateVaultViewerPopout(getChatId) {
         var ae = root ? root.activeElement : document.activeElement;
         if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell') || ae.closest('.ne-inline-row') || ae.closest('.ne-char-edit'))) {
             showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
+            _removeSkeleton();
             setUpdatingPopout(false);
             return;
         }
@@ -73,6 +80,7 @@ export async function updateVaultViewerPopout(getChatId) {
     } catch (e) {
         _logSection('read-vault', e);
         if (errDiv) { errDiv.textContent = t('Failed to load vault:') + ' ' + e.message; errDiv.style.display = ''; }
+        _removeSkeleton();
         setUpdatingPopout(false);
         return;
     }
@@ -99,7 +107,7 @@ export async function updateVaultViewerPopout(getChatId) {
         }
     } catch (e) { _logSection('header', e); }
 
-    if (!panelById('tab-memory')) { setUpdatingPopout(false); return; }
+    if (!panelById('tab-memory')) { _removeSkeleton(); setUpdatingPopout(false); return; }
 
     // UIP-1 注意：此处不能无条件移除 .narrative_*_block——内层 Section 仅在缓存未命中
     // 时才重新注入 innerHTML（innerHTML 覆盖本身会替换容器子元素），先删后等注入
@@ -370,5 +378,6 @@ export async function updateVaultViewerPopout(getChatId) {
     } catch (e) {}
     }
 
+    _removeSkeleton();
     setUpdatingPopout(false);
 }

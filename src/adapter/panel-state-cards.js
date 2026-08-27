@@ -20,7 +20,7 @@ function _getChatId() {
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
 import { buildCharacterSchemaFromTemplates, DEFAULT_PC_TEMPLATE, DEFAULT_NPC_TEMPLATE, DEFAULT_FACTION_TEMPLATE, DEFAULT_TASK_TEMPLATE, DEFAULT_GOAL_TEMPLATE, PRESET_FIELDS, ALL_PREDEFINED_FIELDS, ROLE_CATEGORY_MAP, getPresetFieldsForRole, resolveActiveTemplateFields, resolveActiveTemplateCopy } from '../core/vault/schema.js';
-import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, t, sortLtmByMsgOrder, busEmit, panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml } from './panel-shared.js';
 import { saveSingleEntry, deleteSingleEntry, _pendingInlineStorage } from './panel-drawer.js';
 import { recordStateDelta } from '../core/vault/state-versions.js';
 
@@ -1944,7 +1944,12 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
     }
 
     tbody.innerHTML = '';
-    if (!entries || entries.length === 0) { tbody.innerHTML = '<tr><td class="ne-text-soft" colspan="4">' + t('(empty)') + '</td></tr>'; return; }
+    if (!entries || entries.length === 0) {
+        // P2-G2: 空态升级（图标 + 引导文案，替代裸 "(empty)"）
+        tbody.innerHTML = '<tr><td colspan="4" style="padding:8px 0;">' +
+            emptyStateHtml('\u{1F4D4}', t('No memory entries yet'), t('Send a message to start tracking')) + '</td></tr>';
+        return;
+    }
     var entryMap = {};
     entries.forEach(function(e) { if (e && e.id) entryMap[e.id] = e; });
 

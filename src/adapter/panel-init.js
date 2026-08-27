@@ -193,6 +193,16 @@ export async function renderVaultPanel(getChatId) {
             '</div></div>' +
             '</div>' +
             '</div>' +
+            // P2-G2: 首开骨架屏（首次渲染完成后由 updateVaultViewerPopout 移除）
+            '<div id="ne-skeleton-overlay" class="ne-skeleton-overlay">' +
+            '<div class="ne-skeleton-line" style="width:38%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:100%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:85%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:70%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:92%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:55%;"></div>' +
+            '<div class="ne-skeleton-line" style="width:78%;"></div>' +
+            '</div>' +
             '<div id="ne-page-layer" class="ne-page-layer"></div>' +
             '</div>';
 

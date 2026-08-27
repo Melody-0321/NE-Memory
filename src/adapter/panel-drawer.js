@@ -50,6 +50,31 @@ export function navigateToAccordion(accId, chatId) {
 
 export var _lazyRendered = {};
 
+// ── P2-G2: accordion 开合高度动画（WAAPI，仅点击驱动；恢复/搜索路径瞬时） ──
+var _ACC_EASING = 'cubic-bezier(0.4,0,0.2,1)';
+function _animateAccordionToggle(acc) {
+    try {
+        var body = acc.querySelector(':scope > .ne-accordion-body');
+        if (!body || typeof body.animate !== 'function') return; // 旧浏览器瞬时降级
+        if (acc.classList.contains('open')) {
+            // 展开：class 已置 display:block，从 0 动画到自然高度
+            var h = body.scrollHeight;
+            if (h <= 0) return;
+            body.style.overflow = 'hidden';
+            var anim = body.animate([{ height: '0px' }, { height: h + 'px' }], { duration: 200, easing: _ACC_EASING });
+            anim.onfinish = function () { body.style.overflow = ''; };
+        } else {
+            // 收起：class 已移除（display:none），先内联撑开再动画回 0
+            body.style.display = 'block';
+            var h0 = body.scrollHeight;
+            if (h0 <= 0) { body.style.display = ''; return; }
+            body.style.overflow = 'hidden';
+            var anim0 = body.animate([{ height: h0 + 'px' }, { height: '0px' }], { duration: 200, easing: _ACC_EASING });
+            anim0.onfinish = function () { body.style.display = ''; body.style.overflow = ''; };
+        }
+    } catch (e) { /* 动画失败不影响开合语义 */ }
+}
+
 export function setupAccordionHandlers(chatId) {
     var overlay = byId('ne_vault_bottom_overlay');
     if (!overlay || overlay._neAccDel) return;
@@ -67,6 +92,7 @@ export function setupAccordionHandlers(chatId) {
         var acc = header.closest('.ne-accordion');
         if (!acc) return;
         acc.classList.toggle('open');
+        _animateAccordionToggle(acc);
         if (acc.closest('#tab-memory') || acc.closest('#tab-state')) saveCollapseState(chatId);
         if (acc.classList.contains('open') && acc.id && !_lazyRendered[acc.id]) {
             _lazyRendered[acc.id] = true;
