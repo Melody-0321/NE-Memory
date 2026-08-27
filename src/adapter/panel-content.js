@@ -296,7 +296,7 @@ export async function updateVaultViewerPopout(getChatId) {
         }
     } catch (e) { _logSection('render-stm-table', e); }
 
-    // ── Section H: Counts + quick index ──
+    // ── Section H: Counts ──
     try {
         var stmCountEl = panelById('ne-stm-count');
         if (stmCountEl) stmCountEl.textContent = '\u00B7 ' + stmCount + ' ' + t('entries');
