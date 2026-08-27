@@ -429,7 +429,8 @@
 
 /* ── P1 导航页栈（Tab + 页栈：系统功能全屏子页） ── */
 .ne-drawer-body{position:relative;flex:1;min-height:0;display:flex;flex-direction:column;}
-.ne-page-layer{position:absolute;inset:0;z-index:40;background:var(--ne-surface-1);display:none;flex-direction:column;opacity:0;transition:opacity var(--ne-transition-fast) var(--ne-easing-standard);}
+.ne-page-layer{position:absolute;inset:0;z-index:40;isolation:isolate;background:transparent;display:none;flex-direction:column;opacity:0;transition:opacity var(--ne-transition-fast) var(--ne-easing-standard);}
+.ne-page-layer::before{content:"";position:absolute;inset:0;z-index:-1;background:var(--SmartThemeBlurTintColor,var(--ne-surface-2));backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);}
 .ne-page-layer.open{display:flex;opacity:1;}
 .ne-page-header{display:flex;align-items:center;gap:var(--ne-space-sm);padding:var(--ne-space-md) var(--ne-space-md);border-bottom:1px solid var(--ne-line);flex-shrink:0;}
 .ne-page-back{background:var(--ne-surface-2);color:var(--ne-ink);border:1px solid var(--ne-line);border-radius:var(--ne-radius-sm);padding:var(--ne-space-xs) var(--ne-space-md);font-size:var(--ne-text-sm);cursor:pointer;font-family:inherit;line-height:1.5;}

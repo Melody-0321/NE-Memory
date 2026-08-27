@@ -12,6 +12,7 @@ var ratchets = [
     'ratchet-color-literals.test.js',
     'ratchet-font-size-literals.test.js',
     'ratchet-layout-literals.test.js',
+    'ratchet-page-layer-blur.test.js',
     'ratchet-slide-residue.test.js'
 ];
 
