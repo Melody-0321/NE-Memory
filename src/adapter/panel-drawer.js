@@ -6,6 +6,7 @@ import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panel
 import { createVaultPopout } from './panel-popout.js';
 import { neSync } from '../core/settings-adapter.js';
 import { renderUsageTab } from './panel-usage.js';
+import { swipeDecision } from '../ui/gesture-math.js';
 
 export var _currentCollapseState = {};
 export var _currentChatIdForCollapse = null;
@@ -280,7 +281,7 @@ export function injectStateBanner(messageId) {
     }
 }
 
-// ── L3: Mobile gesture swipe-down to close ──
+// ── L3: Mobile gesture swipe-down to close (P2-G1 增强) ──
 var _gestureBound = false;
 export function setupMobileGestureClose() {
     if (_gestureBound) return;
@@ -288,18 +289,35 @@ export function setupMobileGestureClose() {
     if (!overlay) return;
     _gestureBound = true;
 
-    var startY = 0, movedY = 0, tracking = false;
+    var startY = 0, startX = 0, movedY = 0, tracking = false, dirLocked = false;
+    var lastT = 0, lastY = 0, velocity = 0;
+
     overlay.addEventListener('touchstart', function(e) {
-        var bar = e.composedPath().find(function(el) { return el && el.classList && el.classList.contains('ne-vault-collapse-bar'); });
-        if (!bar) return;
-        if (overlay.scrollTop > 5) return; // not at top
+        // 交互元素上不起手（避免吞掉按钮/输入的点击与长按）
+        if (e.target.closest && e.target.closest('button,input,a,select,textarea,label')) return;
+        if (overlay.scrollTop > 5) return; // 内容未滚到顶部，让原生滚动接管
         tracking = true;
+        dirLocked = false;
+        movedY = 0; velocity = 0;
+        startX = e.touches[0].clientX;
         startY = e.touches[0].clientY;
+        lastT = e.timeStamp;
+        lastY = startY;
         overlay.style.transition = 'none';
     }, { passive: false });
     overlay.addEventListener('touchmove', function(e) {
         if (!tracking) return;
-        movedY = e.touches[0].clientY - startY;
+        var dx = e.touches[0].clientX - startX;
+        var dy = e.touches[0].clientY - startY;
+        // 方向锁定：首个有效 move 横向主导 → 取消追踪（让位横向滚动）
+        if (!dirLocked && (Math.abs(dx) > 4 || Math.abs(dy) > 4)) {
+            if (Math.abs(dx) > Math.abs(dy)) { tracking = false; overlay.style.transition = ''; overlay.style.transform = ''; return; }
+            dirLocked = true;
+        }
+        movedY = dy;
+        // 速度采样（px/ms，最近两点）
+        var dt = e.timeStamp - lastT;
+        if (dt > 0) { velocity = (e.touches[0].clientY - lastY) / dt; lastT = e.timeStamp; lastY = e.touches[0].clientY; }
         if (movedY > 0) {
             overlay.style.transform = 'translateY(' + movedY + 'px)';
         } else {
@@ -309,9 +327,9 @@ export function setupMobileGestureClose() {
     overlay.addEventListener('touchend', function() {
         if (!tracking) return;
         tracking = false;
-        overlay.style.transition = '';
-        overlay.style.transform = '';
-        if (movedY > 60) {
+        if (swipeDecision(movedY, velocity)) {
+            overlay.style.transition = '';
+            overlay.style.transform = '';
             stopOverlayResizeWatcher();
             overlay.classList.remove('open');
             var tid = setTimeout(function() { overlay.style.display = 'none'; }, 600);
@@ -322,6 +340,17 @@ export function setupMobileGestureClose() {
             });
             var chat = byId('chat');
             if (chat) { chat.style.opacity = ''; chat.style.pointerEvents = ''; chat.style.transition = ''; }
+        } else {
+            // 回弹：过渡回 translateY(0)，结束后清理内联字段
+            overlay.style.transition = 'transform var(--ne-transition-normal) var(--ne-easing-standard)';
+            overlay.style.transform = 'translateY(0)';
+            var cleanup = function() {
+                overlay.removeEventListener('transitionend', cleanup);
+                overlay.style.transition = '';
+                overlay.style.transform = '';
+            };
+            overlay.addEventListener('transitionend', cleanup);
+            setTimeout(cleanup, 300); // transition 被禁用时的兜底
         }
         movedY = 0;
     });

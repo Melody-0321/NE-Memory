@@ -57,7 +57,8 @@ var testMap = {
     'injection-arcblock': 'injection-arcblock.test.js',
     'consolidate-accumulate': 'consolidate-accumulate.test.js',
     'ui-tokens': 'ui-tokens.test.js',
-    'nav-registry': 'nav-registry.test.js'
+    'nav-registry': 'nav-registry.test.js',
+    'gesture-math': 'gesture-math.test.js'
 };
 
 var batchMap = {

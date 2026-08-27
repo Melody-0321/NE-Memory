@@ -264,7 +264,16 @@ function _ensureToastCss() {
         'background:var(--black30a,rgba(0,0,0,.3));color:var(--text,#ddd);cursor:pointer;font-size:0.9em;transition:background .15s;}' +
         '.ne-confirm-btn:hover{background:var(--black50a,rgba(0,0,0,.5));}' +
         '.ne-confirm-btn.danger{background:var(--ne-danger);border-color:var(--ne-danger);color:#fff;}' +
-        '.ne-confirm-btn.danger:hover{background:#c62828;}';
+        '.ne-confirm-btn.danger:hover{background:#c62828;}' +
+        // P2-G1: 触屏主输入设备下 confirm 变底部弹层（bottom sheet）
+        '@media (pointer:coarse){' +
+        '.ne-confirm-overlay{align-items:flex-end;}' +
+        '.ne-confirm-dialog{width:100%;max-width:520px;margin:0;min-width:0;' +
+        'border-radius:var(--ne-radius-lg,12px) var(--ne-radius-lg,12px) 0 0;' +
+        'padding-bottom:calc(20px + env(safe-area-inset-bottom,0px));' +
+        'transform:translateY(100%);transition:transform .25s cubic-bezier(0,0,0.2,1);}' +
+        '.ne-confirm-overlay.show .ne-confirm-dialog{transform:translateY(0);}' +
+        '}';
     pdHead().appendChild(style);
 }
 
