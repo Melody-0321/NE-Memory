@@ -1,7 +1,35 @@
-import { STATE_CONTENT_FIELDS } from '../vault/store.js';
+import { STATE_CONTENT_FIELDS, readVault } from '../vault/store.js';
 import { isStateSchemaEnabled, DEFAULT_GLOBAL_SCHEMA } from '../vault/schema.js';
 import { safeJsonParse } from './json-fallback.js';
 import { writeStateWithDelta, writeMemoryWithVersion } from '../vault/state-versions.js';
+import { persistVaultToChatFile } from '../auto-restore.js';
+
+var _persistTimer = null;
+var _persistChatId = null;
+
+/**
+ * 写桥：管线每次写入后，把合并后的完整 vault 持久化进 ST 服务端聊天文件
+ * （chat_metadata.ne_vault），使聊天文件成为跨浏览器共通的权威源。
+ *
+ * 用 50ms 合并窗口去重：同一轮管线内 saveState + saveMemory 两次快速写入
+ * 会合并成一次 saveChat。IndexedDB 始终是实时层，聊天文件持久化失败不阻塞主流程。
+ *
+ * @param {string} chatId
+ */
+export function persistMergedToChatFile(chatId) {
+    if (_persistChatId === chatId && _persistTimer) return;
+    _persistChatId = chatId;
+    if (_persistTimer) clearTimeout(_persistTimer);
+    _persistTimer = setTimeout(function () {
+        _persistTimer = null;
+        _persistChatId = null;
+        readVault(chatId).then(function (vault) {
+            persistVaultToChatFile(vault);
+        }).catch(function (e) {
+            console.error('[NE] persist merged vault to chat file failed:', e);
+        });
+    }, 50);
+}
 
 var _checkChatTag = '';
 
@@ -41,6 +69,7 @@ export async function saveStateVault(chatId, stateVault, deltaData) {
         console.error('[NE] saveStateVault failed:', e);
         throw e;
     }
+    persistMergedToChatFile(chatId);
 }
 
 
@@ -78,6 +107,7 @@ export async function saveMemoryVault(chatId, memoryVault, versionData) {
         console.error('[NE] saveMemoryVault failed:', e);
         throw e;
     }
+    persistMergedToChatFile(chatId);
 }
 
 export function ensureStateStructure(vault) {
