@@ -28,6 +28,7 @@ import { renderUsageIntoContainer } from './panel-usage.js';
 import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
 import { renderVersionHistoryPanel, initVersionNavButtons } from './panel-version-history.js';
+import { mountNeOrb } from './orb.js';
 
 function _onVaultUpdated(payload) {
     var gc = payload && payload.getChatId;
@@ -241,6 +242,7 @@ export async function renderVaultPanel(getChatId) {
         }
 
         renderMemoryButton(getChatId);
+        mountNeOrb(getChatId);
         setupTabSwitching();
 
         // Register system function pages into the nav registry (Tab + page stack)

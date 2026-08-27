@@ -1,0 +1,74 @@
+/*
+ * ════════════════════════════════════════════════════════════════
+ *   NE Memory Engine — Floating Orb（页面内悬浮球）
+ * ════════════════════════════════════════════════════════════════
+ *
+ * 悬浮球挂主文档 PD.body（面板关闭时也可见），本文件由 orb.js
+ * 注入 PD.head（id=ne_orb_style）。颜色/阴影/动效全部引用
+ * tokens.css 的 --ne-* 令牌（三主题自动适配）。
+ *
+ * 二态脉冲（运行状态显示，真源 = pipeline-guard onPipelineChange）：
+ *   idle 静止半透明；任一管线（state/stm/ltm）激活 → .busy：
+ *   边框/图标变 accent 靛蓝 + ::after 外圈脉冲呼吸环。
+ *
+ * 贴边半隐：JS 设 --ne-orb-shift（left → -58% / right → 58% /
+ * free → 0），hover/聚焦/拖拽时整条滑出（translateX(0)）。
+ *
+ * 门禁注意：border-radius 用 50%（百分比不触 layout-literals，禁止
+ * 用 999+ px 圆角字面量）；本文件无颜色字面量。
+ */
+
+.ne-orb{
+    position:fixed;
+    z-index:9997;                 /* 低于 tooltip/toast(9999)、help-card(9998) */
+    width:44px;
+    height:44px;
+    border-radius:50%;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    background:var(--ne-surface-2);
+    border:1px solid var(--ne-line);
+    box-shadow:var(--ne-shadow-sm);
+    color:var(--ne-ink-soft);     /* SVG currentColor 继承 */
+    cursor:grab;
+    touch-action:none;            /* 拖拽不滚屏 */
+    user-select:none;
+    opacity:.62;                 /* idle 静止半隐 */
+    transform:translateX(var(--ne-orb-shift,0));
+    transition:transform var(--ne-transition-normal) var(--ne-easing-standard),
+               opacity var(--ne-transition-normal) var(--ne-easing-standard),
+               border-color var(--ne-transition-fast) var(--ne-easing-standard),
+               color var(--ne-transition-fast) var(--ne-easing-standard);
+}
+.ne-orb:hover,.ne-orb:focus-visible,.ne-orb.is-dragging{opacity:1;transform:translateX(0);}
+.ne-orb:active{cursor:grabbing;}
+.ne-orb:focus-visible{outline:2px solid color-mix(in srgb,var(--ne-accent) 40%,transparent);outline-offset:2px;}
+
+/* 拖拽中禁用过渡（跟手） */
+.ne-orb.is-dragging{transition:none;}
+
+/* ── 二态脉冲：管线激活 ── */
+.ne-orb.busy{
+    border-color:var(--ne-accent);
+    color:var(--ne-accent);
+}
+.ne-orb.busy::after{
+    content:'';
+    position:absolute;
+    inset:-4px;
+    border-radius:50%;
+    border:2px solid var(--ne-accent);
+    animation:ne-orb-pulse 1.6s var(--ne-easing-decelerate) infinite;
+    pointer-events:none;
+}
+@keyframes ne-orb-pulse{
+    0%{transform:scale(.9);opacity:.9;}
+    70%{transform:scale(1.25);opacity:0;}
+    100%{transform:scale(1.25);opacity:0;}
+}
+
+@media (prefers-reduced-motion: reduce){
+    .ne-orb{transition:none;}
+    .ne-orb.busy::after{animation:none;opacity:.4;}   /* 降级为静态外环 */
+}
