@@ -14,10 +14,10 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   setPanelRoot, getPanelRoot, panelById, panelQS, panelQSA, showConfirm, showToast } from './panel-shared.js';
 import { _currentChatIdForCollapse, _currentCollapseState,
   _lazyRendered, _pendingInlineStorage,
-  saveCollapseState, loadCollapseState, navigateToAccordion,
+  saveCollapseState, loadCollapseState,
   setupAccordionHandlers, setupTabSwitching, renderMemoryButton,
   saveSingleEntry, injectStateBanner, deleteSingleEntry,
-  renderQuickIndex, setCurrentChatIdForCollapse,
+  setCurrentChatIdForCollapse,
   setupMobileGestureClose,
   setStateSearchQuery, setMemorySearchQuery, applyStateSearchFilter, applyMemorySearchFilter } from './panel-drawer.js';
 import { registerNavPage, openNavPage } from './nav-registry.js';
@@ -126,7 +126,6 @@ export async function renderVaultPanel(getChatId) {
             '<div id="ne-state-search-bar" class="ne-search-bar">' +
             '<input type="text" id="ne-state-search-input" class="ne-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '">' +
             '</div>' +
-            '<div id="ne_state_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-version-nav-row">' +
             '<span id="ne-state-scene" class="ne-text-soft ne-version-scene"></span>' +
             '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
@@ -165,16 +164,12 @@ export async function renderVaultPanel(getChatId) {
             '<button class="narrative_btn_consolidate ne-btn-warning menu_button ne-search-action-btn">' + t('Consolidate') + '</button>' +
             '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button ne-search-action-btn">' + t('Process History') + '</button>' +
             '</div>' +
-            '<div id="ne_quick_index" class="ne-quick-index"></div>' +
             '<div class="ne-version-nav-row">' +
             '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
             '<button id="ne-memory-history-btn" class="menu_button ne-version-history-btn">' + '\u{1F4CB} ' + t('Version History') + '</button>' +
             '</div>' +
-            '<div class="ne-accordion open" id="ne-acc-memory-list">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
-            '<div class="ne-accordion-body">' +
             '<div class="ne-accordion open" id="ne-acc-stm">' +
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" class="ne-text-soft" style="margin-left:var(--ne-space-xs);font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
@@ -190,7 +185,6 @@ export async function renderVaultPanel(getChatId) {
             '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:var(--ne-text-base);">' +
             '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:var(--ne-text-sm);">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
-            '</div></div>' +
             '</div></div>' +
             '</div>' +
             '</div>' +

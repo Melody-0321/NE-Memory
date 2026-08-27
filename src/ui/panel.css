@@ -40,14 +40,6 @@
 .ne-vault-tab-content{display:none;}
 .ne-vault-tab-content.active{display:block;}
 
-/* ── Quick index ── */
-.ne-quick-index{position:sticky;top:0;z-index:5;display:flex;flex-wrap:wrap;gap:var(--ne-space-xs);padding:var(--ne-space-xs) var(--ne-space-md);margin-bottom:var(--ne-space-sm);background:var(--SmartThemeBlurTintColor);border-radius:0 0 var(--ne-radius-md) var(--ne-radius-md);}
-.ne-index-item{font-size:var(--ne-text-xs);padding:var(--ne-space-xs) var(--ne-space-sm);cursor:pointer;border-radius:var(--ne-radius-sm);background:var(--black30a);color:var(--grey-70);white-space:nowrap;transition:background .15s,color .15s;}
-.ne-index-item:hover{background:var(--black50a);color:var(--text,#ddd);}
-.ne-index-item em{font-style:normal;font-weight:bold;color:var(--grey-50);margin-left:var(--ne-space-xs);}
-.ne-index-item.ne-index-empty{background:transparent;color:var(--grey-30);cursor:default;border:1px dashed var(--grey-30);}
-.ne-index-item.ne-index-empty:hover{background:transparent;color:var(--grey-30);}
-
 /* ── Accordion ── */
 .ne-accordion{margin-bottom:var(--ne-space-xs);}
 .ne-accordion-header{display:flex;align-items:center;padding:var(--ne-space-sm) var(--ne-space-md);cursor:pointer;user-select:none;background:var(--black30a);border-radius:var(--ne-radius-md);font-weight:bold;font-size:var(--ne-text-base);transition:background .15s;}
@@ -416,7 +408,7 @@
 .ne-settings-save-btn:active,.ne-tr-btn:active,
 .ne-card-edit-btn:active,.ne-card-save-btn:active,.ne-card-cancel-btn:active,
 .ne-inline-edit-btn:active,.ne-error-retry:active,
-.ne-index-item:active,.ne-vault-tab:active,.ne-vault-collapse-bar:active{
+.ne-vault-tab:active,.ne-vault-collapse-bar:active{
     transform:scale(.97);transition:transform .1s var(--ne-easing-standard);}
 
 /* ── L3: focus-visible（设置页输入/搜索框）── */

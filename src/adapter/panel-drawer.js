@@ -2,7 +2,7 @@ import { write, readVault } from '../core/vault/store.js';
 import { recordMemoryVersion } from '../core/vault/state-versions.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_field } from '../core/i18n.js';
-import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher, showToast } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, closeVaultOverlay, _currentGetChatId, panelById, panelQS, panelQSA, stopOverlayResizeWatcher } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
 import { neSync } from '../core/settings-adapter.js';
 import { renderUsageTab } from './panel-usage.js';
@@ -29,23 +29,6 @@ export function loadCollapseState(chatId) {
         var raw = localStorage.getItem(k);
         return raw ? JSON.parse(raw) : null;
     } catch(e) { return null; }
-}
-
-export function navigateToAccordion(accId, chatId) {
-    var target = panelById(accId);
-    if (!target) return;
-    var parent = target.parentElement;
-    while (parent) {
-        if (parent.classList.contains('ne-accordion') && !parent.classList.contains('open')) {
-            parent.classList.add('open');
-        }
-        parent = parent.parentElement;
-    }
-    target.classList.add('open');
-    saveCollapseState(chatId);
-    target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    target.classList.add('ne-accordion-highlight');
-    setTimeout(function() { target.classList.remove('ne-accordion-highlight'); }, 1500);
 }
 
 export var _lazyRendered = {};
@@ -115,67 +98,6 @@ export function setupAccordionHandlers(chatId) {
     });
 }
 
-// ── UIP-1: quick index 内容缓存（计数未变时跳过 innerHTML 重建与 onclick 重绑） ──
-var _quickIdxCache = { mem: null, state: null };
-
-export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, _unused, chatId) {
-    // ── Memory tab quick index ──
-    var memIdx = panelById('ne_quick_index');
-    if (memIdx) {
-        var memHtml = '';
-        var addMemItem = function(id, label, count) {
-            var cls = count === 0 ? 'ne-index-item ne-index-empty' : 'ne-index-item';
-            var tip = count === 0 ? ' title="' + t('No data yet — will appear as messages are sent') + '"' : '';
-            memHtml += '<span class="' + cls + '" data-target="' + id + '"' + tip + '>' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
-        };
-        addMemItem('ne-acc-stm', t('STM'), stmCount);
-        addMemItem('ne-acc-ltm', t('LTM'), ltmCount);
-        if (memHtml !== _quickIdxCache.mem) {
-        memIdx.innerHTML = memHtml;
-        _quickIdxCache.mem = memHtml;
-        panelQSA('#ne_quick_index .ne-index-item').forEach(function(item) {
-            item.onclick = function() {
-                var targetId = this.getAttribute('data-target');
-                var target = panelById(targetId);
-                if (!target) return;var visibleContent = panelQSA('#' + targetId + ' .ne-accordion-body tr:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-char-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-faction-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-quest-card:not(.ne-search-hidden), #' + targetId + ' .ne-accordion-body .ne-suspense-card:not(.ne-search-hidden)');
-                if (target.classList.contains('ne-accordion') && (target.querySelector('.ne-search-hidden') && !target.querySelector('tr:not(.ne-search-hidden), .ne-char-card:not(.ne-search-hidden), .ne-faction-card:not(.ne-search-hidden), .ne-quest-card:not(.ne-search-hidden), .ne-suspense-card:not(.ne-search-hidden)'))) {
-                    if (visibleContent.length === 0) { showToast(t('No matches under current search')); return; }
-                }
-                navigateToAccordion(targetId, chatId);
-            };
-        });
-        }
-    }
-    // ── State tab quick index ──
-    var stateIdx = panelById('ne_state_quick_index');
-    if (stateIdx) {
-        var stateHtml = '';
-        var addStateItem = function(id, label, count) {
-            var cls2 = count === 0 ? 'ne-index-item ne-index-empty' : 'ne-index-item';
-            var tip2 = count === 0 ? ' title="' + t('No data yet — will appear as the story progresses') + '"' : '';
-            stateHtml += '<span class="' + cls2 + '" data-target="' + id + '"' + tip2 + '>' + label + (count !== null ? ' <em>' + count + '</em>' : '') + '</span>';
-        };
-        addStateItem('ne-acc-characters', t('Characters'), charCount);
-        addStateItem('ne-acc-quests', t('Quests & Events'), questCount);
-        addStateItem('ne-acc-factions', t('Factions'), factionCount);
-        if (stateHtml !== _quickIdxCache.state) {
-        stateIdx.innerHTML = stateHtml;
-        _quickIdxCache.state = stateHtml;
-        panelQSA('#ne_state_quick_index .ne-index-item').forEach(function(item) {
-            item.onclick = function() {
-                var targetId = this.getAttribute('data-target');
-                var target = panelById(targetId);
-                if (!target) return;if (target.classList.contains('ne-accordion')) {
-                    var visibleCards = panelQSA('#ne_character_block_container .ne-char-card:not(.ne-search-hidden), #ne_faction_block_container .ne-faction-card:not(.ne-search-hidden), #ne_quest_block_container .ne-quest-card:not(.ne-search-hidden), #ne_suspense_block_container .ne-suspense-card:not(.ne-search-hidden)');
-                    if (visibleCards.length === 0 && panelQSA('.ne-search-hidden').length > 0) { showToast(t('No matches under current search')); return; }
-                }
-                navigateToAccordion(targetId, chatId);
-            };
-        });
-        }
-    }
-}
-
 // ── P2-G3: 搜索过滤态（模块级 query + 渲染后重放） ──
 // oninput 只更新 query 并 debounce 触发 apply；updateVaultViewerPopout 在块重建后
 // 调 apply 重放过滤（innerHTML 重建会丢失 ne-search-hidden class）。
@@ -203,8 +125,8 @@ export function applyStateSearchFilter() {
             div.textContent = t('No matches found');
             var container = panelById('tab-state');
             if (container) {
-                var quickIdx = panelById('ne_state_quick_index');
-                if (quickIdx && quickIdx.nextSibling) quickIdx.nextSibling.before(div);
+                var anchor = panelById('ne-state-search-bar');
+                if (anchor) anchor.insertAdjacentElement('afterend', div);
                 else container.appendChild(div);
             }
         }
@@ -232,8 +154,8 @@ export function applyMemorySearchFilter() {
             div2.textContent = t('No matches found');
             var container2 = panelById('tab-memory');
             if (container2) {
-                var quickIdx2 = panelById('ne_quick_index');
-                if (quickIdx2 && quickIdx2.nextSibling) quickIdx2.nextSibling.before(div2);
+                var anchor2 = panelQS('#tab-memory .ne-search-row');
+                if (anchor2) anchor2.insertAdjacentElement('afterend', div2);
                 else container2.appendChild(div2);
             }
         }
@@ -252,11 +174,6 @@ export function setupTabSwitching() {
             panelQSA('.ne-vault-tab-content').forEach(function(c) { c.classList.remove('active'); });
             var content = panelById('tab-' + tabName);
             if (content) content.classList.add('active');
-            // Refresh quick index for the active tab
-            if (tabName === 'state' || tabName === 'memory') {
-                var overlay = byId('ne_vault_bottom_overlay');
-                if (overlay && overlay._refreshQI) overlay._refreshQI();
-            }
         };
     });
 }

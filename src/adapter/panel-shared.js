@@ -102,7 +102,6 @@ export function injectBottomDrawerCSS() {
         mobileSel + ' .ne-vault-scroll-area{padding:0 var(--ne-space-sm) 60px;}' +
         mobileSel + ' .ne-vault-tab-bar{padding:0 var(--ne-space-sm) var(--ne-space-xs);}' +
         mobileSel + ' .ne-accordion-header{padding:var(--ne-space-sm) var(--ne-space-sm);font-size:var(--ne-text-base);}' +
-        mobileSel + ' .ne-quick-index{padding:var(--ne-space-xs) var(--ne-space-sm);}' +
         mobileSel + ' .ne-vault-collapse-bar{padding:var(--ne-space-sm) 0 var(--ne-space-xs);min-height:22px;}' +
         mobileSel + ' .ne-vault-tab{font-size:var(--ne-text-sm);padding:var(--ne-space-sm) 0;}' +
         (isShadow ? ':host{' : '.ne-vault-bottom-overlay{') + 'touch-action:manipulation;}' +

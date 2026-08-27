@@ -6,7 +6,7 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   sortLtmByMsgOrder, closeVaultOverlay, vaultLLMLog, lastVaultStateJson,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
   panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml, getPanelRoot } from './panel-shared.js';
-import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
+import { _pendingInlineStorage, _lazyRendered,
   _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage,
   applyStateSearchFilter, applyMemorySearchFilter } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML, renderSuspensePanelHTML,
@@ -324,8 +324,7 @@ export async function updateVaultViewerPopout(getChatId) {
         }
 
         var chatId = getChatId();
-        renderQuickIndex(stmCount, ltmCount, charCount, questCount, factionCount, c.state && Object.keys(c.state).length > 0, chatId);
-    } catch (e) { _logSection('counts+quickindex', e); }
+    } catch (e) { _logSection('counts', e); }
 
     // ── Section I: Event handlers + scroll/accordion restore ──
     // UIP-1: 所有区块均未变化时 DOM 未动，跳过重绑与恢复（旧绑定依然有效）

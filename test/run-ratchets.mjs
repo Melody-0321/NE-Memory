@@ -13,7 +13,8 @@ var ratchets = [
     'ratchet-font-size-literals.test.js',
     'ratchet-layout-literals.test.js',
     'ratchet-page-layer-blur.test.js',
-    'ratchet-slide-residue.test.js'
+    'ratchet-slide-residue.test.js',
+    'ratchet-quick-index-deprecated.test.js'
 ];
 
 var totalFailed = 0;
