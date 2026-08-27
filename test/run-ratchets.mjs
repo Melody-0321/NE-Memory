@@ -10,6 +10,7 @@ var ratchets = [
     'ratchet-empty-catch.test.js',
     'ratchet-dead-exports.test.js',
     'ratchet-color-literals.test.js',
+    'ratchet-font-size-literals.test.js',
     'ratchet-slide-residue.test.js'
 ];
 
