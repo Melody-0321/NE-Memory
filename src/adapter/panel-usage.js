@@ -59,7 +59,7 @@ export async function renderUsageTab() {
         '<select id="ne-breakdown-month"></select>' +
         '</span>' +
         '<div class="ne-usage-chart-wrap"><canvas id="ne-breakdown-pie-canvas"></canvas></div>' +
-        '<div id="ne-breakdown-empty" class="ne-text-soft" style="display:none;text-align:center;padding:12px;">' + t('No data') + '</div>' +
+        '<div id="ne-breakdown-empty" class="ne-text-soft" style="display:none;text-align:center;padding:var(--ne-space-md);">' + t('No data') + '</div>' +
         '</div>';
 
     /* Section C: Daily trend — bar chart with month dropdown */
@@ -67,7 +67,7 @@ export async function renderUsageTab() {
         '<div class="ne-usage-section-title">\u{1F4C8} ' + t('Daily Trend') + '</div>' +
         '<select id="ne-daily-month"></select>' +
         '<div class="ne-usage-chart-wrap-tall"><canvas id="ne-daily-bar-canvas"></canvas></div>' +
-        '<div id="ne-daily-bar-empty" class="ne-text-soft" style="display:none;text-align:center;padding:12px;">' + t('No data') + '</div>' +
+        '<div id="ne-daily-bar-empty" class="ne-text-soft" style="display:none;text-align:center;padding:var(--ne-space-md);">' + t('No data') + '</div>' +
         '</div>';
 
     /* Section D: Per-chat table */

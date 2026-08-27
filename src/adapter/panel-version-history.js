@@ -310,21 +310,21 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<div id="vt-pane-settings" class="ne-timeline-section" style="display:none;">' +
         '<div class="ne-version-settings-block">' +
         '<h4>' + '\u{1F3AD} State \u7248\u672C\u4FDD\u7559\u6570' + '</h4>' +
-        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="display:flex;align-items:center;gap:var(--ne-space-md);">' +
         '<input type="range" id="ne-state-limit-slider" min="10" max="500" step="10" value="' + getLimit(STATE_VERSION_LIMIT_KEY) + '" style="flex:1;">' +
         '<span id="ne-state-limit-value" style="font-weight:bold;min-width:2em;text-align:right;">' + getLimit(STATE_VERSION_LIMIT_KEY) + '</span>' +
         '</div>' +
-        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:4px;">' +
+        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:var(--ne-space-xs);">' +
             '\u8D85\u8FC7\u9650\u5236\u540E\uFF0C\u65E7\u7248\u672C\u5C06\u81EA\u52A8\u538B\u7F29\u5230 base \u7248\u672C\u3002\u538B\u7F29\u540E\u56DE\u9000\u4ECD\u53EF\u7528\uFF0C\u4F46\u7C92\u5EA6\u53D8\u7C97\u3002' +
         '</div>' +
         '</div>' +
         '<div class="ne-version-settings-block">' +
         '<h4>' + '\u{1F9E0} Memory \u7248\u672C\u4FDD\u7559\u6570' + '</h4>' +
-        '<div style="display:flex;align-items:center;gap:10px;">' +
+        '<div style="display:flex;align-items:center;gap:var(--ne-space-md);">' +
         '<input type="range" id="ne-mem-limit-slider" min="10" max="500" step="10" value="' + getLimit(MEM_VERSION_LIMIT_KEY) + '" style="flex:1;">' +
         '<span id="ne-mem-limit-value" style="font-weight:bold;min-width:2em;text-align:right;">' + getLimit(MEM_VERSION_LIMIT_KEY) + '</span>' +
         '</div>' +
-        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:4px;">' +
+        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:var(--ne-space-xs);">' +
             '\u8D85\u8FC7\u9650\u5236\u540E\uFF0C\u65E7\u7248\u672C\u5C06\u81EA\u52A8\u538B\u7F29\u5230 base \u7248\u672C\u3002\u538B\u7F29\u540E\u56DE\u9000\u4ECD\u53EF\u7528\uFF0C\u4F46\u7C92\u5EA6\u53D8\u7C97\u3002' +
         '</div>' +
         '</div>' +

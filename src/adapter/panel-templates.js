@@ -994,7 +994,7 @@ function _showAssistant(container, mode, templateId, templates, order) {
 
     var html = '<div class="ne-template-editor" id="ne-ai-assistant">';
     // Breadcrumb
-    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:var(--ne-text-sm);">';
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:var(--ne-space-xs);margin-bottom:var(--ne-space-sm);font-size:var(--ne-text-sm);">';
     html += '<span class="ne-breadcrumb-link ne-text-info" id="ne-ai-bc-lib" style="cursor:pointer;">' + escapeHtml(t('breadcrumb_library')) + '</span>';
     html += '<span class="ne-text-soft"> › </span>';
     html += '<span class="ne-text-soft">' + escapeHtml(t('ai_assistant_title')) + (mode === 'modify' && tpl && tpl.name ? ' · ' + escapeHtml(tpl.name) : '') + '</span>';
@@ -1007,7 +1007,7 @@ function _showAssistant(container, mode, templateId, templates, order) {
         if (tpl.system) {
             html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);">' + escapeHtml(t('system_template')) + ' → ' + escapeHtml(t('save_as_new')) + '</div>';
         }
-        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:4px;">ℹ ' + escapeHtml(t('ai_value_dist_included')) + '</div>';
+        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:var(--ne-space-xs);">ℹ ' + escapeHtml(t('ai_value_dist_included')) + '</div>';
     } else {
         html += '<label>' + escapeHtml(t('ai_baseline_label')) + '</label>';
         html += '<select id="ne-ai-baseline" class="ne-editor-select">';
@@ -1021,10 +1021,10 @@ function _showAssistant(container, mode, templateId, templates, order) {
     // Request input
     html += '<div class="ne-editor-section">';
     html += '<textarea id="ne-ai-request" class="ne-editor-textarea" rows="4" placeholder="' + escapeHtml(t('ai_requirement_placeholder')) + '"></textarea>';
-    html += '<label class="ne-preset-field" style="margin-top:6px;"><input type="checkbox" id="ne-ai-worldbook"> ' + escapeHtml(t('ai_use_worldbook')) + '</label>';
+    html += '<label class="ne-preset-field" style="margin-top:var(--ne-space-sm);"><input type="checkbox" id="ne-ai-worldbook"> ' + escapeHtml(t('ai_use_worldbook')) + '</label>';
     html += '</div>';
 
-    html += '<div style="margin-bottom:10px;">';
+    html += '<div style="margin-bottom:var(--ne-space-md);">';
     html += '<button id="ne-ai-generate" class="menu_button">✨ ' + escapeHtml(t('ai_generate')) + '</button>';
     html += '</div>';
     html += '<div id="ne-ai-result"></div>';
@@ -1121,7 +1121,7 @@ function _aiRenderFailure(container, result) {
     var html = '<div class="ne-editor-section" style="border-left:3px solid var(--ne-warning);">';
     html += '<div class="ne-section-title">' + escapeHtml(msg) + '</div>';
     if (result.errors && result.errors.length) {
-        html += '<ul class="ne-text-soft" style="margin:4px 0 0 16px;font-size:var(--ne-text-sm);">';
+        html += '<ul class="ne-text-soft" style="margin:var(--ne-space-xs) 0 0 var(--ne-space-lg);font-size:var(--ne-text-sm);">';
         result.errors.slice(0, 10).forEach(function (e) { html += '<li>' + escapeHtml(String(e)) + '</li>'; });
         html += '</ul>';
     }
@@ -1156,7 +1156,7 @@ function _aiRenderResult(container, result, mode, templateId, fingerprint, basel
     (diff.perRoundRemoved || []).forEach(function (f) { rows.push('<li>－ ' + escapeHtml(t('per_round_fields')) + ': ' + escapeHtml(t_field(f) || f) + '</li>'); });
     (diff.metaChanged || []).forEach(function (k) { rows.push('<li>± ' + escapeHtml(k) + '</li>'); });
     if (rows.length === 0) rows.push('<li class="ne-text-soft">—</li>');
-    html += '<ul style="margin:4px 0 0 16px;font-size:var(--ne-text-sm);">' + rows.join('') + '</ul>';
+    html += '<ul style="margin:var(--ne-space-xs) 0 0 var(--ne-space-lg);font-size:var(--ne-text-sm);">' + rows.join('') + '</ul>';
     html += '</div>';
 
     // High-risk confirmations
@@ -1165,7 +1165,7 @@ function _aiRenderResult(container, result, mode, templateId, fingerprint, basel
         html += '<div class="ne-section-title">' + escapeHtml(t('ai_risk_title')) + '</div>';
         plan.highRiskItems.forEach(function (r, i) {
             var kindLabel = t('ai_risk_' + ({ field_removed: 'field_removed', type_changed: 'type_changed', enum_narrowed: 'enum_narrowed', lib_update: 'lib_update' }[r.kind] || 'field_removed'));
-            html += '<label class="ne-preset-field" style="display:block;margin:2px 0;">';
+            html += '<label class="ne-preset-field" style="display:block;margin:var(--ne-space-xs) 0;">';
             html += '<input type="checkbox" class="ne-ai-risk-check" data-risk-idx="' + i + '"> ';
             html += escapeHtml(kindLabel + ': ' + r.label + (r.detail ? ' — ' + r.detail : ''));
             html += '</label>';
@@ -1174,7 +1174,7 @@ function _aiRenderResult(container, result, mode, templateId, fingerprint, basel
     }
 
     // Actions
-    html += '<div style="display:flex;gap:8px;margin-top:8px;">';
+    html += '<div style="display:flex;gap:var(--ne-space-sm);margin-top:var(--ne-space-sm);">';
     html += '<button id="ne-ai-apply" class="menu_button"' + (plan.highRiskItems.length > 0 ? ' disabled' : '') + '>' + escapeHtml(t('ai_apply')) + '</button>';
     html += '<button id="ne-ai-cancel" class="ne-btn-small">' + escapeHtml(t('ai_cancel')) + '</button>';
     html += '</div>';
@@ -1231,7 +1231,7 @@ function _showTemplateSelectorModal(opts) {
         // Show empty state with guidance instead of silent toast
         html += '<div class="ne-empty-state"><div class="ne-empty-state-icon">\u{1F4CB}</div>';
         html += '<div class="ne-empty-state-text">' + escapeHtml(t('none_available')) + '</div>';
-        html += '<div class="ne-text-soft" style="margin-top:8px;font-size:var(--ne-text-sm);">' + escapeHtml(t('create_first_hint') || 'Create a template in the Template Library first.') + '</div>';
+        html += '<div class="ne-text-soft" style="margin-top:var(--ne-space-sm);font-size:var(--ne-text-sm);">' + escapeHtml(t('create_first_hint') || 'Create a template in the Template Library first.') + '</div>';
         html += '</div>';
     } else {
         available.forEach(function (id) {
@@ -1318,7 +1318,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
 
     var html = '<div class="ne-template-editor" id="ne-template-editor">';
     // P6: Breadcrumb navigation
-    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:var(--ne-text-sm);">';
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:var(--ne-space-xs);margin-bottom:var(--ne-space-sm);font-size:var(--ne-text-sm);">';
     if (isCardLevel) {
         html += '<span class="ne-breadcrumb-link ne-text-info" id="ne-editor-bc-library" style="cursor:pointer;">' + escapeHtml(t('dialogue_config')) + '</span>';
     } else {
@@ -1350,7 +1350,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
     html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2"' + metaDisabled + '>' + escapeHtml(tpl.description || '') + '</textarea>';
     if (isCardLevel) {
-        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:4px;">' + escapeHtml(t('card_version_edit_hint') || 'Editing card-level fields only. Metadata is read-only.') + '</div>';
+        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:var(--ne-space-xs);">' + escapeHtml(t('card_version_edit_hint') || 'Editing card-level fields only. Metadata is read-only.') + '</div>';
     }
     html += '</div>';
 
@@ -1416,12 +1416,12 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     html += '<option value="boolean">boolean</option>';
     html += '</select>';
     html += '<input type="number" id="ne-editor-custom-maxlen" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_maxlen')) + '" value="200" style="width:70px">';
-    html += '<button id="ne-editor-add-custom-btn" class="menu_button" style="width:auto;padding:4px 8px">+</button>';
+    html += '<button id="ne-editor-add-custom-btn" class="menu_button" style="width:auto;padding:var(--ne-space-xs) var(--ne-space-sm)">+</button>';
     html += '</div>';
-    html += '<div id="ne-editor-custom-enum-row" style="display:none;margin-top:4px">';
+    html += '<div id="ne-editor-custom-enum-row" style="display:none;margin-top:var(--ne-space-xs)">';
     html += '<input type="text" id="ne-editor-custom-enum-values" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_enum_values')) + '">';
     html += '</div>';
-    html += '<div id="ne-editor-custom-num-row" style="display:none;margin-top:4px;gap:6px">';
+    html += '<div id="ne-editor-custom-num-row" style="display:none;margin-top:var(--ne-space-xs);gap:var(--ne-space-sm)">';
     html += '<input type="number" id="ne-editor-custom-min" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_min')) + '" style="width:70px">';
     html += '<input type="number" id="ne-editor-custom-max" class="ne-editor-input" placeholder="' + escapeHtml(t('custom_field_max')) + '" style="width:70px">';
     html += '</div>';

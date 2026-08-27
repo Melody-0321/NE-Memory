@@ -38,7 +38,7 @@ export function initTestRunner() {
     var funcHtml = '';
     if (funcTests.length > 0) {
         funcHtml =
-            '<div class="ne-tr-smoke-label" style="margin-top:8px;">\uD83E\uDDEA ' + t('Functional Tests') + '</div>' +
+            '<div class="ne-tr-smoke-label" style="margin-top:var(--ne-space-sm);">\uD83E\uDDEA ' + t('Functional Tests') + '</div>' +
             '<select id="ne-tr-func-select" class="ne-tr-select">' +
             funcTests.map(function(t) {
                 return '<option value="' + t.name + '">' + t.title + '</option>';
@@ -191,7 +191,7 @@ function renderTestResult(result, resultEl, traceEl) {
         });
     }
 
-    html += '<div class="ne-tr-actions" style="margin-top:6px;">' +
+    html += '<div class="ne-tr-actions" style="margin-top:var(--ne-space-sm);">' +
         '<button id="ne-tr-toggle-trace" class="ne-tr-btn">' + t('Show Trace') + '</button>' +
         '</div>';
 

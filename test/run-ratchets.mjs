@@ -11,6 +11,7 @@ var ratchets = [
     'ratchet-dead-exports.test.js',
     'ratchet-color-literals.test.js',
     'ratchet-font-size-literals.test.js',
+    'ratchet-layout-literals.test.js',
     'ratchet-slide-residue.test.js'
 ];
 
