@@ -231,7 +231,7 @@ function renderCharacterGroup(label, names, characters, schema, state) {
     var headerColor = activeLabels.indexOf(label) !== -1 ? 'var(--ne-success)' : (departedLabels.indexOf(label) !== -1 ? 'var(--ne-danger)' : 'var(--ne-warning)');
 
     var html = '<details class="ne_character_group" open style="margin:6px 0;">' +
-        '<summary style="font-weight:bold;font-size:0.9em;color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
+        '<summary style="font-weight:bold;font-size:var(--ne-text-base);color:' + headerColor + ';cursor:pointer;padding:3px 0;border-bottom:1px solid var(--black30a);">' +
         t(label) + ' (' + names.length + ')</summary>' +
         '<div style="padding-top:2px;">';
 
@@ -305,16 +305,16 @@ function renderFactionCard(name, faction) {
     if (relations && typeof relations === 'object') {
         var relKeys = Object.keys(relations);
         if (relKeys.length > 0) {
-            var relHtml = '<div class="ne-text-quest" style="margin-top:4px;font-size:0.83em;">' + t('Relations') + ':</div>';
+            var relHtml = '<div class="ne-text-quest" style="margin-top:4px;font-size:var(--ne-text-sm);">' + t('Relations') + ':</div>';
             relKeys.forEach(function (target) {
-                relHtml += '<div style="margin:1px 0 1px 8px;font-size:0.83em;">' + escapeHtml(target) + ': ' + escapeHtml(String(relations[target])) + '</div>';
+                relHtml += '<div style="margin:1px 0 1px 8px;font-size:var(--ne-text-sm);">' + escapeHtml(target) + ': ' + escapeHtml(String(relations[target])) + '</div>';
             });
             detailLines.push(relHtml);
         }
     }
 
     var hasDetail = detailLines.length > 0;
-    var hiddenBadge = isHidden ? '<span class="ne-text-hidden" style="margin-left:6px;font-size:0.75em;border:1px solid #555;border-radius:3px;padding:0 4px;">' + t('hidden_faction') + '</span>' : '';
+    var hiddenBadge = isHidden ? '<span class="ne-text-hidden" style="margin-left:6px;font-size:var(--ne-text-xs);border:1px solid #555;border-radius:3px;padding:0 4px;">' + t('hidden_faction') + '</span>' : '';
     var html = `
 <div class="ne-faction-card attitude-${attitudeCls}${cardCls}" data-faction="${escapeHtml(name)}">
   <div class="ne-faction-card-header"
@@ -387,18 +387,18 @@ function renderQuestCard(key, entry, sectionType) {
         if (entry.issuer) detailLines.push('<div style="margin:2px 0;">' + t_field('issuer') + ': ' + escapeHtml(String(entry.issuer)) + '</div>');
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
         if (entry.progress) detailLines.push('<div class="ne-text-quest" style="margin:2px 0;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
-        if (entry.posted_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:0.83em;">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:var(--ne-text-sm);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
         if (entry.reward) detailLines.push('<div class="ne-text-success" style="margin:2px 0;">' + t_field('reward') + ': ' + escapeHtml(String(entry.reward)) + '</div>');
         if (entry.penalty) detailLines.push('<div class="ne-text-danger" style="margin:2px 0;">' + t_field('penalty') + ': ' + escapeHtml(String(entry.penalty)) + '</div>');
     } else if (sectionType === 'goal') {
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
         if (entry.progress) detailLines.push('<div class="ne-text-quest" style="margin:2px 0;">' + t_field('progress') + ': ' + escapeHtml(String(entry.progress)) + '</div>');
-        if (entry.posted_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:0.83em;">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
+        if (entry.posted_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:var(--ne-text-sm);">' + t_field('posted_time') + ': ' + escapeHtml(String(entry.posted_time)) + '</div>');
         if (entry.completed_time) detailLines.push('<div class="ne-text-success" style="margin:2px 0;">' + t_field('completed_time') + ': ' + escapeHtml(String(entry.completed_time)) + '</div>');
     } else if (sectionType === 'event') {
         if (entry.desc) detailLines.push('<div style="margin:2px 0;">' + t_field('desc') + ': ' + escapeHtml(String(entry.desc)) + '</div>');
-        if (entry.started_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:0.83em;">' + t_field('started_time') + ': ' + escapeHtml(String(entry.started_time)) + '</div>');
-        if (entry.ended_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:0.83em;">' + t_field('ended_time') + ': ' + escapeHtml(String(entry.ended_time)) + '</div>');
+        if (entry.started_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:var(--ne-text-sm);">' + t_field('started_time') + ': ' + escapeHtml(String(entry.started_time)) + '</div>');
+        if (entry.ended_time) detailLines.push('<div class="ne-text-soft" style="margin:2px 0;font-size:var(--ne-text-sm);">' + t_field('ended_time') + ': ' + escapeHtml(String(entry.ended_time)) + '</div>');
     }
 
     var html = `
@@ -428,7 +428,7 @@ export function renderQuestPanelHTML(state) {
     // Tasks
     if (quests.tasks && typeof quests.tasks === 'object' && Object.keys(quests.tasks).length > 0) {
         var taskHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div class="ne-text-info" style="font-weight:bold;font-size:0.9em;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25CB ' + t('Tasks') + '</div>';
+            '<div class="ne-text-info" style="font-weight:bold;font-size:var(--ne-text-base);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25CB ' + t('Tasks') + '</div>';
         Object.keys(quests.tasks).forEach(function (key) {
             taskHtml += renderQuestCard(key, quests.tasks[key], 'task');
         });
@@ -439,7 +439,7 @@ export function renderQuestPanelHTML(state) {
     // Goals
     if (quests.goals && typeof quests.goals === 'object' && Object.keys(quests.goals).length > 0) {
         var goalHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div class="ne-text-quest" style="font-weight:bold;font-size:0.9em;padding:3px 0;border-bottom:1px solid var(--black30a);">\u2192 ' + t('Goals') + '</div>';
+            '<div class="ne-text-quest" style="font-weight:bold;font-size:var(--ne-text-base);padding:3px 0;border-bottom:1px solid var(--black30a);">\u2192 ' + t('Goals') + '</div>';
         Object.keys(quests.goals).forEach(function (key) {
             goalHtml += renderQuestCard(key, quests.goals[key], 'goal');
         });
@@ -450,7 +450,7 @@ export function renderQuestPanelHTML(state) {
     // Events
     if (quests.events && typeof quests.events === 'object' && Object.keys(quests.events).length > 0) {
         var eventHtml = '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div class="ne-text-warning" style="font-weight:bold;font-size:0.9em;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B2 ' + t('World Events') + '</div>';
+            '<div class="ne-text-warning" style="font-weight:bold;font-size:var(--ne-text-base);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B2 ' + t('World Events') + '</div>';
         Object.keys(quests.events).forEach(function (key) {
             eventHtml += renderQuestCard(key, quests.events[key], 'event');
         });
@@ -529,7 +529,7 @@ export function renderSuspensePanelHTML(content) {
 
     if (open.length > 0) {
         html += '<div class="ne_quest_subsection" style="margin:8px 0;">' +
-            '<div class="ne-text-success" style="font-weight:bold;font-size:0.9em;padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B6 ' +
+            '<div class="ne-text-success" style="font-weight:bold;font-size:var(--ne-text-base);padding:3px 0;border-bottom:1px solid var(--black30a);">\u25B6 ' +
             t('suspense_status_open') + ' (' + open.length + ')</div>';
         open.forEach(function(hook) { html += renderSuspenseCard(hook); });
         html += '</div>';
@@ -613,7 +613,7 @@ export function enterCardEditMode(editBtn) {
             var objVal = (cardData && cardData[fieldName] !== undefined) ? cardData[fieldName] : null;
             var objText = (objVal !== null && objVal !== undefined && typeof objVal === 'object')
                 ? JSON.stringify(objVal, null, 1) : (textVal || '');
-            span.outerHTML = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:0.85em;">' + escapeHtml(objText) + '</textarea>';
+            span.outerHTML = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:var(--ne-text-sm);">' + escapeHtml(objText) + '</textarea>';
             return;
         }
 
@@ -861,7 +861,7 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
     ];
     modes.forEach(function(m) {
         var isActive = (m.key === defaultMode);
-        var style = 'flex:1;padding:6px 8px;text-align:center;font-size:0.8em;cursor:' + (m.enabled ? 'pointer' : 'default') +
+        var style = 'flex:1;padding:6px 8px;text-align:center;font-size:var(--ne-text-sm);cursor:' + (m.enabled ? 'pointer' : 'default') +
             ';border-bottom:2px solid ' + (isActive ? 'var(--ne-accent)' : 'transparent') +
             ';color:' + (isActive ? 'var(--ne-accent)' : (!m.enabled ? 'var(--grey-30)' : 'var(--grey-50)')) +
             ';opacity:' + (m.enabled ? '1' : '0.4') + ';';
@@ -885,21 +885,21 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         var curCopySource = curCopy.source || 'user_created';
         var curCopySourceLabel = curCopySource === 'ai_generated' ? t('ai_generated') : (curCopySource === 'user_rollback' ? t('rollback') : t('user_created'));
         html += '<div class="ne-scheme-section-title">' + escapeHtml(t('current_template')) + '</div>';
-        html += '<div style="max-height:160px;overflow-y:auto;font-size:0.8em;">';
+        html += '<div style="max-height:160px;overflow-y:auto;font-size:var(--ne-text-sm);">';
         html += '<div style="padding:4px 6px;display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--grey-20);">';
         html += '<span class="ne-text-soft" style="flex:1;">' + escapeHtml(curCopy.createdAt ? formatLocalTime(curCopy.createdAt) : '?') + '</span>';
-        html += '<span class="ne-text-soft" style="font-size:0.85em;">' + escapeHtml(curCopySourceLabel) + '</span>';
+        html += '<span class="ne-text-soft" style="font-size:var(--ne-text-sm);">' + escapeHtml(curCopySourceLabel) + '</span>';
         if (curCopy._state && curCopy._state !== 'synced') {
-            html += '<span class="ne-text-warning" style="font-size:0.85em;">' + escapeHtml(curCopy._state) + '</span>';
+            html += '<span class="ne-text-warning" style="font-size:var(--ne-text-sm);">' + escapeHtml(curCopy._state) + '</span>';
         }
         html += '</div>';
         html += '</div>';
     } else {
-        html += '<div class="ne-text-soft" style="padding:8px;font-size:0.8em;text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
+        html += '<div class="ne-text-soft" style="padding:8px;font-size:var(--ne-text-sm);text-align:center;">' + escapeHtml(t('no_templates')) + '</div>';
     }
 
     // Secondary: global template dropdown (switch to a different template entirely)
-    html += '<label class="ne-text-soft" style="display:block;margin-top:8px;font-size:0.8em;">' + escapeHtml(t('switch_template')) + '</label>';
+    html += '<label class="ne-text-soft" style="display:block;margin-top:8px;font-size:var(--ne-text-sm);">' + escapeHtml(t('switch_template')) + '</label>';
     html += '<select id="ne-scheme-template-select" class="ne-config-select" style="width:100%;">' + tplOptionsHtml + '</select>';
     html += '</div>';
 
@@ -999,12 +999,12 @@ export function enterSchemeEditMode(cardEl, charName, charCardType) {
         var curSrcLabel = curSrc === 'ai_generated' ? t('ai_generated') : (curSrc === 'user_rollback' ? t('rollback') : t('user_created'));
         html += '<div class="ne-scheme-section" id="ne-scheme-version-section" style="' + vhDisplay + '">';
         html += '<div class="ne-scheme-section-title">' + escapeHtml(t('current_template')) + '</div>';
-        html += '<div style="max-height:120px;overflow-y:auto;font-size:0.78em;">';
+        html += '<div style="max-height:120px;overflow-y:auto;font-size:var(--ne-text-xs);">';
         html += '<div style="padding:2px 4px;display:flex;align-items:center;gap:4px;">';
         html += '<span class="ne-text-soft">' + escapeHtml(currentDt.createdAt ? formatLocalTime(currentDt.createdAt) : '?') + '</span>';
-        html += '<span class="ne-text-soft" style="font-size:0.85em;">' + escapeHtml(curSrcLabel) + '</span>';
+        html += '<span class="ne-text-soft" style="font-size:var(--ne-text-sm);">' + escapeHtml(curSrcLabel) + '</span>';
         if (currentDt._state && currentDt._state !== 'synced') {
-            html += ' <span class="ne-text-warning" style="font-size:0.85em;">' + escapeHtml(currentDt._state) + '</span>';
+            html += ' <span class="ne-text-warning" style="font-size:var(--ne-text-sm);">' + escapeHtml(currentDt._state) + '</span>';
         }
         html += '</div>';
         html += '</div>';
@@ -1882,7 +1882,7 @@ function _buildStmDetailRow(stm) {
     if (presentHtml) inner += presentHtml;
     if (psycheHtml) inner += psycheHtml;
     if (stm.event || stm.summary) inner += '<div class="ne-stm-detail-event">' + escapeHtml(stm.event || stm.summary) + '</div>';
-    if (!inner) inner = '<div style="color:var(--grey-50,#8b949e);font-size:0.8em;">' + t('(empty)') + '</div>';
+    if (!inner) inner = '<div style="color:var(--grey-50,#8b949e);font-size:var(--ne-text-sm);">' + t('(empty)') + '</div>';
     tr.innerHTML = '<td colspan="4">' + inner + '</td>';
     return tr;
 }
@@ -1985,8 +1985,8 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
 
             rows.push('<tr data-entry-id="' + groupId + '" class="ne-orphan-group-row">'
                 + '<td class="ne-text-soft" style="text-align:center;width:2em;">' + toggleBtn + (i + 1) + '</td>'
-                + '<td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + escapeHtml(groupPeriod) + '</td>'
-                + '<td class="ne-text-soft" style="font-size:0.85em;max-width:150px;">' + escapeHtml(msgLabel) + '</td>'
+                + '<td style="white-space:nowrap;font-size:var(--ne-text-sm);max-width:120px;">' + escapeHtml(groupPeriod) + '</td>'
+                + '<td class="ne-text-soft" style="font-size:var(--ne-text-sm);max-width:150px;">' + escapeHtml(msgLabel) + '</td>'
                 + '<td><div class="ne-empty-cell">' + escapeHtml(groupTitle) + '</div></td>'
                 + '<td></td>'
                 + '</tr>');
@@ -2008,14 +2008,14 @@ export function renderMemoryTable(tbodyId, entries, type, stmIndexMap) {
         var refs = entry.stm_refs || [];
         var idListFull = refs.join(', ');
         var idDisplay = refs.length > 0 ? '#STM ' + refs.join(', ') : '';
-        var idListCell = '<td class="ne-text-soft" style="font-size:0.85em;max-width:150px;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
+        var idListCell = '<td class="ne-text-soft" style="font-size:var(--ne-text-sm);max-width:150px;" title="' + escapeHtml(idListFull || '') + '">' + escapeHtml(idDisplay || '') + '</td>';
         var toggleBtn = '<span class="narrative_ltm_toggle" data-ltm-id="' + entryId + '" tabindex="0" role="button" aria-label="' + t('Toggle STM details') + '">\u25B6</span> ';
         var titleStyle = entry.status === 'open' ? '' : 'font-weight:bold;';
         var titleClass = entry.status === 'open' ? ' class="ne-empty-cell"' : '';
         // UI-5: LTM 主行 title/event 与 STM 行一致做 HTML 转义，防止特殊字符破坏渲染
         var ltmTitle = escapeHtml(entry.title || entry.event || entry.summary || '');
         var ltmEvent = (entry.title && entry.event && entry.event !== entry.title) ? escapeHtml(entry.event.substring(0, 120)) : '';
-        rows.push('<tr data-entry-id="' + entryId + '"><td class="ne-text-soft" style="text-align:center;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:0.85em;max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div' + titleClass + ' style="' + titleStyle + '">' + ltmTitle + (entry.status === 'open' ? '<span class="ne-text-success" style="font-size:0.8em;">' + t('in_progress_label') + '</span>' : '') + '</div>' + (ltmEvent ? '<div style="font-size:0.85em;color:#999;">' + ltmEvent + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>');
+        rows.push('<tr data-entry-id="' + entryId + '"><td class="ne-text-soft" style="text-align:center;width:2em;">' + toggleBtn + (i + 1) + '</td><td style="white-space:nowrap;font-size:var(--ne-text-sm);max-width:120px;">' + periodCell + '</td>' + idListCell + '<td>' + '<div' + titleClass + ' style="' + titleStyle + '">' + ltmTitle + (entry.status === 'open' ? '<span class="ne-text-success" style="font-size:var(--ne-text-sm);">' + t('in_progress_label') + '</span>' : '') + '</div>' + (ltmEvent ? '<div style="font-size:var(--ne-text-sm);color:#999;">' + ltmEvent + '</div>' : '') + '<td><button class="ne-inline-edit-btn" data-entry-id="' + entryId + '" data-entry-type="ltm" aria-label="' + t('Edit') + '">\u270E</button></td></tr>');
 
         rows.push('<tr class="narrative_ltm_detail" data-ltm-parent="' + entryId + '" data-lazy="1"><td colspan="5"></td></tr>');
     });

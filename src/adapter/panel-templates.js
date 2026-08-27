@@ -994,7 +994,7 @@ function _showAssistant(container, mode, templateId, templates, order) {
 
     var html = '<div class="ne-template-editor" id="ne-ai-assistant">';
     // Breadcrumb
-    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:0.82em;">';
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:var(--ne-text-sm);">';
     html += '<span class="ne-breadcrumb-link ne-text-info" id="ne-ai-bc-lib" style="cursor:pointer;">' + escapeHtml(t('breadcrumb_library')) + '</span>';
     html += '<span class="ne-text-soft"> › </span>';
     html += '<span class="ne-text-soft">' + escapeHtml(t('ai_assistant_title')) + (mode === 'modify' && tpl && tpl.name ? ' · ' + escapeHtml(tpl.name) : '') + '</span>';
@@ -1005,9 +1005,9 @@ function _showAssistant(container, mode, templateId, templates, order) {
     html += '<div class="ne-section-title">' + escapeHtml(t('ai_assistant_title')) + ' — ' + escapeHtml(mode === 'modify' ? t('ai_mode_modify') : t('ai_mode_create')) + '</div>';
     if (mode === 'modify') {
         if (tpl.system) {
-            html += '<div class="ne-text-soft" style="font-size:0.8em;">' + escapeHtml(t('system_template')) + ' → ' + escapeHtml(t('save_as_new')) + '</div>';
+            html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);">' + escapeHtml(t('system_template')) + ' → ' + escapeHtml(t('save_as_new')) + '</div>';
         }
-        html += '<div class="ne-text-soft" style="font-size:0.8em;margin-top:4px;">ℹ ' + escapeHtml(t('ai_value_dist_included')) + '</div>';
+        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:4px;">ℹ ' + escapeHtml(t('ai_value_dist_included')) + '</div>';
     } else {
         html += '<label>' + escapeHtml(t('ai_baseline_label')) + '</label>';
         html += '<select id="ne-ai-baseline" class="ne-editor-select">';
@@ -1121,7 +1121,7 @@ function _aiRenderFailure(container, result) {
     var html = '<div class="ne-editor-section" style="border-left:3px solid var(--ne-warning);">';
     html += '<div class="ne-section-title">' + escapeHtml(msg) + '</div>';
     if (result.errors && result.errors.length) {
-        html += '<ul class="ne-text-soft" style="margin:4px 0 0 16px;font-size:0.82em;">';
+        html += '<ul class="ne-text-soft" style="margin:4px 0 0 16px;font-size:var(--ne-text-sm);">';
         result.errors.slice(0, 10).forEach(function (e) { html += '<li>' + escapeHtml(String(e)) + '</li>'; });
         html += '</ul>';
     }
@@ -1140,7 +1140,7 @@ function _aiRenderResult(container, result, mode, templateId, fingerprint, basel
     // Understanding
     html += '<div class="ne-editor-section">';
     html += '<div class="ne-section-title">' + escapeHtml(t('ai_understanding')) + '</div>';
-    html += '<div style="font-size:0.85em;white-space:pre-wrap;">' + escapeHtml(draft.understanding) + '</div>';
+    html += '<div style="font-size:var(--ne-text-sm);white-space:pre-wrap;">' + escapeHtml(draft.understanding) + '</div>';
     html += '</div>';
 
     // Diff
@@ -1156,7 +1156,7 @@ function _aiRenderResult(container, result, mode, templateId, fingerprint, basel
     (diff.perRoundRemoved || []).forEach(function (f) { rows.push('<li>－ ' + escapeHtml(t('per_round_fields')) + ': ' + escapeHtml(t_field(f) || f) + '</li>'); });
     (diff.metaChanged || []).forEach(function (k) { rows.push('<li>± ' + escapeHtml(k) + '</li>'); });
     if (rows.length === 0) rows.push('<li class="ne-text-soft">—</li>');
-    html += '<ul style="margin:4px 0 0 16px;font-size:0.85em;">' + rows.join('') + '</ul>';
+    html += '<ul style="margin:4px 0 0 16px;font-size:var(--ne-text-sm);">' + rows.join('') + '</ul>';
     html += '</div>';
 
     // High-risk confirmations
@@ -1231,7 +1231,7 @@ function _showTemplateSelectorModal(opts) {
         // Show empty state with guidance instead of silent toast
         html += '<div class="ne-empty-state"><div class="ne-empty-state-icon">\u{1F4CB}</div>';
         html += '<div class="ne-empty-state-text">' + escapeHtml(t('none_available')) + '</div>';
-        html += '<div class="ne-text-soft" style="margin-top:8px;font-size:0.85em;">' + escapeHtml(t('create_first_hint') || 'Create a template in the Template Library first.') + '</div>';
+        html += '<div class="ne-text-soft" style="margin-top:8px;font-size:var(--ne-text-sm);">' + escapeHtml(t('create_first_hint') || 'Create a template in the Template Library first.') + '</div>';
         html += '</div>';
     } else {
         available.forEach(function (id) {
@@ -1239,7 +1239,7 @@ function _showTemplateSelectorModal(opts) {
             html += '<label class="ne-preset-field">' +
                 '<input type="radio" name="ne-template-select" value="' + escapeHtml(id) + '"> ' +
                 escapeHtml(tpl.name || id) +
-                (tpl.description ? ' <span class="ne-text-soft" style="font-size:0.85em;">' + escapeHtml(tpl.description.substring(0, 60)) + '</span>' : '') +
+                (tpl.description ? ' <span class="ne-text-soft" style="font-size:var(--ne-text-sm);">' + escapeHtml(tpl.description.substring(0, 60)) + '</span>' : '') +
                 '</label>';
         });
     }
@@ -1318,7 +1318,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
 
     var html = '<div class="ne-template-editor" id="ne-template-editor">';
     // P6: Breadcrumb navigation
-    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:0.82em;">';
+    html += '<div class="ne-breadcrumb" style="display:flex;align-items:center;gap:4px;margin-bottom:8px;font-size:var(--ne-text-sm);">';
     if (isCardLevel) {
         html += '<span class="ne-breadcrumb-link ne-text-info" id="ne-editor-bc-library" style="cursor:pointer;">' + escapeHtml(t('dialogue_config')) + '</span>';
     } else {
@@ -1331,7 +1331,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         html += '<span>' + escapeHtml(tpl.name) + '</span>';
     }
     if (isCardLevel) {
-        html += ' <span class="ne-template-source-badge src-user" style="font-size:0.75em;">' + escapeHtml(t('card_level')) + '</span>';
+        html += ' <span class="ne-template-source-badge src-user" style="font-size:var(--ne-text-xs);">' + escapeHtml(t('card_level')) + '</span>';
     }
     html += '</div>';
 
@@ -1350,7 +1350,7 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
     html += '<label>' + escapeHtml(t('Description')) + '</label>';
     html += '<textarea id="ne-editor-desc" class="ne-editor-textarea" rows="2"' + metaDisabled + '>' + escapeHtml(tpl.description || '') + '</textarea>';
     if (isCardLevel) {
-        html += '<div class="ne-text-soft" style="font-size:0.8em;margin-top:4px;">' + escapeHtml(t('card_version_edit_hint') || 'Editing card-level fields only. Metadata is read-only.') + '</div>';
+        html += '<div class="ne-text-soft" style="font-size:var(--ne-text-sm);margin-top:4px;">' + escapeHtml(t('card_version_edit_hint') || 'Editing card-level fields only. Metadata is read-only.') + '</div>';
     }
     html += '</div>';
 
@@ -1476,9 +1476,9 @@ function _showEditor(container, templateId, isNew, templates, order, isCardLevel
         });
         if (inUseCount > 0) {
             html += '<div class="ne-editor-section">';
-            html += '<span class="ne-text-info" style="font-size:0.85em;">' + escapeHtml(t('in_use')) + ': ' + inUseCount + '</span>';
+            html += '<span class="ne-text-info" style="font-size:var(--ne-text-sm);">' + escapeHtml(t('in_use')) + ': ' + inUseCount + '</span>';
             if (usedNames.length <= 3) {
-                html += ' <span class="ne-text-soft" style="font-size:0.78em;">(' + usedNames.map(escapeHtml).join(', ') + ')</span>';
+                html += ' <span class="ne-text-soft" style="font-size:var(--ne-text-xs);">(' + usedNames.map(escapeHtml).join(', ') + ')</span>';
             }
             html += '</div>';
         }

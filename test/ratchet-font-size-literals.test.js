@@ -13,9 +13,9 @@ var __dirname = path.dirname(fileURLToPath(import.meta.url));
 var ROOT = path.resolve(__dirname, '..');
 var ADAPTER_DIR = path.resolve(ROOT, 'src/adapter');
 
-// 迁移期基线（V2 批次1后：panel.css em 归并完成，剩 panel.css px/超大 + adapter JS 内联 = 120）
+// 迁移期基线（V2 批次2后：panel.css + adapter JS 内联 em 全部归并，仅剩 px 绝对量 + 超大 2em = 14）
 // 随批次替换下调此值，只许降不许升
-var BASELINE = 120;
+var BASELINE = 14;
 
 var FSIZE_RE = /font-size:\s*(?!var\()[\d.]+(?:em|px|rem)/i;
 

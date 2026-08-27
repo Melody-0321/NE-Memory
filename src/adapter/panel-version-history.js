@@ -292,7 +292,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-state-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-state-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-state-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-        '<span class="ne-version-limit-info" style="margin-left:auto;font-size:0.75em;color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(STATE_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
+        '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(STATE_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-state-timeline-body" class="ne-version-timeline"></div>' +
         '</div>' +
@@ -302,7 +302,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-mem-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-mem-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-mem-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-        '<span class="ne-version-limit-info" style="margin-left:auto;font-size:0.75em;color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(MEM_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
+        '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(MEM_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-mem-timeline-body" class="ne-version-timeline"></div>' +
         '</div>' +
@@ -314,7 +314,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<input type="range" id="ne-state-limit-slider" min="10" max="500" step="10" value="' + getLimit(STATE_VERSION_LIMIT_KEY) + '" style="flex:1;">' +
         '<span id="ne-state-limit-value" style="font-weight:bold;min-width:2em;text-align:right;">' + getLimit(STATE_VERSION_LIMIT_KEY) + '</span>' +
         '</div>' +
-        '<div style="font-size:0.75em;color:var(--grey-70);margin-top:4px;">' +
+        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:4px;">' +
             '\u8D85\u8FC7\u9650\u5236\u540E\uFF0C\u65E7\u7248\u672C\u5C06\u81EA\u52A8\u538B\u7F29\u5230 base \u7248\u672C\u3002\u538B\u7F29\u540E\u56DE\u9000\u4ECD\u53EF\u7528\uFF0C\u4F46\u7C92\u5EA6\u53D8\u7C97\u3002' +
         '</div>' +
         '</div>' +
@@ -324,7 +324,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<input type="range" id="ne-mem-limit-slider" min="10" max="500" step="10" value="' + getLimit(MEM_VERSION_LIMIT_KEY) + '" style="flex:1;">' +
         '<span id="ne-mem-limit-value" style="font-weight:bold;min-width:2em;text-align:right;">' + getLimit(MEM_VERSION_LIMIT_KEY) + '</span>' +
         '</div>' +
-        '<div style="font-size:0.75em;color:var(--grey-70);margin-top:4px;">' +
+        '<div style="font-size:var(--ne-text-xs);color:var(--grey-70);margin-top:4px;">' +
             '\u8D85\u8FC7\u9650\u5236\u540E\uFF0C\u65E7\u7248\u672C\u5C06\u81EA\u52A8\u538B\u7F29\u5230 base \u7248\u672C\u3002\u538B\u7F29\u540E\u56DE\u9000\u4ECD\u53EF\u7528\uFF0C\u4F46\u7C92\u5EA6\u53D8\u7C97\u3002' +
         '</div>' +
         '</div>' +

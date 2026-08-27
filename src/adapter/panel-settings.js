@@ -46,43 +46,43 @@ export function renderSettingsTab() {
         '<div class="ne-accordion-body">' +
         // === Adaptive Context Control 开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
-            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
                 '<input type="checkbox" id="nes_adaptive_context_control" ' + (settings.adaptiveContextControl ? 'checked' : '') + '> ' + t('adaptive_context_control') +
             '</label>' +
-            '<div class="ne-text-soft" style="font-size:0.72em;margin:2px 0 0 20px;">' + t('adaptive_context_control_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:2px 0 0 20px;">' + t('adaptive_context_control_desc') + '</div>' +
         '</div>' +
         // === 仅摘要模式 开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--ne-warning,var(--yellow40,#e6a817));border-radius:4px;background:var(--ne-surface);">' +
-            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
                 '<input type="checkbox" id="nes_summary_only_mode" ' + (settings.summaryOnlyMode ? 'checked' : '') + '> ' + t('summary_only_mode') +
             '</label>' +
-            '<div class="ne-text-soft" style="font-size:0.72em;margin:2px 0 0 20px;">' + t('summary_only_mode_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:2px 0 0 20px;">' + t('summary_only_mode_desc') + '</div>' +
         '</div>' +
         // === 反悔消解（resolver）开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
-            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
                 '<input type="checkbox" id="nes_stm_resolve_reversal" ' + (settings.stmResolveReversal !== false ? 'checked' : '') + '> ' + t('stm_resolve_reversal') +
             '</label>' +
-            '<div class="ne-text-soft" style="font-size:0.72em;margin:2px 0 0 20px;">' + t('stm_resolve_reversal_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:2px 0 0 20px;">' + t('stm_resolve_reversal_desc') + '</div>' +
         '</div>' +
         // === Meta-LTM 跨弧摘要 开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
-            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
                 '<input type="checkbox" id="nes_meta_ltm_enabled" ' + (settings.metaLtmEnabled ? 'checked' : '') + '> ' + t('meta_ltm_enabled') +
             '</label>' +
-            '<div class="ne-text-soft" style="font-size:0.72em;margin:2px 0 0 20px;">' + t('meta_ltm_enabled_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:2px 0 0 20px;">' + t('meta_ltm_enabled_desc') + '</div>' +
         '</div>' +
         // === 悬念簿 开关 ===
         '<div style="margin:0 0 8px;padding:8px;border:1px solid var(--grey30);border-radius:4px;background:var(--ne-surface);">' +
-            '<label style="font-size:0.85em;display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:4px;cursor:pointer;font-weight:600;">' +
                 '<input type="checkbox" id="nes_suspense_enabled" ' + (settings.suspenseLedgerEnabled ? 'checked' : '') + '> ' + t('suspense_ledger_enabled') +
             '</label>' +
-            '<div class="ne-text-soft" style="font-size:0.72em;margin:2px 0 0 20px;">' + t('suspense_ledger_enabled_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:2px 0 0 20px;">' + t('suspense_ledger_enabled_desc') + '</div>' +
         '</div>' +
         // === Dialog Rounds（两种模式都显示，描述文字切换）===
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span id="nes_dialog_rounds_label">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling') : t('dialog_round_injection_control')) + '</span><span class="range-val" id="nes_dialog_window_val">' + (settings.dialogWindowRounds || 10) + '</span></div>' +
         '<input type="range" id="nes_dialog_window_rounds" min="2" max="20" step="1" value="' + (settings.dialogWindowRounds || 10) + '" style="width:100%;">' +
-        '<div id="nes_dialog_rounds_desc" class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.')) + '</div>' +
+        '<div id="nes_dialog_rounds_desc" class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + (settings.adaptiveContextControl ? t('dialog_rounds_hard_ceiling_desc') : t('Controls how many recent dialog rounds are sent to the LLM. As an alternative to the default token-budget truncation (maxContext), this ensures the LLM always sees a fixed number of recent dialog rounds.')) + '</div>' +
         // === Golden Context Tier（自适应模式专属）===
         '<div class="ne-adaptive-only" style="' + (settings.adaptiveContextControl ? '' : 'display:none;') + '">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('golden_context_tier') + '</span></div>' +
@@ -91,55 +91,55 @@ export function renderSettingsTab() {
                 '<option value="balanced" ' + (settings.goldenContextTier === 'balanced' || !settings.goldenContextTier ? 'selected' : '') + '>' + t('golden_tier_balanced') + '</option>' +
                 '<option value="cost" ' + (settings.goldenContextTier === 'cost' ? 'selected' : '') + '>' + t('golden_tier_cost') + '</option>' +
             '</select>' +
-            '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('golden_context_tier_desc') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('golden_context_tier_desc') + '</div>' +
         '</div>' +
         // === 手动模式专属控件（自适应模式下隐藏）===
         '<div class="ne-manual-controls" style="' + (settings.adaptiveContextControl ? 'display:none;' : '') + '">' +
             '<div style="margin:0 0 8px;">' +
-                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
+                '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:3px;cursor:pointer;">' +
                     '<input type="checkbox" id="nes_dialog_override_enabled" ' + (settings.dialogOverrideEnabled ? 'checked' : '') + '> ' + t('override_st_context_window_limit') +
                 '</label>' +
-                '<div class="ne-text-soft" style="font-size:0.75em;">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
+                '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);">' + t('Disable ST token-budget truncation, using dialog rounds as the sole context control.') + '</div>' +
             '</div>' +
         '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;">' +
             '<span>' + t('STM Extraction Batch') + '</span>' +
             '<div style="display:flex;align-items:center;gap:6px;">' +
-                '<label style="font-size:0.8em;display:flex;align-items:center;gap:3px;cursor:pointer;">' +
+                '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:3px;cursor:pointer;">' +
                     '<input type="checkbox" id="nes_stm_batch_auto" ' + (stmBatchAuto ? 'checked' : '') + '> ' + t('Auto') + '</label>' +
                 '</label>' +
                 '<span class="range-val" id="nes_stm_batch_val">' + displayBatch + '</span>' +
             '</div>' +
         '</div>' +
         '<input type="range" id="nes_stm_batch" min="1" max="30" step="1" value="' + displayBatch + '" style="width:100%;"' + (stmBatchAuto ? ' disabled' : '') + '>' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Memory extraction uses LLM to detect natural scene boundaries, not fixed message counts. This is only a hard cap — unprocessed messages beyond this force extraction. A low value makes it behave like a fixed threshold.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Max Unconsolidated STM') + '</span><span class="range-val" id="nes_stm_unconsolidated_val">' + (settings.stmMaxUnconsolidated || 5) + '</span></div>' +
         '<input type="range" id="nes_stm_max_unconsolidated" min="2" max="30" step="1" value="' + (settings.stmMaxUnconsolidated || 5) + '" style="width:100%;">' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Consolidate when unconsolidated STM exceeds this limit. Keeps memory manageable.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('STM Chunk Max Characters') + '</span><span class="range-val" id="nes_stm_chunk_val">' + (settings.stmChunkMaxChars || 500) + '</span></div>' +
         '<div style="display:flex;gap:6px;align-items:center;">' +
             '<input type="number" id="nes_stm_chunk_input" min="100" max="10000" step="10" value="' + (settings.stmChunkMaxChars || 500) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
             '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 500) / 100)))) + '" style="flex:1;">' +
         '</div>' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
         '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('PH Batch Max Chars') + '</span><span class="range-val" id="nes_ph_batch_val">' + (settings.phBatchChars || 4000) + '</span></div>' +
         '<div style="display:flex;gap:6px;align-items:center;">' +
             '<input type="number" id="nes_ph_batch_input" min="1000" max="8000" step="500" value="' + (settings.phBatchChars || 4000) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
             '<input type="range" id="nes_ph_batch_slider" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(100 * Math.log10(((settings.phBatchChars || 4000) / 1000)) / Math.log10(8)))) + '" style="flex:1;">' +
         '</div>' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
         // === 内容清洗（读取时清洗，不改 vault 原文）===
         '<div style="margin:8px 0 4px;"><span>' + t('Content Cleaning') + '</span></div>' +
         '<input type="text" id="nes_custom_strip_tags" placeholder="think, analysis" value="' + escapeHtml((settings.customStripTags || []).join(', ')) + '" style="width:100%;">' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Content Cleaning Description') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Content Cleaning Description') + '</div>' +
         '</div></div>' +
         '<div class="ne-accordion" id="ne-set-api">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot ne-text-success" style="font-size:0.7em;margin-left:4px;display:none;">\u25CF</span></div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Secondary API') + ' <span id="nes_api_header_dot" class="ne-pipeline-header-dot ne-text-success" style="font-size:var(--ne-text-xs);margin-left:4px;display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-grid">' +
         '<div><label>' + t('API URL') + '</label><input type="text" id="nes_secondary_url" placeholder="https://api.deepseek.com/v1/chat/completions" value="' + escapeHtml(secApi.url || '') + '"></div>' +
         '<div><label>' + t('API Key') + '</label><input type="password" id="nes_secondary_key" placeholder="sk-...(local LLM leave blank)" value="' + escapeHtml(secApi.key || '') + '">' +
-        '<div id="nes_secondary_key_warn" class="ne-key-validation-warn" style="display:none;color:var(--yellow40,#e6a817);font-size:0.75em;margin-top:2px;"></div></div>' +
+        '<div id="nes_secondary_key_warn" class="ne-key-validation-warn" style="display:none;color:var(--yellow40,#e6a817);font-size:var(--ne-text-xs);margin-top:2px;"></div></div>' +
         '<div><label>' + t('Model') + '</label>' +
         '<div id="nes_secondary_model_wrapper" style="display:flex;gap:4px;align-items:center;">' +
           '<select id="nes_secondary_model_select" class="ne-model-select" style="display:none;flex:1;"></select>' +
@@ -147,14 +147,14 @@ export function renderSettingsTab() {
           '<button class="ne-api-fetch-models" id="nes_secondary_fetch_models" title="' + t('Fetch models') + '" style="flex-shrink:0;">\u{1F504}</button>' +
         '</div></div>' +
         '</div>' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Supports any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio, LocalAI. Leave API Key empty for local LLMs.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Supports any OpenAI-compatible endpoint: Ollama, vLLM, LM Studio, LocalAI. Leave API Key empty for local LLMs.') + '</div>' +
         '<div><button class="ne-api-btn" id="nes_api_connect">' + t('Connect') + '</button><button class="ne-api-btn" id="nes_api_test">' + t('Test Message') + '</button></div>' +
         '<div class="ne-api-status"><span class="ne-api-dot" id="nes_api_dot"></span><span id="nes_api_status_text">' + t('Not connected') + '</span></div>' +
         '<div style="margin:10px 0 4px;">' +
         '<label><input type="checkbox" id="nes_api_channels_enabled" ' + (channelsEnabled ? 'checked' : '') + '> <span>' + t('Split API by operation (STM / LTM / State)') + '</span></label>' +
         '</div>' +
         '<div id="ne-api-channels" style="margin-top:4px;' + (channelsEnabled ? '' : 'display:none;') + '">' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('Default API above is used as fallback when a channel is left blank.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('Default API above is used as fallback when a channel is left blank.') + '</div>' +
         '<div class="ne-channel-group" style="margin:8px 0;padding:8px;border:1px solid var(--grey30);border-radius:6px;">' +
         '<div style="font-weight:bold;margin:0 0 6px;">' + t('STM Extraction') + '</div>' +
         '<div class="ne-settings-grid">' +
@@ -221,12 +221,12 @@ export function renderSettingsTab() {
     if (!channelsEnabled) {
         commonHtml +=
         '<div class="ne-accordion" id="ne-set-embedding">' +
-        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Vector Search (Embedding API)') + ' <span id="nes_embedding_header_dot" class="ne-pipeline-header-dot ne-text-success" style="font-size:0.7em;margin-left:4px;display:none;">\u25CF</span></div>' +
+        '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Vector Search (Embedding API)') + ' <span id="nes_embedding_header_dot" class="ne-pipeline-header-dot ne-text-success" style="font-size:var(--ne-text-xs);margin-left:4px;display:none;">\u25CF</span></div>' +
         '<div class="ne-accordion-body">' +
         '<div class="ne-settings-toggle-grid" style="margin-bottom:8px;">' +
         '<label><input type="checkbox" id="nes_enable_vector_search" ' + (enableVectorSearch ? 'checked' : '') + '> <span>' + t('Enable Vector Search') + '</span></label>' +
         '</div>' +
-        '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 12px;">' + t('Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.') +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 12px;">' + t('Requires an OpenAI-compatible Embedding API. When disabled or unconfigured, falls back to BM25-only retrieval.') +
         '<br><span style="color:var(--green50);">' + t('Recommended: free BAAI/bge-m3 on SiliconFlow. Register at siliconflow.cn for an API key, then click one-key fill below.') + '</span></div>' +
         '<div id="ne-embedding-config" style="display:' + (enableVectorSearch ? 'block' : 'none') + '">' +
             '<div class="ne-settings-grid">' +
@@ -236,11 +236,11 @@ export function renderSettingsTab() {
             '</div>' +
             '<div style="display:flex;gap:8px;align-items:center;">' +
             '<button class="ne-api-btn" id="nes_embedding_connect">' + t('Connect') + '</button>' +
-            '<button class="ne-api-btn" id="nes_embedding_preset" style="font-size:0.8em;opacity:0.85;" title="' + t('Pre-fill URL & Model with free SiliconFlow bge-m3') + '">' + t('One-key fill') + '</button>' +
+            '<button class="ne-api-btn" id="nes_embedding_preset" style="font-size:var(--ne-text-sm);opacity:0.85;" title="' + t('Pre-fill URL & Model with free SiliconFlow bge-m3') + '">' + t('One-key fill') + '</button>' +
             '</div>' +
             '<div style="display:flex;gap:8px;align-items:center;margin-top:8px;">' +
-            '<button class="ne-api-btn" id="nes_embedding_quality" style="font-size:0.9em;" title="' + t('Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.') + '">' + t('Quality Test') + '</button>' +
-            '<span id="nes_embedding_quality_status" class="ne-text-soft" style="font-size:0.75em;"></span>' +
+            '<button class="ne-api-btn" id="nes_embedding_quality" style="font-size:var(--ne-text-base);" title="' + t('Run a semantic retrieval quality test: embed a test set, query with a similar text, verify the correct result ranks highest.') + '">' + t('Quality Test') + '</button>' +
+            '<span id="nes_embedding_quality_status" class="ne-text-soft" style="font-size:var(--ne-text-xs);"></span>' +
             '</div>' +
             '<div class="ne-api-status"><span class="ne-api-dot" id="nes_embedding_dot"></span><span id="nes_embedding_status_text">' + t('Not connected') + '</span></div>' +
         '</div>' +
@@ -289,7 +289,7 @@ export function renderSettingsTab() {
             '<div class="ne-settings-grid">' +
             '<div style="display:flex;justify-content:space-between;align-items:center;margin:8px 0 4px;"><span>' + t('Extraction Temperature (rec. 0.2)') + '</span><span class="range-val" id="nes_extraction_temp_val">' + (mc.extraction_temperature || mc.temperature || 0.2).toFixed(1) + '</span></div>' +
             '<input type="range" id="nes_extraction_temperature" min="0" max="1" step="0.1" value="' + (mc.extraction_temperature || mc.temperature || 0.2) + '" style="width:100%;">' +
-            '<div class="ne-text-soft" style="font-size:0.75em;margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 8px;">' + t('STM/State/LTM memory extraction. Lower = more consistent summaries.') + '</div>' +
             '</div></div></div>';
         advContainer.innerHTML = advHtml;
     }
@@ -858,12 +858,12 @@ export function renderSettingsIntoSlide(container) {
     dmTitle.className = 'ne-tool-card';
     dmTitle.innerHTML = '<div class="ne-tool-card-title">' + t('Data') + '</div>' +
         '<div style="display:flex;gap:4px;flex-wrap:wrap;">' +
-        '<button id="narrative_vault_export_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Export JSON') + '</button>' +
-        '<button id="narrative_vault_export_diag" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + '诊断导出' + '</button>' +
-        '<button id="narrative_vault_chain_check" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + '版本链体检' + '</button>' +
-        '<button id="narrative_vault_import_json" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Import JSON') + '</button>' +
-        '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Embed into Chat') + '</button>' +
-        '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:0.85em;padding:2px 8px;">' + t('Clean Orphan Data') + '</button>' +
+        '<button id="narrative_vault_export_json" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + t('Export JSON') + '</button>' +
+        '<button id="narrative_vault_export_diag" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + '诊断导出' + '</button>' +
+        '<button id="narrative_vault_chain_check" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + '版本链体检' + '</button>' +
+        '<button id="narrative_vault_import_json" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + t('Import JSON') + '</button>' +
+        '<button id="narrative_vault_embed_chat" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + t('Embed into Chat') + '</button>' +
+        '<button id="narrative_vault_clean_orphans" class="menu_button" style="font-size:var(--ne-text-sm);padding:2px 8px;">' + t('Clean Orphan Data') + '</button>' +
         '</div>';
     container.appendChild(dmTitle);
 

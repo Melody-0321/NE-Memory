@@ -62,7 +62,7 @@ function _updatePipelineUI(status) {
             var color = status[d.key] === 'active' ? 'var(--ne-success)' : 'var(--grey-50)';
             return '<span style="color:' + color + ';" title="' + d.label + '">\u25CF</span>';
         });
-        el.innerHTML = parts.join(' ') + ' <span style="font-size:0.85em;">' + activeCount + ' ' + t('active') + '</span>';
+        el.innerHTML = parts.join(' ') + ' <span style="font-size:var(--ne-text-sm);">' + activeCount + ' ' + t('active') + '</span>';
         el.style.color = 'var(--grey-60)';
     }
 }
@@ -120,7 +120,7 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-vault-scroll-area">' +
             '<div id="narrative_vault_loading"></div>' +
             '<div id="narrative_vault_panel_error" class="ne-text-danger" style="display:none;"></div>' +
-            '<div id="narrative_vault_panel_storage_warn" class="ne-text-warning" style="display:none;font-size:0.85em;margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
+            '<div id="narrative_vault_panel_storage_warn" class="ne-text-warning" style="display:none;font-size:var(--ne-text-sm);margin-bottom:4px;border:1px solid var(--ne-warning);padding:4px;border-radius:4px;"></div>' +
             // ── State tab ──
             '<div id="tab-state" class="ne-vault-tab-content active">' +
             '<div id="ne-state-search-bar" class="ne-search-bar">' +
@@ -136,23 +136,23 @@ export async function renderVaultPanel(getChatId) {
             '</div>' +
             // State accordion: Characters / Quests / Factions
             '<div class="ne-accordion open" id="ne-acc-characters">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Characters') + ' <span id="ne-char-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
-            '<div id="ne-state-template-entry" class="ne-text-soft" style="padding:2px 0 8px;font-size:0.82em;cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
+            '<div id="ne-state-template-entry" class="ne-text-soft" style="padding:2px 0 8px;font-size:var(--ne-text-sm);cursor:pointer;" title="' + t('manage_templates') + '">\u{1F4CB} ' + t('manage_templates') + ' \u2192</div>' +
             '<div id="ne_character_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-quests">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Quests & Events') + ' <span id="ne-quest-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_quest_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-factions">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Factions') + ' <span id="ne-faction-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_faction_block_container"></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-suspense">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('suspense_section_title') + ' <span id="ne-suspense-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('suspense_section_title') + ' <span id="ne-suspense-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="ne_suspense_block_container"></div>' +
             '</div></div>' +
@@ -176,19 +176,19 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Memory List') + '</div>' +
             '<div class="ne-accordion-body">' +
             '<div class="ne-accordion open" id="ne-acc-stm">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Short-term Memory (STM)') + ' <span id="ne-stm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_stm_view">' +
-            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
+            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:var(--ne-text-base);">' +
             '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Meta') + '</th><th style="text-align:left;">' + t('Event') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_stm_body"></tbody></table></div>' +
             '</div></div>' +
             '<div class="ne-accordion" id="ne-acc-ltm">' +
-            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Long-term Memory (LTM)') + ' <span id="ne-ltm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:0.85em;"></span></div>' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Long-term Memory (LTM)') + ' <span id="ne-ltm-count" class="ne-text-soft" style="margin-left:4px;font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
             '<div class="ne-accordion-body">' +
             '<div id="narrative_vault_panel_ltm_view">' +
-            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:0.9em;">' +
-            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:0.8em;">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
+            '<table class="narrative_memory_table" style="width:100%;border-collapse:collapse;font-size:var(--ne-text-base);">' +
+            '<thead><tr><th style="text-align:center;width:2em;">' + t('No.') + '</th><th style="text-align:left;">' + t('Period') + '</th><th style="text-align:left;max-width:180px;font-size:var(--ne-text-sm);">' + t('STM Refs') + '</th><th style="text-align:left;">' + t('Event (Summary)') + '</th><th style="width:2em;"></th></tr></thead>' +
             '<tbody id="narrative_vault_panel_ltm_body"></tbody></table></div>' +
             '</div></div>' +
             '</div></div>' +
