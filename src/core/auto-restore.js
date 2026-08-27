@@ -1,28 +1,7 @@
-import { readState, writeState, readMemory, writeMemory, readVault, STATE_CONTENT_FIELDS, MEMORY_CONTENT_FIELDS } from './vault/store.js';
+import { readVault, writeState, writeMemory, STATE_CONTENT_FIELDS, MEMORY_CONTENT_FIELDS } from './vault/store.js';
 import { runtime } from './runtime.js';
 
 var _loadedChatIds = {};
-
-/**
- * 计算 vault content 的内容哈希（FNV-1a 32bit，十六进制字符串）。
- * 用于双存储（IndexedDB ↔ 聊天文件）等版本·异内容的比对。
- * 纯同步、跨设备稳定（依赖 JSON.stringify 的固定 key 顺序，NE 的 content
- * 由固定 schema 构造，顺序确定）。
- *
- * @param {object} content
- * @returns {string|null} 'h' + 8位hex；失败返回 null
- */
-export function computeVaultContentHash(content) {
-    try {
-        var str = JSON.stringify(content || {});
-        var h = 0x811c9dc5;
-        for (var i = 0; i < str.length; i++) {
-            h ^= str.charCodeAt(i);
-            h = (h * 0x01000193) >>> 0;
-        }
-        return 'h' + h.toString(16);
-    } catch (e) { return null; }
-}
 
 function _getChatMetadataNeVault() {
     try {
@@ -63,10 +42,6 @@ function _checkChatIntegrity(tag) {
 }
 
 export function persistVaultToChatFile(vault) {
-    if (vault && vault.content) {
-        vault._meta = vault._meta || {};
-        vault._meta.content_hash = computeVaultContentHash(vault.content);
-    }
     _checkChatIntegrity('persistVaultToChatFile:before');
     _setChatMetadataNeVault(vault);
     _checkChatIntegrity('persistVaultToChatFile:after_setMetadata');
@@ -75,16 +50,13 @@ export function persistVaultToChatFile(vault) {
 }
 
 /**
- * loadVault — 分层加载：聊天文件优先，IndexedDB 兜底 + 自动回填
+ * loadVault — 聊天文件恒定权威
  *
- * 优先级：
- *   1. chat_metadata.ne_vault（聊天文件）
- *   2. IndexedDB vaults store（浏览器缓存）
- *
- * 兼容旧版本：
- *   - 仅有 IndexedDB 无 chat_metadata → 自动回填到聊天文件
- *   - 仅有 chat_metadata 无 IndexedDB → 自动恢复到 IndexedDB
- *   - 两者都有 → 取 version 更高的
+ * 权威定则：当前会话的 chat_metadata.ne_vault（即 ST 服务器聊天文件）是唯一权威。
+ * IndexedDB 仅作同聊天 ID 的读写穿透缓存，绝不参与权威裁决。
+ *   1. 聊天文件有 ne_vault → 恒胜：写回 IndexedDB 缓存，直接返回该值。
+ *   2. 聊天文件无 ne_vault   → 回退读取 IndexedDB 存量，并一次性回填到聊天文件，
+ *                              使其从此成为权威（存量数据跨浏览器/设备随聊天文件迁移）。
  */
 function _splitMergedVault(chatId, mergedVault) {
     var content = mergedVault.content || {};
@@ -127,11 +99,6 @@ function _splitMergedVault(chatId, mergedVault) {
     return { stateVault: stateVault, memoryVault: memoryVault };
 }
 
-async function _writeSplitVault(chatId, mergedVault) {
-    var split = _splitMergedVault(chatId, mergedVault);
-    await Promise.all([writeState(chatId, split.stateVault), writeMemory(chatId, split.memoryVault)]);
-}
-
 export async function loadVault(chatId) {
     var neVaultJson = _getChatMetadataNeVault();
     var chatVault = null;
@@ -139,90 +106,33 @@ export async function loadVault(chatId) {
         try { chatVault = JSON.parse(neVaultJson); } catch (e) { console.warn('[NE] chat_metadata.ne_vault JSON parse failed:', e.message); }
     }
 
-    var stateVault = null, memVault = null;
-    try {
-        var result = await Promise.all([readState(chatId), readMemory(chatId)]);
-        stateVault = result[0]; memVault = result[1];
-    } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
-
-    var stateDBVer = (stateVault && stateVault.version) || 0;
-    var memDBVer = (memVault && memVault.version) || 0;
-    var chatVersion = (chatVault && chatVault.version) || 0;
-
-    console.log('[NE-VAULT] loadVault chatId=' + chatId + ' chatVer=' + chatVersion + ' stateDBVer=' + stateDBVer + ' memDBVer=' + memDBVer);
-
-    if (chatVersion > stateDBVer || chatVersion > memDBVer) {
-        console.log('[NE-VAULT] Chat metadata is newer — restoring to IndexedDB...');
+    // 聊天文件为恒定权威：存在即恒胜。
+    if (chatVault && chatVault.content) {
         try {
             var split = _splitMergedVault(chatId, chatVault);
-            var writes = [];
-            if (chatVersion > stateDBVer) writes.push(writeState(chatId, split.stateVault));
-            if (chatVersion > memDBVer) writes.push(writeMemory(chatId, split.memoryVault));
-            await Promise.all(writes);
-            console.log('[NE-VAULT] Restore complete — ' +
-                'STM=' + ((chatVault.content && chatVault.content.unconsolidated_stm || []).length + (chatVault.content && chatVault.content.stm_entries || []).length) +
-                ' LTM=' + ((chatVault.content && chatVault.content.ltm_entries || []).length) +
-                ' state_keys=' + Object.keys((chatVault.content && chatVault.content.state) || {}).length);
-        } catch (e) { console.warn('[NE] IndexedDB vault write (from chat) failed:', e.message); }
+            await Promise.all([writeState(chatId, split.stateVault), writeMemory(chatId, split.memoryVault)]);
+        } catch (e) { console.warn('[NE] IndexedDB cache restore (from chat) failed:', e.message); }
+        console.log('[NE-VAULT] loadVault chatId=' + chatId + ' — chat file authoritative (v' + (chatVault.version || 0) + ')');
+        return chatVault;
+    }
+
+    // 聊天文件无 ne_vault：回退存量 IndexedDB，并一次性回填聊天文件使其成为权威。
+    console.log('[NE-VAULT] loadVault chatId=' + chatId + ' — no chat metadata, fallback to IndexedDB');
+    try {
         var dbVault = await readVault(chatId);
-        // P6: 仅 DB 严格新于聊天文件时才回填，版本一致（恢复成功）跳过冗余全量 saveChat
-        if (dbVault && dbVault.version > chatVersion) {
-            persistVaultToChatFile(dbVault);
-        }
-        return dbVault;
-    }
-
-    var dbVault = await readVault(chatId);
-    // P6: 仅 DB 严格新于聊天文件时才回填（含兼容回填：chat 无 metadata 而 DB 有数据）
-    if (dbVault && dbVault.version > chatVersion) {
-        persistVaultToChatFile(dbVault);
-    } else if (dbVault && dbVault.version > 0) {
-        // 等版本：version 无法区分内容分歧，用 content_hash 比对（chat 侧持久化 vs IDB 实时）
-        var chatHash = chatVault && chatVault._meta && chatVault._meta.content_hash;
-        if (chatVersion > 0 && chatHash) {
-            var idbHash = computeVaultContentHash(dbVault.content);
-            if (idbHash !== chatHash) {
-                // 等版本·异内容：跨设备/备份干预产生的分歧
-                console.warn('[NE-VAULT] DIVERGENCE v' + dbVault.version + ' content hash differs — chat=' + chatHash + ' idb=' + idbHash);
-                return await _reconcileDivergence(chatId, chatVault, stateVault, memVault, dbVault);
+        if (dbVault) {
+            // 真实数据必从 v1 起写（saveStateVault/saveMemoryVault 恒 +1）；v0 仅含结构默认，不算存量。
+            if (dbVault.version > 0) {
+                persistVaultToChatFile(dbVault);
+                console.log('[NE-VAULT] Backfilled IndexedDB data into chat file (v' + (dbVault.version || 0) + ')');
+            } else {
+                console.log('[NE-VAULT] Both DB and chat metadata are empty — fresh start');
             }
-            console.log('[NE-VAULT] DB and chat metadata in sync (v' + dbVault.version + ') — skip backfill');
-        } else {
-            console.log('[NE-VAULT] DB and chat metadata in sync (v' + dbVault.version + ') — no hash to compare');
+            return dbVault;
         }
-    } else {
-        console.log('[NE-VAULT] Both DB and chat metadata are empty — fresh start');
-    }
-    return dbVault;
-}
+    } catch (e) { console.warn('[NE] IndexedDB vault read failed:', e.message); }
 
-/**
- * 等版本·异内容裁决：按持久化 updated_at 择新，version+1 打破等版本僵局，
- * 同步两侧（chat 挂新 hash，IDB 拆分写）。绝不合并内容（NE 无合并场景，
- * 差异只来自外部干预，LWW 择新即自愈）。
- *
- * @param {string} chatId
- * @param {object} chatVault — 聊天文件侧合并 vault
- * @param {object|null} stateVault — IDB 侧持久化 state vault
- * @param {object|null} memVault — IDB 侧持久化 memory vault
- * @param {object} dbVault — IDB 侧合并 vault（readVault 结果）
- * @returns {Promise<object>} 赢家 vault
- */
-async function _reconcileDivergence(chatId, chatVault, stateVault, memVault, dbVault) {
-    var chatT = Date.parse(chatVault.updated_at || 0) || 0;
-    var idbT = Math.max(
-        Date.parse((stateVault && stateVault.updated_at) || 0) || 0,
-        Date.parse((memVault && memVault.updated_at) || 0) || 0
-    );
-    var idbWins = idbT >= chatT;
-    var winner = idbWins ? dbVault : chatVault;
-    winner.version = (winner.version || 0) + 1;
-    winner.updated_at = new Date().toISOString();
-    console.warn('[NE-VAULT] DIVERGENCE reconciled — winner=' + (idbWins ? 'IndexedDB' : 'chat metadata') + ' -> v' + winner.version + ' (synced both sides)');
-    await _writeSplitVault(chatId, winner);
-    persistVaultToChatFile(winner); // 挂新 hash
-    try { runtime.notify('[NE] 检测到记忆双存储内容不一致，已按较新时间戳自动同步为 v' + winner.version, 'NE', { type: 'warning' }); } catch (e) {}
-    return winner;
+    return readVault(chatId);
 }
 
 /**

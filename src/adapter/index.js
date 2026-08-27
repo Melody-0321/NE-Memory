@@ -20,7 +20,7 @@ import { getTestCaseMetadata } from '../core/test-runner/files.js';
 import { getUsageOverview, getDailyStats, getAllChatUsage, getMonthlyBreakdown, getChatBreakdown, getAvailableMonths, getMonthlyStats } from '../core/engine/token-stats.js';
 import { getAllChatStats } from '../core/engine/chat-telemetry.js';
 import { bootstrapVault as _bootstrapVault, migrateVaultIfNeeded } from './bootstrap.js';
-import { neRestoreAll } from '../core/settings-adapter.js';
+import { neLoadAll } from '../core/settings-adapter.js';
 import { applyChatCompletionPatch } from './chat-completion-patch.js';
 import { registerPublicApi } from './public-api.js';
 import { initMesButton } from './mes-button.js';
@@ -237,7 +237,7 @@ function loadSettings() {
 async function init() {
     var locale = getLocale();
     var settings = loadSettings();
-    neRestoreAll();
+    neLoadAll();
     var chatId = getChatId();
 
     setContextFns(getChatId, getChatMessages);
