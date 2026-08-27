@@ -18,7 +18,8 @@ import { _currentChatIdForCollapse, _currentCollapseState,
   setupAccordionHandlers, setupTabSwitching, renderMemoryButton,
   saveSingleEntry, injectStateBanner, deleteSingleEntry,
   renderQuickIndex, setCurrentChatIdForCollapse,
-  setupMobileGestureClose } from './panel-drawer.js';
+  setupMobileGestureClose,
+  setStateSearchQuery, setMemorySearchQuery, applyStateSearchFilter, applyMemorySearchFilter } from './panel-drawer.js';
 import { registerNavPage, openNavPage } from './nav-registry.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML,
   enterCardEditMode } from './panel-state-cards.js';
@@ -262,76 +263,24 @@ export async function renderVaultPanel(getChatId) {
 
         setupAccordionHandlers(typeof getChatId === 'function' ? getChatId() : getChatId);
         setupMobileGestureClose();
-        // ── State tab search (debounced) ──
+        // ── State tab search (debounced; 过滤函数在 panel-drawer，渲染后由 updateVaultViewerPopout 重放) ──
         var stateSearchDebounce = null;
         var stateSearchInput = panelById('ne-state-search-input');
         if (stateSearchInput) {
             stateSearchInput.oninput = function() {
                 if (stateSearchDebounce) clearTimeout(stateSearchDebounce);
-                var q = this.value.trim().toLowerCase();
-                stateSearchDebounce = setTimeout(function() {
-                    var hasVisible = false;
-                    panelQSA('.ne-char-card, .ne-faction-card, .ne-quest-card').forEach(function(card) {
-                        var text = (card.textContent || '').toLowerCase();
-                        var visible = !q || text.indexOf(q) !== -1;
-                        card.classList.toggle('ne-search-hidden', !visible);
-                        if (visible) hasVisible = true;
-                    });
-                    var noMatch = panelById('ne-state-no-match');
-                    if (!hasVisible && q) {
-                        if (!noMatch) {
-                            var div = pdCreate('div');
-                            div.id = 'ne-state-no-match';
-                            div.className = 'ne-search-no-match';
-                            div.textContent = t('No matches found');
-                            var container = panelById('tab-state');
-                            if (container) {
-                                var quickIdx = panelById('ne_state_quick_index');
-                                if (quickIdx && quickIdx.nextSibling) quickIdx.nextSibling.before(div);
-                                else container.appendChild(div);
-                            }
-                        }
-                        if (noMatch) noMatch.style.display = '';
-                    } else {
-                        if (noMatch) noMatch.style.display = 'none';
-                    }
-                }, 200);
+                setStateSearchQuery(this.value);
+                stateSearchDebounce = setTimeout(applyStateSearchFilter, 200);
             };
         }
-        // ── Memory tab search (debounced) ──
+        // ── Memory tab search (debounced; 同上) ──
         var memSearchDebounce = null;
         var searchInput = panelById('ne-memory-search-input');
         if (searchInput) {
             searchInput.oninput = function() {
                 if (memSearchDebounce) clearTimeout(memSearchDebounce);
-                var q = this.value.trim().toLowerCase();
-                memSearchDebounce = setTimeout(function() {
-                    var hasVisible = false;
-                    panelQSA('#narrative_vault_panel_stm_body tr, #narrative_vault_panel_ltm_body tr').forEach(function(row) {
-                        var text = (row.textContent || '').toLowerCase();
-                        var visible = !q || text.indexOf(q) !== -1;
-                        row.classList.toggle('ne-search-hidden', !visible);
-                        if (visible) hasVisible = true;
-                    });
-                    var noMatch = panelById('ne-memory-no-match');
-                    if (!hasVisible && q) {
-                        if (!noMatch) {
-                            var div2 = pdCreate('div');
-                            div2.id = 'ne-memory-no-match';
-                            div2.className = 'ne-search-no-match';
-                            div2.textContent = t('No matches found');
-                            var container2 = panelById('tab-memory');
-                            if (container2) {
-                                var quickIdx2 = panelById('ne_quick_index');
-                                if (quickIdx2 && quickIdx2.nextSibling) quickIdx2.nextSibling.before(div2);
-                                else container2.appendChild(div2);
-                            }
-                        }
-                        if (noMatch) noMatch.style.display = '';
-                    } else {
-                        if (noMatch) noMatch.style.display = 'none';
-                    }
-                }, 200);
+                setMemorySearchQuery(this.value);
+                memSearchDebounce = setTimeout(applyMemorySearchFilter, 200);
             };
         }
         // Load collapse state for both tabs

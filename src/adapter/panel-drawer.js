@@ -176,6 +176,73 @@ export function renderQuickIndex(stmCount, ltmCount, charCount, questCount, fact
     }
 }
 
+// ── P2-G3: 搜索过滤态（模块级 query + 渲染后重放） ──
+// oninput 只更新 query 并 debounce 触发 apply；updateVaultViewerPopout 在块重建后
+// 调 apply 重放过滤（innerHTML 重建会丢失 ne-search-hidden class）。
+var _stateSearchQuery = '';
+var _memorySearchQuery = '';
+
+export function setStateSearchQuery(q) { _stateSearchQuery = q; }
+export function setMemorySearchQuery(q) { _memorySearchQuery = q; }
+
+export function applyStateSearchFilter() {
+    var q = _stateSearchQuery.trim().toLowerCase();
+    var hasVisible = false;
+    panelQSA('.ne-char-card, .ne-faction-card, .ne-quest-card').forEach(function(card) {
+        var text = (card.textContent || '').toLowerCase();
+        var visible = !q || text.indexOf(q) !== -1;
+        card.classList.toggle('ne-search-hidden', !visible);
+        if (visible) hasVisible = true;
+    });
+    var noMatch = panelById('ne-state-no-match');
+    if (!hasVisible && q) {
+        if (!noMatch) {
+            var div = pdCreate('div');
+            div.id = 'ne-state-no-match';
+            div.className = 'ne-search-no-match';
+            div.textContent = t('No matches found');
+            var container = panelById('tab-state');
+            if (container) {
+                var quickIdx = panelById('ne_state_quick_index');
+                if (quickIdx && quickIdx.nextSibling) quickIdx.nextSibling.before(div);
+                else container.appendChild(div);
+            }
+        }
+        if (noMatch) noMatch.style.display = '';
+    } else {
+        if (noMatch) noMatch.style.display = 'none';
+    }
+}
+
+export function applyMemorySearchFilter() {
+    var q = _memorySearchQuery.trim().toLowerCase();
+    var hasVisible = false;
+    panelQSA('#narrative_vault_panel_stm_body tr, #narrative_vault_panel_ltm_body tr').forEach(function(row) {
+        var text = (row.textContent || '').toLowerCase();
+        var visible = !q || text.indexOf(q) !== -1;
+        row.classList.toggle('ne-search-hidden', !visible);
+        if (visible) hasVisible = true;
+    });
+    var noMatch = panelById('ne-memory-no-match');
+    if (!hasVisible && q) {
+        if (!noMatch) {
+            var div2 = pdCreate('div');
+            div2.id = 'ne-memory-no-match';
+            div2.className = 'ne-search-no-match';
+            div2.textContent = t('No matches found');
+            var container2 = panelById('tab-memory');
+            if (container2) {
+                var quickIdx2 = panelById('ne_quick_index');
+                if (quickIdx2 && quickIdx2.nextSibling) quickIdx2.nextSibling.before(div2);
+                else container2.appendChild(div2);
+            }
+        }
+        if (noMatch) noMatch.style.display = '';
+    } else {
+        if (noMatch) noMatch.style.display = 'none';
+    }
+}
+
 export function setupTabSwitching() {
     panelQSA('.ne-vault-tab').forEach(function(tab) {
         tab.onclick = function() {

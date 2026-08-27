@@ -7,7 +7,8 @@ import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, PD,
   _updatingPopout, _currentGetChatId, setUpdatingPopout, setLastVaultStateJson,
   panelById, panelQS, panelQSA, showConfirm, showToast, emptyStateHtml, getPanelRoot } from './panel-shared.js';
 import { renderQuickIndex, _pendingInlineStorage, _lazyRendered,
-  _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage } from './panel-drawer.js';
+  _currentCollapseState, _currentChatIdForCollapse, setPendingInlineStorage,
+  applyStateSearchFilter, applyMemorySearchFilter } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML, renderSuspensePanelHTML,
   renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
 
@@ -47,15 +48,23 @@ export async function updateVaultViewerPopout(getChatId) {
         console.error('[NE-VAULT] Stack:', e.stack);
     }
 
-    // ── Refresh protection: skip rebuild if user is editing ──
+    // ── Refresh protection (P2-G3): 按块保留编辑态 ──
+    // 编辑元素命中 6 类编辑选择器时：定位其所属块容器 → 仅该块跳过注入与缓存更新，
+    // 其余块照常刷新；不在任何块容器内（全局 JSON 编辑等）→ 全面板跳过（旧行为兜底）。
+    var _editingBlockId = null;
     try {
         var root = getPanelRoot();
         var ae = root ? root.activeElement : document.activeElement;
         if (ae && (ae.closest('.ne-card-edit-form') || ae.closest('.ne-inline-state-edit-area') || ae.closest('.ne-stm-edit-cell') || ae.closest('.ne-ltm-edit-cell') || ae.closest('.ne-inline-row') || ae.closest('.ne-char-edit'))) {
-            showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
-            _removeSkeleton();
-            setUpdatingPopout(false);
-            return;
+            var editBlock = ae.closest('#ne_character_block_container, #ne_faction_block_container, #ne_quest_block_container, #ne_suspense_block_container, #narrative_vault_panel_ltm_body, #narrative_vault_panel_stm_body');
+            if (editBlock) {
+                _editingBlockId = editBlock.id;
+            } else {
+                showToast(t('Data updated — save your changes then refresh'), 'info', 3000);
+                _removeSkeleton();
+                setUpdatingPopout(false);
+                return;
+            }
         }
     } catch (e) {}
 
@@ -121,7 +130,7 @@ export async function updateVaultViewerPopout(getChatId) {
             var charSchema = getCharacterSchemaForPanel(c);
             var charHtml = renderCharacterPanelHTML(c.state || {}, charSchema);
             var charFinalHtml = charHtml || emptyStateHtml('\u{1F464}', t('No character data'), t('Send a message to start tracking'));
-            var charChanged = charFinalHtml !== _renderCache.char;
+            var charChanged = charFinalHtml !== _renderCache.char && _editingBlockId !== charContainer.id;
             if (charChanged) {
                 charContainer.innerHTML = charFinalHtml;
                 _renderCache.char = charFinalHtml;
@@ -180,7 +189,7 @@ export async function updateVaultViewerPopout(getChatId) {
         if (factionContainer) {
             var factionHtml = renderFactionPanelHTML(c.state || {});
             var factionFinalHtml = factionHtml || emptyStateHtml('\u2691', t('No faction data'), t('Faction state will appear when detected'));
-            if (factionFinalHtml !== _renderCache.faction) {
+            if (factionFinalHtml !== _renderCache.faction && _editingBlockId !== factionContainer.id) {
                 factionContainer.innerHTML = factionFinalHtml;
                 _renderCache.faction = factionFinalHtml;
                 _anyBlockChanged = true;
@@ -194,7 +203,7 @@ export async function updateVaultViewerPopout(getChatId) {
         if (questContainer) {
             var questHtml = renderQuestPanelHTML(c.state || {});
             var questFinalHtml = questHtml || emptyStateHtml('\u{1F4DC}', t('No quest data'), t('Quest progress will be tracked automatically'));
-            if (questFinalHtml !== _renderCache.quest) {
+            if (questFinalHtml !== _renderCache.quest && _editingBlockId !== questContainer.id) {
                 questContainer.innerHTML = questFinalHtml;
                 _renderCache.quest = questFinalHtml;
                 _anyBlockChanged = true;
@@ -208,7 +217,7 @@ export async function updateVaultViewerPopout(getChatId) {
         if (suspenseContainer) {
             var suspenseHtml = renderSuspensePanelHTML(c);
             var suspenseFinalHtml = suspenseHtml || emptyStateHtml('\u{1F4D4}', t('suspense_no_hooks'), t('suspense_ledger_enabled_desc'));
-            if (suspenseFinalHtml !== _renderCache.suspense) {
+            if (suspenseFinalHtml !== _renderCache.suspense && _editingBlockId !== suspenseContainer.id) {
                 suspenseContainer.innerHTML = suspenseFinalHtml;
                 _renderCache.suspense = suspenseFinalHtml;
                 _anyBlockChanged = true;
@@ -273,14 +282,14 @@ export async function updateVaultViewerPopout(getChatId) {
     var ltmSig = JSON.stringify(mergedList);
     var stmSig = JSON.stringify(stmView);
     try {
-        if (ltmSig !== _renderCache.ltm) {
+        if (ltmSig !== _renderCache.ltm && _editingBlockId !== 'narrative_vault_panel_ltm_body') {
             renderMemoryTable('#narrative_vault_panel_ltm_body', mergedList, 'ltm', stmIndexMap);
             _renderCache.ltm = ltmSig;
             _anyBlockChanged = true;
         }
     } catch (e) { _logSection('render-ltm-table', e); }
     try {
-        if (stmSig !== _renderCache.stm) {
+        if (stmSig !== _renderCache.stm && _editingBlockId !== 'narrative_vault_panel_stm_body') {
             renderMemoryTable('#narrative_vault_panel_stm_body', stmView, 'stm');
             _renderCache.stm = stmSig;
             _anyBlockChanged = true;
@@ -364,18 +373,25 @@ export async function updateVaultViewerPopout(getChatId) {
     } catch (e) { _logSection('event-handlers', e); }
 
     // ── Restore scroll position + accordion states ──
+    // P2-G3: 双 rAF——块重建后高度可能变化（懒加载条目/详情行），一帧后赋值会错位，
+    // 第二帧（布局稳定后）再恢复滚动。
     try {
         if (_savedAccordions.length > 0 || _savedScrollTop > 0) {
             requestAnimationFrame(function() {
-                _savedAccordions.forEach(function(id) {
-                    var acc = panelById(id);
-                    if (acc) acc.classList.add('open');
+                requestAnimationFrame(function() {
+                    _savedAccordions.forEach(function(id) {
+                        var acc = panelById(id);
+                        if (acc) acc.classList.add('open');
+                    });
+                    var sa = panelQS('.ne-vault-scroll-area');
+                    if (sa && _savedScrollTop > 0) sa.scrollTop = _savedScrollTop;
                 });
-                var sa = panelQS('.ne-vault-scroll-area');
-                if (sa && _savedScrollTop > 0) sa.scrollTop = _savedScrollTop;
             });
         }
     } catch (e) {}
+
+    // ── P2-G3: 搜索过滤重放（innerHTML 重建丢失 ne-search-hidden，用模块级 query 重放） ──
+    try { applyStateSearchFilter(); applyMemorySearchFilter(); } catch (e) { _logSection('search-replay', e); }
     }
 
     _removeSkeleton();
