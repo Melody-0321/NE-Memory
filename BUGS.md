@@ -2,6 +2,29 @@
 
 ---
 
+## vNext-55 聊天切换后聊天文件权威 vault 从未被读取（init 早于聊天加载）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-28（跨浏览器数据不同步排查，Trae 内置浏览器实测） |
+| **解决** | 2026-08-28 |
+| **严重程度** | **High** |
+| **影响** | 聊天文件权威重构（vNext 存储策略 Track1）不生效：换浏览器/设备后记忆面板恒为空，`chat_metadata.ne_vault`（权威数据，实测 31KB / v97 / 35 条 STM）自始至终无人读取。 |
+
+### 根因
+
+两层叠加：
+
+1. **init 时序**：酒馆助手 iframe 脚本在 ST 完成聊天加载前启动，`bootstrapVault → loadVault` 执行时 `chatMetadata` 还是空对象、`ctx.chatId` 为 falsy → getChatId 走 localStorage 指纹回退（`ne_x_0`），loadVault 读不到聊天文件权威数据，fresh start。
+2. **事件处理器未走权威路径**：聊天真正就绪后 ST 触发 `chat_id_changed`/`CHAT_CHANGED`，但处理器里读的是 `readVault`（纯 IndexedDB）——新浏览器 IDB 为空，且永远不查聊天文件。
+
+### 修复
+
+`chat_id_changed` 与 `CHAT_CHANGED`（legacy）两处处理器的 `readVault` 改为 `loadVault`（聊天文件恒定权威读，命中即回写 IDB 缓存）。聊天就绪事件成为权威读入点，时序问题随之化解。控制台验证：事件触发时 `chatMetadata.ne_vault` 已就绪（ST 先置 metadata 后发事件）。commit: 待提交。
+
+---
+
 ## vNext-54 抽取记忆丢失否定/反悔的最终状态（D 方案 resolver 生产化）
 
 | 属性 | 值 |

@@ -5,6 +5,7 @@
  */
 import { runtime } from '../core/runtime.js';
 import { readVault } from '../core/vault/store.js';
+import { loadVault } from '../core/auto-restore.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { registerAllTools } from '../core/tools.js';
 import { onMessageSent, onMessageReceived, onBeforeGenerate, onMessageDeleted, onMessageSwiped, onMessageUpdated, onChatDeleted, registerGlobalBannerRegex, setContextFns, setGetContextBudgetFn, neSyncChatId, restorePending, waitForPipelineIdle, notifyVaultChanged, adaptContextPostTrim, getLastDialogRoundsAfter } from './events.js';
@@ -478,7 +479,10 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await readVault(chatId2);
+                    // 聊天文件恒定权威：切换/加载聊天后经 loadVault 读取（chat_metadata.ne_vault 存在即恒胜并回写 IDB 缓存）。
+                    // init 时机早于 ST 聊天加载完成，bootstrap 那次 loadVault 可能在空 chatMetadata 上 fresh start；
+                    // 此事件是聊天真正就绪后的权威读入点。
+                    var vault = await loadVault(chatId2);
                     await migrateVaultIfNeeded(chatId2, vault);
                     notifyVaultChanged();
                 } catch (e) { console.warn('[NE] chat_id_changed handler error:', e); }
@@ -522,7 +526,8 @@ function setupEventListeners(retryCount) {
                     var settings = loadSettings();
                     setDynamicStateMode(settings && settings.useDynamicState || false);
                     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
-                    var vault = await readVault(chatId2b);
+                    // 同上：聊天文件恒定权威读（见 chat_id_changed 处理器注释）
+                    var vault = await loadVault(chatId2b);
                     await migrateVaultIfNeeded(chatId2b, vault);
                     notifyVaultChanged();
                 });
