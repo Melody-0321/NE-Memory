@@ -441,7 +441,8 @@
 .ne-vault-title{white-space:nowrap;font-size:var(--mainFontSize);margin:0;padding:0 8px;}
 .ne-pipeline-status{font-size:0.75em;white-space:nowrap;margin-left:6px;}
 .ne-pin-actions{display:flex;align-items:center;margin-left:auto;gap:8px;}
-.ne-pin-icon{font-size:1em;cursor:pointer;padding:0 2px;}
+.ne-pin-icon{font-size:1em;cursor:pointer;padding:0 2px;display:inline-flex;align-items:center;justify-content:center;min-width:24px;min-height:24px;border-radius:4px;}
+.ne-pin-icon:focus-visible{outline:2px solid var(--ne-info);outline-offset:1px;}
 .ne-pin-icon.ne-pin-usage{font-size:0.78em;white-space:nowrap;padding:0;}
 .ne-search-bar{padding:4px 12px 6px;}
 .ne-search-row{display:flex;align-items:center;padding:4px 12px 6px;gap:6px;}
@@ -729,4 +730,11 @@
 /* ── P2-G2: 动效可访问性（系统级减少动效偏好） ── */
 @media (prefers-reduced-motion:reduce){
     .ne-vault-bottom-overlay *{transition-duration:0.01ms!important;animation-duration:0.01ms!important;animation-iteration-count:1!important;}
+}
+
+/* ── V1: 触屏可达性（粗指针=触屏无 hover → 常显 hover-only 操作按钮） ── */
+@media (pointer:coarse){
+    .ne-inline-state-edit-btn,.ne-card-edit-btn,.ne-inline-edit-btn,
+    .ne-npc-lock-btn,.ne-card-scheme-btn:not(:disabled),.ne-card-lock-btn:not(:disabled),
+    .ne-help-card-close,.ne-guide-banner-close{opacity:1;}
 }
