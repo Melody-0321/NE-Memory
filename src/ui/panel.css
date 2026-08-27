@@ -116,8 +116,6 @@
 
 /* ── Orphan / inline edit ── */
 .ne-orphan-group-row td{border-top:1px dashed var(--SmartThemeBorderColor);border-bottom:1px dashed var(--SmartThemeBorderColor);}
-.ne-inline-edit-btn{font-size:0.75em;cursor:pointer;opacity:0.4;padding:0 3px;transition:opacity .15s;}
-.ne-inline-edit-btn:hover{opacity:1;}
 .ne-inline-row td{padding:2px 4px!important;}
 .ne-inline-row input,.ne-inline-row textarea{width:100%;background:var(--ne-input-bg);border:1px solid var(--ne-input-line);color:var(--ne-input-ink) !important;-webkit-text-fill-color:var(--ne-input-ink) !important;padding:3px 6px;border-radius:3px;font-size:0.85em;font-family:inherit;}
 .ne-inline-save,.ne-inline-cancel,.ne-inline-delete{font-size:0.75em;padding:1px 6px;cursor:pointer;border-radius:3px;margin:0 2px;}
@@ -190,7 +188,6 @@
 .ne-faction-card-header{display:flex;align-items:center;gap:6px;cursor:pointer;}
 .ne-faction-card-header .ne-faction-toggle{font-size:0.75em;color:var(--grey-50);transition:transform .2s;}
 .ne-faction-card.open>.ne-faction-card-header .ne-faction-toggle{transform:rotate(90deg);}
-.ne-faction-card-body{padding-top:4px;}
 .ne-faction-card-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}
 .ne-faction-card.open>.ne-faction-card-detail{display:block;}
 .ne-faction-card.ne-faction-hidden{opacity:0.55;border-left-color:#555;}
@@ -202,8 +199,6 @@
 .ne-quest-card.status-expired{border-left-color:var(--ne-warning);}
 .ne-quest-header{display:flex;align-items:center;gap:6px;}
 .ne-quest-toggle{font-size:0.8em;}
-.ne-quest-detail{display:none;margin-top:4px;padding-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;}
-.ne-quest-card.open>.ne-quest-detail{display:block;}
 .ne-suspense-card{margin:4px 0;padding:8px 10px;background:var(--black30a);border:1px solid var(--SmartThemeBorderColor);border-left:3px solid var(--SmartThemeBorderColor);border-radius:6px;cursor:pointer;}
 /* 旧 4 分类兼容（历史数据） */
 .ne-suspense-card.cat-mystery{border-left-color:var(--ne-info);}
@@ -338,7 +333,7 @@
 .ne-faction-card.ne-faction-hidden:hover{opacity:0.8;}
 
 /* ── L2: Quest card detail ── */
-.ne-quest-detail{display:none;background:var(--black10a);border-radius:4px;padding:6px 8px;}
+.ne-quest-detail{display:none;margin-top:4px;border-top:1px solid var(--black50a);font-size:0.83em;background:var(--black10a);border-radius:4px;padding:6px 8px;}
 .ne-quest-card.open>.ne-quest-detail{display:block;}
 
 /* ── L2: Inline edit row ── */
@@ -636,7 +631,7 @@
 /* ── Config card (bottom half) ── */
 .ne-config-card{border:1px solid var(--SmartThemeBorderColor,#444);border-left:3px solid var(--ne-info,#58a6ff);border-radius:6px;padding:8px 10px;margin-bottom:6px;background:rgba(0,0,0,0.15);}
 .ne-config-card.state-synced{border-left-color:var(--ne-info,#58a6ff);}
-.ne-config-card.state-forked{border-left-color:var(--ne-warn,#f0883e);}
+.ne-config-card.state-forked{border-left-color:var(--ne-warning);}
 .ne-config-card.state-orphaned{border-left-color:var(--ne-danger,#f85149);}
 .ne-config-card.search-hit{box-shadow:0 0 0 2px var(--ne-info,#58a6ff);}
 .ne-config-card-actions{display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;}
@@ -670,8 +665,7 @@
 /* ── Mobile dual-zone switcher（静态壳）── */
 .ne-mobile-zone-switch{display:none;}
 
-/* ── Reduced motion ── */
-@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation-duration:0.01ms!important;animation-iteration-count:1!important;transition-duration:0.01ms!important}}
+/* ── Reduced motion（P2-G2：仅作用于面板 overlay，避免误杀骨架屏等面板内常驻动效） ── */
 
 /* 消息栏按钮 → 主面板定位高亮 */
 @keyframes ne-stm-flash{0%,100%{background:transparent}50%{background:var(--SmartThemeQuoteColor,#ffeb3b);opacity:0.3}}

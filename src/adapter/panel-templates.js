@@ -1118,7 +1118,7 @@ function _aiRenderFailure(container, result) {
     var msg = (result.failureKind === 'context_budget') ? t('ai_context_budget')
         : (result.failureKind === 'retry_exhausted') ? t('ai_retry_exhausted')
         : t('ai_draft_failed');
-    var html = '<div class="ne-editor-section" style="border-left:3px solid var(--ne-warn,#e0a800);">';
+    var html = '<div class="ne-editor-section" style="border-left:3px solid var(--ne-warning);">';
     html += '<div class="ne-section-title">' + escapeHtml(msg) + '</div>';
     if (result.errors && result.errors.length) {
         html += '<ul class="ne-text-soft" style="margin:4px 0 0 16px;font-size:0.82em;">';
