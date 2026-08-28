@@ -60,7 +60,8 @@ var testMap = {
     'ui-tokens': 'ui-tokens.test.js',
     'nav-registry': 'nav-registry.test.js',
     'gesture-math': 'gesture-math.test.js',
-    'orb': 'orb.test.js'
+    'orb': 'orb.test.js',
+    'ne-theme': 'ne-theme.test.js'
 };
 
 var batchMap = {

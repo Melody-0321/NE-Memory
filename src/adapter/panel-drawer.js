@@ -265,24 +265,47 @@ export async function deleteSingleEntry(entryType, entryId) {
     recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: '删除 ' + entryType + ' ' + entryId, delta: { stm_removed: [entryId] }, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
 }
 
+// ── 迁移：原底部悬浮按钮改为主入口（orb.js），此按钮迁入底部
+//   #extensionsMenu（魔杖菜单）作为抽屉入口的可靠后备。因菜单为
+//   懒加载渲染，采用轮询注入，装好即停（参照柏宝书 menu.ts）。
+var _menuInjected = false;
+var _menuPollTimer = null;
+
+function injectMenuButton(getChatId) {
+    var menu = byId('extensionsMenu');
+    if (!menu) return false;
+    if (byId('ne_menu_button')) return true;
+    var item = pdCreate('div');
+    item.id = 'ne_menu_button';
+    item.className = 'list-group-item flex-container flexGap5 flex-align-center';
+    item.style.cursor = 'pointer';
+    item.setAttribute('role', 'button');
+    item.tabIndex = 0;
+    item.innerHTML =
+        '<span class="fa-solid fa-book-bookmark" aria-hidden="true"></span>' +
+        '<label class="pointer" style="flex:1;order:2;">' + escapeHtml(t('NE Narrative Engine')) + '</label>';
+    item.onclick = function (e) {
+        e.stopPropagation();
+        createVaultPopout(getChatId);
+    };
+    item.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); createVaultPopout(getChatId); }
+    });
+    menu.appendChild(item);
+    return true;
+}
+
 export function renderMemoryButton(getChatId) {
-    if (byId('ne_memory_button')) return;
-    var leftSend = byId('leftSendForm');
-    if (!leftSend) return;
-    var btn = pdCreate('div');
-    btn.id = 'ne_memory_button';
-    btn.className = 'fa-solid fa-book-bookmark interactable';
-    btn.title = t('NE Narrative Engine');
-    btn.style.fontSize = 'var(--bottomFormIconSize)';
-    btn.onclick = function () { createVaultPopout(getChatId); };
-    var extBtn = byId('extensionsMenuButton');
-    if (extBtn) {
-        extBtn.insertAdjacentElement('afterend', btn);
-    } else {
-        var optBtn = byId('options_button');
-        if (optBtn) optBtn.insertAdjacentElement('afterend', btn);
-        else leftSend.appendChild(btn);
-    }
+    if (_menuInjected) return;
+    if (injectMenuButton(getChatId)) { _menuInjected = true; return; }
+    if (_menuPollTimer) return; // 已在轮询
+    _menuPollTimer = setInterval(function () {
+        if (injectMenuButton(getChatId) || !byId('extensionsMenuButton')) {
+            _menuInjected = true;
+            clearInterval(_menuPollTimer);
+            _menuPollTimer = null;
+        }
+    }, 500);
 }
 
 export function injectStateBanner(messageId) {

@@ -7,14 +7,175 @@
  * 内联进 bundle，运行时注入 PD.head :root（ne_vars_style）。
  * 自定义属性沿继承链穿透 shadow boundary，shadow 面板同样生效。
  *
+ * 三层结构：
+ *   第一层 结构令牌（全主题共享）：间距/字号/圆角/动效/层级
+ *   第二层 主题令牌（随 :root[data-ne-theme] 切换）：
+ *     - ne-dark  品牌默认（低饱和靛蓝 + 冷灰分层）
+ *     - ne-light 象牙白系（暖白分层）
+ *     - st       跟随ST主题（改造前的派生行为）
+ *     :root 无 data-ne-theme 时即 ne-dark（默认回落写在 :root 上）。
+ *   主题切换：JS 设 document.documentElement.dataset.neTheme，
+ *   持久化于 ne_settings.ui_theme。
+ *
  * 纪律（参照柏宝书 base.css「不写颜色字面量」）：
  *   - 所有颜色/间距/圆角/动效一律引用 --ne-* token
  *   - 本文件之外不得出现颜色字面量（由 ratchet-color-literals 门禁）
- *   - 状态色（--ne-success 等）保持品牌硬值；其余 token 默认值跟随 ST 主题变量
+ *   - 主题色板为自有硬值；仅 st 主题块从 ST 主题变量派生
  */
 
+/* ═══════════ 第一层：结构令牌（全主题共享） ═══════════ */
 :root{
-    /* ── 状态色（品牌硬值，暗亮主题通用） ── */
+    /* ── 间距 ── */
+    --ne-space-xs:4px;
+    --ne-space-sm:8px;
+    --ne-space-md:12px;
+    --ne-space-lg:16px;
+    --ne-space-xl:20px;
+    --ne-space-2xl:24px;
+    --ne-space-3xl:32px;
+
+    /* ── 字号档位（em 相对 ST 基准；档差已拉大强化层级） ── */
+    --ne-text-xs:0.78em;
+    --ne-text-sm:0.84em;
+    --ne-text-base:0.9em;
+    --ne-text-lg:1.05em;
+    --ne-text-xl:1.2em;
+
+    /* ── 圆角 ── */
+    --ne-radius-sm:4px;
+    --ne-radius-md:8px;
+    --ne-radius-lg:12px;
+
+    /* ── 动效 ── */
+    --ne-transition-fast:0.15s;
+    --ne-transition-normal:0.2s;
+    --ne-transition-slow:0.35s;
+    --ne-easing-standard:cubic-bezier(0.4,0,0.2,1);
+    --ne-easing-decelerate:cubic-bezier(0,0,0.2,1);
+    --ne-easing-accelerate:cubic-bezier(0.4,0,1,1);
+
+    /* ── 层级 ── */
+    --ne-z-overlay:1000;
+}
+
+/* ═══════════ 第二层：主题令牌 ═══════════ */
+
+/* ── ne-dark（品牌默认；同时是 :root 无属性时的回落值） ── */
+:root,
+:root[data-ne-theme="ne-dark"]{
+    /* 状态色（降饱和，精致路线） */
+    --ne-success:#5fbf7a;
+    --ne-success-bg:rgba(95,191,122,0.10);
+    --ne-success-border:rgba(95,191,122,0.24);
+    --ne-warning:#d9a45b;
+    --ne-warning-bg:rgba(217,164,91,0.10);
+    --ne-warning-border:rgba(217,164,91,0.24);
+    --ne-danger:#e06c66;
+    --ne-danger-bg:rgba(224,108,102,0.10);
+    --ne-danger-border:rgba(224,108,102,0.24);
+    --ne-info:#6aa5e8;
+    --ne-info-bg:rgba(106,165,232,0.10);
+    --ne-info-border:rgba(106,165,232,0.24);
+    --ne-muted:#9aa0b4;
+    --ne-muted-bg:rgba(154,160,180,0.08);
+
+    /* 分类语义色（悬念卡 promise/plan 金、foreshadow 紫；降饱和） */
+    --ne-gold:#d4b25e;
+    --ne-violet:#a488d9;
+
+    /* 文本 */
+    --ne-ink:#e6e8f0;
+    --ne-ink-soft:#9aa0b4;
+
+    /* 表面（自有冷灰分层） */
+    --ne-surface-0:#161822;
+    --ne-surface-1:#1d2030;
+    --ne-surface-2:#262a3d;
+    /* 面板底色（抽屉/Modal/Confirm 外壳，近实底配模糊） */
+    --ne-panel-bg:rgba(22,24,34,0.92);
+
+    /* 线条 / 强调（低对比细线 + 靛蓝品牌色） */
+    --ne-line:#313648;
+    --ne-accent:#7c8cf8;
+
+    /* 输入控件 */
+    --ne-input-bg:#1a1d29;
+    --ne-input-ink:#e6e8f0;
+    --ne-input-line:#313648;
+    --ne-input-placeholder:#6b7086;
+
+    /* 滚动条 */
+    --ne-scroll-thumb:rgba(154,160,180,0.30);
+    --ne-scroll-thumb-hover:rgba(154,160,180,0.50);
+    --ne-scroll-track:transparent;
+
+    /* 阴影（带品牌色偏的深影 = 卡片浮起感） */
+    --ne-shadow-sm:0 2px 8px rgba(10,12,24,0.28);
+    --ne-shadow-md:0 4px 16px rgba(10,12,24,0.35);
+
+    /* 字体栈 */
+    --ne-font:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+
+/* ── ne-light（象牙白系） ── */
+:root[data-ne-theme="ne-light"]{
+    /* 状态色（深相适配亮底） */
+    --ne-success:#3d8f57;
+    --ne-success-bg:rgba(61,143,87,0.10);
+    --ne-success-border:rgba(61,143,87,0.26);
+    --ne-warning:#b07a2e;
+    --ne-warning-bg:rgba(176,122,46,0.10);
+    --ne-warning-border:rgba(176,122,46,0.26);
+    --ne-danger:#c74f49;
+    --ne-danger-bg:rgba(199,79,73,0.10);
+    --ne-danger-border:rgba(199,79,73,0.26);
+    --ne-info:#3d7fc4;
+    --ne-info-bg:rgba(61,127,196,0.10);
+    --ne-info-border:rgba(61,127,196,0.26);
+    --ne-muted:#7a7c88;
+    --ne-muted-bg:rgba(122,124,136,0.10);
+
+    /* 分类语义色（亮底深相） */
+    --ne-gold:#8f6f1f;
+    --ne-violet:#7a4fc9;
+
+    /* 文本 */
+    --ne-ink:#2b2c33;
+    --ne-ink-soft:#7a7c88;
+
+    /* 表面（暖白分层，非纯白） */
+    --ne-surface-0:#fafaf8;
+    --ne-surface-1:#f2f1ec;
+    --ne-surface-2:#e9e8e2;
+    /* 面板底色（近实底配模糊） */
+    --ne-panel-bg:rgba(250,250,248,0.94);
+
+    /* 线条 / 强调（靛蓝加深版保证亮底对比度） */
+    --ne-line:#dedcd4;
+    --ne-accent:#5b6be0;
+
+    /* 输入控件 */
+    --ne-input-bg:#ffffff;
+    --ne-input-ink:#2b2c33;
+    --ne-input-line:#dedcd4;
+    --ne-input-placeholder:#a0a29e;
+
+    /* 滚动条 */
+    --ne-scroll-thumb:rgba(90,88,80,0.28);
+    --ne-scroll-thumb-hover:rgba(90,88,80,0.45);
+    --ne-scroll-track:transparent;
+
+    /* 阴影（浅影） */
+    --ne-shadow-sm:0 1px 4px rgba(60,58,50,0.08);
+    --ne-shadow-md:0 2px 10px rgba(60,58,50,0.10);
+
+    /* 字体栈 */
+    --ne-font:-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei","Noto Sans SC",sans-serif;
+}
+
+/* ── st（跟随ST主题；改造前的派生行为原样保留） ── */
+:root[data-ne-theme="st"]{
+    /* 状态色 */
     --ne-success:#4caf50;
     --ne-success-bg:rgba(76,175,80,0.12);
     --ne-success-border:rgba(76,175,80,0.3);
@@ -30,61 +191,40 @@
     --ne-muted:#888;
     --ne-muted-bg:rgba(136,136,136,0.08);
 
-    /* ── 文本 ── */
+    /* 分类语义色（改造前存量值原样保留） */
+    --ne-gold:#e2b714;
+    --ne-violet:#a855f7;
+
+    /* 文本 */
     --ne-ink:var(--text,#ddd);
     --ne-ink-soft:var(--grey-50,#888);
 
-    /* ── 表面（跟随 ST 半透明黑分层） ── */
+    /* 表面（跟随 ST 半透明黑分层） */
     --ne-surface-0:var(--black10a,transparent);
     --ne-surface-1:var(--black30a,rgba(0,0,0,.3));
     --ne-surface-2:var(--black50a,rgba(0,0,0,.5));
+    /* 面板底色（跟随 ST 模糊底色） */
+    --ne-panel-bg:var(--SmartThemeBlurTintColor,#1e1e1e);
 
-    /* ── 线条 / 强调 ── */
+    /* 线条 / 强调 */
     --ne-line:var(--SmartThemeBorderColor,#333);
     --ne-accent:var(--SmartThemeQuoteColor,#2196f3);
 
-    /* ── 输入控件（跟随 ST 主题；保留 !important 压制 ST 直接作用于 input 的规则） ── */
+    /* 输入控件（保留 !important 压制 ST 直接作用于 input 的规则） */
     --ne-input-bg:var(--SmartThemeBlurTintColor,#1e1e1e);
     --ne-input-ink:var(--text,#ddd);
     --ne-input-line:var(--SmartThemeBorderColor,#333);
     --ne-input-placeholder:var(--grey-30,#999);
 
-    /* ── 滚动条（中性灰，暗/亮主题均可见） ── */
+    /* 滚动条（中性灰，暗/亮主题均可见） */
     --ne-scroll-thumb:rgba(128,128,128,.35);
     --ne-scroll-thumb-hover:rgba(128,128,128,.55);
     --ne-scroll-track:transparent;
 
-    /* ── 间距 ── */
-    --ne-space-xs:4px;
-    --ne-space-sm:8px;
-    --ne-space-md:12px;
-    --ne-space-lg:16px;
-    --ne-space-xl:20px;
-    --ne-space-2xl:24px;
-    --ne-space-3xl:32px;
-
-    /* ── 字号档位 ── */
-    --ne-text-xs:0.75em;
-    --ne-text-sm:0.82em;
-    --ne-text-base:0.9em;
-    --ne-text-lg:1em;
-    --ne-text-xl:1.1em;
-
-    /* ── 圆角 ── */
-    --ne-radius-sm:4px;
-    --ne-radius-md:8px;
-    --ne-radius-lg:12px;
-
-    /* ── 动效 ── */
-    --ne-transition-fast:0.15s;
-    --ne-transition-normal:0.2s;
-    --ne-transition-slow:0.35s;
-    --ne-easing-standard:cubic-bezier(0.4,0,0.2,1);
-    --ne-easing-decelerate:cubic-bezier(0,0,0.2,1);
-    --ne-easing-accelerate:cubic-bezier(0.4,0,1,1);
-
-    /* ── 阴影 / 层级 ── */
+    /* 阴影 */
     --ne-shadow-sm:0 1px 3px rgba(0,0,0,0.12);
     --ne-shadow-md:0 4px 12px rgba(0,0,0,0.15);
-    --ne-z-overlay:1000;
+
+    /* 字体栈（跟随 ST 主字体） */
+    --ne-font:var(--mainFontFamily,inherit);
 }
