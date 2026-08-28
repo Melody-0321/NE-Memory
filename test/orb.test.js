@@ -59,6 +59,9 @@ assert(orbCss.indexOf('.ne-orb:hover') !== -1, 'hover 全显');
 assert(orbCss.indexOf('.ne-orb:focus-visible') !== -1, 'focus-visible 键盘可达');
 assert(orbCss.indexOf('.ne-orb.is-dragging') !== -1, '拖拽态');
 assert(orbCss.indexOf('--ne-orb-shift') !== -1, '贴边半隐 CSS 变量');
+
+// 5b. 门面可发现性：idle 不暗淡、贴边不外移过多（球体大体露出）
+assert(orbCss.indexOf('opacity:.92') !== -1, 'idle 高可发现(≥.9)');
 assert(orbCss.indexOf('touch-action:none') !== -1, 'touch-action:none（拖拽不滚屏）');
 
 // 6. 方案B 枢纽图标结构：中心 hub + 三卫星 node（兼状态灯）+ 轨道连线
@@ -153,9 +156,12 @@ assert(!/fill="#|stroke="#/.test(orbJs), 'SVG 无 hex 颜色字面量');
 
 console.log('\n=== orb: 接线 + 菜单迁移 ===');
 
-// 23. panel-init.js 挂载调用
-assert(initJs.indexOf("import { mountNeOrb } from './orb.js'") !== -1, 'panel-init import mountNeOrb');
-assert(initJs.indexOf('mountNeOrb(getChatId)') !== -1, 'panel-init 调用 mountNeOrb');
+var bootJs = read('src/adapter/bootstrap.js');
+
+// 23. 挂载于初始化（bootstrap 独立挂载，不依赖面板渲染/#sheld）
+assert(bootJs.indexOf("import { mountNeOrb } from './orb.js'") !== -1, 'bootstrap import mountNeOrb');
+assert(bootJs.indexOf('mountNeOrb(function') !== -1, 'bootstrap 初始化时挂载悬浮球');
+assert(initJs.indexOf('mountNeOrb') === -1, 'panel-init 不再门控挂载（解耦）');
 
 // 24. 设置面板开关 + 持久化 + 即时生效
 assert(settingsJs.indexOf('nes_orb_enabled') !== -1, '设置面板含 nes_orb_enabled 开关');

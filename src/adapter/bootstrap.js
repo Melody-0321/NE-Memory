@@ -3,6 +3,7 @@ import { readState, writeState, readMemory, writeMemory, readVault, emptyStateVa
 import { loadVault, persistVaultToChatFile } from '../core/auto-restore.js';
 import { t, setFieldLocale } from '../core/i18n.js';
 import { renderVaultPanel } from './panel.js';
+import { mountNeOrb } from './orb.js';
 import { setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection } from '../core/api/llm.js';
@@ -85,6 +86,10 @@ export async function bootstrapVault(chatId, locale, settings) {
 
     setDynamicStateMode(settings && settings.useDynamicState || false);
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
+
+    // 悬浮球为页面级入口 + 状态显示器：必须于初始化时挂载，独立于面板渲染
+    // （renderVaultPanel 依赖 #sheld，存在提前 return 导致浮球永远不挂载的隐患）
+    mountNeOrb(function() { return runtime.getChatId() || chatId; });
 
     console.log('[NE] Engine initializing — chatId=' + chatId);
     var vault = await loadVault(chatId);

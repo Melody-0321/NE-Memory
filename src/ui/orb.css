@@ -37,7 +37,7 @@
     cursor:grab;
     touch-action:none;            /* 拖拽不滚屏 */
     user-select:none;
-    opacity:.72;                 /* idle 半隐（略高于旧值，提升门面可发现性） */
+    opacity:.92;                 /* idle 高可发现：门面入口，避免贴边细缝难以察觉 */
     transform:translateX(var(--ne-orb-shift,0));
     transition:transform var(--ne-transition-normal) var(--ne-easing-standard),
                opacity var(--ne-transition-normal) var(--ne-easing-standard),

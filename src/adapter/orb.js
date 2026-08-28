@@ -70,11 +70,11 @@ function applyPos(el, pos) {
     if (pos.dock === 'left') {
         el.style.left = '0px';
         el.style.right = 'auto';
-        el.style.setProperty('--ne-orb-shift', '-58%');
+        el.style.setProperty('--ne-orb-shift', '-28%');
     } else if (pos.dock === 'right') {
         el.style.left = 'auto';
         el.style.right = '0px';
-        el.style.setProperty('--ne-orb-shift', '58%');
+        el.style.setProperty('--ne-orb-shift', '28%');
     } else {
         el.style.left = pos.x + 'px';
         el.style.right = 'auto';
