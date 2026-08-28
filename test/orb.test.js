@@ -43,8 +43,8 @@ assert(orbCss.indexOf('--ne-orb-shift') === -1, 'orb.css 不含 --ne-orb-shift�
 assert(orbJs.indexOf('setPointerCapture') === -1, 'orb.js 不用 setPointerCapture（window 级拖拽更稳）');
 
 // 3. window 级拖拽
-assert(orbJs.indexOf('window.addEventListener(\'pointermove\'') !== -1, 'orb.js 挂 window pointermove');
-assert(orbJs.indexOf('window.addEventListener(\'pointerup\'') !== -1, 'orb.js 挂 window pointerup');
+assert(orbJs.indexOf('WIN.addEventListener(\'pointermove\'') !== -1, 'orb.js 挂 父窗口(WIN) pointermove — 脚本模式需收父页面事件');
+assert(orbJs.indexOf('WIN.addEventListener(\'pointerup\'') !== -1, 'orb.js 挂 父窗口(WIN) pointerup');
 
 console.log('\n=== orb: 方案 B 结构 ===');
 

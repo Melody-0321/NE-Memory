@@ -9,7 +9,7 @@
 // ════════════════════════════════════════════════════════════════
 import orbCss from '../ui/orb.css';
 import tokensCss from '../ui/tokens.css';
-import { byId, pdCreate, pdHead, pdBody, closeVaultOverlay, t } from './panel-shared.js';
+import { byId, pdCreate, pdHead, pdBody, closeVaultOverlay, t, PD } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
 import { onPipelineChange, offPipelineChange, getState } from '../core/engine/pipeline-guard.js';
 
@@ -19,6 +19,10 @@ var POS_KEY = 'ne_orb_pos_v2';
 var SIZE = 44;
 var CLICK_SLOP = 6;
 var FLASH_MS = 1600;
+
+// 事件/视口宿主：orb 元素挂在 PD（脚本模式=parent.document）。pointer/resize/视口
+// 一律走 PD.defaultView（父页面 window），否则收不到父页面里的指针事件 → 拖不动/点击无反应。
+var WIN = (PD && PD.defaultView) || window;
 
 // [pipeline_key, node_class]；节点顺序固定，tooltip/状态灯遍历用
 var PIPE_NODES = [
@@ -78,8 +82,8 @@ function createOrbElement() {
 
 // ── 位置持久化（标准 FAB，仅采 x/y） ──
 function clampToViewport(p, winW, winH) {
-    winW = winW || window.innerWidth;
-    winH = winH || window.innerHeight;
+    winW = winW || WIN.innerWidth;
+    winH = winH || WIN.innerHeight;
     var m = 8;
     return {
         x: Math.max(m, Math.min(winW - SIZE - m, p.x)),
@@ -89,11 +93,11 @@ function clampToViewport(p, winW, winH) {
 
 function loadPos() {
     var fallback = clampToViewport({
-        x: window.innerWidth - SIZE - 24,
-        y: Math.round(window.innerHeight * 0.28)
+        x: WIN.innerWidth - SIZE - 24,
+        y: Math.round(WIN.innerHeight * 0.28)
     });
     try {
-        var raw = window.localStorage.getItem(POS_KEY);
+        var raw = WIN.localStorage.getItem(POS_KEY);
         if (!raw) return fallback;
         var p = JSON.parse(raw);
         if (typeof p.x === 'number' && typeof p.y === 'number') return clampToViewport(p);
@@ -104,7 +108,7 @@ function loadPos() {
 function savePos() {
     try {
         var r = _orb.getBoundingClientRect();
-        window.localStorage.setItem(POS_KEY, JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) }));
+        WIN.localStorage.setItem(POS_KEY, JSON.stringify({ x: Math.round(r.left), y: Math.round(r.top) }));
     } catch (e) { /* 存储失败不影响本次会话展示 */ }
 }
 
@@ -128,12 +132,12 @@ function handleClick() {
 // ── 拖拽：window 级 pointer 事件，稳定、不依赖 pointer capture、无贴边 ──
 function bindEvents() {
     _orb.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
+    WIN.addEventListener('pointermove', onPointerMove);
+    WIN.addEventListener('pointerup', onPointerUp);
     _orb.addEventListener('keydown', onKeyDown);
     _orb.addEventListener('pointerenter', onEnter);
     _orb.addEventListener('pointerleave', onLeave);
-    window.addEventListener('resize', onResize);
+    WIN.addEventListener('resize', onResize);
 }
 
 function onKeyDown(e) {
@@ -259,7 +263,7 @@ function positionTooltip() {
     var x = r.left;
     var y = r.top - th - 8;
     if (y < 6) y = r.bottom + 8;
-    if (x + tw > window.innerWidth - 6) x = window.innerWidth - 6 - tw;
+    if (x + tw > WIN.innerWidth - 6) x = WIN.innerWidth - 6 - tw;
     if (x < 6) x = 6;
     tip.style.left = x + 'px';
     tip.style.top = y + 'px';
@@ -304,9 +308,9 @@ export function unmountNeOrb() {
         if (_orb.parentNode) _orb.parentNode.removeChild(_orb);
         _orb = null;
     }
-    window.removeEventListener('pointermove', onPointerMove);
-    window.removeEventListener('pointerup', onPointerUp);
-    window.removeEventListener('resize', onResize);
+    WIN.removeEventListener('pointermove', onPointerMove);
+    WIN.removeEventListener('pointerup', onPointerUp);
+    WIN.removeEventListener('resize', onResize);
     var tip = byId(TOOLTIP_ID);
     if (tip && tip.parentNode) tip.parentNode.removeChild(tip);
     _drag = null;
