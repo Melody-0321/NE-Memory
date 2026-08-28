@@ -63,20 +63,21 @@ function createOrbElement() {
     orb.setAttribute('role', 'button');
     orb.setAttribute('aria-label', t('orb_title'));
     orb.setAttribute('tabindex', '0');
-    // 中央枢纽图标：三管线汇入中枢记忆（SVG 全 currentColor 继承，不写死颜色）
+    // 方案 B 枢纽节点图标：中心枢纽 + 三卫星（state/STM/LTM）+ 轨道连线，
+    // 三卫星兼作状态灯（运行中的管线 .lit 点亮 accent）。SVG 全 currentColor 继承，不写死颜色
     orb.innerHTML =
-        '<svg viewBox="0 0 24 24" focusable="false" aria-hidden="true">' +
-        '<g fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round">' +
-        '<circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/>' +
-        '<path d="M12 9V4M12 15v5"/>' +
-        '<path d="M10 10.5 5.5 6.5M14 10.5 18.5 6.5M10 13.5 5.5 17.5M14 13.5 18.5 17.5"/>' +
-        '</g></svg>';
-    // 三卫星节点（管线状态灯，pointer-events:none 不拦截拖拽）
-    PIPE_NODES.forEach(function (nd) {
-        var node = pdCreate('div');
-        node.className = nd[1];
-        orb.appendChild(node);
-    });
+        '<svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+        '<circle class="ne-node ne-node-state" cx="12" cy="4.4" r="2.05"/>' +
+        '<circle class="ne-node ne-node-stm" cx="4.4" cy="17.2" r="2.05"/>' +
+        '<circle class="ne-node ne-node-ltm" cx="19.6" cy="17.2" r="2.05"/>' +
+        '<circle class="ne-hub" cx="12" cy="12" r="3.1"/>' +
+        '<g class="ne-link">' +
+        '<path d="M10.1 6.1 L9.3 8.9"/>' +
+        '<path d="M13.9 6.1 L14.7 8.9"/>' +
+        '<path d="M6.2 13.6 L4.4 15.4"/>' +
+        '<path d="M17.8 13.6 L19.6 15.4"/>' +
+        '</g>' +
+        '</svg>';
     return orb;
 }
 

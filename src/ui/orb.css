@@ -51,48 +51,42 @@
     transform: scale(1.05);
 }
 
-/* ── 中央枢纽图标（SVG 以 currentColor 着墨，未写死颜色） ── */
+/* ── 图标：枢纽节点 + 三卫星状态灯（SVG 以 currentColor 着墨，未写死颜色） ── */
 .ne-orb svg {
-    width: 22px;
-    height: 22px;
     display: block;
+    flex: none;
     color: currentColor;
 }
 
-/* ── 三卫星节点（绝对定位在枢纽圆周，兼作管线状态灯） ── */
-.ne-node-state,
-.ne-node-stm,
-.ne-node-ltm {
-    position: absolute;
-    width: 12px;
-    height: 12px;
-    border-radius: 50%;
-    background: var(--ne-muted);
-    border: 2px solid var(--ne-surface-2);
-    box-shadow: none;
-    transition: background var(--ne-transition-fast) var(--ne-easing-standard),
-        box-shadow var(--ne-transition-fast) var(--ne-easing-standard);
-    pointer-events: none; /* 卫星不拦截拖拽/点击，命中交给枢纽 */
+.ne-orb .ne-hub {
+    stroke: currentColor;
+    fill: none;
 }
 
-.ne-node-state {
-    top: 2px;
-    left: 50%;
-    transform: translateX(-50%);
-}
-.ne-node-stm {
-    bottom: 3px;
-    left: 6px;
-}
-.ne-node-ltm {
-    bottom: 3px;
-    right: 6px;
+.ne-orb .ne-link {
+    stroke: currentColor;
+    fill: none;
+    opacity: 0.4;
 }
 
-/* 运行中点亮：state→accent / stm→success / ltm→info */
-.ne-node-state.lit { background: var(--ne-accent); box-shadow: 0 0 6px var(--ne-accent); }
-.ne-node-stm.lit { background: var(--ne-success); box-shadow: 0 0 6px var(--ne-success); }
-.ne-node-ltm.lit { background: var(--ne-info); box-shadow: 0 0 6px var(--ne-info); }
+/* 三卫星节点（state/STM/LTM）：待机弱显，运行中的管线由 JS 加 .lit → accent 点亮 */
+.ne-orb .ne-node {
+    fill: currentColor;
+    stroke: none;
+    opacity: 0.35;
+    transition: color var(--ne-transition-fast) var(--ne-easing-standard),
+        opacity var(--ne-transition-fast) var(--ne-easing-standard);
+}
+
+.ne-orb .ne-node.lit {
+    opacity: 1;
+}
+
+.ne-orb .ne-node.lit.ne-node-state,
+.ne-orb .ne-node.lit.ne-node-stm,
+.ne-orb .ne-node.lit.ne-node-ltm {
+    color: var(--ne-accent);
+}
 
 /* ── 三档视觉状态 ── */
 
