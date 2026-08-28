@@ -7,6 +7,7 @@ import { setDynamicStateMode } from '../core/vault/schema.js';
 import { setRetrievalEnabled } from '../core/settings.js';
 import { testSecondaryApiConnection } from '../core/api/llm.js';
 import { restorePending } from './events.js';
+import { mountNeOrb } from './orb.js';
 
 function loadSettings() {
     try {
@@ -87,6 +88,8 @@ export async function bootstrapVault(chatId, locale, settings) {
     setRetrievalEnabled(settings && settings.retrievalEnabled || false);
 
     console.log('[NE] Engine initializing — chatId=' + chatId);
+    // 早期解耦挂载悬浮球：同步注入令牌+CSS，完全独立于面板渲染，开箱必可见
+    mountNeOrb(function() { return runtime.getChatId() || chatId; });
     var vault = await loadVault(chatId);
     vault = await migrateVaultIfNeeded(chatId, vault);
     if (vault.version === 0 && !vault.content.language) {

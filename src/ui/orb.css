@@ -1,0 +1,187 @@
+/*
+ * ════════════════════════════════════════════════════════════════
+ *   NE Memory — 页面内悬浮球（方案 B：枢纽中枢 + 三卫星管线状态灯）
+ * ════════════════════════════════════════════════════════════════
+ *
+ * 纪律：
+ *   - 本文件置于 src/ui/（天然豁免 ratchet-color-literals 扫描）
+ *   - 但仍一律以 --ne-* 设计令牌构建，与项目 token 化纪律一致
+ *   - 可见性硬约束：本文件由 orb.js 在挂载当下注入 #ne_orb_style，
+ *     且 orb.js 会保证 #ne_vars_style（tokens.css :root）先就绪
+ * ================================================================
+ */
+
+/* ── 基础形态（标准 FAB：自由悬浮、整球可见、无贴边磁吸） ── */
+.ne-orb {
+    position: fixed;
+    /* 高于普通层，但不压过面板/弹窗（--ne-z-overlay=1000） */
+    z-index: calc(var(--ne-z-overlay, 1000) + 50);
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    background: var(--ne-surface-2);
+    box-shadow: var(--ne-shadow-md);
+    opacity: 0.92;
+    cursor: grab;
+    touch-action: none; /* 拖拽接管原生平移/滚动，避免拖动时页面跟随 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* color 供内部 SVG currentColor 继承（随主题变化） */
+    color: var(--ne-ink);
+    transition: box-shadow var(--ne-transition-normal) var(--ne-easing-standard),
+        opacity var(--ne-transition-normal) var(--ne-easing-standard),
+        filter var(--ne-transition-fast) var(--ne-easing-standard);
+}
+
+.ne-orb:hover,
+.ne-orb:focus-visible {
+    opacity: 1;
+}
+
+/* 可访问性：键盘/焦点可见 outline */
+.ne-orb:focus-visible {
+    outline: 2px solid var(--ne-accent);
+    outline-offset: 2px;
+}
+
+.ne-orb.dragging {
+    cursor: grabbing;
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+/* ── 中央枢纽图标（SVG 以 currentColor 着墨，未写死颜色） ── */
+.ne-orb svg {
+    width: 22px;
+    height: 22px;
+    display: block;
+    color: currentColor;
+}
+
+/* ── 三卫星节点（绝对定位在枢纽圆周，兼作管线状态灯） ── */
+.ne-node-state,
+.ne-node-stm,
+.ne-node-ltm {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--ne-muted);
+    border: 2px solid var(--ne-surface-2);
+    box-shadow: none;
+    transition: background var(--ne-transition-fast) var(--ne-easing-standard),
+        box-shadow var(--ne-transition-fast) var(--ne-easing-standard);
+    pointer-events: none; /* 卫星不拦截拖拽/点击，命中交给枢纽 */
+}
+
+.ne-node-state {
+    top: 2px;
+    left: 50%;
+    transform: translateX(-50%);
+}
+.ne-node-stm {
+    bottom: 3px;
+    left: 6px;
+}
+.ne-node-ltm {
+    bottom: 3px;
+    right: 6px;
+}
+
+/* 运行中点亮：state→accent / stm→success / ltm→info */
+.ne-node-state.lit { background: var(--ne-accent); box-shadow: 0 0 6px var(--ne-accent); }
+.ne-node-stm.lit { background: var(--ne-success); box-shadow: 0 0 6px var(--ne-success); }
+.ne-node-ltm.lit { background: var(--ne-info); box-shadow: 0 0 6px var(--ne-info); }
+
+/* ── 三档视觉状态 ── */
+
+/* idle：无管线活跃，静止半透明（basis 状态） */
+.ne-orb.idle {
+    animation: none;
+    box-shadow: var(--ne-shadow-md);
+}
+
+/* busy：有管线运行中 → accent 脉冲环，强度随 data-active 递增 */
+.ne-orb.busy {
+    animation: ne-orb-pulse-1 var(--ne-transition-slow) var(--ne-easing-standard) infinite alternate;
+}
+.ne-orb.busy[data-active="2"] {
+    animation: ne-orb-pulse-2 var(--ne-transition-slow) var(--ne-easing-standard) infinite alternate;
+}
+.ne-orb.busy[data-active="3"] {
+    animation: ne-orb-pulse-3 var(--ne-transition-slow) var(--ne-easing-standard) infinite alternate;
+}
+
+@keyframes ne-orb-pulse-1 {
+    from { box-shadow: 0 0 0 0 var(--ne-accent); }
+    to { box-shadow: 0 0 0 6px rgba(0, 0, 0, 0); }
+}
+@keyframes ne-orb-pulse-2 {
+    from { box-shadow: 0 0 0 0 var(--ne-accent); }
+    to { box-shadow: 0 0 0 10px rgba(0, 0, 0, 0); }
+}
+@keyframes ne-orb-pulse-3 {
+    from { box-shadow: 0 0 0 0 var(--ne-accent); }
+    to { box-shadow: 0 0 0 14px rgba(0, 0, 0, 0); }
+}
+
+/* flash：管线由 active→idle 的完成回落，--ne-success 短暂高亮 1.5s */
+.ne-orb.flash {
+    animation: ne-orb-flash 1.5s var(--ne-easing-standard);
+}
+
+@keyframes ne-orb-flash {
+    0% { box-shadow: 0 0 0 0 var(--ne-success); }
+    30% { box-shadow: 0 0 0 10px rgba(0, 0, 0, 0); }
+    100% { box-shadow: var(--ne-shadow-md); }
+}
+
+/* ── rich tooltip（JS 自建 #ne_orb_tooltip，此处仅样式） ── */
+#ne_orb_tooltip {
+    position: fixed;
+    z-index: calc(var(--ne-z-overlay, 1000) + 60);
+    min-width: 132px;
+    max-width: 220px;
+    padding: var(--ne-space-sm) var(--ne-space-md);
+    background: var(--ne-surface-2);
+    border: 1px solid var(--ne-line);
+    border-radius: var(--ne-radius-md);
+    box-shadow: var(--ne-shadow-md);
+    font-size: var(--ne-text-sm);
+    line-height: 1.6;
+    color: var(--ne-ink);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity var(--ne-transition-fast) var(--ne-easing-standard);
+}
+#ne_orb_tooltip.visible { opacity: 1; }
+#ne_orb_tooltip .ne-orb-tip-title {
+    font-weight: bold;
+    font-size: var(--ne-text-base);
+    margin-bottom: var(--ne-space-xs);
+}
+#ne_orb_tooltip .ne-orb-tip-row {
+    display: flex;
+    align-items: center;
+    gap: var(--ne-space-xs);
+}
+#ne_orb_tooltip .ne-orb-tip-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--ne-muted);
+    flex-shrink: 0;
+}
+#ne_orb_tooltip .ne-orb-tip-dot.on { background: var(--ne-accent); }
+#ne_orb_tooltip .ne-orb-tip-hint {
+    margin-top: var(--ne-space-xs);
+    font-size: var(--ne-text-xs);
+    color: var(--ne-ink-soft);
+}
+
+/* ── P2-G1 惯例：触屏主输入设备强制可见（无 hover 场景） ── */
+@media (pointer: coarse) {
+    .ne-orb { opacity: 1; }
+    #ne_orb_tooltip { display: none; }
+}

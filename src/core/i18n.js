@@ -198,7 +198,10 @@ export const NARRATIVE_I18N = {
         'Concise': 'Concise', 'Standard': 'Standard', 'Detailed': 'Detailed',
         'STM Summary Detail Description': 'Detail level of STM event summaries. Concise (3%) for minimal tokens, Standard (5%) balanced, Detailed (10%) preserves more story detail.',
         'Content Cleaning': 'Content Cleaning',
-        'Content Cleaning Description': 'Strip formatting blocks from messages before sending to the memory LLM (read-time only, vault text unchanged). Always removes <think>/<thinking> blocks and HTML comments. Extra tag names are removed entirely, comma-separated.',
+        'Content Cleaning Description': 'Strip formatting blocks from messages before sending to the memory LLM (read-time only, vault text unchanged). Always removes  thinking/<thinking> blocks and HTML comments. Extra tag names are removed entirely, comma-separated.',
+        // Floating orb (方案 B): page-level live entry + pipeline status display
+        'orb_title': 'Memory Hub', 'orb_phase_state': 'State', 'orb_phase_stm': 'Short-term', 'orb_phase_ltm': 'Long-term',
+        'orb_idle': 'idle', 'orb_busy': 'running', 'orb_tooltip_hint': 'Drag to reposition · Click to toggle the memory panel',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -388,7 +391,10 @@ export const NARRATIVE_I18N = {
         'Concise': '精简', 'Standard': '标准', 'Detailed': '详细',
         'STM Summary Detail Description': 'STM 事件摘要的详细程度。精简（3%）最省 token，标准（5%）均衡，详细（10%）保留更多剧情细节。',
         'Content Cleaning': '内容清洗',
-        'Content Cleaning Description': '发送给记忆 LLM 前剔除消息中的格式块（仅读取时清洗，vault 原文不变）。始终剔除 <think>/<thinking> 思维链块和 HTML 注释；额外标签名整块删除，逗号分隔。',
+        'Content Cleaning Description': '发送给记忆 LLM 前剔除消息中的格式块（仅读取时清洗，vault 原文不变）。始终剔除  thinking/<thinking> 思维链块和 HTML 注释；额外标签名整块删除，逗号分隔。',
+        // 悬浮球（方案 B）：页面级活入口 + 管线状态显示
+        'orb_title': '记忆中枢', 'orb_phase_state': '状态', 'orb_phase_stm': '短程', 'orb_phase_ltm': '长程',
+        'orb_idle': '空闲', 'orb_busy': '运行中', 'orb_tooltip_hint': '拖拽调整位置 · 点击开关记忆面板',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -564,7 +570,10 @@ export const NARRATIVE_I18N = {
         'Concise': '精簡', 'Standard': '標準', 'Detailed': '詳細',
         'STM Summary Detail Description': 'STM 事件摘要的詳細程度。精簡（3%）最省 token，標準（5%）均衡，詳細（10%）保留更多劇情細節。',
         'Content Cleaning': '內容清洗',
-        'Content Cleaning Description': '發送給記憶 LLM 前剔除訊息中的格式區塊（僅讀取時清洗，vault 原文不變）。一律剔除 <think>/<thinking> 思維鏈區塊與 HTML 註解；額外標籤名整塊刪除，逗號分隔。',
+        'Content Cleaning Description': '發送給記憶 LLM 前剔除訊息中的格式區塊（僅讀取時清洗，vault 原文不變）。一律剔除  thinking/<thinking> 思維鏈區塊與 HTML 註解；額外標籤名整塊刪除，逗號分隔。',
+        // 懸浮球（方案 B）：頁面級活入口 + 管線狀態顯示
+        'orb_title': '記憶中樞', 'orb_phase_state': '狀態', 'orb_phase_stm': '短程', 'orb_phase_ltm': '長程',
+        'orb_idle': '空閒', 'orb_busy': '運行中', 'orb_tooltip_hint': '拖曳調整位置 · 點擊開關記憶面板',
     }
 };
 
