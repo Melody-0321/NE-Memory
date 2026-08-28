@@ -23,7 +23,8 @@ import { onPipelineChange } from '../core/engine/pipeline-guard.js';
 var CLICK_SLOP = 6;         // 位移 < 此值视为点击而非拖动
 var ORB_W = 44;             // 与 orb.css width 一致
 var ORB_H = 44;
-var POS_KEY = 'ne_orb_pos'; // 本机视觉态，不跨设备同步
+var POS_KEY = 'ne_orb_pos_v2'; // 本机位置持久化；v2 弃用旧版 dock 贴边态，
+                              // 首次加载落在默认自由悬浮位，彻底避免旧位置残留
 var FLASH_MS = 1500;        // 完成 flash 保持时长
 
 var _mounted = false;

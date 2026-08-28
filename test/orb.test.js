@@ -82,7 +82,7 @@ console.log('\n=== orb: 交互骨架（orb.js，标准 FAB） ===');
 assert(orbJs.indexOf('innerHeight * 0.28') !== -1, '默认右侧偏上自由位(整球可见,不粘边)');
 assert(orbJs.indexOf('SNAP_ZONE') === -1, '无贴边磁吸(SNAP_ZONE 移除)');
 assert(orbJs.indexOf('CLICK_SLOP = 6') !== -1, 'CLICK_SLOP=6 点击判定');
-assert(orbJs.indexOf("'ne_orb_pos'") !== -1, 'POS_KEY 本机位置持久化');
+assert(orbJs.indexOf("'ne_orb_pos_v2'") !== -1, 'POS_KEY v2 本机位置持久化(弃用旧贴边态)');
 
 // 9. 稳定拖拽：window 级监听兜底（摆脱 setPointerCapture 偶发失效）+ 旧 dock 持久化忽略
 assert(orbJs.indexOf('pointerdown') !== -1, 'pointerdown 起拖');
