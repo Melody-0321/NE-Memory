@@ -1,21 +1,24 @@
 /*
  * ════════════════════════════════════════════════════════════════
- *   NE Memory Engine — Floating Orb（页面内悬浮球）
+ *   NE Memory Engine — Floating Orb（页面内悬浮球 / 插件门面）
  * ════════════════════════════════════════════════════════════════
  *
- * 悬浮球挂主文档 PD.body（面板关闭时也可见），本文件由 orb.js
- * 注入 PD.head（id=ne_orb_style）。颜色/阴影/动效全部引用
- * tokens.css 的 --ne-* 令牌（三主题自动适配）。
+ * 形态：方案 B「枢纽节点」图标 —— 中心枢纽 + 三卫星节点。
+ * 三个卫星 node 分别对应 state/STM/LTM 三条管线，兼做「状态灯」：
+ * 运行中的管线其卫星点亮为 accent 色（图标本身即状态显示器）。
+ * 轨道连线保证辨识度；currentColor 继承（无颜色字面量）。
  *
- * 二态脉冲（运行状态显示，真源 = pipeline-guard onPipelineChange）：
- *   idle 静止半透明；任一管线（state/stm/ltm）激活 → .busy：
- *   边框/图标变 accent 靛蓝 + ::after 外圈脉冲呼吸环。
+ * 三档运行状态（真源 = pipeline-guard onPipelineChange）：
+ *   idle     无管线运行 → 半透明静止
+ *   运行中   1~3 条管线 → accent 色 + 外圈脉冲环，强度随活跃数递增
+ *            （[data-active="1|2|3"] 调 animation-duration / ring 宽度）
+ *   刚完成   有管线 active→idle → success 色短暂 flash（JS 加 .flash，1.5s 回落）
  *
- * 贴边半隐：JS 设 --ne-orb-shift（left → -58% / right → 58% /
- * free → 0），hover/聚焦/拖拽时整条滑出（translateX(0)）。
+ * hover / focus / 拖拽：半透明球整条滑出（translateX(0)）+ 显示 rich tooltip
+ * （三管线各自状态，列于球侧，JS 定位 + clamp 视口）。
  *
  * 门禁注意：border-radius 用 50%（百分比不触 layout-literals，禁止
- * 用 999+ px 圆角字面量）；本文件无颜色字面量。
+ * 用 999+ px 圆角字面量）；本文件无颜色字面量（工具提示内图标色取令牌）。
  */
 
 .ne-orb{
@@ -34,12 +37,13 @@
     cursor:grab;
     touch-action:none;            /* 拖拽不滚屏 */
     user-select:none;
-    opacity:.62;                 /* idle 静止半隐 */
+    opacity:.72;                 /* idle 半隐（略高于旧值，提升门面可发现性） */
     transform:translateX(var(--ne-orb-shift,0));
     transition:transform var(--ne-transition-normal) var(--ne-easing-standard),
                opacity var(--ne-transition-normal) var(--ne-easing-standard),
                border-color var(--ne-transition-fast) var(--ne-easing-standard),
-               color var(--ne-transition-fast) var(--ne-easing-standard);
+               color var(--ne-transition-fast) var(--ne-easing-standard),
+               box-shadow var(--ne-transition-fast) var(--ne-easing-standard);
 }
 .ne-orb:hover,.ne-orb:focus-visible,.ne-orb.is-dragging{opacity:1;transform:translateX(0);}
 .ne-orb:active{cursor:grabbing;}
@@ -48,27 +52,83 @@
 /* 拖拽中禁用过渡（跟手） */
 .ne-orb.is-dragging{transition:none;}
 
-/* ── 二态脉冲：管线激活 ── */
+/* ── 图标：枢纽节点 + 三卫星状态灯 ── */
+.ne-orb svg{display:block;flex:none;}
+.ne-orb .ne-hub{stroke:currentColor;fill:none;}
+.ne-orb .ne-link{stroke:currentColor;fill:none;opacity:.4;}
+.ne-orb .ne-node{fill:currentColor;stroke:none;transition:color var(--ne-transition-fast) var(--ne-easing-standard),opacity var(--ne-transition-fast) var(--ne-easing-standard);}
+/* 待机节点弱显；运行中的管线节点由 JS 加 .lit → accent 点亮 */
+.ne-orb .ne-node{opacity:.35;}
+.ne-orb .ne-node.lit{opacity:1;}
+.ne-orb .ne-node.lit.ne-node-state,
+.ne-orb .ne-node.lit.ne-node-stm,
+.ne-orb .ne-node.lit.ne-node-ltm{color:var(--ne-accent);}
+
+/* ── 运行中：整体 accent + 外圈脉冲环（强度随活跃数递增） ── */
 .ne-orb.busy{
     border-color:var(--ne-accent);
-    color:var(--ne-accent);
+    color:var(--ne-accent);        /* 图标与枢纽整体泛 accent，宿主语境 */
 }
 .ne-orb.busy::after{
     content:'';
     position:absolute;
     inset:-4px;
     border-radius:50%;
-    border:2px solid var(--ne-accent);
+    border-width:2px;
+    border-style:solid;
+    border-color:var(--ne-accent);
     animation:ne-orb-pulse 1.6s var(--ne-easing-decelerate) infinite;
     pointer-events:none;
 }
+/* 活跃数 → 频率与强度递增 */
+.ne-orb.busy[data-active="2"]::after{animation-duration:1.15s;border-width:2.6px;}
+.ne-orb.busy[data-active="3"]::after{animation-duration:.85s;border-width:3.2px;}
+
 @keyframes ne-orb-pulse{
     0%{transform:scale(.9);opacity:.9;}
-    70%{transform:scale(1.25);opacity:0;}
-    100%{transform:scale(1.25);opacity:0;}
+    70%{transform:scale(var(--ne-pulse-scale,1.25));opacity:0;}
+    100%{transform:scale(var(--ne-pulse-scale,1.25));opacity:0;}
 }
+.ne-orb.busy[data-active="2"]{--ne-pulse-scale:1.34;}
+.ne-orb.busy[data-active="3"]{--ne-pulse-scale:1.44;}
+
+/* ── 刚完成：success 色短暂 flash（JS 加 .flash，1.5s 后移除） ── */
+.ne-orb.flash{
+    border-color:var(--ne-success);
+    color:var(--ne-success);
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--ne-success) 35%,transparent);
+}
+
+/* ── 贴边半隐（JS 设 --ne-orb-shift）── */
+.ne-orb{transform:translateX(var(--ne-orb-shift,0));}
+.ne-orb:hover,.ne-orb:focus-visible,.ne-orb.is-dragging{transform:translateX(0);}
+
+/* ── rich hover tooltip（JS 控制显隐/定位/clamp，fixed 层） ── */
+.ne-orb-tip{
+    position:fixed;
+    z-index:9999;
+    pointer-events:none;
+    min-width:150px;
+    max-width:220px;
+    padding:var(--ne-space-sm) var(--ne-space-md);
+    background:var(--ne-surface-2);
+    border:1px solid var(--ne-line);
+    border-radius:var(--ne-radius-md);
+    box-shadow:var(--ne-shadow-md);
+    color:var(--ne-ink);
+    font-size:var(--ne-text-sm);
+    opacity:0;
+    transition:opacity .15s var(--ne-easing-standard);
+}
+.ne-orb-tip.visible{opacity:1;}
+.ne-orb-tip-title{font-weight:650;font-size:var(--ne-text-sm);letter-spacing:.02em;margin-bottom:var(--ne-space-xs);color:var(--ne-ink);}
+.ne-orb-tip-row{display:flex;align-items:center;gap:var(--ne-space-sm);line-height:1.6;white-space:nowrap;color:var(--ne-ink-soft);}
+.ne-orb-tip-row .ne-orb-tip-dot{width:7px;height:7px;border-radius:50%;flex:none;background:color-mix(in srgb,var(--ne-ink-soft) 45%,transparent);transition:background var(--ne-transition-fast);}
+.ne-orb-tip-row.is-active .ne-orb-tip-dot{background:var(--ne-accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--ne-accent) 30%,transparent);}
+.ne-orb-tip-row .ne-orb-tip-state{margin-left:auto;font-size:var(--ne-text-xs);}
 
 @media (prefers-reduced-motion: reduce){
     .ne-orb{transition:none;}
     .ne-orb.busy::after{animation:none;opacity:.4;}   /* 降级为静态外环 */
+    .ne-orb.flash{transition:none;}
 }
