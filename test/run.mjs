@@ -59,9 +59,7 @@ var testMap = {
     'consolidate-accumulate': 'consolidate-accumulate.test.js',
     'ui-tokens': 'ui-tokens.test.js',
     'nav-registry': 'nav-registry.test.js',
-    'gesture-math': 'gesture-math.test.js',
-    'ne-theme': 'ne-theme.test.js',
-    'orb': 'orb.test.js'
+    'gesture-math': 'gesture-math.test.js'
 };
 
 var batchMap = {

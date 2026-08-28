@@ -7,13 +7,12 @@ import { loadEmbeddingApiConfig, saveEmbeddingApiConfig,
 import { neSync } from '../core/settings-adapter.js';
 import { setRetrievalEnabled, readNeSettingsObject, invalidateNeSettingsCache } from '../core/settings.js';
 import { setAuto, isAuto, computeStmBatch, getTelemetryStats } from '../core/params.js';
-import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit, applyNeTheme, readNeTheme } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, pdHead, pdAddEventListener, t, panelById, panelQS, panelQSA, showToast, showConfirm, _currentGetChatId, busEmit } from './panel-shared.js';
 import { readVault, writeMemory } from '../core/vault/store.js';
 import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versions.js';
 import { getActiveChain, listStateDeltas, listMemoryVersions, diagnoseChainConsistency, repairChainConservative, removeOrphanVersionRecords } from '../core/vault/state-versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { initTestRunner } from './panel-tools.js';
-import { applyOrbVisibility } from './orb.js';
 
 // === STM 摘要详细度已删：L1a 消融定案固化 ratio=0.15（见 stm-pipeline.js），不再暴露 UI 三档 ===
 export function renderSettingsTab() {
@@ -39,32 +38,12 @@ export function renderSettingsTab() {
     var channelsEnabled = settings.apiChannelsEnabled === true;
 
     // === Common Settings ===
-    var currentTheme = readNeTheme();
     var stmBatchAuto = isAuto('stmBatch');
     var computedBatch = computeStmBatch(getTelemetryStats().turnsPerEvent);
     var displayBatch = stmBatchAuto ? computedBatch : (settings.stmBatch || 10);
     var commonHtml = '<div class="ne-accordion" id="ne-set-engine">' +
         '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Engine') + '</div>' +
         '<div class="ne-accordion-body">' +
-        // === 界面主题选择（多主题：ne-dark / ne-light / st） ===
-        '<div style="margin:0 0 var(--ne-space-sm);padding:var(--ne-space-sm);border:1px solid var(--ne-line);border-radius:var(--ne-radius-sm);background:var(--ne-surface-1);">' +
-            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:var(--ne-space-sm);cursor:pointer;font-weight:600;">' +
-                t('ui_theme') + ' ' +
-                '<select id="nes_ui_theme" style="flex:1;font-size:var(--ne-text-sm);padding:var(--ne-space-xs) var(--ne-space-sm);border-radius:var(--ne-radius-sm);border:1px solid var(--ne-input-line);background:var(--ne-input-bg);color:var(--ne-input-ink);">' +
-                    '<option value="ne-dark"' + (currentTheme === 'ne-dark' ? ' selected' : '') + '>NE Dark</option>' +
-                    '<option value="ne-light"' + (currentTheme === 'ne-light' ? ' selected' : '') + '>NE Light</option>' +
-                    '<option value="st"' + (currentTheme === 'st' ? ' selected' : '') + '>' + t('Follow ST') + '</option>' +
-                '</select>' +
-            '</label>' +
-            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:var(--ne-space-xs) 0 0 0;color:var(--ne-ink-soft);">' + t('ui_theme_desc') + '</div>' +
-        '</div>' +
-        // === 悬浮球开关（页面内记忆入口 + 运行状态显示器） ===
-        '<div style="margin:0 0 var(--ne-space-sm);padding:var(--ne-space-sm);border:1px solid var(--ne-line);border-radius:var(--ne-radius-sm);background:var(--ne-surface-1);">' +
-            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:var(--ne-space-xs);cursor:pointer;font-weight:600;">' +
-                '<input type="checkbox" id="nes_orb_enabled" ' + (settings.orb_enabled !== false ? 'checked' : '') + '> ' + t('orb_enabled') +
-            '</label>' +
-            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:var(--ne-space-xs) 0 0 0;color:var(--ne-ink-soft);">' + t('orb_enabled_desc') + '</div>' +
-        '</div>' +
         // === Adaptive Context Control 开关 ===
         '<div style="margin:0 0 var(--ne-space-sm);padding:var(--ne-space-sm);border:1px solid var(--grey30);border-radius:var(--ne-radius-sm);background:var(--ne-surface);">' +
             '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:var(--ne-space-xs);cursor:pointer;font-weight:600;">' +
@@ -341,32 +320,6 @@ export function renderSettingsTab() {
     if (ovEl) { ovEl.onchange = function () { saveSettingsTab(); }; }
     var gtEl = panelById('nes_golden_context_tier');
     if (gtEl) { gtEl.onchange = function () { saveSettingsTab(); }; }
-    // 界面主题选择：立即生效 + 持久化 ne_settings.ui_theme（随 extensionSettings 跨设备同步）
-    var themeSel = panelById('nes_ui_theme');
-    if (themeSel) {
-        themeSel.onchange = function () {
-            var s = {};
-            try { var raw = localStorage.getItem('ne_settings'); if (raw) s = JSON.parse(raw); } catch (e) {}
-            s.ui_theme = themeSel.value;
-            localStorage.setItem('ne_settings', JSON.stringify(s));
-            invalidateNeSettingsCache();
-            neSync('ne_settings');
-            applyNeTheme(themeSel.value);
-        };
-    }
-    // 悬浮球开关：即时挂载/卸载 + 持久化 ne_settings.orb_enabled（随 extensionSettings 跨设备同步）
-    var orbChk = panelById('nes_orb_enabled');
-    if (orbChk) {
-        orbChk.onchange = function () {
-            var s = {};
-            try { var raw = localStorage.getItem('ne_settings'); if (raw) s = JSON.parse(raw); } catch (e) {}
-            s.orb_enabled = orbChk.checked;
-            localStorage.setItem('ne_settings', JSON.stringify(s));
-            invalidateNeSettingsCache();
-            neSync('ne_settings');
-            applyOrbVisibility();
-        };
-    }
     // Adaptive Context Control 开关：切换显隐 + 描述文字
     var adaptiveEl = panelById('nes_adaptive_context_control');
     if (adaptiveEl) {

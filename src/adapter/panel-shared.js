@@ -10,28 +10,6 @@ export var PD;
 try {
     PD = window.__NE_EXTENSION_MODE ? document : (window.parent.document || document);
 } catch(e) { PD = document; }
-
-// ── 多主题（data-ne-theme）：ne-dark 默认 / ne-light / st 跟随ST ──
-// 持久化于 ne_settings.ui_theme（随 extensionSettings 跨设备同步）。
-var NE_THEMES = { 'ne-dark': true, 'ne-light': true, 'st': true };
-export function applyNeTheme(theme) {
-    if (!NE_THEMES[theme]) theme = 'ne-dark';
-    try {
-        if (theme === 'ne-dark') {
-            // :root 默认即 ne-dark（tokens.css 回落值），移除属性即可
-            PD.documentElement.removeAttribute('data-ne-theme');
-        } else {
-            PD.documentElement.setAttribute('data-ne-theme', theme);
-        }
-    } catch (e) {}
-}
-export function readNeTheme() {
-    try {
-        var raw = localStorage.getItem('ne_settings');
-        if (raw) { var s = JSON.parse(raw); if (s && NE_THEMES[s.ui_theme]) return s.ui_theme; }
-    } catch (e) {}
-    return 'ne-dark';
-}
 export function qs(sel) { return PD.querySelector(sel); }
 export function qsa(sel) { return PD.querySelectorAll(sel); }
 export function byId(id) { return PD.getElementById(id); }
@@ -109,13 +87,13 @@ export function injectBottomDrawerCSS() {
         'all:initial;' + // 切断 ST 排版污染继承；all 不重置 custom properties，--ne-* 仍由 :root 穿透供血
         'display:none;flex-direction:column;flex-grow:1;min-height:0;overflow:hidden;' +
         'position:fixed;inset:0;z-index:35;background:transparent;' +
-        'border-top:1px solid var(--ne-line);border-radius:var(--ne-radius-lg) var(--ne-radius-lg) 0 0;' +
+        'border-top:1px solid var(--SmartThemeBorderColor);border-radius:var(--ne-radius-lg) var(--ne-radius-lg) 0 0;' +
         'transform:translateY(100%);pointer-events:none;' +
-        'font-family:var(--ne-font);font-size:var(--mainFontSize,inherit);line-height:1.55;color:var(--ne-ink);' +
+        'font-family:var(--mainFontFamily,inherit);font-size:var(--mainFontSize,inherit);line-height:1.5;color:var(--ne-ink);' +
         'transition:transform var(--ne-transition-normal) var(--ne-easing-decelerate);}' +
         hostSel + '::before{' +
         'content:"";position:absolute;inset:0;z-index:-1;' +
-        'background:var(--ne-panel-bg);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
+        'background:var(--SmartThemeBlurTintColor);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);' +
         'border-radius:inherit;}' +
         (isShadow ? ':host(.open){' : '.ne-vault-bottom-overlay.open{') +
         'display:flex;transform:translateY(0);pointer-events:auto;}' +
@@ -141,8 +119,8 @@ export function injectBottomDrawerCSS() {
         '@media(max-width:499px){' + mobileSel + ' .ne-mobile-zone-switch{display:flex;gap:var(--ne-space-xs);margin-bottom:var(--ne-space-sm);}' +
         mobileSel + ' .ne-unified-section{display:none;}' +
         mobileSel + ' .ne-unified-section.ne-mobile-active{display:block;flex:1;overflow-y:auto;}' +
-        mobileSel + ' .ne-mobile-zone-tab{flex:1;text-align:center;padding:var(--ne-space-sm) 0;cursor:pointer;font-size:var(--ne-text-sm);border-bottom:2px solid transparent;color:var(--ne-ink-soft);}' +
-        mobileSel + ' .ne-mobile-zone-tab.active{color:var(--ne-ink);border-bottom-color:var(--ne-line);font-weight:bold;}}' +
+        mobileSel + ' .ne-mobile-zone-tab{flex:1;text-align:center;padding:var(--ne-space-sm) 0;cursor:pointer;font-size:var(--ne-text-sm);border-bottom:2px solid transparent;color:var(--grey-50,#8b949e);}' +
+        mobileSel + ' .ne-mobile-zone-tab.active{color:var(--text,#fff);border-bottom-color:var(--SmartThemeBorderColor,#444);font-weight:bold;}}' +
         // ── 纯 class 规则（静态真源 panel.css，经 rollup cssString 内联；含 Toast/Confirm/Modal/Tooltip/Guide 等的非 shadow 同款）──
         panelCss;
     if (_panelRoot) { _panelRoot.appendChild(style); } else { pdHead().appendChild(style); }
@@ -157,8 +135,8 @@ export function injectBottomDrawerCSS() {
                 '.ne-modal-overlay{position:fixed;inset:0;z-index:10001;display:flex;align-items:center;justify-content:center;' +
                 'background:var(--ne-surface-2);opacity:0;transition:opacity .15s;}' +
                 '.ne-modal-overlay.show{opacity:1;}' +
-                '.ne-modal{background:var(--ne-panel-bg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
-                'border:1px solid var(--ne-line);border-radius:var(--ne-radius-lg);padding:var(--ne-space-lg) var(--ne-space-xl);min-width:300px;max-width:90vw;max-height:70vh;' +
+                '.ne-modal{background:var(--SmartThemeBlurTintColor,#1e1e1e);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
+                'border:1px solid var(--SmartThemeBorderColor,#444);border-radius:var(--ne-radius-lg);padding:var(--ne-space-lg) var(--ne-space-xl);min-width:300px;max-width:90vw;max-height:70vh;' +
                 'display:flex;flex-direction:column;transform:scale(.9);transition:transform .2s cubic-bezier(0,0,0.2,1);}' +
                 '.ne-modal-overlay.show .ne-modal{transform:scale(1);}' +
                 '.ne-modal h3{font-size:var(--ne-text-lg);font-weight:bold;margin:0 0 var(--ne-space-md);}' +
@@ -182,8 +160,6 @@ export function injectBottomDrawerCSS() {
         varsStyle.textContent = tokensCss;
         pdHead().appendChild(varsStyle);
     }
-    // 多主题：令牌注入后立即应用持久化主题（ne_settings.ui_theme；缺省 ne-dark）
-    applyNeTheme(readNeTheme());
 }
 
 export var vaultLLMLog = [];
@@ -276,16 +252,16 @@ function _ensureToastCss() {
         '.ne-confirm-overlay{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center;' +
         'background:var(--ne-surface-2);opacity:0;transition:opacity .15s;}' +
         '.ne-confirm-overlay.show{opacity:1;}' +
-        '.ne-confirm-dialog{background:var(--ne-panel-bg);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
-        'border:1px solid var(--ne-line);border-radius:var(--ne-radius-lg);padding:var(--ne-space-xl) var(--ne-space-2xl);min-width:280px;max-width:90vw;' +
+        '.ne-confirm-dialog{background:var(--SmartThemeBlurTintColor,#1e1e1e);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);' +
+        'border:1px solid var(--SmartThemeBorderColor,#444);border-radius:var(--ne-radius-lg);padding:var(--ne-space-xl) var(--ne-space-2xl);min-width:280px;max-width:90vw;' +
         'transform:scale(.9);transition:transform .2s cubic-bezier(0,0,0.2,1);}' +
         '.ne-confirm-overlay.show .ne-confirm-dialog{transform:scale(1);}' +
         '.ne-confirm-title{font-size:var(--ne-text-xl);font-weight:bold;margin-bottom:var(--ne-space-sm);}' +
-        '.ne-confirm-message{font-size:var(--ne-text-base);color:var(--ne-ink-soft);margin-bottom:var(--ne-space-lg);line-height:1.55;}' +
+        '.ne-confirm-message{font-size:var(--ne-text-base);color:var(--grey-70,#aaa);margin-bottom:var(--ne-space-lg);line-height:1.5;}' +
         '.ne-confirm-actions{display:flex;gap:var(--ne-space-sm);justify-content:flex-end;}' +
-        '.ne-confirm-btn{padding:var(--ne-space-sm) var(--ne-space-xl);border-radius:var(--ne-radius-sm);border:1px solid var(--ne-line);' +
-        'background:var(--ne-surface-1);color:var(--ne-ink);cursor:pointer;font-size:var(--ne-text-base);transition:background var(--ne-transition-fast);}' +
-        '.ne-confirm-btn:hover{background:var(--ne-surface-2);}' +
+        '.ne-confirm-btn{padding:var(--ne-space-sm) var(--ne-space-xl);border-radius:var(--ne-radius-sm);border:1px solid var(--SmartThemeBorderColor,#444);' +
+        'background:var(--black30a,rgba(0,0,0,.3));color:var(--text,#ddd);cursor:pointer;font-size:var(--ne-text-base);transition:background .15s;}' +
+        '.ne-confirm-btn:hover{background:var(--black50a,rgba(0,0,0,.5));}' +
         '.ne-confirm-btn.danger{background:var(--ne-danger);border-color:var(--ne-danger);color:#fff;}' +
         '.ne-confirm-btn.danger:hover{background:#c62828;}' +
         // P2-G1: 触屏主输入设备下 confirm 变底部弹层（bottom sheet）
@@ -478,12 +454,12 @@ export function showGuideBanner(container, text, storageKey) {
     style.textContent = '' +
         '.ne-tooltip{position:fixed;z-index:9999;max-width:260px;padding:var(--ne-space-sm) var(--ne-space-md);background:var(--black90a,rgba(0,0,0,0.9));color:var(--text,#fff);font-size:var(--ne-text-sm);border-radius:var(--ne-radius-md);line-height:1.4;pointer-events:none;opacity:0;transition:opacity 0.15s;}' +
         '.ne-tooltip.visible{opacity:1;}' +
-        '.ne-help-card{position:fixed;z-index:9998;min-width:280px;max-width:340px;background:var(--ne-surface-1);border:1px solid var(--ne-line);border-radius:var(--ne-radius-md);box-shadow:var(--ne-shadow-md);font-size:var(--ne-text-sm);line-height:1.55;color:var(--ne-ink);}' +
-        '.ne-help-card-header{display:flex;justify-content:space-between;align-items:center;padding:var(--ne-space-sm) var(--ne-space-md);border-bottom:1px solid var(--ne-line);font-weight:bold;font-size:var(--ne-text-base);}' +
+        '.ne-help-card{position:fixed;z-index:9998;min-width:280px;max-width:340px;background:var(--black30a,rgba(0,0,0,0.95));border:1px solid var(--SmartThemeBorderColor,#444);border-radius:var(--ne-radius-md);box-shadow:0 4px 16px rgba(0,0,0,0.4);font-size:var(--ne-text-sm);line-height:1.5;color:var(--text);}' +
+        '.ne-help-card-header{display:flex;justify-content:space-between;align-items:center;padding:var(--ne-space-sm) var(--ne-space-md);border-bottom:1px solid var(--SmartThemeBorderColor,#444);font-weight:bold;font-size:var(--ne-text-base);}' +
         '.ne-help-card-close{cursor:pointer;opacity:0.5;font-size:var(--ne-text-xl);}' +
         '.ne-help-card-close:hover{opacity:1;}' +
         '.ne-help-card-body{padding:var(--ne-space-sm) var(--ne-space-md);max-height:260px;overflow-y:auto;}' +
-        '.ne-guide-banner{background:var(--ne-info-bg);border:1px solid var(--ne-info-border);border-radius:var(--ne-radius-md);padding:var(--ne-space-md) var(--ne-space-3xl) var(--ne-space-md) var(--ne-space-md);margin-bottom:var(--ne-space-md);font-size:var(--ne-text-sm);color:var(--ne-ink);position:relative;}' +
+        '.ne-guide-banner{background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:var(--ne-radius-md);padding:var(--ne-space-md) var(--ne-space-3xl) var(--ne-space-md) var(--ne-space-md);margin-bottom:var(--ne-space-md);font-size:var(--ne-text-sm);color:var(--text);position:relative;}' +
         '.ne-guide-banner-close{position:absolute;top:6px;right:8px;cursor:pointer;opacity:0.5;font-size:var(--ne-text-base);}' +
         '.ne-guide-banner-close:hover{opacity:1;}';
     pdHead().appendChild(style);

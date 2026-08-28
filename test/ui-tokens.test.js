@@ -96,24 +96,5 @@ assert(panelCss.indexOf('var(--ne-scroll-thumb)') !== -1, 'B2: panel.css 滚动�
 assert(panelCss.indexOf('language-banner') === -1, 'B2: panel.css 不含聊天区 banner（language-banner）规则');
 assert(eventsJs.indexOf('ne-state-banner-css') !== -1, 'B2: events.js 保留独立 banner CSS 注入（作用于主文档聊天区）');
 
-console.log('\n=== ui-tokens: 多主题体系（三层结构） ===');
-
-// 14. 三主题作用域块：tokens.css 唯一真源承载体
-['ne-dark', 'ne-light', 'st'].forEach(function (name) {
-    assert(tokensCss.indexOf(':root[data-ne-theme="' + name + '"]') !== -1,
-        'tokens.css 含 data-ne-theme="' + name + '" 主题块');
-});
-
-// 15. --ne-font 字体栈令牌（各主题可不同）
-assert(tokensCss.indexOf('--ne-font:') !== -1, 'tokens.css 定义 --ne-font 字体栈令牌');
-assert(tokensCss.indexOf('var(--mainFontFamily') !== -1, 'st 主题 --ne-font 跟随 ST 主字体');
-
-// 16. ne-dark 为 :root 默认回落（无 data-ne-theme 属性时的行为）
-assert(/:root,\s*\n:root\[data-ne-theme="ne-dark"\]\s*\{/.test(tokensCss),
-    'ne-dark 与 :root 合写（默认回落值）');
-
-// 17. 面板底色令牌（抽屉/Modal/Confirm 外壳）
-assert(tokensCss.indexOf('--ne-panel-bg:') !== -1, 'tokens.css 定义 --ne-panel-bg 面板底色令牌');
-
 console.log('\n=== ui-tokens: ' + test.passed + ' passed, ' + test.failed + ' failed ===');
 if (test.failed > 0) process.exit(1);
