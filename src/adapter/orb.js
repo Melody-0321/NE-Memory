@@ -20,7 +20,6 @@ import { PD, byId, pdCreate, t, closeVaultOverlay } from './panel-shared.js';
 import { createVaultPopout } from './panel-popout.js';
 import { onPipelineChange } from '../core/engine/pipeline-guard.js';
 
-var SNAP_ZONE = 56;         // 松手时距左/右边缘 ≤ 此值吸附贴边
 var CLICK_SLOP = 6;         // 位移 < 此值视为点击而非拖动
 var ORB_W = 44;             // 与 orb.css width 一致
 var ORB_H = 44;
@@ -35,58 +34,38 @@ var _getChatId = null;
 // 状态灯节点类名 → 管线名 映射
 var PIPE_NODES = [['state', 'ne-node-state'], ['stm', 'ne-node-stm'], ['ltm', 'ne-node-ltm']];
 
-// ── 位置存取（{dock:'left'|'right'|'none', x, y}）──
+// ── 位置存取（{x, y}）── 标准 FAB：自由悬浮、整球可见、无贴边磁吸/半隐，
+//   与主流插件一致；旧版持久化的 dock 字段（贴边半隐时代）一律忽略
 function loadPos() {
     try {
         var raw = localStorage.getItem(POS_KEY);
         if (raw) {
             var p = JSON.parse(raw);
-            if (p && (p.dock === 'left' || p.dock === 'right' || p.dock === 'none')) {
-                return { dock: p.dock, x: Number(p.x) || 0, y: Number(p.y) || 0 };
+            if (p && typeof p.x === 'number' && typeof p.y === 'number') {
+                return { x: p.x, y: p.y };
             }
         }
     } catch (e) {}
-    // 默认：右侧贴边、纵向居中偏下
-    return { dock: 'right', x: 0, y: Math.round(window.innerHeight * 0.6) };
+    // 默认：右侧偏上、整球可见、留边距（易发现，不粘边上）
+    return { x: Math.round(window.innerWidth - ORB_W - 24), y: Math.round(window.innerHeight * 0.28) };
 }
 
 function savePos(pos) {
-    try { localStorage.setItem(POS_KEY, JSON.stringify(pos)); } catch (e) {}
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ x: pos.x, y: pos.y })); } catch (e) {}
 }
 
 // 换小屏/旋转后把坐标夹回可视范围
 function clampToViewport(pos) {
+    var maxX = Math.max(0, window.innerWidth - ORB_W);
     var maxY = Math.max(0, window.innerHeight - ORB_H);
+    pos.x = Math.min(Math.max(0, pos.x), maxX);
     pos.y = Math.min(Math.max(0, pos.y), maxY);
-    if (pos.dock === 'none') {
-        var maxX = Math.max(0, window.innerWidth - ORB_W);
-        pos.x = Math.min(Math.max(0, pos.x), maxX);
-    }
 }
 
-// ── 定位渲染：贴边 left/right 锚定 + CSS 变量控制半隐；free 绝对 x/y ──
 function applyPos(el, pos) {
+    el.style.left = pos.x + 'px';
+    el.style.right = 'auto';
     el.style.top = pos.y + 'px';
-    if (pos.dock === 'left') {
-        el.style.left = '0px';
-        el.style.right = 'auto';
-        el.style.setProperty('--ne-orb-shift', '-28%');
-    } else if (pos.dock === 'right') {
-        el.style.left = 'auto';
-        el.style.right = '0px';
-        el.style.setProperty('--ne-orb-shift', '28%');
-    } else {
-        el.style.left = pos.x + 'px';
-        el.style.right = 'auto';
-        el.style.setProperty('--ne-orb-shift', '0%');
-    }
-}
-
-// 贴边态由 right/translate 折算成绝对像素，供拖动起步用
-function currentLeft(pos) {
-    if (pos.dock === 'right') return window.innerWidth - ORB_W;
-    if (pos.dock === 'left') return 0;
-    return pos.x;
 }
 
 // ── 状态文案 ──
@@ -243,34 +222,26 @@ function bindOrbEvents(el) {
     var startX = 0, startY = 0, moved = 0;
     var grabDX = 0, grabDY = 0;
 
-    el.addEventListener('pointerdown', function (e) {
-        activePointer = e.pointerId;
-        dragging = true;
-        moved = 0;
-        startX = e.clientX;
-        startY = e.clientY;
-        grabDX = e.clientX - currentLeft(pos);
-        grabDY = e.clientY - pos.y;
-        el.classList.add('is-dragging');
-        try { el.setPointerCapture(e.pointerId); } catch (err) {}
-    });
-
-    el.addEventListener('pointermove', function (e) {
+    // 拖拽起止绑定到 window：摆脱 setPointerCapture/元素捕捉在 ST 主页面偶发失效的
+    // 限制，保证"能拖动、能放下"（其它插件 FAB 通用做法）
+    function onDragMove(e) {
         if (!dragging || e.pointerId !== activePointer) return;
         moved = Math.max(moved, Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY));
-        // 拖动中一律切 free 跟手（整条可见）
-        pos.dock = 'none';
         pos.x = e.clientX - grabDX;
         pos.y = e.clientY - grabDY;
         clampToViewport(pos);
         applyPos(el, pos);
-    });
+        if (e.cancelable) e.preventDefault();
+    }
 
-    function onUp(e) {
+    function onDragEnd(e) {
         if (!dragging || e.pointerId !== activePointer) return;
         dragging = false;
         activePointer = null;
         el.classList.remove('is-dragging');
+        window.removeEventListener('pointermove', onDragMove);
+        window.removeEventListener('pointerup', onDragEnd);
+        window.removeEventListener('pointercancel', onDragEnd);
 
         if (moved < CLICK_SLOP) {
             // 视为点击 → toggle 底部抽屉（开 ↔ 关）
@@ -280,19 +251,30 @@ function bindOrbEvents(el) {
             return;
         }
 
-        // 松手吸附判定：靠近左/右边缘才贴边，否则停在原地
-        var left = pos.x;
-        var right = window.innerWidth - (pos.x + ORB_W);
-        if (left <= SNAP_ZONE) pos.dock = 'left';
-        else if (right <= SNAP_ZONE) pos.dock = 'right';
-        else pos.dock = 'none';
         clampToViewport(pos);
         applyPos(el, pos);
         savePos(pos);
     }
 
-    el.addEventListener('pointerup', onUp);
-    el.addEventListener('pointercancel', onUp);
+    el.addEventListener('pointerdown', function (e) {
+        if (dragging) return;
+        // 仅响应主按键（鼠标左键/触控/笔），避免误触
+        if (e.button !== undefined && e.button !== 0 && e.pointerType === 'mouse') return;
+        activePointer = e.pointerId;
+        dragging = true;
+        moved = 0;
+        startX = e.clientX;
+        startY = e.clientY;
+        grabDX = pos.x - e.clientX;
+        grabDY = pos.y - e.clientY;
+        el.classList.add('is-dragging');
+        window.addEventListener('pointermove', onDragMove);
+        window.addEventListener('pointerup', onDragEnd);
+        window.addEventListener('pointercancel', onDragEnd);
+        // 唤起捕获可让指针离开球体仍持续移动跟随（失败也无碍，window 监听兜底）
+        try { if (el.setPointerCapture) el.setPointerCapture(e.pointerId); } catch (err) {}
+        if (e.cancelable) e.preventDefault();
+    });
 
     // hover/focus → 显示 rich tooltip
     var tip = buildTip();

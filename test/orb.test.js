@@ -54,13 +54,14 @@ assert(orbCss.indexOf('.ne-orb-tip') !== -1, '含 rich tooltip 样式');
 assert(orbCss.indexOf('z-index:9999') !== -1, 'tooltip z-index=9999 高于 orb');
 assert(panelCss.indexOf('z-index:9999') !== -1, 'panel.css 浮层 z-index=9999 高于 orb');
 
-// 5. 交互态完备：hover/focus-visible/dragging、贴边半隐、拖拽不滚屏
-assert(orbCss.indexOf('.ne-orb:hover') !== -1, 'hover 全显');
+// 5. 交互态完备：hover/focus-visible/dragging、拖拽不滚屏；标准 FAB 无贴边半隐
+assert(orbCss.indexOf('.ne-orb:hover') !== -1, 'hover 提亮');
 assert(orbCss.indexOf('.ne-orb:focus-visible') !== -1, 'focus-visible 键盘可达');
 assert(orbCss.indexOf('.ne-orb.is-dragging') !== -1, '拖拽态');
-assert(orbCss.indexOf('--ne-orb-shift') !== -1, '贴边半隐 CSS 变量');
+assert(orbCss.indexOf('--ne-orb-shift') === -1, '无贴边半隐（标准 FAB 自由悬浮）');
+assert(orbCss.indexOf('translateX') === -1, 'CSS 无半隐位移动画残留');
 
-// 5b. 门面可发现性：idle 不暗淡、贴边不外移过多（球体大体露出）
+// 5b. 门面可发现性：idle 不暗淡（整球可见）
 assert(orbCss.indexOf('opacity:.92') !== -1, 'idle 高可发现(≥.9)');
 assert(orbCss.indexOf('touch-action:none') !== -1, 'touch-action:none（拖拽不滚屏）');
 
@@ -75,16 +76,19 @@ assert(orbCss.indexOf('var(--ne-accent)') !== -1, '点亮节点引用 --ne-accen
 // 7. reduced-motion 支持
 assert(orbCss.indexOf('prefers-reduced-motion') !== -1, 'prefers-reduced-motion 降级块');
 
-console.log('\n=== orb: 交互骨架（orb.js，参照柏宝书 FloatingOrb） ===');
+console.log('\n=== orb: 交互骨架（orb.js，标准 FAB） ===');
 
-// 8. 核心常量
-assert(orbJs.indexOf('SNAP_ZONE = 56') !== -1, 'SNAP_ZONE=56 边缘吸附');
+// 8. 核心常量：自由悬浮默认位 + 点击判定 + 位置持久化；无贴边磁吸
+assert(orbJs.indexOf('innerHeight * 0.28') !== -1, '默认右侧偏上自由位(整球可见,不粘边)');
+assert(orbJs.indexOf('SNAP_ZONE') === -1, '无贴边磁吸(SNAP_ZONE 移除)');
 assert(orbJs.indexOf('CLICK_SLOP = 6') !== -1, 'CLICK_SLOP=6 点击判定');
 assert(orbJs.indexOf("'ne_orb_pos'") !== -1, 'POS_KEY 本机位置持久化');
 
-// 9. 拖拽与吸附实现
-assert(orbJs.indexOf('pointerdown') !== -1, 'pointerdown 拖拽');
-assert(orbJs.indexOf('setPointerCapture') !== -1, 'setPointerCapture');
+// 9. 稳定拖拽：window 级监听兜底（摆脱 setPointerCapture 偶发失效）+ 旧 dock 持久化忽略
+assert(orbJs.indexOf('pointerdown') !== -1, 'pointerdown 起拖');
+assert(orbJs.indexOf("window.addEventListener('pointermove'") !== -1, 'window 级 move 监听(可移动)');
+assert(orbJs.indexOf("window.addEventListener('pointerup'") !== -1, 'window 级 up 监听(可放下)');
+assert(orbJs.indexOf("typeof p.x === 'number'") !== -1, 'loadPos 仅采 x/y，忽略旧 dock 字段');
 
 // 10. 位置持久化：localStorage 读写 + clamp
 assert(orbJs.indexOf("localStorage.getItem(POS_KEY)") !== -1, 'loadPos 读 localStorage');

@@ -14,8 +14,8 @@
  *            （[data-active="1|2|3"] 调 animation-duration / ring 宽度）
  *   刚完成   有管线 active→idle → success 色短暂 flash（JS 加 .flash，1.5s 回落）
  *
- * hover / focus / 拖拽：半透明球整条滑出（translateX(0)）+ 显示 rich tooltip
- * （三管线各自状态，列于球侧，JS 定位 + clamp 视口）。
+ * hover / focus：悬停提亮 + 显示 rich tooltip（三管线各自状态，列于球侧，
+ * JS 定位 + clamp 视口）。标准 FAB：自由悬浮、整球可见，无贴边半隐。
  *
  * 门禁注意：border-radius 用 50%（百分比不触 layout-literals，禁止
  * 用 999+ px 圆角字面量）；本文件无颜色字面量（工具提示内图标色取令牌）。
@@ -37,15 +37,13 @@
     cursor:grab;
     touch-action:none;            /* 拖拽不滚屏 */
     user-select:none;
-    opacity:.92;                 /* idle 高可发现：门面入口，避免贴边细缝难以察觉 */
-    transform:translateX(var(--ne-orb-shift,0));
-    transition:transform var(--ne-transition-normal) var(--ne-easing-standard),
-               opacity var(--ne-transition-normal) var(--ne-easing-standard),
+    opacity:.92;                 /* idle 高可发现：门面入口，标准 FAB 整球可见 */
+    transition:opacity var(--ne-transition-normal) var(--ne-easing-standard),
                border-color var(--ne-transition-fast) var(--ne-easing-standard),
                color var(--ne-transition-fast) var(--ne-easing-standard),
                box-shadow var(--ne-transition-fast) var(--ne-easing-standard);
 }
-.ne-orb:hover,.ne-orb:focus-visible,.ne-orb.is-dragging{opacity:1;transform:translateX(0);}
+.ne-orb:hover,.ne-orb:focus-visible{opacity:1;}
 .ne-orb:active{cursor:grabbing;}
 .ne-orb:focus-visible{outline:2px solid color-mix(in srgb,var(--ne-accent) 40%,transparent);outline-offset:2px;}
 
@@ -98,10 +96,6 @@
     color:var(--ne-success);
     box-shadow:0 0 0 3px color-mix(in srgb,var(--ne-success) 35%,transparent);
 }
-
-/* ── 贴边半隐（JS 设 --ne-orb-shift）── */
-.ne-orb{transform:translateX(var(--ne-orb-shift,0));}
-.ne-orb:hover,.ne-orb:focus-visible,.ne-orb.is-dragging{transform:translateX(0);}
 
 /* ── rich hover tooltip（JS 控制显隐/定位/clamp，fixed 层） ── */
 .ne-orb-tip{
