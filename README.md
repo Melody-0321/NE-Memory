@@ -65,10 +65,9 @@ NE Memory Engine 是 [SillyTavern](https://github.com/SillyTavern/SillyTavern) �
 {
   "type": "script",
   "enabled": true,
-  "name": "NE Memory Engine v7.2",
-  "id": "ne_memory_engine",
-  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test7.2/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test7.2/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
-  "info": "🧠 v7.2 - 对话轮数裁剪 · 自适应上下文窗口 · 物品栏UI重设计 · import修复"
+  "name": "NE Memory Engine v8.0",
+  "content": "(function(){var s=document.createElement('script');s.src='https://gcore.jsdelivr.net/gh/Melody-0321/NE-Memory@test8.0/dist/index.js';s.onerror=function(){var f=document.createElement('script');f.src='https://cdn.jsdelivr.net/gh/Melody-0321/NE-Memory@test8.0/dist/index.js';document.head.appendChild(f)};document.head.appendChild(s)})()",
+  "info": "🧠 v8.0 - 存储权威化 · 悬念簿强化 · 注入架构V5 · 三主题"
 }
 ```
 
@@ -138,6 +137,7 @@ NE 的 Vault 数据结构具有向后兼容性，升级后首次加载会自动�
 
 | NE 版本 | SillyTavern 最低版本 | 酒馆助手 |
 |---------|---------------------|---------|
+| v8.0 | 1.12.x | 最新版 |
 | v7.2 | 1.12.x | 最新版 |
 | v7.1 | 1.12.x | 最新版 |
 | v7.0 | 1.12.x | 最新版 |
