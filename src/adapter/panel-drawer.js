@@ -277,13 +277,13 @@ function injectMenuButton(getChatId) {
     if (byId('ne_menu_button')) return true;
     var item = pdCreate('div');
     item.id = 'ne_menu_button';
-    item.className = 'list-group-item flex-container flexGap5 flex-align-center';
+    item.className = 'list-group-item flex-container flexGap5 interactable';
     item.style.cursor = 'pointer';
     item.setAttribute('role', 'button');
     item.tabIndex = 0;
     item.innerHTML =
-        '<span class="fa-solid fa-book-bookmark" aria-hidden="true"></span>' +
-        '<label class="pointer" style="flex:1;order:2;">' + escapeHtml(t('NE Narrative Engine')) + '</label>';
+        '<div class="fa-fw fa-solid fa-book-bookmark" aria-hidden="true"></div>' +
+        '<span class="pointer">' + escapeHtml(t('NE Narrative Engine')) + '</span>';
     item.onclick = function (e) {
         e.stopPropagation();
         createVaultPopout(getChatId);
