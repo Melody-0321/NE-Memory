@@ -2,6 +2,32 @@
 
 ---
 
+## vNext-57 处理历史批量补摘卡顿且不可中断（串行 LLM 阻塞 UI）；"整合"按钮冗余
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-30（用户反馈：整合 / 处理历史两按钮卡顿） |
+| **解决** | 2026-08-30 |
+| **严重程度** | **Medium** |
+| **影响** | 点击"处理历史"后串行对全部历史消息逐批调 LLM 抽取，无后台任务、无进度反馈、不可取消，中断后只能从头再来；长对话期间 UI 全程卡顿，正常消息管线被长时间阻塞。手动"整合"按钮与每次增量更新后自动触发的 LTM 整合完全重复，无独立价值。 |
+
+### 根因
+
+1. **同步串行处理**：处理历史直接 `await` 逐批 `executeIncrementalUpdate`，整段占据主线程，正常管线排队等待，UI 卡顿。
+2. **无断点/取消**：无任务状态机，中断后无进度可续跑，只能重头开始。
+3. **批大小按字符粗分**：进度按消息轮次不可预测，且无参数可调。
+
+### 修复
+
+- **后台批量补摘编排**（新增 `src/core/engine/history-processor.js`）：`startHistoryProcessing` / `cancelHistoryProcessing` / `getHistoryStatus` 三 API；任务注册放在 start 同步段杜绝 start/cancel 竞态；每批 `executeIncrementalUpdate` 走 `enqueueStmWrite` 串行写、批间 `setTimeout(0)` 让出事件循环，正常管线任务可在批间插入。
+- **断点续跑 + 可取消**：每批落盘断点（processed/total），取消后按钮显示"继续 (x/y)"，再次点击从断点续跑。
+- **UI 状态机**（panel-init.js）：空闲 → 运行中（进度 x/y）→ 断点（继续）→ 运行中可点击取消；移除冗余"整合"按钮。
+- **批大小消息数化**（panel-settings.js）：`phBatchChars` → `phBatchMessages`（默认 20，5-50 可调）。
+- commit: 待提交。
+
+---
+
 ## vNext-56 角色卡对象字段裸 JSON 展示且不可编辑（仅 inventory/power_slots 有专属 UI）
 
 | 属性 | 值 |

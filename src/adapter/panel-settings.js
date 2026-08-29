@@ -135,12 +135,12 @@ export function renderSettingsTab() {
             '<input type="range" id="nes_stm_chunk_max_chars" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(50 * Math.log10((settings.stmChunkMaxChars || 500) / 100)))) + '" style="flex:1;">' +
         '</div>' +
         '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 var(--ne-space-sm);">' + t('Max prompt characters per STM extraction call. Non-linear scale: lower values chunk more aggressively — near 100 chars gives roughly one extraction per turn. Higher values merge more turns into fewer LLM calls. A single segment that exceeds this limit is processed alone.') + '</div>' +
-        '<div style="display:flex;justify-content:space-between;align-items:center;margin:var(--ne-space-sm) 0 var(--ne-space-xs);"><span>' + t('PH Batch Max Chars') + '</span><span class="range-val" id="nes_ph_batch_val">' + (settings.phBatchChars || 4000) + '</span></div>' +
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin:var(--ne-space-sm) 0 var(--ne-space-xs);"><span>' + t('PH Batch Messages') + '</span><span class="range-val" id="nes_ph_batch_val">' + (settings.phBatchMessages || 20) + '</span></div>' +
         '<div style="display:flex;gap:var(--ne-space-sm);align-items:center;">' +
-            '<input type="number" id="nes_ph_batch_input" min="1000" max="8000" step="500" value="' + (settings.phBatchChars || 4000) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
-            '<input type="range" id="nes_ph_batch_slider" min="0" max="100" step="1" value="' + Math.max(0, Math.min(100, Math.round(100 * Math.log10(((settings.phBatchChars || 4000) / 1000)) / Math.log10(8)))) + '" style="flex:1;">' +
+            '<input type="number" id="nes_ph_batch_input" min="5" max="50" step="5" value="' + (settings.phBatchMessages || 20) + '" style="width:80px;text-align:right;flex-shrink:0;">' +
+            '<input type="range" id="nes_ph_batch_slider" min="5" max="50" step="1" value="' + (settings.phBatchMessages || 20) + '" style="flex:1;">' +
         '</div>' +
-        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 var(--ne-space-sm);">' + t('Max dialogue characters per Process History batch. Higher = fewer LLM calls but larger prompts.') + '</div>' +
+        '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:0 0 var(--ne-space-sm);">' + t('Messages per Process History batch. Lower = smoother progress and less queue blocking; higher = fewer pipeline runs.') + '</div>' +
         // === 内容清洗（读取时清洗，不改 vault 原文）===
         '<div style="margin:var(--ne-space-sm) 0 var(--ne-space-xs);"><span>' + t('Content Cleaning') + '</span></div>' +
         '<input type="text" id="nes_custom_strip_tags" placeholder="think, analysis" value="' + escapeHtml((settings.customStripTags || []).join(', ')) + '" style="width:100%;">' +
@@ -325,8 +325,8 @@ export function renderSettingsTab() {
     var phVal = panelById('nes_ph_batch_val');
     var phInput = panelById('nes_ph_batch_input');
     var _phSync = false;
-    if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var actual = Math.round(1000 * Math.pow(8, Number(phSlider.value) / 100)); actual = Math.max(1000, Math.min(8000, Math.round(actual / 500) * 500)); if (phVal) phVal.textContent = actual; if (phInput) phInput.value = actual; _phSync = false; _debouncedSaveSettingsTab(); }; }
-    if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(1000, Math.min(8000, Math.round((Number(phInput.value) || 4000) / 500) * 500)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = Math.round(100 * Math.log10(v / 1000) / Math.log10(8)); _phSync = false; saveSettingsTab(); }; }
+    if (phSlider) { phSlider.oninput = function () { if (_phSync) return; _phSync = true; var v = Number(phSlider.value); if (phVal) phVal.textContent = v; if (phInput) phInput.value = v; _phSync = false; _debouncedSaveSettingsTab(); }; }
+    if (phInput) { phInput.onchange = function () { if (_phSync) return; _phSync = true; var v = Math.max(5, Math.min(50, Math.round((Number(phInput.value) || 20) / 5) * 5)); phInput.value = v; if (phVal) phVal.textContent = v; if (phSlider) phSlider.value = v; _phSync = false; saveSettingsTab(); }; }
     var cwEl = panelById('nes_dialog_window_rounds');
     if (cwEl) { cwEl.oninput = function () { var v = panelById('nes_dialog_window_val'); if (v) v.textContent = cwEl.value; _debouncedSaveSettingsTab(); }; }
     var ovEl = panelById('nes_dialog_override_enabled');
@@ -797,7 +797,7 @@ function saveSettingsTab() {
     }
     var phInput2 = panelById('nes_ph_batch_input');
     if (phInput2) {
-        settings.phBatchChars = Math.max(1000, Math.min(8000, Number(phInput2.value) || 4000));
+        settings.phBatchMessages = Math.max(5, Math.min(50, Math.round((Number(phInput2.value) || 20) / 5) * 5));
     }
     var stripEl = panelById('nes_custom_strip_tags');
     if (stripEl) {

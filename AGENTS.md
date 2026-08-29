@@ -134,6 +134,6 @@ release dev-build    # 发版流程专用（release-rules Step 4 / Step 6）
 - 代码 Wiki：CODE_WIKI.md（~1470 行）
 - 技术栈：JavaScript ES Modules → Rollup IIFE 构建
 - 核心模块风险分级：
-  - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval
+  - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval, history-processor
   - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding, template-defs, adaptive-context（自适应上下文裁剪，影响注入策略）
   - 🟢 低风险：panel-*.js, i18n.js, style.css, test-data, token-stats, telemetry

@@ -1,8 +1,7 @@
-import { readVault, collectAllMsgIds, getFieldFromLibrary } from '../core/vault/store.js';
+import { readVault, getFieldFromLibrary } from '../core/vault/store.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
-import { executeIncrementalUpdate } from '../core/engine/update.js';
-import { getState, onPipelineChange, offPipelineChange, enqueueStmWrite } from '../core/engine/pipeline-guard.js';
-import { runLtmConsolidation } from './events.js';
+import { getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
+import { getHistoryStatus, startHistoryProcessing, cancelHistoryProcessing } from '../core/engine/history-processor.js';
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { t_narrative, t_field } from '../core/i18n.js';
 import { setRetrievalEnabled } from '../core/settings.js';
@@ -161,7 +160,6 @@ export async function renderVaultPanel(getChatId) {
             '<div class="ne-search-row">' +
             '<input type="text" id="ne-memory-search-input" class="ne-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search memory entries') + '">' +
             '<button id="narrative_vault_panel_refresh" class="menu_button ne-search-action-btn">' + t('Refresh') + '</button>' +
-            '<button class="narrative_btn_consolidate ne-btn-warning menu_button ne-search-action-btn">' + t('Consolidate') + '</button>' +
             '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button ne-search-action-btn">' + t('Process History') + '</button>' +
             '</div>' +
             '<div class="ne-version-nav-row">' +
@@ -292,106 +290,77 @@ export async function renderVaultPanel(getChatId) {
             busEmit('vault:updated', { getChatId: getChatId });
         };
 
-        var consolidateBtn = panelQS('.narrative_btn_consolidate');
-        if (consolidateBtn) {
-            consolidateBtn.onclick = async function () {
-                var chatId = getChatId();
-                console.log('[NE] Consolidate button clicked, chatId=' + chatId);
-                if (!await showConfirm(t('Process pending STM entries?'), t('This will process pending STM entries. Continue?'))) return;
-                var prevText = consolidateBtn.textContent;
-                consolidateBtn.disabled = true;
-                consolidateBtn.textContent = t('Processing...');
-                try {
-                    await runLtmConsolidation(chatId);
-                    busEmit('vault:updated', { getChatId: getChatId });
-                } catch (e) {
-                    console.error('[NE] Consolidation failed:', e);
-                    alert(t('Process failed') + ': ' + e.message);
-                } finally {
-                    consolidateBtn.disabled = false;
-                    consolidateBtn.textContent = prevText;
-                }
-            };
-        }
-
-        // Process History
+        // Process History（后台批量补摘：断点续跑 + 可取消，批间让出 STM 队列）
         var processHistoryBtn = panelById('narrative_vault_process_history');
         if (processHistoryBtn) {
-            processHistoryBtn.onclick = async function() {
-                if (!await showConfirm(t('Re-process all messages?'), t('This will re-process ALL past messages. It may take a long time. Continue?'))) return;
-                var prevText = processHistoryBtn.textContent;
-                var PH_BATCH_CHARS = 4000;
+            function readChatMessages() {
+                var chatMessages = [];
                 try {
-                    var rs = localStorage.getItem('ne_settings');
-                    if (rs) { var ps = JSON.parse(rs); if (ps.phBatchChars) PH_BATCH_CHARS = Number(ps.phBatchChars); }
+                    if (typeof window.parent.SillyTavern !== 'undefined' && window.parent.SillyTavern.getContext) {
+                        chatMessages = window.parent.SillyTavern.getContext().chat || [];
+                    } else if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+                        chatMessages = SillyTavern.getContext().chat || [];
+                    }
                 } catch (e) {}
-                var total = 0;
-                try {
-                    var chatMessages = [];
-                    try {
-                        if (typeof window.parent.SillyTavern !== 'undefined' && window.parent.SillyTavern.getContext) {
-                            chatMessages = window.parent.SillyTavern.getContext().chat || [];
-                        } else if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
-                            chatMessages = SillyTavern.getContext().chat || [];
-                        }
-                    } catch (e) {}
-                    if (chatMessages.length === 0) { alert(t('No messages found in chat.')); return; }
-                    var toProcess = [];
-                    chatMessages.forEach(function(msg, idx) {
-                        var content = msg.mes || '';
-                        if (content.trim().length > 0) {
-                            toProcess.push({ id: idx, is_user: !!msg.is_user, mes: content, name: msg.name || '' });
-                        }
-                    });
-                    if (toProcess.length === 0) { alert(t('No messages with content to process.')); return; }
-                    var vault = await readVault(_currentGetChatId);
-                    var stmMsgIdSet = collectAllMsgIds(vault);
-                    toProcess = toProcess.filter(function(msg) { return !stmMsgIdSet.has(String(msg.id)); });
-                    if (toProcess.length === 0) { alert(t('All messages have already been processed.')); return; }
-                    processHistoryBtn.disabled = true;
-                    total = toProcess.length;
-                    processHistoryBtn.textContent = t('Processing...') + ' (0' + t('turns_suffix') + ')';
-                    var cpKey = 'ne_ph_' + _currentGetChatId();
-                    var processedCount = 0;
-                    try {
-                        var cp = localStorage.getItem(cpKey);
-                        if (cp) {
-                            var cpData = JSON.parse(cp);
-                            if (cpData.t && cpData.i >= total) { try { localStorage.removeItem(cpKey); } catch (e2) {} }
-                            else if (cpData.t && cpData.i > 0) { processedCount = cpData.i; }
-                        }
-                    } catch (e) {}
-                    await enqueueStmWrite(async function() {
-                    var accumTurns = processedCount, batchStart = processedCount, batchChars = 0;
-                    for (var i = processedCount; i < total; i++) {
-                        var msgLen = toProcess[i].mes.length;
-                        if (batchChars + msgLen > PH_BATCH_CHARS && i > batchStart) {
-                            var batch = toProcess.slice(batchStart, i);
-                            processHistoryBtn.textContent = t('Processing...') + ' (' + accumTurns + t('turns_suffix') + ')';
-                            await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
-                            accumTurns = i;
-                            try { localStorage.setItem(cpKey, JSON.stringify({ t: Date.now(), i: i })); } catch (e2) {}
-                            batchStart = i; batchChars = 0;
-                        }
-                        batchChars += msgLen;
-                    }
-                    if (batchStart < total) {
-                        var batch = toProcess.slice(batchStart, total);
-                        await executeIncrementalUpdate(_currentGetChatId, batch, true, function(progress) { accumTurns = progress.processedTurns; });
-                        accumTurns = total;
-                        try { localStorage.removeItem(cpKey); } catch (e3) {}
-                    }
-                    processHistoryBtn.textContent = t('Completed') + ' (' + accumTurns + t('turns_suffix') + ')';
-                    });
-                } catch (e) {
-                    console.error('[NE] Process history failed:', e);
-                    processHistoryBtn.textContent = t('Failed');
-                    showToast(t('Process History') + ': ' + e.message, 'error', 6000);
-                } finally {
-                    setTimeout(function() { processHistoryBtn.textContent = prevText; processHistoryBtn.disabled = false; }, 2000);
-                    busEmit('vault:updated', { getChatId: _currentGetChatId });
+                return chatMessages.map(function (msg, idx) {
+                    return { id: idx, is_user: !!msg.is_user, mes: msg.mes || '', name: msg.name || '' };
+                });
+            }
+            function refreshHistoryButton() {
+                var st = getHistoryStatus(_currentGetChatId());
+                if (st.status === 'running') {
+                    processHistoryBtn.textContent = t('Processing...') + ' (' + st.processed + '/' + st.total + t('turns_suffix') + ')';
+                } else if (st.status === 'breakpoint') {
+                    processHistoryBtn.textContent = t('Continue') + ' (' + st.processed + '/' + st.total + t('turns_suffix') + ')';
+                } else {
+                    processHistoryBtn.textContent = t('Process History');
                 }
+            }
+            processHistoryBtn.onclick = async function () {
+                var chatId = _currentGetChatId();
+                var st = getHistoryStatus(chatId);
+                // 运行中：点击即取消（安全，断点保留，批间生效）
+                if (st.status === 'running') {
+                    cancelHistoryProcessing(chatId);
+                    return;
+                }
+                if (readChatMessages().length === 0) {
+                    showToast(t('No messages found in chat.'), 'error', 4000);
+                    return;
+                }
+                if (st.status === 'breakpoint') {
+                    if (!await showConfirm(t('Continue processing?'), t('Continue from') + ' ' + st.processed + '/' + st.total + t('turns_suffix') + '?')) return;
+                } else {
+                    if (!await showConfirm(t('Process unprocessed messages?'), t('This will process unprocessed past messages. It may take a long time. Continue?'))) return;
+                }
+                var phSettings = {};
+                try { phSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}'); } catch (e) {}
+                var batchSize = Number(phSettings.phBatchMessages) || 20;
+                var res = await startHistoryProcessing(chatId, {
+                    getMessages: readChatMessages,
+                    batchSize: batchSize,
+                    onProgress: function () {
+                        if (_currentGetChatId() === chatId) refreshHistoryButton();
+                    },
+                    onDone: function (d) {
+                        if (d.status === 'done') {
+                            showToast(d.skipped ? t('All messages have already been processed.') : t('Completed'), d.skipped ? 'info' : 'success', 3000);
+                        } else if (d.status === 'cancelled') {
+                            showToast(t('Process cancelled. Progress saved.'), 'info', 4000);
+                        } else if (d.status === 'error') {
+                            showToast(t('Process History') + ': ' + t('Failed'), 'error', 6000);
+                        }
+                        refreshHistoryButton();
+                        busEmit('vault:updated', { getChatId: function () { return chatId; } });
+                    }
+                });
+                if (res.status === 'busy') {
+                    showToast(t('Another chat is already processing history.'), 'error', 4000);
+                    return;
+                }
+                refreshHistoryButton();
             };
+            refreshHistoryButton();
         }
 
         // Tools tab accordion lazy render handled by setupAccordionHandlers delegation
