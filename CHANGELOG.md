@@ -16,6 +16,8 @@
 
 - **修复：跨浏览器/设备打开同一聊天后记忆面板为空**：NE 初始化早于 ST 聊天加载完成，而聊天就绪事件（chat_id_changed）后又只读浏览器本地 IndexedDB，从不读聊天文件里的权威 vault——聊天文件权威化形同虚设。现聊天就绪事件改走权威读（`chat_metadata.ne_vault` 存在即胜出并回写本地缓存），任何浏览器打开已有聊天的记忆即刻恢复（vNext-55）
 
+- **修复：角色卡对象字段不再裸 JSON 展示，且补齐对象区块编辑能力**：此前只有物品栏有独立 UI，abilities/power_slots 等其它 object 字段以裸 JSON 塞进表格不可读、也不可编辑。现对象字段统一渲染为「名称 + 徽章 + 描述」结构化区块（含方案声明但无数据的空态区），编辑模式将该区块替换为 JSON textarea，保存解析写回、取消还原原状，非法 JSON 有 toast 上报（vNext-56）
+
 - **修复：抽取记忆不再丢失"反悔/改口"的最终状态**：新增反悔消解（resolver）——STM 抽取后额外一次 LLM 校验，把"发誓戒烟→又抽了"这类反悔事件重写为最终状态（"先……最终……"），避免错误记忆长期注入（vNext-54）
 
 - **冒烟测试三项误判（smartpush-14）**：①LTM 断言依赖运行环境设置 `stmMaxUnconsolidated`（本次=6，8 轮仅 5 条 STM 不达阈值，`ltm_decision`/`ltm_state` 必然 FAIL）→ test-case.md 前置条件写死默认值 5；②truncation 用 `completion_tokens>=4096` 代理判定，长但完整的 JSON 响应被误判截断 → monitor 改为"触顶且响应无法解析为 JSON"才算真截断；③语义评估器只收到累积缓冲前 3000 字符（全是首轮 state_extract），永远看不到 stm_extract 输出 → 改收对话文本 + STM 事件结构化上下文、截取缓冲末尾，并修正"(超时截断)"误导标签（实为数据不足），测试开始时重置跨测试累积的响应缓冲

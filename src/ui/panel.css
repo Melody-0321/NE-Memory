@@ -359,23 +359,19 @@
 .ne-section-header{display:flex;align-items:center;gap:var(--ne-space-sm);margin-top:var(--ne-space-md);padding:var(--ne-space-xs) 0;font-size:var(--ne-text-sm);font-weight:600;color:var(--ne-ink-soft);text-transform:uppercase;letter-spacing:0.5px;}
 .ne-section-count{font-size:var(--ne-text-sm);font-weight:400;color:var(--ne-ink-soft);background:var(--ne-muted-bg);padding:0 var(--ne-space-sm);border-radius:var(--ne-radius-md);line-height:1.4;}
 
-/* ── Inventory section ── */
-.ne-inventory-section{display:flex;flex-direction:column;gap:0;margin-bottom:var(--ne-space-xs);}
-.ne-inv-item{padding:var(--ne-space-sm) var(--ne-space-sm);border-bottom:1px solid color-mix(in srgb,var(--ne-line) 45%,transparent);}
-.ne-inv-item:last-child{border-bottom:none;}
-.ne-inv-item-header{display:flex;align-items:baseline;gap:var(--ne-space-sm);}
-.ne-inv-name{font-weight:600;color:var(--ne-ink);font-size:var(--ne-text-base);}
-.ne-inv-rarity{font-size:var(--ne-text-xs);padding:0 var(--ne-space-xs);border-radius:var(--ne-radius-sm);background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);line-height:1.5;white-space:nowrap;}
-.ne-inv-desc{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);margin-top:var(--ne-space-xs);line-height:1.4;}
-
-/* ── Power slots section ── */
-.ne-power-slots-section{display:flex;flex-direction:column;gap:0;}
-.ne-ps-item{padding:var(--ne-space-sm) var(--ne-space-sm);border-bottom:1px solid color-mix(in srgb,var(--ne-line) 45%,transparent);}
-.ne-ps-item:last-child{border-bottom:none;}
-.ne-ps-item-header{display:flex;align-items:baseline;gap:var(--ne-space-sm);}
-.ne-ps-name{font-weight:600;color:var(--ne-ink);font-size:var(--ne-text-base);}
-.ne-ps-level{font-size:var(--ne-text-xs);padding:0 var(--ne-space-xs);border-radius:var(--ne-radius-sm);background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);line-height:1.5;white-space:nowrap;}
-.ne-ps-desc{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);margin-top:var(--ne-space-xs);line-height:1.4;}
+/* ── Object field sections（inventory/abilities/power_slots/任意 object 字段通用）── */
+.ne-object-field{display:flex;flex-direction:column;gap:0;margin-bottom:var(--ne-space-xs);}
+.ne-object-field .ne-section-header{margin-top:var(--ne-space-md);}
+.ne-object-item{padding:var(--ne-space-sm) var(--ne-space-sm);border-bottom:1px solid color-mix(in srgb,var(--ne-line) 45%,transparent);}
+.ne-object-item:last-child{border-bottom:none;}
+.ne-object-item-header{display:flex;align-items:baseline;gap:var(--ne-space-sm);flex-wrap:wrap;}
+.ne-object-name{font-weight:600;color:var(--ne-ink);font-size:var(--ne-text-base);}
+.ne-object-badge{font-size:var(--ne-text-xs);padding:0 var(--ne-space-xs);border-radius:var(--ne-radius-sm);background:var(--ne-info-bg);color:var(--ne-info);border:1px solid var(--ne-info-border);line-height:1.5;white-space:nowrap;}
+.ne-object-badge--level{background:var(--ne-warning-bg);color:var(--ne-warning);border:1px solid var(--ne-warning-border);}
+.ne-object-desc{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);margin-top:var(--ne-space-xs);line-height:1.4;}
+.ne-object-line{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);margin-top:var(--ne-space-xs);line-height:1.4;word-break:break-word;}
+.ne-object-label{color:var(--ne-ink-soft);opacity:.75;margin-right:var(--ne-space-xs);}
+.ne-obj-edit{margin-top:var(--ne-space-sm);box-sizing:border-box;background:var(--ne-surface-1);color:var(--ne-ink);border:1px solid var(--ne-line);border-radius:var(--ne-radius-sm);padding:var(--ne-space-xs) var(--ne-space-sm);resize:vertical;}
 
 /* ── L2: Global State Block ── */
 .ne-state-global-block .ne-state-global-table td:first-child{color:var(--ne-ink-soft);width:90px;text-align:right;white-space:nowrap;}

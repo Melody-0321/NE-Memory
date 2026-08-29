@@ -871,6 +871,8 @@ export const STATE_FIELD_I18N = {
         'present_characters': 'Present Characters',
         // Equipment (virtual)
         'equipment': 'Equipment',
+        // Object item sub-keys（对象区块内条目属性）
+        'level': 'Level', 'effect': 'Effect', 'rarity': 'Rarity', 'properties': 'Properties',
     },
     'zh-cn': {
         'name': '名称', 'gender_age': '性别与年龄', 'physique': '体型外貌', 'occupation': '职业',
@@ -893,6 +895,7 @@ export const STATE_FIELD_I18N = {
         'opening_summary': '开场设定', 'dynamic_state': '动态字段',
         'present_characters': '出场角色',
         'equipment': '装备',
+        'level': '等级', 'effect': '效果', 'rarity': '稀有度', 'properties': '属性',
     },
     'zh-tw': {
         'name': '名稱', 'gender_age': '性別與年齡', 'physique': '體型外貌', 'occupation': '職業',
@@ -915,6 +918,7 @@ export const STATE_FIELD_I18N = {
         'opening_summary': '開場設定', 'dynamic_state': '動態欄位',
         'present_characters': '出場角色',
         'equipment': '裝備',
+        'level': '等級', 'effect': '效果', 'rarity': '稀有度', 'properties': '屬性',
     }
 };
 

@@ -2,6 +2,30 @@
 
 ---
 
+## vNext-56 角色卡对象字段裸 JSON 展示且不可编辑（仅 inventory/power_slots 有专属 UI）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-29（用户反馈：状态栏角色卡中只有物品栏是独立 UI 模式，其它对象字段裸 JSON 展示不可读） |
+| **解决** | 2026-08-29 |
+| **严重程度** | **Medium** |
+| **影响** | 角色卡中 schema 声明为 object 的字段（abilities、power_slots、任意自定义 object 字段）以 `JSON.stringify` 裸文本塞进表格单元格，不可读；且对象字段移出表格后编辑模式从未接线，inventory 也一并不可编辑（历史缺陷）。 |
+
+### 根因
+
+1. **裸 JSON 展示**：`renderCharacterCard` 仅对 inventory/power_slots 走专属区块渲染，其余 object 字段落入表格行以 `JSON.stringify` 裸文本展示——机制没有通用化。
+2. **不可编辑**：`enterCardEditMode` 只遍历表格单元格（`.ne-char-val`），对象区块渲染在表格之外、无任何 DOM 接点；`saveCardFields`/`exitCardEditMode` 同理只处理表格，对象字段保存/取消两路全部缺失。
+
+### 修复
+
+- **通用对象区块渲染器**（`src/adapter/panel-state-cards.js`）：新增 `renderObjectFieldSection`/`_renderObjectItem`/`_objTitle`/`_objIsObject`，按 schema 声明或值类型统一识别 object 字段（含模板外字段），渲染为「标题 + 数量徽章 + 条目（名称 + type/rarity/level/quality 等徽章 + desc/effect/properties 描述 + 其余键值行）」结构化区块，数据属性 `data-char`/`data-field`/`data-type="object"` 供编辑模式定位；schema 声明但无数据的字段渲染空态区，消除"方案有字段、卡无区块"的不一致。
+- **编辑模式补齐**：`enterCardEditMode` 将各 `.ne-object-field` 的 items 容器替换为预填 vault 实际值的 JSON textarea（`_neOrigObjHTML` 存原 HTML）；`saveCardFields` 遍历 `.ne-object-field` 解析 textarea，非法 JSON 进 `invalidJsonFields` 上报且跳过；`exitCardEditMode` 还原原结构化区块。
+- **样式统一**：`panel.css` 中 inventory/power-slots 专属类合并为通用 `.ne-object-*` 类（badge 默认 info 色、`--level` 用 warning 色），并补充 `.ne-obj-edit` 编辑态样式。
+- **i18n 补齐**：`STATE_FIELD_I18N` 三语补充对象子键 level/effect/rarity/properties 标签。commit: 待提交。
+
+---
+
 ## vNext-55 聊天切换后聊天文件权威 vault 从未被读取（init 早于聊天加载）
 
 | 属性 | 值 |

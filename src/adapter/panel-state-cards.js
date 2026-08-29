@@ -33,6 +33,102 @@ function getCharacterCardType(name, state) {
     return 'npc';
 }
 
+// ── Object-field (container) structured section ─────────────────────
+// 通用化自 inventory bar / power_slots 区块：任何 object 类型字段都走统一
+// 区块 UI，不再在表格里裸 JSON.stringify。兼容数组与 map 两种存量形态。
+var OBJ_TITLE_KEYS = ['name', 'title'];
+var OBJ_BADGE_KEYS = ['type', 'rarity', 'level', 'quality', 'grade', 'tier', 'class', 'rank'];
+var OBJ_DESC_KEYS = ['description', 'desc', 'effect', 'effects', 'properties', 'detail', 'details', 'info', 'notes'];
+
+function _objIsObject(v) {
+    return typeof v === 'object' && v !== null;
+}
+
+function _objTitle(item, fallbackKey) {
+    if (_objIsObject(item)) {
+        for (var i = 0; i < OBJ_TITLE_KEYS.length; i++) {
+            var tk = OBJ_TITLE_KEYS[i];
+            if (item[tk] !== undefined && item[tk] !== null && item[tk] !== '') return String(item[tk]);
+        }
+    }
+    return fallbackKey || '?';
+}
+
+function _renderObjectItem(title, obj) {
+    var badges = '';
+    var descParts = [];
+    var lines = '';
+    Object.keys(obj).forEach(function (k) {
+        var v = obj[k];
+        if (v === undefined || v === null || v === '') return;
+        if (OBJ_TITLE_KEYS.indexOf(k) !== -1) return;
+        if (OBJ_BADGE_KEYS.indexOf(k) !== -1 && !_objIsObject(v)) {
+            var mod = (k === 'level') ? ' ne-object-badge--level' : '';
+            badges += '<span class="ne-object-badge' + mod + '">' + escapeHtml(t_field(k)) + ' ' + escapeHtml(String(v)) + '</span>';
+            return;
+        }
+        if (OBJ_DESC_KEYS.indexOf(k) !== -1 && !_objIsObject(v)) {
+            descParts.push(String(v));
+            return;
+        }
+        if (_objIsObject(v)) {
+            try { v = JSON.stringify(v); } catch (e) { v = String(v); }
+        }
+        lines += '<div class="ne-object-line"><span class="ne-object-label">' + escapeHtml(t_field(k)) + '</span> ' + escapeHtml(String(v)) + '</div>';
+    });
+    var header = '<div class="ne-object-item-header"><span class="ne-object-name">' + escapeHtml(title) + '</span>' + badges + '</div>';
+    var descHtml = descParts.length > 0 ? '<div class="ne-object-desc">' + descParts.map(function (d) { return escapeHtml(d); }).join('<br>') + '</div>' : '';
+    return '<div class="ne-object-item">' + header + descHtml + lines + '</div>';
+}
+
+// 渲染对象字段区块（含 header + items 容器，data-* 供编辑模式定位）。
+// val 为空/缺失时返回 ''，由调用方决定是否渲染空态区块。
+function renderObjectFieldSection(cardName, fieldKey, val) {
+    var itemsHtml = '';
+    var count = 0;
+
+    if (_objIsObject(val)) {
+        var isArray = Array.isArray(val);
+        var entries = [];
+        if (isArray) {
+            val.forEach(function (item) {
+                if (item === null || item === undefined || item === '') return;
+                entries.push({ title: _objTitle(item, null), obj: _objIsObject(item) ? item : null, scalar: _objIsObject(item) ? null : item, isMap: false });
+            });
+        } else {
+            Object.keys(val).forEach(function (k) {
+                var v = val[k];
+                if (v === null || v === undefined || v === '') return;
+                entries.push({ title: _objTitle(v, k), obj: _objIsObject(v) ? v : null, scalar: _objIsObject(v) ? null : v, isMap: true });
+            });
+        }
+        count = entries.length;
+        entries.forEach(function (e) {
+            if (e.obj) {
+                itemsHtml += _renderObjectItem(e.title, e.obj);
+            } else if (e.isMap) {
+                itemsHtml += '<div class="ne-object-item"><div class="ne-object-line"><span class="ne-object-label">' + escapeHtml(e.title) + '</span> ' + escapeHtml(String(e.scalar)) + '</div></div>';
+            } else {
+                itemsHtml += '<div class="ne-object-item"><div class="ne-object-line">' + escapeHtml(String(e.scalar)) + '</div></div>';
+            }
+        });
+        if (count === 0) {
+            itemsHtml = '<span class="ne-empty-value">' + t('empty_value') + '</span>';
+        }
+    } else if (val === undefined || val === null || val === '') {
+        return '';
+    } else {
+        // 标量兜底（schema 声明 object 但 LLM 写成了字符串）
+        count = 1;
+        itemsHtml = '<div class="ne-object-item"><div class="ne-object-line"><span class="ne-object-label">' + escapeHtml(t_field(fieldKey)) + '</span> ' + escapeHtml(String(val)) + '</div></div>';
+    }
+
+    return '<div class="ne-object-field" data-char="' + escapeHtml(cardName) + '" data-field="' + escapeHtml(fieldKey) + '" data-type="object">' +
+        '<div class="ne-section-header">' + t_field(fieldKey) + ' <span class="ne-section-count">' + count + '</span></div>' +
+        '<div class="ne-object-items">' + itemsHtml + '</div>' +
+        '</div>';
+}
+
 function renderCharacterCard(name, card, schema, cardType) {
     var cardSchema = (schema && schema[cardType]) ? schema[cardType] : (schema && schema.npc ? schema.npc : null);
 
@@ -57,13 +153,19 @@ function renderCharacterCard(name, card, schema, cardType) {
     var rows = [];
     var requiredFields = [];
     var optionalFields = [];
+    var objectFieldKeys = []; // schema 声明/值含对象的字段：统一走结构化区块，不进表格
 
     Object.keys(cardSchema.fields).forEach(function (key) {
         if (key === 'status') return; // shown in card header + grouping, redundant in body
         if (key.startsWith('_')) return; // skip system fields like _scheme, _templateLocked
-        if (key === 'inventory') return; // rendered separately as inventory bar
         var fieldDef = cardSchema.fields[key];
         var val = card[key];
+        // 对象字段（inventory/abilities/power_slots 及任意 object 类型）不在表格
+        // 裸 JSON 展示，统一走结构化区块（renderObjectFieldSection）
+        if (fieldDef.type === 'object' || _objIsObject(val)) {
+            objectFieldKeys.push(key);
+            return;
+        }
 
         var displayVal;
         if (typeof val === 'object' && val !== null) {
@@ -96,10 +198,15 @@ function renderCharacterCard(name, card, schema, cardType) {
     // .ne-char-val 即得到同一集合 → 常态与编辑恒一致）。
     var _schemaKeys = {};
     Object.keys(cardSchema.fields).forEach(function(k) { _schemaKeys[k] = true; });
+    var extraObjectFieldKeys = []; // 模板外 object 字段（LLM 写入等），同样走结构化区块
     Object.keys(card).forEach(function(key) {
         if (_schemaKeys[key]) return;
         if (key === 'status' || key.charAt(0) === '_') return;
         var val = card[key];
+        if (_objIsObject(val)) {
+            extraObjectFieldKeys.push(key);
+            return;
+        }
         var displayVal;
         if (typeof val === 'object' && val !== null) {
             try { displayVal = JSON.stringify(val); } catch (e) { displayVal = String(val); }
@@ -116,57 +223,21 @@ function renderCharacterCard(name, card, schema, cardType) {
     });
 
     var allRows = requiredFields.concat(optionalFields);
-    if (allRows.length === 0) return '';
+    if (allRows.length === 0 && objectFieldKeys.length === 0 && extraObjectFieldKeys.length === 0) return '';
 
-    // Render inventory if present
-    var inventoryHtml = '';
-    if (card.inventory && typeof card.inventory === 'object') {
-        var invItems = [];
-        if (Array.isArray(card.inventory)) {
-            card.inventory.forEach(function(item) {
-                if (item && typeof item === 'object') {
-                    var itemName = item.name || '?';
-                    var desc = item.description || '';
-                    var rarity = item.rarity || '';
-                    var rarityHtml = rarity ? '<span class="ne-inv-rarity">' + escapeHtml(rarity) + '</span>' : '';
-                    var descHtml = desc ? '<div class="ne-inv-desc">' + escapeHtml(desc) + '</div>' : '';
-                    invItems.push(
-                        '<div class="ne-inv-item">' +
-                        '<div class="ne-inv-item-header">' +
-                        '<span class="ne-inv-name">' + escapeHtml(itemName) + '</span>' +
-                        rarityHtml +
-                        '</div>' +
-                        descHtml +
-                        '</div>'
-                    );
-                }
-            });
-        } else {
-            Object.keys(card.inventory).forEach(function (slot) {
-                var slotVal = card.inventory[slot];
-                // null 占位（删除语义残留/手动编辑）不渲染
-                if (slotVal === null || slotVal === undefined) return;
-                invItems.push(
-                    '<div class="ne-inv-item">' +
-                    '<div class="ne-inv-item-header">' +
-                    '<span class="ne-inv-name">' + escapeHtml(slot) + '</span>' +
-                    '</div>' +
-                    '<div class="ne-inv-desc">' + escapeHtml(String(slotVal)) + '</div>' +
-                    '</div>'
-                );
-            });
-        }
-        if (invItems.length > 0) {
-            inventoryHtml = '<div class="ne-section-header">' + t_field('inventory') + ' <span class="ne-section-count">' + invItems.length + '</span></div>' +
-                            '<div class="ne-inventory-section">' + invItems.join('') + '</div>';
-        }
-    }
-    // 方案启用物品栏但暂无数据：渲染空态区。方案有 → 卡有，
-    // 消除"方案里有物品栏，实际角色卡没有"的不一致
-    if (!inventoryHtml && cardSchema.fields.inventory) {
-        inventoryHtml = '<div class="ne-section-header">' + t_field('inventory') + ' <span class="ne-section-count">0</span></div>' +
-                        '<div class="ne-inventory-section"><span class="ne-empty-value">' + t('empty_value') + '</span></div>';
-    }
+    // 对象字段统一走结构化区块（inventory/abilities/power_slots/任意 object 字段）。
+    // schema 声明字段无数据时渲染空态区，消除"方案有字段、卡无区块"的不一致。
+    var sectionsHtml = '';
+    objectFieldKeys.forEach(function (key) {
+        var sec = renderObjectFieldSection(name, key, card[key]);
+        if (sec) { sectionsHtml += sec; return; }
+        sectionsHtml += '<div class="ne-object-field" data-char="' + escapeHtml(name) + '" data-field="' + escapeHtml(key) + '" data-type="object">' +
+            '<div class="ne-section-header">' + t_field(key) + ' <span class="ne-section-count">0</span></div>' +
+            '<div class="ne-object-items"><span class="ne-empty-value">' + t('empty_value') + '</span></div></div>';
+    });
+    extraObjectFieldKeys.forEach(function (key) {
+        sectionsHtml += renderObjectFieldSection(name, key, card[key]) || '';
+    });
 
     var displayName = card.name || name;
     var html = '<div class="ne-char-card">';
@@ -179,42 +250,7 @@ function renderCharacterCard(name, card, schema, cardType) {
     html += '<button class="ne-card-lock-btn' + (isTemplateLocked ? ' locked' : '') + '" data-char="' + escapeHtml(name) + '" title="' + escapeHtml(t('lock_character')) + '" aria-label="' + escapeHtml(t('lock_character')) + '" onclick="event.stopPropagation()">' + (isTemplateLocked ? '\u{1F512}' : '\u{1F513}') + '</button>';
     html += '<button class="ne-card-edit-btn" data-char="' + escapeHtml(name) + '" data-cardtype="' + escapeHtml(cardType) + '" aria-label="' + t('Edit') + '" onclick="event.stopPropagation()">\u270E</button>';
     html += '</div>';
-    html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>';
-    html += inventoryHtml;
-
-    // Power slots (independent rendering)
-    if (card.power_slots && typeof card.power_slots === 'object') {
-        var psKeys = Object.keys(card.power_slots);
-        if (psKeys.length > 0) {
-            var psItems = [];
-            psKeys.forEach(function (sk) {
-                var sv = card.power_slots[sk];
-                var level = null;
-                var desc = '';
-                if (sv && typeof sv === 'object') {
-                    level = sv.level;
-                    desc = sv.description || '';
-                } else {
-                    level = sv;
-                }
-                var levelHtml = (level !== null && level !== undefined) ? '<span class="ne-ps-level">Lv.' + escapeHtml(String(level)) + '</span>' : '';
-                var descHtml = desc ? '<div class="ne-ps-desc">' + escapeHtml(desc) + '</div>' : '';
-                psItems.push(
-                    '<div class="ne-ps-item">' +
-                    '<div class="ne-ps-item-header">' +
-                    '<span class="ne-ps-name">' + escapeHtml(sk) + '</span>' +
-                    levelHtml +
-                    '</div>' +
-                    descHtml +
-                    '</div>'
-                );
-            });
-            html += '<div class="ne-section-header">' + t_field('power_slots') + ' <span class="ne-section-count">' + psKeys.length + '</span></div>' +
-                    '<div class="ne-power-slots-section">' + psItems.join('') + '</div>';
-        }
-    }
-
-    html += '</div></div>';
+    html += '<div class="ne-char-card-body"><table>' + allRows.join('') + '</table>' + sectionsHtml + '</div></div>';
     return html;
 }
 
@@ -605,19 +641,8 @@ export function enterCardEditMode(editBtn) {
         var textVal = (span.textContent || '').trim();
         if (textVal === t('empty_value') || textVal === '(Not filled)') textVal = '';
 
-        // object 字段（abilities/inventory/power_slots 等）以 JSON textarea 编辑。
-        // 44dd5b6 的原始设计从未生效：textarea 分支依赖的 td[data-field=inventory]
-        // 从不存在（表格渲染跳过 inventory，其余 object 字段只做展示无编辑器）。
-        // 值从 vault 实际数据取（DOM 文本是 JSON.stringify 的展示格式）。
-        if (fieldType === 'object') {
-            var objVal = (cardData && cardData[fieldName] !== undefined) ? cardData[fieldName] : null;
-            var objText = (objVal !== null && objVal !== undefined && typeof objVal === 'object')
-                ? JSON.stringify(objVal, null, 1) : (textVal || '');
-            span.outerHTML = '<textarea class="ne-char-edit" rows="3" style="width:100%;font-family:monospace;font-size:var(--ne-text-sm);">' + escapeHtml(objText) + '</textarea>';
-            return;
-        }
-
         // 标量字段：vault 实际值优先于 DOM 展示文本
+        // （object 字段已移出表格为独立区块，编辑统一走下方 .ne-object-field 的 JSON textarea）
         var dataVal = (cardData && cardData[fieldName] !== undefined) ? cardData[fieldName] : undefined;
         if (dataVal !== undefined && dataVal !== null && typeof dataVal !== 'object') textVal = String(dataVal);
 
@@ -650,6 +675,23 @@ export function enterCardEditMode(editBtn) {
                     (maxlen ? ' maxlength="' + maxlen + '"' : '') + '>';
         }
         span.outerHTML = editor;
+    });
+
+    // 对象区块（inventory/abilities/power_slots/任意 object 字段）编辑：
+    // 把 items 容器换成 JSON textarea（预填 vault 实际值），保存时解析写回。
+    // 补齐历史缺陷——对象字段移出表格后编辑流程从未接线，区块一直不可编辑。
+    cardDiv._neOrigObjHTML = {};
+    cardDiv.querySelectorAll('.ne-object-field').forEach(function (el) {
+        var fName = el.getAttribute('data-field');
+        var itemsEl = el.querySelector('.ne-object-items');
+        if (!fName || !itemsEl) return;
+        cardDiv._neOrigObjHTML[fName] = itemsEl.outerHTML;
+        var raw = (cardData && cardData[fName] !== undefined) ? cardData[fName] : null;
+        var objText = '';
+        if (raw !== null && raw !== undefined) {
+            objText = _objIsObject(raw) ? JSON.stringify(raw, null, 1) : String(raw);
+        }
+        itemsEl.outerHTML = '<textarea class="ne-char-edit ne-obj-edit" rows="4" style="width:100%;font-family:monospace;font-size:var(--ne-text-sm);" data-field="' + escapeHtml(fName) + '">' + escapeHtml(objText) + '</textarea>';
     });
 
     editBtn.outerHTML =
@@ -715,6 +757,37 @@ async function saveCardFields(cardDiv) {
             var old = chars[charName][fieldName];
             // object 字段引用比较必然不等（重新 JSON.parse 的对象），
             // 用值级比较避免未改动时误记版本
+            var changed = old !== newVal;
+            if (changed && old !== null && typeof old === 'object' && newVal !== null && typeof newVal === 'object') {
+                changed = JSON.stringify(old) !== JSON.stringify(newVal);
+            }
+            if (changed) {
+                chars[charName][fieldName] = newVal;
+                hasChanges = true;
+                capturedChanges.push({ path: 'characters.' + charName + '.' + fieldName, old: old, new: newVal });
+            }
+        });
+
+        // 对象区块（inventory/abilities/power_slots/任意 object 字段）保存：
+        // 读取 .ne-object-field 内的 JSON textarea 解析写回（编辑态由
+        // enterCardEditMode 注入），与上方表格循环互补覆盖全部字段。
+        cardDiv.querySelectorAll('.ne-object-field').forEach(function (el) {
+            var charName = el.getAttribute('data-char');
+            var fieldName = el.getAttribute('data-field');
+            var input = el.querySelector('.ne-obj-edit');
+            if (!charName || !fieldName || !input) return;
+
+            var rawVal = input.value.trim();
+            var newVal;
+            if (rawVal === '') {
+                newVal = null;
+            } else {
+                try { newVal = JSON.parse(rawVal); }
+                catch (e) { invalidJsonFields.push(fieldName); return; } // skip invalid JSON, report below
+            }
+
+            if (!chars[charName]) chars[charName] = {};
+            var old = chars[charName][fieldName];
             var changed = old !== newVal;
             if (changed && old !== null && typeof old === 'object' && newVal !== null && typeof newVal === 'object') {
                 changed = JSON.stringify(old) !== JSON.stringify(newVal);
@@ -1597,6 +1670,20 @@ function exitCardEditMode(cardDiv) {
         var table = cardDiv.querySelector('.ne-char-card-body table');
         if (table) table.outerHTML = cardDiv._neOrigTableHTML;
         cardDiv._neOrigTableHTML = null;
+    }
+
+    // 还原对象区块（inventory/abilities/power_slots/任意 object 字段）：
+    // 取消编辑时把 JSON textarea 恢复为原结构化区块
+    if (cardDiv._neOrigObjHTML) {
+        cardDiv.querySelectorAll('.ne-object-field').forEach(function (el) {
+            var fName = el.getAttribute('data-field');
+            if (!fName) return;
+            var ta = el.querySelector('.ne-obj-edit');
+            if (!ta) return;
+            var orig = cardDiv._neOrigObjHTML[fName];
+            if (orig) ta.outerHTML = orig;
+        });
+        cardDiv._neOrigObjHTML = null;
     }
 
     var saveBtn = cardDiv.querySelector('.ne-card-save-btn');
