@@ -443,6 +443,13 @@
 .ne-version-nav-row{padding:0 var(--ne-space-md) var(--ne-space-xs);display:flex;align-items:center;gap:var(--ne-space-sm);}
 .ne-version-scene{font-size:var(--ne-text-sm);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:160px;}
 .ne-version-history-btn{margin-left:auto;font-size:var(--ne-text-xs);padding:var(--ne-space-xs) var(--ne-space-sm);white-space:nowrap;}
+/* ── Process History: 待补摘要楼层（仅引用 --ne-* token，无颜色字面量） ── */
+.ne-unprocessed-item{display:flex;align-items:center;gap:var(--ne-space-xs);padding:var(--ne-space-xs) 0;border-bottom:1px dashed var(--ne-line);font-size:var(--ne-text-sm);}
+.ne-unprocessed-item:last-child{border-bottom:none;}
+.ne-unprocessed-idx{flex:none;min-width:2.4em;color:var(--ne-ink-soft);font-variant-numeric:tabular-nums;}
+.ne-unprocessed-badge{flex:none;width:8px;height:8px;border-radius:50%;}
+.ne-unprocessed-name{flex:none;max-width:6em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ne-ink-strong);}
+.ne-unprocessed-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ne-ink-soft);}
 
 
 /* ── Template library ── */

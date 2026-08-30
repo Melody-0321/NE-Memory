@@ -1,4 +1,5 @@
-import { readVault, getFieldFromLibrary } from '../core/vault/store.js';
+import { readVault, collectAllMsgIds, getFieldFromLibrary } from '../core/vault/store.js';
+import { buildMsgId } from '../core/engine/msg-id.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { getState, onPipelineChange, offPipelineChange } from '../core/engine/pipeline-guard.js';
 import { getHistoryStatus, startHistoryProcessing, cancelHistoryProcessing } from '../core/engine/history-processor.js';
@@ -162,6 +163,11 @@ export async function renderVaultPanel(getChatId) {
             '<button id="narrative_vault_panel_refresh" class="menu_button ne-search-action-btn">' + t('Refresh') + '</button>' +
             '<button id="narrative_vault_process_history" class="ne-btn-danger menu_button ne-search-action-btn">' + t('Process History') + '</button>' +
             '</div>' +
+            '<div class="ne-accordion" id="ne-acc-unprocessed">' +
+            '<div class="ne-accordion-header"><span class="ne-accordion-chevron">\u25B6</span> ' + t('Floors awaiting summary') + ' <span id="ne-unprocessed-count" class="ne-text-soft" style="margin-left:var(--ne-space-xs);font-weight:normal;font-size:var(--ne-text-sm);"></span></div>' +
+            '<div class="ne-accordion-body">' +
+            '<div id="ne_unprocessed_block_container"></div>' +
+            '</div></div>' +
             '<div class="ne-version-nav-row">' +
             '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
@@ -287,6 +293,7 @@ export async function renderVaultPanel(getChatId) {
         var ref = panelById('narrative_vault_panel_refresh');
         if (ref) ref.onclick = function () {
             setVaultActivity(true);
+            refreshUnprocessed();
             busEmit('vault:updated', { getChatId: getChatId });
         };
 
@@ -303,8 +310,48 @@ export async function renderVaultPanel(getChatId) {
                     }
                 } catch (e) {}
                 return chatMessages.map(function (msg, idx) {
-                    return { id: idx, is_user: !!msg.is_user, mes: msg.mes || '', name: msg.name || '' };
+                    return { id: buildMsgId(msg, idx), idx: idx, is_user: !!msg.is_user, mes: msg.mes || '', name: msg.name || '' };
                 });
+            }
+            // 扫描某聊天未补摘要的楼层（与 history-processor 去重口径一致：buildMsgId ∈ vault message_dates）
+            async function scanUnprocessed(chatId) {
+                var messages = readChatMessages();
+                if (messages.length === 0) return [];
+                var vault = await readVault(chatId);
+                var idSet = collectAllMsgIds(vault);
+                return messages.filter(function (m) {
+                    if (!m.mes || m.mes.trim().length === 0) return false;
+                    return !idSet.has(String(m.id));
+                });
+            }
+            function renderUnprocessed(list) {
+                var countEl = panelById('ne-unprocessed-count');
+                var container = panelById('ne_unprocessed_block_container');
+                if (!countEl || !container) return;
+                countEl.textContent = '(' + (list.length) + ')';
+                if (list.length === 0) {
+                    container.innerHTML = '<div class="ne-text-soft" style="padding:var(--ne-space-xs) 0;font-size:var(--ne-text-sm);">' + t('All floors are processed.') + '</div>';
+                    return;
+                }
+                var cap = 50;
+                var shown = list.slice(0, cap);
+                var html = shown.map(function (m) {
+                    var label = m.name || (m.is_user ? t('User') : t('Assistant'));
+                    var plain = (m.mes || '').replace(/\s+/g, ' ').trim();
+                    var prev = escapeHtml(plain).slice(0, 120) + (plain.length > 120 ? '\u2026' : '');
+                    var badgeStyle = m.is_user ? 'var(--ne-info)' : 'var(--ne-violet)';
+                    return '<div class="ne-unprocessed-item">' +
+                        '<span class="ne-unprocessed-idx">#' + (m.idx + 1) + '</span>' +
+                        '<span class="ne-unprocessed-badge" style="background:' + badgeStyle + ';"></span>' +
+                        '<span class="ne-unprocessed-name">' + escapeHtml(label) + '</span>' +
+                        '<span class="ne-unprocessed-preview">' + prev + '</span>' +
+                        '</div>';
+                }).join('');
+                if (list.length > cap) {
+                    html += '<div class="ne-text-soft" style="padding:var(--ne-space-xs) 0;font-size:var(--ne-text-sm);">... +' + (list.length - cap) + '</div>';
+                }
+                container.innerHTML = html;
+                processHistoryBtn.textContent = t('Process History') + ' (' + list.length + ')';
             }
             function refreshHistoryButton() {
                 var st = getHistoryStatus(_currentGetChatId());
@@ -315,6 +362,13 @@ export async function renderVaultPanel(getChatId) {
                 } else {
                     processHistoryBtn.textContent = t('Process History');
                 }
+            }
+            function refreshUnprocessed() {
+                var chatId = _currentGetChatId();
+                scanUnprocessed(chatId).then(function (list) {
+                    if (_currentGetChatId() !== chatId) return;
+                    renderUnprocessed(list);
+                }).catch(function () {});
             }
             processHistoryBtn.onclick = async function () {
                 var chatId = _currentGetChatId();
@@ -328,10 +382,18 @@ export async function renderVaultPanel(getChatId) {
                     showToast(t('No messages found in chat.'), 'error', 4000);
                     return;
                 }
+                // 预扫描：无空缺楼层直接短路，不再弹"将处理未处理消息"的确认框
+                var pending = await scanUnprocessed(chatId);
+                renderUnprocessed(pending);
+                if (pending.length === 0) {
+                    showToast(t('All messages have already been processed.'), 'info', 3000);
+                    refreshHistoryButton();
+                    return;
+                }
                 if (st.status === 'breakpoint') {
                     if (!await showConfirm(t('Continue processing?'), t('Continue from') + ' ' + st.processed + '/' + st.total + t('turns_suffix') + '?')) return;
                 } else {
-                    if (!await showConfirm(t('Process unprocessed messages?'), t('This will process unprocessed past messages. It may take a long time. Continue?'))) return;
+                    if (!await showConfirm(t('Process unprocessed messages?'), t('Unprocessed floors') + ': ' + pending.length + '.\n' + t('This will process unprocessed past messages. It may take a long time. Continue?'))) return;
                 }
                 var phSettings = {};
                 try { phSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}'); } catch (e) {}
@@ -351,6 +413,7 @@ export async function renderVaultPanel(getChatId) {
                             showToast(t('Process History') + ': ' + t('Failed'), 'error', 6000);
                         }
                         refreshHistoryButton();
+                        refreshUnprocessed();
                         busEmit('vault:updated', { getChatId: function () { return chatId; } });
                     }
                 });
@@ -361,6 +424,7 @@ export async function renderVaultPanel(getChatId) {
                 refreshHistoryButton();
             };
             refreshHistoryButton();
+            refreshUnprocessed();
         }
 
         // Tools tab accordion lazy render handled by setupAccordionHandlers delegation

@@ -28,6 +28,32 @@
 
 ---
 
+## vNext-58 处理历史去重 id 匹配失败：无空缺楼层也触发、全部消息被重复处理
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-30（用户反馈：处理历史改动没生效，无待补楼层也触发，卡顿依旧） |
+| **解决** | 2026-08-30 |
+| **严重程度** | **High** |
+| **影响** | 「没有待补充楼层时也会触发」「卡顿未解决」：`panel-init.js::readChatMessages` 生成的去重 id 是裸下标 `idx`，而 vault 用 `buildMsgId` 全格式 id（`idx_send_date_role`），`stmMsgIdSet.has(String(m.id))` 永不命中 → 每次点击把全部历史消息当未处理，重复调 LLM，队列被塞满造成卡顿；即使用户期望的「已全部处理」空态短路也永远无法触发。此外面板没有展示待补摘要楼层的入口。 |
+
+### 根因
+
+1. **去重口径不一致**：`readChatMessages` 返回 `{ id: idx }`（裸下标），与 vault 入库时 `buildMsgId` 生成的 id 完全不同，`collectAllMsgIds(vault)` 的集合无法匹配任何消息。
+2. **无预扫描短路**：点击只检查 `readChatMessages().length>0`（聊天有消息即过），不判断是否真有未处理楼层，空态也弹「将处理未处理消息」确认框。
+
+### 修复
+
+- **统一 id 口径**（panel-init.js）：`readChatMessages` 改用 `buildMsgId(msg, idx)` 生成 id，与 vault 入库 id 一致，去重立即生效 → 无空缺楼层时不再触发、卡顿消失。
+- **预扫描 + 空态短路**（panel-init.js）：`scanUnprocessed` 先按同一口径过滤出未处理楼层，为 0 直接 toast「已全部处理」并 return，不再弹确认框。
+- **空缺楼层展示**：Memory tab 新增「待补摘要楼层」折叠区（`#ne-acc-unprocessed`），逐条列出未处理楼层（楼层号 + 说话人色点 + 名称 + 预览截断，上限 50 条），按钮显示待处理数量；Refresh / 处理完成 / 手动点击时刷新。
+- **i18n**：新增 `Floors awaiting summary` / `All floors are processed.` / `Unprocessed floors` 三语键。
+- **CSS**（panel.css）：`.ne-unprocessed-*` 仅引用 `--ne-*` token，规避 ratchet 颜色字面量扫描。
+- commit: 待提交。
+
+---
+
 ## vNext-56 角色卡对象字段裸 JSON 展示且不可编辑（仅 inventory/power_slots 有专属 UI）
 
 | 属性 | 值 |
