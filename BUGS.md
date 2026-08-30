@@ -2,6 +2,34 @@
 
 ---
 
+## vNext-59 处理历史批跑慢、末尾才一次性出结果、进度只显示 0 和完成；弹窗非 ST 原生样式
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-30（用户反馈：能补摘要了但慢、结果末尾才出、进度形同虚设、弹窗不用 ST API；对照柏宝书 batchBackfill 同功能流畅） |
+| **解决** | 2026-08-30 |
+| **严重程度** | **Medium** |
+| **影响** | 处理历史运行期间：LLM 调用量约为必要量 2 倍（每 chunk 抽取 + resolver 各一次）；所有 events 攒到 batch 末尾才落盘，中途无任何产出可见；进度回调只在 batch 边界触发（8 条/默认批 20 = 只有 0 和完成两个值），且透传给 stm-pipeline 的 onProgress 是 null；待补楼层列表全程不缩短；完成提示用自建 DOM toast 而非 ST 原生 toastr。 |
+
+### 根因
+
+1. **落盘粒度错配**：`executeIncrementalUpdate` 内部逐 chunk 调 LLM，但所有 events 攒在局部数组，batch 末尾才一次性 `appendSTMEntries + saveMemoryVault`；中途无 vault 写入信号，UI 无从感知产出。
+2. **resolver 双倍调用**：批量回填路径每 chunk 额外一次 `resolveChunkEvents`（~694 tok/event），反悔消解对历史回填非必要。
+3. **进度断链**：history-processor 调 `executeIncrementalUpdate(chatId, batch, true, null)`——chunk 级进度被丢弃；onProgress 只在 batch 边界触发；panel-init 的 onProgress 也只刷新按钮不刷新待补列表。
+4. **toast 自建**：panel-shared `showToast` 走自建 `ne-toast` div，主窗口本有全局 toastr。
+
+### 修复
+
+- **chunk 级即时落盘**（stm-pipeline.js）：chunk 循环内新增 `applyChunkEvents`——本 chunk events 过滤 → 校验 → postFill → append → 立即 `saveMemoryVault`（versionData=null 不产生中间版本快照，末尾汇总快照照旧）；尾部原「攒尾应用」逻辑移除。
+- **批量回填跳过 resolver**（stm-pipeline.js + history-processor.js）：`executeIncrementalUpdate` 新增第 5 参 `opts.skipResolver`（默认 false），主路径与 fallback 分支均守卫；history-processor 批量路径传 `{ skipResolver: true }`，调用量约减半。实时管线不受影响。
+- **进度链路打通**（history-processor.js）：stm-pipeline 每 chunk 落盘后回调 `onProgress({processedMsgs, totalMsgs, chunk, chunkTotal})`；history-processor 换算成任务级 processed（断点随 chunk 粒度落盘，中断损失窗口从 20 条缩到 1 chunk）。
+- **UI 实时刷新**（panel-init.js）：onProgress 同时刷新按钮进度文案与「待补摘要楼层」列表（renderUnprocessed 运行中不覆盖按钮文案，避免互相打架）；running 态按钮加 `ne-btn-running` 呼吸动画（panel.css）；批默认值 20 → 8。
+- **showToast 切 ST toastr**（panel-shared.js）：优先 `window.toastr / window.parent.toastr`（warn→warning 映射，timeOut=duration），检测不到降级回自建 DOM toast；所有调用方零改动。
+- commit: 待提交。
+
+---
+
 ## vNext-57 处理历史批量补摘卡顿且不可中断（串行 LLM 阻塞 UI）；"整合"按钮冗余
 
 | 属性 | 值 |

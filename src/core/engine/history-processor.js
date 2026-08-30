@@ -108,9 +108,18 @@ export async function startHistoryProcessing(chatId, opts) {
         while (i < total) {
             if (job.cancelRequested) { finalStatus = 'cancelled'; break; }
             var batch = toProcess.slice(i, i + batchSize);
+            var batchStart = i;
             // 批内走 STM 队列串行写 vault；批间让出，正常管线可插入
+            // skipResolver：批量回填跳过反悔消解（调用量约减半）；进度回调透传 stm-pipeline 的 chunk 级进度
             await enqueueStmWrite(function () {
-                return executeIncrementalUpdate(chatId, batch, true, null);
+                return executeIncrementalUpdate(chatId, batch, true, function (p) {
+                    if (p && typeof p.processedMsgs === 'number' && p.totalMsgs) {
+                        var done = Math.min(batchStart + p.processedMsgs, total);
+                        job.processed = done;
+                        saveBreakpoint(chatId, done, total);
+                        onProgress({ processed: done, total: total });
+                    }
+                }, { skipResolver: true });
             });
             i = Math.min(i + batchSize, total);
             job.processed = i;

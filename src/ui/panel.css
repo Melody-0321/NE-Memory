@@ -450,6 +450,9 @@
 .ne-unprocessed-badge{flex:none;width:8px;height:8px;border-radius:50%;}
 .ne-unprocessed-name{flex:none;max-width:6em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ne-ink-strong);}
 .ne-unprocessed-preview{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--ne-ink-soft);}
+/* 处理历史运行中按钮呼吸态：进度文案常驻跳动的视觉锚点 */
+.ne-btn-running{animation:ne-btn-breathe 1.6s ease-in-out infinite;pointer-events:auto;}
+@keyframes ne-btn-breathe{0%,100%{box-shadow:0 0 0 0 transparent;opacity:1;}50%{box-shadow:0 0 0 3px var(--ne-info);opacity:.85;}}
 
 
 /* ── Template library ── */

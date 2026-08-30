@@ -573,7 +573,8 @@ export function buildStmSummaryPrompt(segments, turns, vault, stateVault, ratio,
     return { system: system, user: segmentsText };
 }
 
-export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress) {
+export async function executeIncrementalUpdate(chatId, newMessages, force, onProgress, opts) {
+    var skipResolver = !!(opts && opts.skipResolver);
     _resetCheckChatTag();
     _checkChatIntegrity('executeIncrementalUpdate:entry');
     const memoryVault = await readMemory(chatId);
@@ -633,6 +634,25 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
 
             for (var ci = 0; ci < chunks.length; ci++) {
                 var chunk = chunks[ci];
+                // chunk 级即时应用：本 chunk 的 events 过滤 → 校验 → postFill → append → 立即落盘
+                // （versionData=null：中间落盘不写版本快照，末尾汇总快照照旧）
+                async function applyChunkEvents(chunkEvents, chunkSegs) {
+                    var valid = chunkEvents.filter(function (e) { return e.msg_ids && e.msg_ids.length > 0; })
+                        .filter(function (e) { return e.event && String(e.event).length >= 3; });
+                    if (valid.length === 0) return;
+                    var cWinStart = turns[chunkSegs[0][0]] ? turns[chunkSegs[0][0]].msgStart : 0;
+                    var cWinEndIdx = turns[chunkSegs[chunkSegs.length - 1][1]];
+                    var cWinEnd = cWinEndIdx ? cWinEndIdx.msgEnd : cWinStart;
+                    var errs = validateSTMOutput({ stmEntries: valid }, memoryVault, filteredMessages.length, cWinStart, cWinEnd);
+                    if (errs.length > 0) console.warn('[NE] STM validation warnings:', errs.join('; '));
+                    postFillSTM({ stmEntries: valid, stateChanges: {} }, memoryVault, stateVault);
+                    appendSTMEntries(memoryVault, valid);
+                    try { await saveMemoryVault(chatId, memoryVault, null); } catch (se) { console.warn('[NE] STM chunk save failed:', se); }
+                    if (onProgress) {
+                        var covered = turns.length > 0 ? Math.min((cWinEnd - turns[0].msgStart + 1), filteredMessages.length) : filteredMessages.length;
+                        onProgress({ processedMsgs: Math.max(0, covered), totalMsgs: filteredMessages.length, chunk: ci + 1, chunkTotal: chunks.length });
+                    }
+                }
                 var summaryPrompt = buildStmSummaryPrompt(chunk, turns, memoryVault, stateVault, stmRatio, segTexts, runningBaseline);
                 var responseText = '';
                 try {
@@ -672,11 +692,20 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                                     fbEvents.push(chunkParsed.events[ei]);
                                 }
                                 // [stm-resolver] fallback 分支同样接 resolver（单 segment 对话原文 = singlePrompt.user）
-                                try {
-                                    var fbRes = await resolveChunkEvents(singlePrompt.user, fbEvents, { chatId: chatId });
-                                    if (fbRes && fbRes.events) events.push.apply(events, fbRes.events);
-                                } catch (e4) {
-                                    events.push.apply(events, fbEvents); // resolver 失败则用原 events
+                                var fbFinal = null;
+                                if (skipResolver) {
+                                    fbFinal = fbEvents;
+                                } else {
+                                    try {
+                                        var fbRes = await resolveChunkEvents(singlePrompt.user, fbEvents, { chatId: chatId });
+                                        if (fbRes && fbRes.events) fbFinal = fbRes.events;
+                                    } catch (e4) {
+                                        fbFinal = fbEvents; // resolver 失败则用原 events
+                                    }
+                                }
+                                if (fbFinal && fbFinal.length > 0) {
+                                    events.push.apply(events, fbFinal);
+                                    await applyChunkEvents(fbFinal, [chunk[si]]);
                                 }
                             }
                         }
@@ -697,18 +726,29 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
                         }
                         // [stm-resolver] D 方案：抽取后对 chunk 内 events 做状态消解（反悔→重写 event 为最终态）
                         // 输入 = 该 chunk 对话原文（summaryPrompt.user）+ 该 chunk 抽取的 events；失败降级原样返回。
+                        // 批量回填（opts.skipResolver）跳过 resolver，LLM 调用量减半。
                         if (mappedChunkEvents.length > 0) {
-                            try {
-                                var resolverResult = await resolveChunkEvents(summaryPrompt.user, mappedChunkEvents, { chatId: chatId });
-                                if (resolverResult && resolverResult.events) {
-                                    events.push.apply(events, resolverResult.events);
-                                    if (resolverResult.rewritten > 0) {
-                                        console.log('[NE] resolver: chunk ' + (ci+1) + ' rewritten ' + resolverResult.rewritten + '/' + resolverResult.events.length + ' events (calls=' + resolverResult.calls + ', failures=' + resolverResult.failures + ')');
-                                        recordTelemetry({ pipeline_task: 'stm_resolve', chunk: ci + 1, calls: resolverResult.calls, failures: resolverResult.failures, rewritten: resolverResult.rewritten, events: resolverResult.events.length }, chatId);
+                            var chunkFinal = null;
+                            if (skipResolver) {
+                                chunkFinal = mappedChunkEvents;
+                            } else {
+                                try {
+                                    var resolverResult = await resolveChunkEvents(summaryPrompt.user, mappedChunkEvents, { chatId: chatId });
+                                    if (resolverResult && resolverResult.events) {
+                                        chunkFinal = resolverResult.events;
+                                        if (resolverResult.rewritten > 0) {
+                                            console.log('[NE] resolver: chunk ' + (ci+1) + ' rewritten ' + resolverResult.rewritten + '/' + resolverResult.events.length + ' events (calls=' + resolverResult.calls + ', failures=' + resolverResult.failures + ')');
+                                            recordTelemetry({ pipeline_task: 'stm_resolve', chunk: ci + 1, calls: resolverResult.calls, failures: resolverResult.failures, rewritten: resolverResult.rewritten, events: resolverResult.events.length }, chatId);
+                                        }
                                     }
+                                } catch (e3) {
+                                    console.warn('[NE] resolver pass failed for chunk ' + (ci+1) + ', events kept as-is:', (e3 && e3.message) || e3);
+                                    chunkFinal = mappedChunkEvents;
                                 }
-                            } catch (e3) {
-                                console.warn('[NE] resolver pass failed for chunk ' + (ci+1) + ', events kept as-is:', (e3 && e3.message) || e3);
+                            }
+                            if (chunkFinal && chunkFinal.length > 0) {
+                                events.push.apply(events, chunkFinal);
+                                await applyChunkEvents(chunkFinal, chunk);
                             }
                         }
                     }
@@ -721,63 +761,18 @@ export async function executeIncrementalUpdate(chatId, newMessages, force, onPro
             }
         }
 
-        var beforeFilter = events.length;
-        events = events.filter(function(e) { return e.msg_ids && e.msg_ids.length > 0; });
-        if (beforeFilter !== events.length) {
-            console.log('[NE-HARNESS] STM events filtered — before=' + beforeFilter + ' after=' + events.length + ' (dropped ' + (beforeFilter - events.length) + ' without msg_ids)');
-        }
-
-        var beforeTextFilter = events.length;
-        events = events.filter(function(e) { return e.event && String(e.event).length >= 3; });
-        if (beforeTextFilter !== events.length) {
-            console.log('[NE-HARNESS] STM events text-filtered — before=' + beforeTextFilter + ' after=' + events.length + ' (dropped ' + (beforeTextFilter - events.length) + ' with short/empty event)');
-        }
-
-        if (events.length >= 2) {
-            events.sort(function(a, b) {
-                return (a.msgRange ? a.msgRange[0] : 999999) - (b.msgRange ? b.msgRange[0] : 999999);
-            });
-            for (var di = 0; di < events.length - 1; di++) {
-                var curEnd = events[di].msgRange ? events[di].msgRange[1] : -1;
-                var nxtStart = events[di + 1].msgRange ? events[di + 1].msgRange[0] : -1;
-                if (nxtStart <= curEnd && curEnd >= 0) {
-                    console.log('[NE-HARNESS] STM msgRange overlap/gap — events[' + di + '] end=' + curEnd + ' events[' + (di + 1) + '] start=' + nxtStart);
-                }
-            }
-        }
-
-        if (events.length > 0) {
-            // period 规范化兜底：以 vault 现有 STM 末条 period 为滚动基准，逐条规范化本次 events。
-            // 已按 msgRange 排序 → 每条规范化后的 period 成为下一条的基准，跨 chunk 保持 Day 链连续。
-            var normBase = sortStmByMsgOrder((memoryVault.content.unconsolidated_stm || []).concat(memoryVault.content.stm_entries || []));
-            var rollingBaseline = normBase.length > 0 ? (normBase[normBase.length - 1].period || '') : '';
-            for (var ni = 0; ni < events.length; ni++) {
-                events[ni].period = normalizeStmPeriod(events[ni].period, rollingBaseline);
-                rollingBaseline = events[ni].period;
-            }
-
-            // P0-4: msgRange 是全局绝对索引，校验基准传本次输入窗口（turns 首末条全局下标）
-            var winStart = turns.length > 0 ? turns[0].msgStart : 0;
-            var winEnd = turns.length > 0 ? turns[turns.length - 1].msgEnd : 0;
-            var stmValidationErrors = validateSTMOutput({ stmEntries: events }, memoryVault, filteredMessages.length, winStart, winEnd);
-            if (stmValidationErrors.length > 0) {
-                console.warn('[NE] STM validation warnings:', stmValidationErrors.join('; '));
-                recordTelemetry({ pipeline_task: 'stm_extract', validation_warnings: stmValidationErrors }, chatId);
-            }
-            postFillSTM({ stmEntries: events, stateChanges: {} }, memoryVault, stateVault);
-            var addedCount = appendSTMEntries(memoryVault, events);
-
-            var addedEntries = events.filter(function(e) { return e && e.id; });
-            var pendingStmVersion = null;
-            if (addedEntries.length > 0) {
-                var messageDates = filteredMessages.map(function(m) { return m.id || ''; }).filter(Boolean);
-                pendingStmVersion = {
-                    type: 'stm_batch',
-                    summary: 'STM batch: ' + addedEntries.length + '条新记忆',
-                    delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
-                    message_dates: messageDates
-                };
-            }
+        // events 已在 chunk 循环内逐 chunk 过滤/校验/append/落盘（applyChunkEvents），
+        // 此处仅做汇总统计与末尾持久化（_meta + 汇总版本快照），不再重复应用。
+        var pendingStmVersion = null;
+        var addedEntries = events.filter(function(e) { return e && e.id; });
+        if (addedEntries.length > 0) {
+            var messageDates = filteredMessages.map(function(m) { return m.id || ''; }).filter(Boolean);
+            pendingStmVersion = {
+                type: 'stm_batch',
+                summary: 'STM batch: ' + addedEntries.length + '条新记忆',
+                delta: { stm_added: addedEntries.map(function(e) { return JSON.parse(JSON.stringify(e)); }) },
+                message_dates: messageDates
+            };
         }
 
         cursorResult.totalAdded = events.length;

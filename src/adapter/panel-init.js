@@ -319,10 +319,18 @@ export async function renderVaultPanel(getChatId) {
                 if (messages.length === 0) return [];
                 var vault = await readVault(chatId);
                 var idSet = collectAllMsgIds(vault);
-                return messages.filter(function (m) {
+                var stmAll = ((vault.content && (vault.content.unconsolidated_stm || [])) || []).concat((vault.content && (vault.content.stm_entries || [])) || []);
+                console.log('[NE-DEBUG][scan] chatId=' + chatId + ' msgs=' + messages.length + ' idSet=' + idSet.size + ' stmUR=' + (vault.content ? (vault.content.unconsolidated_stm || []).length : 0) + ' stmE=' + (vault.content ? (vault.content.stm_entries || []).length : 0) + ' version=' + vault.version);
+                var unmatched = messages.filter(function (m) {
                     if (!m.mes || m.mes.trim().length === 0) return false;
                     return !idSet.has(String(m.id));
                 });
+                if (unmatched.length > 0 && stmAll.length > 0) {
+                    var sample = unmatched.slice(0, 6).map(function (m) { return String(m.id); });
+                    var stored = stmAll[0] && stmAll[0].msg_ids ? stmAll[0].msg_ids.slice(0, 6) : [];
+                    console.log('[NE-DEBUG][scan] unmatchedSample=' + JSON.stringify(sample) + ' storedSample=' + JSON.stringify(stored));
+                }
+                return unmatched;
             }
             function renderUnprocessed(list) {
                 var countEl = panelById('ne-unprocessed-count');
@@ -351,15 +359,20 @@ export async function renderVaultPanel(getChatId) {
                     html += '<div class="ne-text-soft" style="padding:var(--ne-space-xs) 0;font-size:var(--ne-text-sm);">... +' + (list.length - cap) + '</div>';
                 }
                 container.innerHTML = html;
-                processHistoryBtn.textContent = t('Process History') + ' (' + list.length + ')';
+                // 运行中不覆盖按钮文案（进度由 refreshHistoryButton 维护），避免 chunk 级刷新互相打架
+                var runSt = getHistoryStatus(_currentGetChatId());
+                if (runSt.status !== 'running') processHistoryBtn.textContent = t('Process History') + ' (' + list.length + ')';
             }
             function refreshHistoryButton() {
                 var st = getHistoryStatus(_currentGetChatId());
                 if (st.status === 'running') {
+                    processHistoryBtn.classList.add('ne-btn-running');
                     processHistoryBtn.textContent = t('Processing...') + ' (' + st.processed + '/' + st.total + t('turns_suffix') + ')';
                 } else if (st.status === 'breakpoint') {
+                    processHistoryBtn.classList.remove('ne-btn-running');
                     processHistoryBtn.textContent = t('Continue') + ' (' + st.processed + '/' + st.total + t('turns_suffix') + ')';
                 } else {
+                    processHistoryBtn.classList.remove('ne-btn-running');
                     processHistoryBtn.textContent = t('Process History');
                 }
             }
@@ -370,6 +383,11 @@ export async function renderVaultPanel(getChatId) {
                     renderUnprocessed(list);
                 }).catch(function () {});
             }
+            // 待补摘要计数保持实时：任何 vault 写入(STM/LTM)后自动重扫，避免面板开着时计数停留在旧值
+            busOn('vault:updated', function () {
+                if (!processHistoryBtn) return;
+                refreshUnprocessed();
+            });
             processHistoryBtn.onclick = async function () {
                 var chatId = _currentGetChatId();
                 var st = getHistoryStatus(chatId);
@@ -397,12 +415,15 @@ export async function renderVaultPanel(getChatId) {
                 }
                 var phSettings = {};
                 try { phSettings = JSON.parse(localStorage.getItem('ne_settings') || '{}'); } catch (e) {}
-                var batchSize = Number(phSettings.phBatchMessages) || 20;
+                var batchSize = Number(phSettings.phBatchMessages) || 8;
                 var res = await startHistoryProcessing(chatId, {
                     getMessages: readChatMessages,
                     batchSize: batchSize,
                     onProgress: function () {
-                        if (_currentGetChatId() === chatId) refreshHistoryButton();
+                        if (_currentGetChatId() === chatId) {
+                            refreshHistoryButton();
+                            refreshUnprocessed();
+                        }
                     },
                     onDone: function (d) {
                         if (d.status === 'done') {
