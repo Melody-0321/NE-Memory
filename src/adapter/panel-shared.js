@@ -301,9 +301,22 @@ function _ensureToastCss() {
 }
 
 export function showToast(message, type, duration) {
-    _ensureToastCss();
     type = type || 'info';
     duration = duration || 3000;
+    // 优先 ST 原生 toastr（主窗口全局可用，样式与 ST 生态一致）
+    var toastr = null;
+    try {
+        toastr = (typeof window !== 'undefined' && window.toastr) || (window.parent && window.parent.toastr) || null;
+    } catch (e) {}
+    if (toastr) {
+        var method = type === 'warn' ? 'warning' : type;
+        if (typeof toastr[method] === 'function') {
+            toastr[method](message, null, { timeOut: duration });
+            return;
+        }
+    }
+    // 降级：自建 DOM toast（iframe / toastr 缺失场景）
+    _ensureToastCss();
     if (!_toastEl) {
         _toastEl = pdCreate('div');
         _toastEl.className = 'ne-toast';
