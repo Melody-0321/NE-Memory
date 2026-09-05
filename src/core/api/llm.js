@@ -88,6 +88,38 @@ function resolveMainApiFallbackConfig() {
     return null;
 }
 
+/**
+ * 非 2xx 响应 → 读取响应体，把服务端错误码/message 带进 Error。
+ * 网关（如 TokenRhythm 基元律动）403 会返回 code + traceId，吞掉 body 则无法定位
+ * 是 key 无效 / 余额不足 / 风控 / 模型无权限。body 读取失败时退回原 'API error: status'。
+ */
+function httpErrorWithBody(resp) {
+    return resp.text().then(function (bodyText) {
+        var detail = '';
+        if (bodyText) {
+            try {
+                var parsed = JSON.parse(bodyText);
+                var err = parsed && parsed.error;
+                if (typeof err === 'string') {
+                    detail = err;
+                } else if (err && typeof err === 'object') {
+                    var code = err.code;
+                    var msg = err.message || err.type || '';
+                    detail = String(code || '') + (code && msg ? ': ' : '') + (msg || JSON.stringify(err));
+                } else if (parsed && parsed.message) {
+                    detail = String(parsed.message);
+                } else {
+                    detail = bodyText;
+                }
+            } catch (pe) {
+                detail = bodyText;
+            }
+        }
+        detail = detail.replace(/\s+/g, ' ').trim().slice(0, 280);
+        return new Error('API error: ' + resp.status + (detail ? ' — ' + detail : ''));
+    });
+}
+
 export async function callMemoryLLM(messages, options = {}) {
     var callRoundTag = globalThis.__ne_tr_currentRound || null;
     var secondaryConfig;
@@ -410,7 +442,7 @@ export async function fetchAvailableModels(config, timeoutSec) {
             signal: controller.signal
         }).then(function (resp) {
             clearTimeout(timer);
-            if (!resp.ok) throw new Error('API error: ' + resp.status);
+            if (!resp.ok) return httpErrorWithBody(resp).then(function (e) { throw e; });
             return resp.json().then(function (data) {
                 if (!data || !Array.isArray(data.data)) throw new Error('Unexpected response format from /v1/models');
                 return data.data.map(function (m) { return m.id; });
@@ -551,7 +583,7 @@ async function callCustomAPI(config, messages, options) {
             signal: controller.signal
         }).then(function (response) {
             clearTimeout(timer);
-            if (!response.ok) throw new Error('API error: ' + response.status);
+            if (!response.ok) return httpErrorWithBody(response).then(function (e) { throw e; });
             return response.json().then(function (data) {
                 var msg = data.choices?.[0]?.message || {};
                 var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
