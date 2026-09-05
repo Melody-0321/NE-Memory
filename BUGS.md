@@ -2,6 +2,29 @@
 
 ---
 
+## vNext-60 次级 API 连接失败错误被吞掉响应体，403 鉴权拒绝无法定位根因
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-08-30（用户：NE 次级 API 连基元律动 TokenRhythm 报 403，无法判断 key 无效 / 余额 / 风控 / 模型权限） |
+| **解决** | 2026-08-30 |
+| **严重程度** | **Medium** |
+| **影响** | callCustomAPI 与 /v1/models 请求遇非 2xx 只抛 `API error: <status>`，服务端响应体被丢弃。对 TokenRhythm 这类网关，403 的 body 带精确错误码 + traceId，被吞后用户无法自助定位是凭证问题还是账号状态问题。 |
+
+### 根因
+
+`attemptFetch`（POST chat/completions）与 `doFetch`（GET /v1/models）在 `!response.ok` 时直接 `throw new Error('API error: ' + response.status)`，未读取响应体。
+
+### 修复
+
+- 新增 `httpErrorWithBody(resp)`：非 2xx 时读取 body，解析 `error.code / error.message / message`（兼容字符串 error），截断 280 字符并入异常消息（`API error: 403 — <code>: <msg>`）。
+- 应用到 POST 与 /v1/models 两处 fetch；body 读取失败退回原 `API error: status`。
+- 既有错误分类 regex（`/API error: 401|403/` 前缀匹配 → auth / http_4xx）不受影响。
+- commit: 480a422
+
+---
+
 ## vNext-59 处理历史批跑慢、末尾才一次性出结果、进度只显示 0 和完成；弹窗非 ST 原生样式
 
 | 属性 | 值 |
