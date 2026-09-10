@@ -113,6 +113,9 @@ function httpErrorWithBody(resp) {
                 }
             } catch (pe) {
                 detail = bodyText;
+                if (/<html/i.test(bodyText || '')) {
+                    detail += ' [NE] HTML 响应多来自 ST 服务端路由/代理层而非目标 API 本身';
+                }
             }
         }
         detail = detail.replace(/\s+/g, ' ').trim().slice(0, 280);
@@ -143,7 +146,7 @@ export async function callMemoryLLM(messages, options = {}) {
             response = customResult.content;
             usage = customResult.usage;
             _toolCalls = customResult.tool_calls || null;
-            apiSource = customResult._viaProxy ? 'proxy' : 'secondary';
+            apiSource = 'secondary_st_backend';
         } catch (e) {
             console.warn('[NE] Secondary API failed:', e.message);
             // Preferred: use main API credentials for direct fetch (no race condition)
@@ -154,7 +157,7 @@ export async function callMemoryLLM(messages, options = {}) {
                     var fbResult = await callCustomAPI(mainFallback, messages, callOpts);
                     response = fbResult.content;
                     usage = fbResult.usage;
-                    apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+                    apiSource = 'main_fallback_st_backend';
                 } catch (e2) {
                     console.warn('[NE] Main API fallback also failed:', e2.message);
                     notifySecondaryApiFailure(e.message);
@@ -179,7 +182,7 @@ export async function callMemoryLLM(messages, options = {}) {
                 response = fbResult.content;
                 usage = fbResult.usage;
                 _toolCalls = fbResult.tool_calls || null;
-                apiSource = fbResult._viaProxy ? 'main_api_fallback_proxy' : 'main_api_fallback';
+                apiSource = 'main_fallback_st_backend';
             } catch (e2) {
                 console.warn('[NE] Main API fallback failed:', e2.message);
                 response = await callTavernHelper(messages, options);
@@ -408,75 +411,95 @@ function notifySecondaryApiFailure(reason) {
     } catch (e) {}
 }
 
-function deriveModelsUrl(chatUrl) {
-    if (!chatUrl || typeof chatUrl !== 'string') return null;
-    var trimmed = chatUrl.trim().replace(/\/+$/, '');
-    if (/\/v1\/chat\/completions$/.test(trimmed)) {
-        return trimmed.replace(/\/chat\/completions$/, '/models');
-    }
-    if (/\/v1\/?$/.test(trimmed)) {
-        return trimmed.replace(/\/+$/, '') + '/models';
-    }
-    if (/^(https?:\/\/[^\/]+)\/?$/.test(trimmed)) {
-        return trimmed.replace(/\/+$/, '') + '/v1/models';
-    }
-    if (/\/llm\/chat$/.test(trimmed)) {
-        return trimmed.replace(/\/chat$/, '/models');
-    }
-    return null;
+function toBaseUrl(chatUrl) {
+    if (!chatUrl || typeof chatUrl !== 'string') return chatUrl;
+    return String(chatUrl).trim().replace(/\/chat\/completions$/i, '').replace(/\/+$/, '');
 }
 
+var NE_ST_BACKEND_BASE = '/api/backends/chat-completions';
+
+/** 取 ST 上下文认证/CSRF 头（跨 iframe 兜底 window.parent），供同源后端路由请求使用。 */
+function stRequestHeaders() {
+    try {
+        var ctx = (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) ? SillyTavern.getContext() : null;
+        if (ctx && typeof ctx.getRequestHeaders === 'function') return ctx.getRequestHeaders();
+        if (typeof window !== 'undefined' && window.parent && window.parent !== window &&
+            window.parent.SillyTavern && window.parent.SillyTavern.getContext) {
+            var pctx = window.parent.SillyTavern.getContext();
+            if (pctx && typeof pctx.getRequestHeaders === 'function') return pctx.getRequestHeaders();
+        }
+    } catch (e) {}
+    return {};
+}
+
+/**
+ * 走 ST 服务端内置后端路由转发任意 OpenAI 兼容请求（镜像柏宝书 requestCompletion）。
+ * 由 ST node 服务端发起 HTTP，无浏览器 CORS 限制，无需 enableCorsProxy。
+ * endpoint: 'generate' | 'status'。返回解析后的 JSON 响应体。
+ */
+function stBackendFetch(endpoint, config, payload, timeoutMs) {
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, timeoutMs);
+    return fetch(NE_ST_BACKEND_BASE + '/' + endpoint, {
+        method: 'POST',
+        headers: Object.assign({ 'Content-Type': 'application/json' }, stRequestHeaders()),
+        body: JSON.stringify(payload),
+        signal: ctrl.signal
+    }).then(function (resp) {
+        clearTimeout(timer);
+        if (!resp.ok) return httpErrorWithBody(resp).then(function (e) { throw e; });
+        return resp.json();
+    }, function (e) {
+        clearTimeout(timer);
+        throw e;
+    });
+}
+
+/** 构造 ST 后端路由 body：reverse_proxy 传 base URL，proxy_password 传 key（不写 ST secrets）。 */
+function buildStBody(baseUrl, config, messages, options) {
+    var stream = options.stream ? true : false;
+    var body = {
+        chat_completion_source: 'openai',
+        reverse_proxy: baseUrl,
+        proxy_password: config.key || '',
+        model: config.model,
+        messages: messages,
+        temperature: options.temperature || 0.3,
+        max_tokens: options.max_tokens || 4096,
+        stream: stream
+    };
+    if (options.responseFormat) body.response_format = options.responseFormat;
+    if (options.tools) body.tools = options.tools;
+    if (options.tool_choice) body.tool_choice = options.tool_choice;
+    if (options.thinking === true) Object.assign(body, { thinking: { type: 'enabled' } });
+    return body;
+}
+
+/**
+ * 拉取副 API 可用模型列表：走 ST 后端路由 /api/backends/chat-completions/status。
+ * 由 ST 服务端转发，规避浏览器对 /v1/models 的 CORS 拦截。返回 string[]。
+ */
 export async function fetchAvailableModels(config, timeoutSec) {
     timeoutSec = timeoutSec || 5;
     if (!config || !config.url) throw new Error('No URL configured');
-    var modelsUrl = deriveModelsUrl(config.url);
-    if (!modelsUrl) throw new Error('Cannot derive /v1/models URL from: ' + config.url);
-
-    var controller = new AbortController();
-    var timer = setTimeout(function () { controller.abort(); }, timeoutSec * 1000);
-
-    function doFetch(targetUrl) {
-        return fetch(targetUrl, {
-            method: 'GET',
-            headers: config.key ? { 'Authorization': 'Bearer ' + config.key } : {},
-            signal: controller.signal
-        }).then(function (resp) {
-            clearTimeout(timer);
-            if (!resp.ok) return httpErrorWithBody(resp).then(function (e) { throw e; });
-            return resp.json().then(function (data) {
-                if (!data || !Array.isArray(data.data)) throw new Error('Unexpected response format from /v1/models');
-                return data.data.map(function (m) { return m.id; });
-            });
-        }, function (e) {
-            clearTimeout(timer);
-            throw e;
-        });
-    }
-
-    function isNetErr(e) {
-        var msg = e.message || 'Unknown error';
-        return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
-    }
-
+    var baseUrl = toBaseUrl(config.url);
+    var payload = {
+        chat_completion_source: 'openai',
+        reverse_proxy: baseUrl,
+        proxy_password: config.key || ''
+    };
+    var timeoutMs = Math.max(1000, timeoutSec * 1000);
     try {
-        return await doFetch(modelsUrl);
+        var data = await stBackendFetch('status', config, payload, timeoutMs);
+        var list = (data && data.data) || (data && data.models) || [];
+        if (!Array.isArray(list)) throw new Error('Unexpected response format from ST /status');
+        return list
+            .map(function (m) { return (typeof m === 'string') ? m : (m && m.id); })
+            .filter(function (x) { return typeof x === 'string' && x.length > 0; })
+            .sort();
     } catch (e) {
-        if (!isNetErr(e)) {
-            if (e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
-            throw e;
-        }
-        console.warn('[NE] /v1/models direct fetch failed (' + e.message + '), trying ST proxy...');
-    }
-
-    try {
-        var proxyUrl = 'http://127.0.0.1:8000/proxy/' + encodeURIComponent(modelsUrl);
-        return await doFetch(proxyUrl);
-    } catch (e2) {
-        if (isNetErr(e2)) {
-            throw new Error('Cannot reach /v1/models — direct fetch blocked (CORS/mixed-content)');
-        }
-        if (e2.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
-        throw e2;
+        if (e && e.name === 'AbortError') throw new Error('Request timed out after ' + timeoutSec + 's');
+        throw e;
     }
 }
 
@@ -553,127 +576,56 @@ export async function sendSecondaryTestMessage(config) {
     return { content: result.content, latencyMs: latencyMs };
 }
 
-var _proxyNotified = false;
-
 async function callCustomAPI(config, messages, options) {
     if (!config.url) throw new Error('No API URL configured');
     if (!config.model) throw new Error('No API model configured');
-    const headers = { 'Content-Type': 'application/json' };
-    if (config.key) headers['Authorization'] = 'Bearer ' + config.key;
-    const body = JSON.stringify({
-        model: config.model,
-        messages: messages,
-        temperature: options.temperature || 0.3,
-        max_tokens: options.max_tokens || 4096,
-        ...(options.responseFormat ? { response_format: options.responseFormat } : {}),
-        ...(options.thinking === true ? { thinking: { type: 'enabled' } } : {}),
-        ...(options.tools ? { tools: options.tools } : {}),
-        ...(options.tool_choice ? { tool_choice: options.tool_choice } : {})
-    });
-    const timeoutSec = options.timeout || getConfiguredTimeoutSec(120);
+    var timeoutSec = options.timeout || getConfiguredTimeoutSec(120);
+    var baseUrl = toBaseUrl(config.url);
+    var payload = buildStBody(baseUrl, config, messages, options);
+    var timeoutMs = Math.max(1000, timeoutSec * 1000);
 
-    // --- inner: attempt a single fetch ---
-    function attemptFetch(targetUrl) {
-        var controller = new AbortController();
-        var timer = setTimeout(function () { controller.abort(); }, timeoutSec * 1000);
-        return fetch(targetUrl, {
-            method: 'POST',
-            headers: headers,
-            body: body,
-            signal: controller.signal
-        }).then(function (response) {
-            clearTimeout(timer);
-            if (!response.ok) return httpErrorWithBody(response).then(function (e) { throw e; });
-            return response.json().then(function (data) {
-                var msg = data.choices?.[0]?.message || {};
-                var content = msg.content || msg.reasoning_content || data.choices?.[0]?.text || data.content || '';
-                var usage = data.choices?.[0]?.usage || data.usage || null;
-                var toolCalls = msg.tool_calls || null;
-                if (!content && !toolCalls) {
-                    console.warn('[NE] API returned empty content — status=' + response.status + ', keys=' + Object.keys(data).join(',') + ', hasChoices=' + !!data.choices + ', choiceCount=' + (data.choices ? data.choices.length : 0) + ', firstChoiceKeys=' + (data.choices?.[0] ? Object.keys(data.choices[0]).join(',') : 'none') + ', usage=' + JSON.stringify(usage || {}));
-                }
-                return { content: content, usage: usage, tool_calls: toolCalls, _raw: data };
-            });
-        }, function (e) {
-            clearTimeout(timer);
-            throw e;
+    // ST 服务端后端路由会先用 /v1/models 探测可用连接（走 /status 前内部先拉 models），
+    // 然后 stream 透传。这里保持非流式（stream:false → JSON），一次调用拿整段补全。
+    function doGenerate() {
+        return stBackendFetch('generate', config, payload, timeoutMs).then(function (data) {
+            if (data && data.error) throw new Error((data.error.message || data.error) || 'ST backend returned error');
+            var msg = (data && data.choices && data.choices[0] && data.choices[0].message) || {};
+            var content = msg.content || msg.reasoning_content ||
+                (data && data.choices && data.choices[0] && data.choices[0].text) || (data && data.content) || '';
+            var usage = (data && data.choices && data.choices[0] && data.choices[0].usage) || (data && data.usage) || null;
+            var toolCalls = msg.tool_calls || null;
+            if (!content && !toolCalls) {
+                console.warn('[NE] API returned empty content — keys=' + Object.keys(data || {}).join(',') + ', hasChoices=' + !!(data && data.choices) + ', choiceCount=' + ((data && data.choices) ? data.choices.length : 0) + ', usage=' + JSON.stringify(usage || {}));
+            }
+            return { content: content, usage: usage, tool_calls: toolCalls, _raw: data };
         });
     }
 
-    function isNetworkError(e) {
-        var msg = e.message || 'Unknown error';
-        return /Load[_ ]?[Ff]ailed/i.test(msg) || /NetworkError/i.test(msg) || msg === 'Failed to fetch' || msg === 'TypeError: Failed to fetch';
-    }
-
     function shouldRetry(e) {
-        // P1-4: AbortError（超时）直接抛出不重试——重试只会等满更多 timeout，且超时往往
-        // 意味着请求本身慢/网络卡，重复请求加剧延迟与 token 浪费
-        if (e.name === 'AbortError') return false;
-        var msg = e.message || '';
+        // AbortError（超时）不重试——重试只会等满更多 timeout，且超时往往意味着请求慢/网络卡
+        if (e && e.name === 'AbortError') return false;
+        var msg = (e && e.message) || '';
         if (/NetworkError|Failed to fetch|Load[_ ]?[Ff]ailed/i.test(msg)) return true;
         if (/API error: 5\d\d/.test(msg)) return true;
-        if (/API error: 401|403/.test(msg)) return false;
         if (/API error: 4\d\d/.test(msg)) return false;
         return false;
     }
 
     var maxRetries = 2;
     var retryDelayMs = 1000;
-    var proxyAttempted = false;
-
+    var lastError = null;
     for (var attempt = 0; attempt <= maxRetries; attempt++) {
-        var lastError = null;
-
-        // 1. Try direct
         try {
-            return await attemptFetch(config.url);
+            return await doGenerate();
         } catch (e) {
             lastError = e;
-            if (!isNetworkError(e)) {
-                if (e.name === 'AbortError') lastError = new Error('Request timed out after ' + timeoutSec + 's');
-                if (!shouldRetry(lastError)) throw lastError;
-            } else {
-                console.warn('[NE] Direct fetch failed (' + e.message + '), trying ST proxy...');
-                proxyAttempted = true;
-            }
-        }
-
-        // 2. Retry through ST CORS proxy
-        try {
-            var origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : 'http://127.0.0.1:8000';
-            var proxyUrl = origin + '/proxy/' + encodeURIComponent(config.url);
-            var result = await attemptFetch(proxyUrl);
-            result._viaProxy = true;
-            if (!_proxyNotified) {
-                _proxyNotified = true;
-                console.log('[NE] Connected via ST CORS proxy (' + proxyUrl + ')');
-            }
-            return result;
-        } catch (e2) {
-            lastError = e2;
-            if (isNetworkError(e2) || (e2.message && /^API error: 404/.test(e2.message))) {
-                lastError = new Error(
-                    'Cannot reach ' + (config.url || 'API') + ' — direct fetch blocked (CORS/mixed-content) and ST CORS proxy is unreachable. ' +
-                    'Check:\n' +
-                    '1. SillyTavern is running (not just the config file)\n' +
-                    '2. config.yaml: enableCorsProxy: true\n' +
-                    '3. Restarted SillyTavern after changing config\n' +
-                    '4. URL is accessible from this machine (not behind VPN/firewall)\n' +
-                    'Proxy URL tried: ' + proxyUrl
-                );
-            } else if (e2.name === 'AbortError') {
-                lastError = new Error('Request timed out after ' + timeoutSec + 's (via proxy)');
-            }
-
-            if (shouldRetry(lastError) && attempt < maxRetries) {
-                var delay = retryDelayMs * Math.pow(2, attempt);
-                console.warn('[NE] API call attempt ' + (attempt + 1) + ' failed, retrying in ' + delay + 'ms:', lastError.message);
-                await new Promise(function (r) { setTimeout(r, delay); });
-                continue;
-            }
-            throw lastError;
+            if (!shouldRetry(e) || attempt >= maxRetries) throw e;
+            var delay = retryDelayMs * Math.pow(2, attempt);
+            console.warn('[NE] ST backend generate attempt ' + (attempt + 1) + ' failed, retrying in ' + delay + 'ms:', lastError.message);
+            await new Promise(function (r) { setTimeout(r, delay); });
         }
     }
+    throw lastError;
 }
 
 async function callTavernHelper(messages, options) {

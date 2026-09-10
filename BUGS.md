@@ -2,6 +2,39 @@
 
 ---
 
+## vNext-61 副 API 浏览器直连受 CORS 限制，连不上不开跨域的端点（如基元律动 TokenRhythm）
+
+| 属性 | 值 |
+|---|---|
+| **状态** | ✅ 已解决 |
+| **发现** | 2026-09-10（用户：NE 副 API 连基元律动 403/404 HTML，模型列表也拉不到；其它开 CORS 的 API 正常） |
+| **解决** | 2026-09-10 |
+| **严重程度** | **Medium** |
+| **影响** | 副 API 走浏览器 `fetch(config.url)` 直连，遇不开 `Access-Control-Allow-Origin` 的端点（基元律动等）被浏览器安全模型拦截，直连失败后回退到需要 `enableCorsProxy` 的 ST `/proxy/` 路由（默认未开 → 403/404 HTML），因此无法连接、模型列表（`/v1/models` 同源直连）也拉不到。 |
+
+### 根因
+
+NE 副 API 主路径为浏览器直连目标端点，依赖目标端点的 CORS 放行头。TokenRhythm（基元律动）未开放 CORS（响应无 `Access-Control-Allow-Origin`、预检返回 404），故浏览器端无法直连读取；ST 的 `/proxy/` CORS 代理默认关闭，回退亦失败。
+
+### 参考
+
+柏宝书 [client.ts](file:///D:/SillyTavern/xm/ST-BaiBai-Book/src/api/client.ts)：走 ST 服务端内置路由 `/api/backends/chat-completions/generate`，body 传 `reverse_proxy`+`proxy_password`+`model`，由 ST node 服务端发起请求转发到任意 OpenAI 兼容端点，天然无浏览器 CORS，无需任何额外配置。
+
+### 修复
+
+- `callCustomAPI`：副 API/main-fallback 请求改走 ST 后端路由 `generate`（`stBackendFetch` + `buildStBody` 助手），`stream:false` 保持非流式 JSON 解析，工具/response_format 仍透传。
+- `fetchAvailableModels`：模型列表改走 ST 后端路由 `status`，返回 `string[]` 契约不变。
+- 新增 `toBaseUrl`（把 chat/completions URL 还原为 base 供 `reverse_proxy` 用）、`stRequestHeaders`（取 ST 认证/CSRF 头，跨 iframe 兜底）。
+- 移除浏览器直连 + ST `/proxy/` 回退死代码；`_viaProxy` 判定改为固定 `secondary_st_backend` / `main_fallback_st_backend`。
+- `httpErrorWithBody`：检测到 HTML 响应体时追加「来自 ST 服务端路由/代理层而非目标 API」提示。
+- commit: （待填）
+
+### 行为不变
+
+用户配置行为完全不变：仍为 localStorage `ne_secondary_api`（URL=base+model+key），测试/连接/拉模型交互不变，无需开 `enableCorsProxy` 或改任何 ST 配置。
+
+---
+
 ## vNext-60 次级 API 连接失败错误被吞掉响应体，403 鉴权拒绝无法定位根因
 
 | 属性 | 值 |

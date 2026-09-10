@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-09-05 | 87 个文档 | 56% 完成
+> 自动生成 | 2026-09-10 | 88 个文档 | 57% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -71,6 +71,7 @@
 | `restore-stm-multi-event.md` | ✅ 已完成 | 2026-06-16 | 2026-06-24 | 修复计划：恢复 STM 摘要管线多批次录入能力 |
 | `retrieval-quality-test-plan.md` | ✅ 已完成 | 2026-08-17 | 2026-08-18 | NE-Memory 检索质量测试计划（T0 / T1 / T2） |
 | `rollback-buttons-and-scheme-editor.md` | ❓ 未知 | — | — | 计划：版本回退按钮外移 + 方案编辑器从当前状态开始 |
+| `secondary-api-server-relay-plan.md` | ✅ 已完成 | 2026-09-10 | 2026-09-10 | 副 API 切换到 ST 服务端后端路由（解决基元律动等不开 CORS 端点无法连接） |
 | `split-state-memory-vault.md` | 🔄 进行中 | 2026-07-10 | 2026-07-10 | 拆分 State / Memory Vault + 消除并行写冲突 |
 | `state-template-sync-fix.md` | ❓ 未知 | — | — | State-Template 同步修复计划 |
 | `stm-fallback-time-scene-from-dialogue.md` | ✅ 已完成 | 2026-06-17 | 2026-06-23 | 修复计划：BANNER 缺失时 STM LLM 从对话正文推断时间/场景 |
@@ -97,7 +98,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：49
+- ✅ 已完成：50
 - 🔄 进行中：13
 - ⏳ 未开始：5
 - ❓ 未标记：20
