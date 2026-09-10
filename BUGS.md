@@ -27,7 +27,7 @@ NE 副 API 主路径为浏览器直连目标端点，依赖目标端点的 CORS 
 - 新增 `toBaseUrl`（把 chat/completions URL 还原为 base 供 `reverse_proxy` 用）、`stRequestHeaders`（取 ST 认证/CSRF 头，跨 iframe 兜底）。
 - 移除浏览器直连 + ST `/proxy/` 回退死代码；`_viaProxy` 判定改为固定 `secondary_st_backend` / `main_fallback_st_backend`。
 - `httpErrorWithBody`：检测到 HTML 响应体时追加「来自 ST 服务端路由/代理层而非目标 API」提示。
-- commit: （待填）
+- commit: `e7388d1`
 
 ### 行为不变
 
