@@ -131,6 +131,7 @@ export async function renderVaultPanel(getChatId) {
             '<button id="ne-state-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-state-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-state-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-state-reroll-btn" class="ne-version-nav-btn" disabled title="' + t('Reroll applies to the latest version only; click Forward to return to the latest first.') + '">' + t('Reroll') + '</button>' +
             '<button id="ne-state-history-btn" class="menu_button ne-version-history-btn">\u{1F4CB} ' + t('Version History') + '</button>' +
             '</div>' +
             // State accordion: Characters / Quests / Factions
@@ -172,6 +173,7 @@ export async function renderVaultPanel(getChatId) {
             '<button id="ne-mem-rollback-btn" class="ne-version-nav-btn" disabled title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
             '<span id="ne-mem-cursor-info" class="ne-version-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
             '<button id="ne-mem-restore-btn" class="ne-version-nav-btn" disabled title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+            '<button id="ne-mem-reroll-btn" class="ne-version-nav-btn" disabled title="' + t('Reroll applies to the latest version only; click Forward to return to the latest first.') + '">' + t('Reroll') + '</button>' +
             '<button id="ne-memory-history-btn" class="menu_button ne-version-history-btn">' + '\u{1F4CB} ' + t('Version History') + '</button>' +
             '</div>' +
             '<div class="ne-accordion open" id="ne-acc-stm">' +
@@ -596,8 +598,8 @@ export async function renderVaultPanel(getChatId) {
 
         var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
         if (chatId) {
-            var vStateEls = { rollbackBtn: panelById('ne-state-rollback-btn'), restoreBtn: panelById('ne-state-restore-btn'), cursorInfo: panelById('ne-state-cursor-info') };
-            var vMemEls = { rollbackBtn: panelById('ne-mem-rollback-btn'), restoreBtn: panelById('ne-mem-restore-btn'), cursorInfo: panelById('ne-mem-cursor-info') };
+            var vStateEls = { rollbackBtn: panelById('ne-state-rollback-btn'), restoreBtn: panelById('ne-state-restore-btn'), cursorInfo: panelById('ne-state-cursor-info'), rerollBtn: panelById('ne-state-reroll-btn') };
+            var vMemEls = { rollbackBtn: panelById('ne-mem-rollback-btn'), restoreBtn: panelById('ne-mem-restore-btn'), cursorInfo: panelById('ne-mem-cursor-info'), rerollBtn: panelById('ne-mem-reroll-btn') };
             initVersionNavButtons(chatId, vStateEls, vMemEls);
         }
     } catch (e) {

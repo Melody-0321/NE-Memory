@@ -230,6 +230,8 @@ export const NARRATIVE_I18N = {
         'Version #{seq} has a manual edit record; cannot locate the specific entries': 'Version #{seq} has a manual edit record; cannot locate the specific entries',
         'Reroll will overwrite the fields above with the pre-reroll state; NE-CHAR regex writes are preserved automatically.': 'Reroll will overwrite the fields above with the pre-reroll state; NE-CHAR regex writes are preserved automatically.',
         'Will remove {n} STM entries and cascade-delete {m} narrative arcs (LTM).': 'Will remove {n} STM entries and cascade-delete {m} narrative arcs (LTM).',
+        'Reroll the most recent AI extraction': 'Re-extract the most recent AI extraction',
+        'Reroll applies to the latest version only; click Forward to return to the latest first.': 'Reroll applies to the latest version only; click Forward to return to the latest first.',
     },
     'zh-cn': {
         'Memory Vault': '记忆区', 'Refresh': '刷新', 'Edit': '编辑', 'Save': '保存', 'Cancel': '取消',
@@ -451,6 +453,8 @@ export const NARRATIVE_I18N = {
         'Version #{seq} has a manual edit record; cannot locate the specific entries': '版本 #{seq} 有一条手动编辑记录，无法定位具体条目',
         'Reroll will overwrite the fields above with the pre-reroll state; NE-CHAR regex writes are preserved automatically.': '重抽会用重抽前的状态覆盖上述字段；角色卡正则写入（NE-CHAR）已自动保留。',
         'Will remove {n} STM entries and cascade-delete {m} narrative arcs (LTM).': '将移除 {n} 条 STM，并级联删除 {m} 条叙事弧（LTM）。',
+        'Reroll the most recent AI extraction': '撤销最近一次 AI 抽取并重新提取',
+        'Reroll applies to the latest version only; click Forward to return to the latest first.': '重抽只作用于最新版本，请先点「前进」回到最新',
     },
     'zh-tw': {
         'Memory Vault': '記憶區', 'Refresh': '重新整理', 'Edit': '編輯', 'Save': '儲存', 'Cancel': '取消',
@@ -658,6 +662,8 @@ export const NARRATIVE_I18N = {
         'Version #{seq} has a manual edit record; cannot locate the specific entries': '版本 #{seq} 有一條手動編輯記錄，無法定位具體條目',
         'Reroll will overwrite the fields above with the pre-reroll state; NE-CHAR regex writes are preserved automatically.': '重抽會用重抽前的狀態覆蓋上述欄位；角色卡正則寫入（NE-CHAR）已自動保留。',
         'Will remove {n} STM entries and cascade-delete {m} narrative arcs (LTM).': '將移除 {n} 條 STM，並級聯刪除 {m} 條敘事弧（LTM）。',
+        'Reroll the most recent AI extraction': '撤銷最近一次 AI 抽取並重新提取',
+        'Reroll applies to the latest version only; click Forward to return to the latest first.': '重抽只作用於最新版本，請先點「前進」回到最新',
     }
 };
 

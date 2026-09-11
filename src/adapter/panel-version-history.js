@@ -121,35 +121,48 @@ function _handleRerollOutcome(type, outcome) {
     showToast(msg, outcome.failed > 0 ? 'warn' : 'success', 5000);
 }
 
+/**
+ * 执行一次重抽（互斥锁 + 调引擎 + 结果提示）。
+ * targetSeq 缺省时由 plan 层自动定位**最新一条 AI 版本**，即「重抽最近一次 AI 抽取」。
+ * @returns {Promise<boolean>} 是否成功
+ */
+async function _executeReroll(type, btn, targetSeq) {
+    if (_rerolling) return false;
+    var oldLabel = btn.textContent;
+    _rerolling = true;
+    btn.disabled = true;
+    btn.textContent = t('Rerolling...');
+    var ok = false;
+    try {
+        var run = type === 'state' ? rerollState : rerollMemory;
+        var opts = {
+            getChat: _readRawChat,
+            resolveConflict: function (plan) {
+                return showConfirm(t('Reroll confirmation'), _conflictMessage(type, plan), t('Overwrite and reroll'), t('Cancel'), true)
+                    .then(function (r) { return r ? 'overwrite' : 'cancel'; });
+            },
+            onProgress: function (p) {
+                if (p && p.phase === 'extract' && p.total > 0) btn.textContent = t('Rerolling {done}/{total}', { done: p.done, total: p.total });
+            }
+        };
+        if (targetSeq != null) opts.targetSeq = targetSeq;
+        var outcome = await run(_chatId, opts);
+        _handleRerollOutcome(type, outcome);
+        ok = !!(outcome && outcome.ok);
+    } finally {
+        _rerolling = false;
+        btn.disabled = false;
+        btn.textContent = oldLabel;
+    }
+    return ok;
+}
+
 function _bindRerollButtons(body, type, container) {
     var btns = body.querySelectorAll('.ne-version-reroll-btn');
     btns.forEach(function (btn) {
         btn.onclick = async function () {
-            if (_rerolling) return;
             var seq = parseInt(btn.getAttribute('data-seq'), 10);
-            var oldLabel = btn.textContent;
-            _rerolling = true;
-            btn.disabled = true;
-            btn.textContent = t('Rerolling...');
-            try {
-                var run = type === 'state' ? rerollState : rerollMemory;
-                var outcome = await run(_chatId, {
-                    targetSeq: seq,
-                    getChat: _readRawChat,
-                    resolveConflict: function (plan) {
-                        return showConfirm(t('Reroll confirmation'), _conflictMessage(type, plan), t('Overwrite and reroll'), t('Cancel'), true)
-                            .then(function (ok) { return ok ? 'overwrite' : 'cancel'; });
-                    },
-                    onProgress: function (p) {
-                        if (p && p.phase === 'extract' && p.total > 0) btn.textContent = t('Rerolling {done}/{total}', { done: p.done, total: p.total });
-                    }
-                });
-                _handleRerollOutcome(type, outcome);
-            } finally {
-                _rerolling = false;
-                btn.disabled = false;
-                btn.textContent = oldLabel;
-            }
+            await _executeReroll(type, btn, seq);
             if (type === 'state') await _refreshState(container, false);
             else await _refreshMemory(container, false);
             busEmit('vault:updated', {});
@@ -574,6 +587,14 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         if (els.rollbackBtn) _updateNavButtonState(els.rollbackBtn, !canRollback);
         if (els.restoreBtn) _updateNavButtonState(els.restoreBtn, !canRestore);
         if (els.cursorInfo) _setCursorText(els.cursorInfo, cursor, headSeq);
+        // 快捷重抽只在链头可用：游标处于折叠态时 headState 基准会错位
+        if (els.rerollBtn) {
+            var atHead = cursor === headSeq || cursor === 0;
+            _updateNavButtonState(els.rerollBtn, !atHead);
+            els.rerollBtn.title = atHead
+                ? t('Reroll the most recent AI extraction')
+                : t('Reroll applies to the latest version only; click Forward to return to the latest first.');
+        }
     }
 
     async function _doNavigate(type, targetSeq, els) {
@@ -686,4 +707,26 @@ export async function initVersionNavButtons(chatId, stateEls, memEls) {
         var idx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
         if (idx > 0) await _doNavigate('memory', _memVersions[idx - 1].seq, memEls);
     };
+
+    // ── 快捷入口：State / Memory 页版本行的「重抽」= 重抽最近一次 AI 抽取（不传 targetSeq） ──
+    // 游标不在链头时按钮已置灰（见 _refreshUI）；此处再守一道，避免时序竞态。
+    function _bindRerollLatest(els, type) {
+        if (!els.rerollBtn) return;
+        els.rerollBtn.onclick = async function() {
+            if (_rerolling) return;
+            if (!await _reloadChains()) return;
+            var headSeq = type === 'state' ? headStateSeq : headMemSeq;
+            var cursor = type === 'state' ? _stateCursor : _memCursor;
+            if (cursor !== headSeq && cursor !== 0) return;
+            await _executeReroll(type, els.rerollBtn, null);
+            // 重抽追加了新版本，重新载入链并把游标顶到新链头，再立刻刷一次按钮态
+            if (!await _reloadChains()) return;
+            if (type === 'state') _stateCursor = headStateSeq;
+            else _memCursor = headMemSeq;
+            _refreshUI(type, els);
+            busEmit('vault:updated', {});
+        };
+    }
+    _bindRerollLatest(stateEls, 'state');
+    _bindRerollLatest(memEls, 'memory');
 }
