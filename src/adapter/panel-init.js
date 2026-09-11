@@ -322,7 +322,7 @@ export async function renderVaultPanel(getChatId) {
                 var vault = await readVault(chatId);
                 var idSet = collectAllMsgIds(vault);
                 var stmAll = ((vault.content && (vault.content.unconsolidated_stm || [])) || []).concat((vault.content && (vault.content.stm_entries || [])) || []);
-                console.log('[NE-DEBUG][scan] chatId=' + chatId + ' msgs=' + messages.length + ' idSet=' + idSet.size + ' stmUR=' + (vault.content ? (vault.content.unconsolidated_stm || []).length : 0) + ' stmE=' + (vault.content ? (vault.content.stm_entries || []).length : 0) + ' version=' + vault.version);
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG][scan] chatId=' + chatId + ' msgs=' + messages.length + ' idSet=' + idSet.size + ' stmUR=' + (vault.content ? (vault.content.unconsolidated_stm || []).length : 0) + ' stmE=' + (vault.content ? (vault.content.stm_entries || []).length : 0) + ' version=' + vault.version);
                 var unmatched = messages.filter(function (m) {
                     if (!m.mes || m.mes.trim().length === 0) return false;
                     return !idSet.has(String(m.id));
@@ -330,7 +330,7 @@ export async function renderVaultPanel(getChatId) {
                 if (unmatched.length > 0 && stmAll.length > 0) {
                     var sample = unmatched.slice(0, 6).map(function (m) { return String(m.id); });
                     var stored = stmAll[0] && stmAll[0].msg_ids ? stmAll[0].msg_ids.slice(0, 6) : [];
-                    console.log('[NE-DEBUG][scan] unmatchedSample=' + JSON.stringify(sample) + ' storedSample=' + JSON.stringify(stored));
+                    if (__NE_DEV_MODE) console.log('[NE-DEBUG][scan] unmatchedSample=' + JSON.stringify(sample) + ' storedSample=' + JSON.stringify(stored));
                 }
                 return unmatched;
             }

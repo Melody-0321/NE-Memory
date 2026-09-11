@@ -2,9 +2,9 @@
 
 > **SillyTavern 长对话结构化记忆管理引擎**
 >
-> 版本：v8.0.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
+> 版本：v8.1.0 | 语言：JavaScript (ES Modules) | 许可证：AGPL-3.0
 > 入口：`src/adapter/index.js` | 构建输出：`dist/index.js` (IIFE, 全局名 `NEMemoryEngine`)
-> 最后更新：2026-08-30（v8.0 存储权威化 · 悬念簿强化 · 注入架构V5 · 三主题）
+> 最后更新：2026-09-12（v8.1 条目级重抽 · 历史批跑提速 · 副API免CORS）
 
 ---
 
