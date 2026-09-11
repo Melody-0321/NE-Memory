@@ -1,6 +1,6 @@
 # 计划文档索引
 
-> 自动生成 | 2026-09-11 | 89 个文档 | 56% 完成
+> 自动生成 | 2026-09-11 | 89 个文档 | 57% 完成
 
 | 文件 | 状态 | 创建 | 最后更新 | 标题 |
 |------|------|------|---------|------|
@@ -65,7 +65,7 @@
 | `process-history-redesign-plan.md` | ✅ 已完成 | 2026-08-30 | 2026-08-30 | 整合按钮移除 + 处理历史批量重设计 |
 | `process-history-streaming-plan.md` | ✅ 已完成 | 2026-08-30 | 2026-08-30 | 处理历史流式化改造计划（参考柏宝书 batchBackfill） |
 | `prod-build-dev-stripping.md` | ✅ 已完成 | 2026-07-14 | 2026-07-14 | 生产构建 dev 代码剥离计划 |
-| `reroll-ai-version-plan.md` | 🔄 进行中 | 2026-09-10 | 2026-09-10 | 重roll（Re-roll）AI 版本功能实现计划 |
+| `reroll-state-memory-plan.md` | ✅ 已完成 | 2026-09-12 | 2026-09-12 | State / Memory 主动重抽（Re-roll）计划 |
 | `resolver-batch-granularity-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | D 臂 resolver 批量粒度成本-效果曲线实验（K=1/2/4/8，找最佳平衡点） |
 | `resolver-capacity-quality-plan.md` | ✅ 已完成 | 2026-08-19 | 2026-08-19 | Resolver 容量与质量两阶段测试计划（事件文本量 × 条数 × max_tokens，找处理上限） |
 | `restore-per-chunk-loop.md` | ❓ 未知 | — | — | Plan: 恢复 per-chunk 循环 + STM→LTM 严格串行 |
@@ -99,7 +99,7 @@
 所有文件位于 `.trae/documents/`。在文件树中定位该目录即可查看。
 
 ### 统计
-- ✅ 已完成：50
-- 🔄 进行中：14
+- ✅ 已完成：51
+- 🔄 进行中：13
 - ⏳ 未开始：5
 - ❓ 未标记：20

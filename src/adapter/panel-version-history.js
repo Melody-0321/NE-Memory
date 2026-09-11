@@ -1,9 +1,9 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
 import { readVault, write } from '../core/vault/store.js';
-import { qs, qsa, byId, pdCreate, t, PD, emptyStateHtml, busEmit, busOn, busOff, showToast } from './panel-shared.js';
+import { rerollState, rerollMemory } from '../core/engine/reroll.js';
+import { qs, qsa, byId, pdCreate, t, PD, emptyStateHtml, busEmit, busOn, busOff, showToast, showConfirm } from './panel-shared.js';
 import { neSync } from '../core/settings-adapter.js';
-import { rerollAiVersion } from './events.js';
 
 var STATE_VERSION_LIMIT_KEY = 'ne_state_version_limit';
 var MEM_VERSION_LIMIT_KEY = 'ne_mem_version_limit';
@@ -50,19 +50,111 @@ function _versionDotClass(isHead, isCursor) {
 function _typeLabel(s) {
     if (s === 'ai_update') return '\u{1F916} AI';
     if (s === 'manual_edit') return '\u{270F} \u624B\u52A8';
+    if (s === 'state_reroll') return t('Reroll');
     if (s === 'rollback_restore') return '\u{21A9} \u56DE\u9000';
     if (s === 'init') return '\u{1F504} \u521D\u59CB';
     return s;
 }
 
-function _memTypeLabel(t) {
-    if (t === 'stm_batch') return '\u{1F4E5} STM';
-    if (t === 'ltm_consolidation') return '\u{1F4E6} LTM';
-    if (t === 'stm_reroll') return '\u{1F504} STM Re-roll';
-    if (t === 'ltm_reroll') return '\u{1F504} LTM Re-roll';
-    if (t === 'manual_edit') return '\u{270F} \u624B\u52A8';
-    if (t === 'init') return '\u{1F504} \u521D\u59CB';
-    return t;
+function _memTypeLabel(type) {
+    if (type === 'stm_batch') return '\u{1F4E5} STM';
+    if (type === 'ltm_consolidation') return '\u{1F4E6} LTM';
+    if (type === 'stm_reroll') return t('Reroll');
+    if (type === 'ltm_reroll') return '\u{1F504} LTM Re-roll';
+    if (type === 'manual_edit') return '\u{270F} \u624B\u52A8';
+    if (type === 'init') return '\u{1F504} \u521D\u59CB';
+    return type;
+}
+
+var _rerolling = false;
+
+/** 读取 ST 原始 chat 数组（重抽需要原始消息对象，不能用映射形态） */
+function _readRawChat() {
+    try {
+        if (typeof window !== 'undefined' && window.parent && window.parent.SillyTavern && window.parent.SillyTavern.getContext) {
+            return window.parent.SillyTavern.getContext().chat || [];
+        }
+        if (typeof SillyTavern !== 'undefined' && SillyTavern.getContext) {
+            return SillyTavern.getContext().chat || [];
+        }
+    } catch (e) {}
+    return [];
+}
+
+function _conflictMessage(type, plan) {
+    var sep = t('Reroll conflict separator');
+    var parts = [];
+    (plan.conflicts || []).forEach(function (c) {
+        if (type === 'state') {
+            if (c.kind === 'precise') parts.push(t('Version #{seq} manually edited {paths}', { seq: c.seq, paths: c.paths.join(', ') }));
+            else parts.push(t('Version #{seq} has a manual edit record; cannot locate the specific fields', { seq: c.seq }));
+        } else {
+            if (c.kind === 'precise') parts.push(t('Version #{seq} ({type}) already affects {n} memory entries to be removed', { seq: c.seq, type: c.type, n: c.entryIds.length }));
+            else parts.push(t('Version #{seq} has a manual edit record; cannot locate the specific entries', { seq: c.seq }));
+        }
+    });
+    var head = type === 'state'
+        ? t('Reroll will overwrite the fields above with the pre-reroll state; NE-CHAR regex writes are preserved automatically.')
+        : t('Will remove {n} STM entries and cascade-delete {m} narrative arcs (LTM).', { n: plan.willRemoveSTM, m: plan.willRemoveLTM });
+    return parts.join(sep) + sep + head;
+}
+
+function _handleRerollOutcome(type, outcome) {
+    if (!outcome) return;
+    if (!outcome.ok) {
+        if (outcome.reason === 'cancelled') return;
+        var reasonMap = {
+            target_not_found: 'No AI version available to reroll',
+            target_not_ai: 'This version is not an AI extraction',
+            empty_scope: 'No version scope to reroll',
+            persist_failed: 'Write failed, no changes made',
+            no_vault: 'Memory vault not initialized',
+            error: 'Reroll failed, see console'
+        };
+        var key = reasonMap[outcome.reason];
+        showToast(key ? t(key) : t('Reroll failed: {reason}', { reason: outcome.reason }), 'warn', 5000);
+        return;
+    }
+    var label = type === 'state' ? 'State' : 'Memory';
+    var msg = label + ' ' + t('Reroll complete: reverted {n}, re-extracted {m}', { n: outcome.reverted, m: outcome.reextracted });
+    if (outcome.failed > 0) msg += t(', {k} failed', { k: outcome.failed });
+    showToast(msg, outcome.failed > 0 ? 'warn' : 'success', 5000);
+}
+
+function _bindRerollButtons(body, type, container) {
+    var btns = body.querySelectorAll('.ne-version-reroll-btn');
+    btns.forEach(function (btn) {
+        btn.onclick = async function () {
+            if (_rerolling) return;
+            var seq = parseInt(btn.getAttribute('data-seq'), 10);
+            var oldLabel = btn.textContent;
+            _rerolling = true;
+            btn.disabled = true;
+            btn.textContent = t('Rerolling...');
+            try {
+                var run = type === 'state' ? rerollState : rerollMemory;
+                var outcome = await run(_chatId, {
+                    targetSeq: seq,
+                    getChat: _readRawChat,
+                    resolveConflict: function (plan) {
+                        return showConfirm(t('Reroll confirmation'), _conflictMessage(type, plan), t('Overwrite and reroll'), t('Cancel'), true)
+                            .then(function (ok) { return ok ? 'overwrite' : 'cancel'; });
+                    },
+                    onProgress: function (p) {
+                        if (p && p.phase === 'extract' && p.total > 0) btn.textContent = t('Rerolling {done}/{total}', { done: p.done, total: p.total });
+                    }
+                });
+                _handleRerollOutcome(type, outcome);
+            } finally {
+                _rerolling = false;
+                btn.disabled = false;
+                btn.textContent = oldLabel;
+            }
+            if (type === 'state') await _refreshState(container, false);
+            else await _refreshMemory(container, false);
+            busEmit('vault:updated', {});
+        };
+    });
 }
 
 function _formatTime(ts) {
@@ -131,6 +223,9 @@ function _renderStateTimeline(container) {
             '<span class="ne-version-seq">#' + d.seq + '</span>' +
             '<span class="ne-version-type">' + _typeLabel(d.source) + '</span>' +
             '<span class="ne-version-time">' + _formatTime(d.timestamp) + '</span>' +
+            (d.source === 'ai_update'
+                ? '<button class="ne-version-reroll-btn" data-reroll="state" data-seq="' + d.seq + '" title="' + escapeHtml(t('Undo this AI change and re-extract')) + '">' + t('Reroll') + '</button>'
+                : '') +
             '</div>' +
             '<div class="ne-version-summary">' + escapeHtml(d.summary || '') + '</div>';
         if (d.changes && d.changes.length > 0) {
@@ -149,6 +244,7 @@ function _renderStateTimeline(container) {
         html += '</div>';
     }
     body.innerHTML = html;
+    _bindRerollButtons(body, 'state', container);
     _syncPanelNav(container, 'state');
 }
 
@@ -198,11 +294,15 @@ function _renderMemoryTimeline(container) {
             '<span class="ne-version-seq">#' + v.seq + '</span>' +
             '<span class="ne-version-type">' + _memTypeLabel(v.type) + '</span>' +
             '<span class="ne-version-time">' + _formatTime(v.timestamp) + '</span>' +
+            (v.type === 'stm_batch'
+                ? '<button class="ne-version-reroll-btn" data-reroll="memory" data-seq="' + v.seq + '" title="' + escapeHtml(t('Remove this batch of old memories and re-extract')) + '">' + t('Reroll') + '</button>'
+                : '') +
             '</div>' +
             '<div class="ne-version-summary">' + escapeHtml(v.summary || '') + '</div>';
         html += '</div>';
     }
     body.innerHTML = html;
+    _bindRerollButtons(body, 'memory', container);
     _syncPanelNav(container, 'memory');
 }
 
@@ -293,7 +393,6 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-state-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-state-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-state-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-        '<button class="ne-version-nav-btn ne-version-reroll-top" id="ne-state-reroll-btn" title="\u5BF9\u6700\u8FD1\u4E00\u6B21 AI \u62BD\u53D6\u91CD\u65B0\u62BD\u53D6">\u26A1 \u91CDroll\u6700\u65B0</button>' +
         '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(STATE_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-state-timeline-body" class="ne-version-timeline"></div>' +
@@ -304,7 +403,6 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-mem-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-mem-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-mem-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
-        '<button class="ne-version-nav-btn ne-version-reroll-top" id="ne-mem-reroll-btn" title="\u5BF9\u6700\u8FD1\u4E00\u6B21 AI \u62BD\u53D6\u91CD\u65B0\u62BD\u53D6">\u26A1 \u91CDroll\u6700\u65B0</button>' +
         '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(MEM_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-mem-timeline-body" class="ne-version-timeline"></div>' +
@@ -385,18 +483,6 @@ export async function renderVersionHistoryPanel(container, chatId) {
         var currentIdx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
         if (currentIdx <= 0) return;
         await _navigateToVersion(_memVersions[currentIdx - 1].seq, 'memory', container);
-    };
-
-    // 重roll 顶部快捷按钮
-    var stateReroll = container.querySelector('#ne-state-reroll-btn');
-    if (stateReroll) stateReroll.onclick = async function() {
-        if (!_chatId) return;
-        await rerollAiVersion(_chatId, 'state', null);
-    };
-    var memReroll = container.querySelector('#ne-mem-reroll-btn');
-    if (memReroll) memReroll.onclick = async function() {
-        if (!_chatId) return;
-        await rerollAiVersion(_chatId, 'memory', null);
     };
 
     var stateSlider = container.querySelector('#ne-state-limit-slider');

@@ -42,7 +42,6 @@ var testMap = {
     'banner-regex': 'banner-regex.test.js',
     'state-versions-compact': 'state-versions-compact.test.js',
     'state-versions-rollback': 'state-versions-rollback.test.js',
-    'state-versions-reroll-helpers': 'state-versions-reroll-helpers.test.js',
     'embedding': 'embedding.test.js',
     'settings-cache': 'settings-cache.test.js',
     'chat-telemetry': 'chat-telemetry.test.js',
@@ -62,7 +61,8 @@ var testMap = {
     'nav-registry': 'nav-registry.test.js',
     'gesture-math': 'gesture-math.test.js',
     'orb': 'orb.test.js',
-    'ne-theme': 'ne-theme.test.js'
+    'ne-theme': 'ne-theme.test.js',
+    'reroll-plan': 'reroll-plan.test.js'
 };
 
 var batchMap = {

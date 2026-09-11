@@ -225,7 +225,7 @@ export async function saveSingleEntry(entryType, entryId, updates) {
         console.error('[NE] saveSingleEntry: write failed for ' + entryType + ' ' + entryId, err);
         throw err;
     }
-    recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: '手动编辑 ' + entryType + ' ' + entryId, delta: {}, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
+    recordMemoryVersion(getChatId(), { type: 'manual_edit', summary: '手动编辑 ' + entryType + ' ' + entryId, delta: { stm_modified: [entryId] }, message_dates: [] }).catch(function(e) { console.warn('[NE] manual_edit version record failed:', e); });
 }
 
 export async function deleteSingleEntry(entryType, entryId) {

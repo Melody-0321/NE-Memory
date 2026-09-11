@@ -34,6 +34,7 @@
 8. **新增架构元素**：新建模块文件、新增 Vault 字段类型
 9. **需求本身模糊**：用户描述中不含明确的输入/输出、边界条件、或改动范围
 10. **涉及 engine 或 vault 模块**：自动读取对应目录下的 `.rules.md` 获取模块级约束
+11. **涉及版本链/重抽**：修改 `state-versions.js`（delta 版本链）、`reroll.js`、`reroll-plan.js`（主动重抽的撤销与重摘）
 
 ### 第三层：直接执行（自动加载 skill）
 
@@ -134,6 +135,6 @@ release dev-build    # 发版流程专用（release-rules Step 4 / Step 6）
 - 代码 Wiki：CODE_WIKI.md（~1470 行）
 - 技术栈：JavaScript ES Modules → Rollup IIFE 构建
 - 核心模块风险分级：
-  - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval, history-processor
+  - 🔴 高风险：pipeline-guard, update, store, schema, injection, retrieval, history-processor, reroll, reroll-plan, state-versions
   - 🟡 中风险：state-pipeline, stm-pipeline, ltm-pipeline, consolidate, embedding, template-defs, adaptive-context（自适应上下文裁剪，影响注入策略）
   - 🟢 低风险：panel-*.js, i18n.js, style.css, test-data, token-stats, telemetry

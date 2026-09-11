@@ -244,7 +244,7 @@ function _isReservedKey(key) {
     return key === '__proto__' || key === 'constructor' || key === 'prototype';
 }
 
-function _setByPath(obj, path, value) {
+export function setByPath(obj, path, value) {
     var parts = path.split('.');
     var current = obj;
     for (var i = 0; i < parts.length - 1; i++) {
@@ -260,7 +260,7 @@ function _setByPath(obj, path, value) {
     current[lastKey] = value;
 }
 
-function _getByPath(obj, path) {
+export function getByPath(obj, path) {
     var parts = path.split('.');
     var current = obj;
     for (var i = 0; i < parts.length; i++) {
@@ -269,6 +269,21 @@ function _getByPath(obj, path) {
         current = current[parts[i]];
     }
     return current;
+}
+
+// 删除路径对应字段。中间层缺失即 no-op（保留 _isReservedKey 防护）
+export function deleteByPath(obj, path) {
+    var parts = path.split('.');
+    var current = obj;
+    for (var i = 0; i < parts.length - 1; i++) {
+        if (current === undefined || current === null) return;
+        if (_isReservedKey(parts[i])) return;
+        current = current[parts[i]];
+    }
+    if (current === undefined || current === null || typeof current !== 'object') return;
+    var lastKey = parts[parts.length - 1];
+    if (_isReservedKey(lastKey)) return;
+    delete current[lastKey];
 }
 
 /**
@@ -413,6 +428,7 @@ export async function recordMemoryVersion(chatId, versionData) {
             stm_added: delta.stm_added || [],
             stm_removed: delta.stm_removed || [],
             stm_moved: delta.stm_moved || [],
+            stm_modified: delta.stm_modified || [],
             ltm_added: delta.ltm_added || [],
             ltm_removed: delta.ltm_removed || [],
             ltm_modified: delta.ltm_modified || []
@@ -577,6 +593,7 @@ export async function writeMemoryWithVersion(chatId, memoryVault, versionData) {
                     stm_added: delta.stm_added || [],
                     stm_removed: delta.stm_removed || [],
                     stm_moved: delta.stm_moved || [],
+                    stm_modified: delta.stm_modified || [],
                     ltm_added: delta.ltm_added || [],
                     ltm_removed: delta.ltm_removed || [],
                     ltm_modified: delta.ltm_modified || []
@@ -659,7 +676,7 @@ export async function foldState(chatId, targetSeq, headState) {
                     if (!rdelta || !rdelta.changes) continue;
                     for (var rci = 0; rci < rdelta.changes.length; rci++) {
                         var rc = rdelta.changes[rci];
-                        if (rc.old !== undefined) _setByPath(base, rc.path, rc.old);
+                        if (rc.old !== undefined) setByPath(base, rc.path, rc.old);
                     }
                 }
                 usedFallback = true;
@@ -680,7 +697,8 @@ export async function foldState(chatId, targetSeq, headState) {
             if (!delta || !delta.changes) continue;
             for (var ci = 0; ci < delta.changes.length; ci++) {
                 var c = delta.changes[ci];
-                _setByPath(base, c.path, c.new);
+                if (c.remove) deleteByPath(base, c.path);
+                else setByPath(base, c.path, c.new);
             }
         }
     }
@@ -1206,80 +1224,6 @@ export async function listMemoryVersions(chatId, limit) {
     } catch (e) {
         return [];
     }
-}
-
-/**
- * 判断某版本是否为「AI 生成/抽取」版本（可被重roll 的候选）
- *
- * - state：source === 'ai_update'
- * - memory：type ∈ {stm_batch, ltm_consolidation, stm_reroll, ltm_reroll}
- *
- * @param {object} d — 版本记录（state delta 或 memory version）
- * @param {'state'|'memory'} scope
- * @returns {boolean}
- */
-export function isAiVersion(d, scope) {
-    if (!d) return false;
-    if (scope === 'state') return d.source === 'ai_update';
-    var t = d.type;
-    return t === 'stm_batch' || t === 'ltm_consolidation' || t === 'stm_reroll' || t === 'ltm_reroll';
-}
-
-/**
- * 判断某版本是否为「手动编辑」版本
- *
- * - state：source === 'manual_edit'
- * - memory：type === 'manual_edit'
- *
- * @param {object} d
- * @param {'state'|'memory'} scope
- * @returns {boolean}
- */
-export function isManualEdit(d, scope) {
-    if (!d) return false;
-    return scope === 'state' ? d.source === 'manual_edit' : d.type === 'manual_edit';
-}
-
-/**
- * 查找链上最近（seq 最大）的 AI 版本 seq（供「重roll 最新」定位）
- *
- * @param {object} chain — getActiveChain 返回的 active 链对象
- * @param {object[]} deltas — listStateDeltas / listMemoryVersions 结果（顺序无关）
- * @param {'state'|'memory'} scope
- * @returns {number|null} 最近 AI 版本 seq，无则 null
- */
-export function findLatestAiSeq(chain, deltas, scope) {
-    if (!chain || !deltas || !deltas.length) return null;
-    var headSeq = scope === 'state' ? chain.state_head_seq : chain.mem_head_seq;
-    var latest = null;
-    for (var i = 0; i < deltas.length; i++) {
-        var d = deltas[i];
-        if (!d || d.seq == null || d.seq > headSeq) continue;
-        if (isAiVersion(d, scope)) {
-            if (latest === null || d.seq > latest) latest = d.seq;
-        }
-    }
-    return latest;
-}
-
-/**
- * 统计范围 (loSeq, hiSeq] 内的手动编辑版本数（供重roll 回退前警告）
- *
- * @param {object[]} deltas
- * @param {number} loSeq — 严格下界（不含）
- * @param {number} hiSeq — 上界（含）
- * @param {'state'|'memory'} scope
- * @returns {number}
- */
-export function countManualEditsInRange(deltas, loSeq, hiSeq, scope) {
-    if (!deltas || !deltas.length) return 0;
-    var count = 0;
-    for (var i = 0; i < deltas.length; i++) {
-        var d = deltas[i];
-        if (!d || d.seq == null) continue;
-        if (d.seq > loSeq && d.seq <= hiSeq && isManualEdit(d, scope)) count++;
-    }
-    return count;
 }
 
 /**

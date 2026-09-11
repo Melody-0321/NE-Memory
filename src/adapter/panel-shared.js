@@ -4,7 +4,7 @@ import { isStateSchemaEnabled } from '../core/vault/schema.js';
 import tokensCss from '../ui/tokens.css';
 import panelCss from '../ui/panel.css';
 
-export function t(key) { return t_narrative(key); }
+export function t(key, replacements) { return t_narrative(key, replacements); }
 
 export var PD;
 try {
