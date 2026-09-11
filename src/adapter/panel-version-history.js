@@ -1,8 +1,9 @@
 import { escapeHtml, formatLocalTime } from '../ui/utils.js';
 import { listStateDeltas, listMemoryVersions, getActiveChain, foldState, foldMemory } from '../core/vault/state-versions.js';
 import { readVault, write } from '../core/vault/store.js';
-import { qs, qsa, byId, pdCreate, t, PD, emptyStateHtml, busEmit, busOn, busOff } from './panel-shared.js';
+import { qs, qsa, byId, pdCreate, t, PD, emptyStateHtml, busEmit, busOn, busOff, showToast } from './panel-shared.js';
 import { neSync } from '../core/settings-adapter.js';
+import { rerollAiVersion } from './events.js';
 
 var STATE_VERSION_LIMIT_KEY = 'ne_state_version_limit';
 var MEM_VERSION_LIMIT_KEY = 'ne_mem_version_limit';
@@ -292,6 +293,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-state-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-state-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-state-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+        '<button class="ne-version-nav-btn ne-version-reroll-top" id="ne-state-reroll-btn" title="\u5BF9\u6700\u8FD1\u4E00\u6B21 AI \u62BD\u53D6\u91CD\u65B0\u62BD\u53D6">\u26A1 \u91CDroll\u6700\u65B0</button>' +
         '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(STATE_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-state-timeline-body" class="ne-version-timeline"></div>' +
@@ -302,6 +304,7 @@ export async function renderVersionHistoryPanel(container, chatId) {
         '<button class="ne-version-nav-btn" id="ne-mem-rollback-btn" title="\u56DE\u9000\u5230\u4E0A\u4E00\u4E2A\u7248\u672C">\u25C0 \u56DE\u9000</button>' +
         '<span class="ne-version-cursor-info" id="ne-mem-cursor-info">\u5F53\u524D: \u6700\u65B0</span>' +
         '<button class="ne-version-nav-btn" id="ne-mem-restore-btn" title="\u524D\u8FDB\u5230\u4E0B\u4E00\u4E2A\u7248\u672C">\u524D\u8FDB \u25B6</button>' +
+        '<button class="ne-version-nav-btn ne-version-reroll-top" id="ne-mem-reroll-btn" title="\u5BF9\u6700\u8FD1\u4E00\u6B21 AI \u62BD\u53D6\u91CD\u65B0\u62BD\u53D6">\u26A1 \u91CDroll\u6700\u65B0</button>' +
         '<span class="ne-version-limit-info" style="margin-left:auto;font-size:var(--ne-text-xs);color:var(--grey-50);">\u4FDD\u7559\u8FD1 ' + getLimit(MEM_VERSION_LIMIT_KEY) + ' \u4E2A\u7248\u672C</span>' +
         '</div>' +
         '<div id="ne-mem-timeline-body" class="ne-version-timeline"></div>' +
@@ -382,6 +385,18 @@ export async function renderVersionHistoryPanel(container, chatId) {
         var currentIdx = _memVersions.findIndex(function(v) { return v.seq === _memCursor; });
         if (currentIdx <= 0) return;
         await _navigateToVersion(_memVersions[currentIdx - 1].seq, 'memory', container);
+    };
+
+    // 重roll 顶部快捷按钮
+    var stateReroll = container.querySelector('#ne-state-reroll-btn');
+    if (stateReroll) stateReroll.onclick = async function() {
+        if (!_chatId) return;
+        await rerollAiVersion(_chatId, 'state', null);
+    };
+    var memReroll = container.querySelector('#ne-mem-reroll-btn');
+    if (memReroll) memReroll.onclick = async function() {
+        if (!_chatId) return;
+        await rerollAiVersion(_chatId, 'memory', null);
     };
 
     var stateSlider = container.querySelector('#ne-state-limit-slider');

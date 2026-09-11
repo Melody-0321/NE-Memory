@@ -42,6 +42,7 @@ var testMap = {
     'banner-regex': 'banner-regex.test.js',
     'state-versions-compact': 'state-versions-compact.test.js',
     'state-versions-rollback': 'state-versions-rollback.test.js',
+    'state-versions-reroll-helpers': 'state-versions-reroll-helpers.test.js',
     'embedding': 'embedding.test.js',
     'settings-cache': 'settings-cache.test.js',
     'chat-telemetry': 'chat-telemetry.test.js',

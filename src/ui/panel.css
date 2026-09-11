@@ -534,6 +534,7 @@
 .ne-version-type{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);padding:1px var(--ne-space-sm);border-radius:var(--ne-radius-sm);background:var(--ne-surface-0);}
 .ne-version-time{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);}
 .ne-version-summary{font-size:var(--ne-text-sm);color:var(--ne-ink);margin-bottom:var(--ne-space-xs);}
+.ne-version-reroll-top{text-align:center;}
 .ne-version-changes{margin-top:var(--ne-space-xs);padding:var(--ne-space-xs) var(--ne-space-sm);background:var(--ne-surface-0);border-radius:var(--ne-radius-sm);font-size:var(--ne-text-xs);}
 .ne-change-entry{margin-bottom:var(--ne-space-xs);}
 .ne-change-path{font-size:var(--ne-text-xs);color:var(--ne-ink-soft);}

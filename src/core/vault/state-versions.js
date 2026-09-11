@@ -1209,6 +1209,80 @@ export async function listMemoryVersions(chatId, limit) {
 }
 
 /**
+ * 判断某版本是否为「AI 生成/抽取」版本（可被重roll 的候选）
+ *
+ * - state：source === 'ai_update'
+ * - memory：type ∈ {stm_batch, ltm_consolidation, stm_reroll, ltm_reroll}
+ *
+ * @param {object} d — 版本记录（state delta 或 memory version）
+ * @param {'state'|'memory'} scope
+ * @returns {boolean}
+ */
+export function isAiVersion(d, scope) {
+    if (!d) return false;
+    if (scope === 'state') return d.source === 'ai_update';
+    var t = d.type;
+    return t === 'stm_batch' || t === 'ltm_consolidation' || t === 'stm_reroll' || t === 'ltm_reroll';
+}
+
+/**
+ * 判断某版本是否为「手动编辑」版本
+ *
+ * - state：source === 'manual_edit'
+ * - memory：type === 'manual_edit'
+ *
+ * @param {object} d
+ * @param {'state'|'memory'} scope
+ * @returns {boolean}
+ */
+export function isManualEdit(d, scope) {
+    if (!d) return false;
+    return scope === 'state' ? d.source === 'manual_edit' : d.type === 'manual_edit';
+}
+
+/**
+ * 查找链上最近（seq 最大）的 AI 版本 seq（供「重roll 最新」定位）
+ *
+ * @param {object} chain — getActiveChain 返回的 active 链对象
+ * @param {object[]} deltas — listStateDeltas / listMemoryVersions 结果（顺序无关）
+ * @param {'state'|'memory'} scope
+ * @returns {number|null} 最近 AI 版本 seq，无则 null
+ */
+export function findLatestAiSeq(chain, deltas, scope) {
+    if (!chain || !deltas || !deltas.length) return null;
+    var headSeq = scope === 'state' ? chain.state_head_seq : chain.mem_head_seq;
+    var latest = null;
+    for (var i = 0; i < deltas.length; i++) {
+        var d = deltas[i];
+        if (!d || d.seq == null || d.seq > headSeq) continue;
+        if (isAiVersion(d, scope)) {
+            if (latest === null || d.seq > latest) latest = d.seq;
+        }
+    }
+    return latest;
+}
+
+/**
+ * 统计范围 (loSeq, hiSeq] 内的手动编辑版本数（供重roll 回退前警告）
+ *
+ * @param {object[]} deltas
+ * @param {number} loSeq — 严格下界（不含）
+ * @param {number} hiSeq — 上界（含）
+ * @param {'state'|'memory'} scope
+ * @returns {number}
+ */
+export function countManualEditsInRange(deltas, loSeq, hiSeq, scope) {
+    if (!deltas || !deltas.length) return 0;
+    var count = 0;
+    for (var i = 0; i < deltas.length; i++) {
+        var d = deltas[i];
+        if (!d || d.seq == null) continue;
+        if (d.seq > loSeq && d.seq <= hiSeq && isManualEdit(d, scope)) count++;
+    }
+    return count;
+}
+
+/**
  * 初始化 State 版本链 — 从现有 state vault 内容创建 seq=0 快照
  *
  * @param {string} chatId

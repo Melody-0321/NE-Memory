@@ -9,7 +9,7 @@ import { readVault, remove, loadCardConfigSync, getLockedTemplateCharacters, get
 import { incrementChatTurn, recordChatStat, recordChatToken, getChatTurnNumber } from '../core/engine/chat-telemetry.js';
 import { recordDailyToken } from '../core/engine/token-stats.js';
 import { runtime } from '../core/runtime.js';
-import { showToast, PD, busEmit } from './panel-shared.js';
+import { showToast, PD, busEmit, showConfirm, setVaultActivity } from './panel-shared.js';
 import { detectContradictions } from '../core/engine/contradiction.js';
 import { closeVaultOverlay } from './panel.js';
 import { formatSmartContext, buildStateOnlyInjection } from '../core/engine/injection.js';
@@ -45,7 +45,7 @@ function _neCheckChatIntegrity(tag) {
     } catch (e) {}
 }
 import { setToolResultNotifier } from '../core/engine/template-llm.js';
-import { getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rollbackState, rollbackMemory, initializeStateChain } from '../core/vault/state-versions.js';
+import { getActiveChain, initializeChain, listStateDeltas, listMemoryVersions, rollbackState, rollbackMemory, initializeStateChain, findLatestAiSeq, countManualEditsInRange, recordStateDelta, recordMemoryVersion } from '../core/vault/state-versions.js';
 import { sendNeNotification } from './ne-system-msg.js';
 
 var MEMORY_INJECTION_WRAPPER = [
@@ -688,13 +688,21 @@ export async function runLtmConsolidation(chatId) {
     }
 }
 
-async function flushPendingMessages() {
+/**
+ * 批量抽取 pending 消息
+ * @param {boolean} [forceOpt] 跳过批量/压力门槛，强制抽取
+ * @param {function(boolean):void} [onSettled] 抽取结束（成功=true / 失败=false）时回调一次
+ */
+async function flushPendingMessages(forceOpt, onSettled) {
     return enqueueStmWrite(async function() {
-    if (pendingMessages.length === 0) return;
+    if (pendingMessages.length === 0) {
+        if (onSettled) onSettled(true);
+        return;
+    }
     var pendingTokenCount = pendingMessages.reduce(function(s, m) { return s + countTokens(m.content || ''); }, 0);
     var chatMessages = runtime.getChat ? runtime.getChat() : [];
     var pressureVal = computeContextPressure(pendingTokenCount, pendingMessages, chatMessages);
-    if (pendingMessages.length < await getStmBatchSize() && pressureVal < 0.50) {
+    if (!forceOpt && pendingMessages.length < await getStmBatchSize() && pressureVal < 0.50) {
         console.log('[NE] flushPendingMessages: pending=' + pendingMessages.length + ' batch=' + await getStmBatchSize() + ' pressure=' + (pressureVal >= 0 ? (pressureVal * 100).toFixed(0) + '%' : 'N/A') + ' — not enough');
         return;
     }
@@ -723,6 +731,7 @@ async function flushPendingMessages() {
         consecutiveFailures = 0;
         recordChatStat(chatId, 'dur', Date.now() - pipelineStart);
         try { localStorage.removeItem('ne_inflight'); } catch (e) {}
+        if (onSettled) onSettled(true);
     } catch (e) {
         console.warn('[NE] Incremental update failed:', e);
         consecutiveFailures++;
@@ -734,6 +743,7 @@ async function flushPendingMessages() {
             pendingMessages.unshift.apply(pendingMessages, batch);
             persistPending();
         }
+        if (onSettled) onSettled(false);
     }
 
     persistPending();
@@ -1407,6 +1417,153 @@ function _reextractSlot(chatMessages, idx) {
     } catch (e) {
         console.warn('[NE] reextractSlot failed:', e);
     }
+}
+
+/**
+ * 重roll AI 版本：回退到目标 AI 版本之前，将目标 AI 版本对应的消息重新入队重抽取
+ *
+ * @param {string} chatId — 当前聊天 ID
+ * @param {'state'|'memory'} scope — 回退 State 还是 Memory 链
+ * @param {number|null} targetSeqOrNull — 指定要重roll 的 AI 版本 seq；null 表示「重roll 最新」找最近一个
+ * @returns {Promise<void>}
+ */
+export async function rerollAiVersion(chatId, scope, targetSeqOrNull) {
+    var chain = await getActiveChain(chatId);
+    if (!chain) {
+        showToast('找不到版本链，无法重roll', 'error', 4000);
+        return;
+    }
+
+    // 获取版本列表
+    var versions = scope === 'state'
+        ? await listStateDeltas(chatId, 200)
+        : await listMemoryVersions(chatId, 200);
+
+    // 定位目标 AI 版本 seq
+    var aiSeq = targetSeqOrNull || findLatestAiSeq(chain, versions, scope);
+    if (aiSeq === null) {
+        showToast('找不到可重roll 的 AI 版本', 'info', 3000);
+        return;
+    }
+
+    // 回退目标是 aiSeq - 1（aiSeq 之前，即把 aiSeq 及之后全部回退）
+    var targetSeq = aiSeq - 1;
+    var headSeq = scope === 'state' ? chain.state_head_seq : chain.mem_head_seq;
+    if (targetSeq < 0) {
+        showToast('该版本已是链的起始，无法重roll', 'error', 3000);
+        return;
+    }
+
+    // 统计范围内手动编辑数，需要警告并确认
+    var manualCount = countManualEditsInRange(versions, targetSeq, headSeq, scope);
+    if (manualCount > 0) {
+        var ok = await showConfirm(
+            '重roll 确认',
+            '此操作将回退到目标 AI 版本之前，撤销 ' + manualCount + ' 处手动编辑。\n正则提取的瞬时字段会被一并撤销，需后续 LLM 回复重新生成。\n确定继续？',
+            '继续重roll',
+            '取消',
+            true
+        );
+        if (!ok) return;
+    }
+
+    // 取出目标 AI 版本记录，拿到 message_dates（要重入哪些消息）
+    var targetVersion = versions.find(function(v) { return v.seq === aiSeq; });
+    if (!targetVersion) {
+        showToast('找不到目标 AI 版本记录，可能已被压缩', 'error', 4000);
+        return;
+    }
+    var messageDates = targetVersion.message_dates || [];
+    if (!messageDates.length) {
+        showToast('目标 AI 版本不关联任何消息，无需重roll', 'info', 3000);
+        return;
+    }
+
+    // 把 message_dates 映射回当前聊天实际消息（先构建条目，不改动 pendingMessages）
+    var chatMessages = getChatMessagesFn ? getChatMessagesFn() : [];
+    var entries = [];
+    for (var mi = 0; mi < messageDates.length; mi++) {
+        var md = messageDates[mi];
+        var msg = findMessageInChat(chatMessages, md);
+        if (!msg) continue;
+        var idx = chatMessages.indexOf(msg);
+        if (idx === -1) continue;
+        // 复用 _reextractSlot 范式
+        var role = (msg.is_user || msg.role === 'user') ? 'user' : 'assistant';
+        msg._ne_id = msg._ne_id || buildMsgId(msg, idx);
+        entries.push({
+            role: role,
+            name: msg.name || '',
+            content: msg.mes || '',
+            id: msg._ne_id,
+            _slotIdx: idx,
+            timestamp: msg.send_date ? new Date(msg.send_date).getTime() : Date.now()
+        });
+    }
+
+    if (entries.length === 0) {
+        showToast('未找到匹配消息，重roll 中止', 'info', 3000);
+        return;
+    }
+
+    // 活动灯置亮（过程反馈），收尾由 _settleReroll 复位
+    try { setVaultActivity(true); } catch (e) {}
+    showToast('重roll 已开始，正在回退并重新抽取...', 'info', 3000);
+    await enqueueStmWrite(async function() {
+        // 真实回退（队列内串行，避免与运行中管线竞争写入）
+        var rollbackResult = scope === 'state'
+            ? await rollbackState(chatId, targetSeq)
+            : await rollbackMemory(chatId, targetSeq);
+
+        if (!rollbackResult.ok) {
+            showToast('回退失败: ' + (rollbackResult.reason || '未知错误'), 'error', 5000);
+            return;
+        }
+
+        // 将目标消息去重写入 pending，随后强制重抽取（带 end 回调：成功/失败各反馈一次）
+        for (var ei = 0; ei < entries.length; ei++) {
+            var ent = entries[ei];
+            pendingMessages = pendingMessages.filter(function(e) { return e._slotIdx !== ent._slotIdx; });
+            pendingMessages.push(ent);
+        }
+        persistPending();
+        console.log('[NE] rerollAiVersion: scope=' + scope + ' aiSeq=' + aiSeq + ' reextract=' + entries.length);
+        recordTelemetry({ reroll_scope: scope, reextract_count: entries.length });
+
+        try {
+            await flushPendingMessages(true, function(ok) { _settleReroll(chatId, scope, ok); });
+        } catch (e) {
+            console.warn('[NE] reroll re-extract failed:', e);
+            _settleReroll(chatId, scope, false);
+        }
+        notifyVaultChanged();
+        busEmit('vault:updated', {});
+    });
+    showToast('重roll 已开始，正在重新抽取...', 'info', 3000);
+}
+
+/**
+ * 重roll 收尾：根据抽取成败反馈 toast + 活动灯；失败时回写一条 rollback_restore 留痕版本（B2）
+ * @param {string} chatId
+ * @param {'state'|'memory'} scope
+ * @param {boolean} ok
+ */
+function _settleReroll(chatId, scope, ok) {
+    try { setVaultActivity(false); } catch (e) {}
+    if (ok) {
+        showToast('重roll 完成，已生成新版本', 'success', 4000);
+        return;
+    }
+    showToast('重roll 抽取失败，已回退；消息已保留待下次重试', 'error', 6000);
+    // B2 留痕：写一条 rollback_restore 版本标记回退存遗迹，避免"凭空消失"且可再次重roll
+    try {
+        recordTelemetry({ reroll_failed: true, scope: scope });
+        if (scope === 'state') {
+            recordStateDelta(chatId, { source: 'rollback_restore', changes: [], message_dates: [] });
+        } else {
+            recordMemoryVersion(chatId, { type: 'stm_reroll', delta: {}, message_dates: [] });
+        }
+    } catch (e) { console.warn('[NE] reroll rollback_restore trace failed:', e); }
 }
 
 /**
