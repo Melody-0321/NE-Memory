@@ -13,6 +13,7 @@ import { recordMemoryVersion, recordStateDelta } from '../core/vault/state-versi
 import { getActiveChain, listStateDeltas, listMemoryVersions, diagnoseChainConsistency, repairChainConservative, removeOrphanVersionRecords } from '../core/vault/state-versions.js';
 import { scanOrphans, purgeOrphanChatData } from '../core/vault/garbage-collector.js';
 import { initTestRunner } from './panel-tools.js';
+import { markStateRefreshPending } from './state-toggle.js';
 
 // === STM 摘要详细度已删：L1a 消融定案固化 ratio=0.15（见 stm-pipeline.js），不再暴露 UI 三档 ===
 export function renderSettingsTab() {
@@ -70,6 +71,13 @@ export function renderSettingsTab() {
                 '<input type="checkbox" id="nes_summary_only_mode" ' + (settings.summaryOnlyMode ? 'checked' : '') + '> ' + t('summary_only_mode') +
             '</label>' +
             '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:var(--ne-space-xs) 0 0 var(--ne-space-xl);">' + t('summary_only_mode_desc') + '</div>' +
+        '</div>' +
+        // === State 抽取开关（成本控制）===
+        '<div style="margin:0 0 var(--ne-space-sm);padding:var(--ne-space-sm);border:1px solid var(--grey30);border-radius:var(--ne-radius-sm);background:var(--ne-surface);">' +
+            '<label style="font-size:var(--ne-text-sm);display:flex;align-items:center;gap:var(--ne-space-xs);cursor:pointer;font-weight:600;">' +
+                '<input type="checkbox" id="nes_state_extraction" ' + (settings.stateExtractionEnabled !== false ? 'checked' : '') + '> ' + t('state_extraction_toggle') +
+            '</label>' +
+            '<div class="ne-text-soft" style="font-size:var(--ne-text-xs);margin:var(--ne-space-xs) 0 0 var(--ne-space-xl);">' + t('state_extraction_toggle_desc') + '</div>' +
         '</div>' +
         // === 反悔消解（resolver）开关 ===
         '<div style="margin:0 0 var(--ne-space-sm);padding:var(--ne-space-sm);border:1px solid var(--grey30);border-radius:var(--ne-radius-sm);background:var(--ne-surface);">' +
@@ -781,6 +789,8 @@ function saveSettingsTab() {
         settings.adaptiveContextControl = panelById('nes_adaptive_context_control').checked;
     if (panelById('nes_summary_only_mode'))
         settings.summaryOnlyMode = panelById('nes_summary_only_mode').checked;
+    if (panelById('nes_state_extraction'))
+        settings.stateExtractionEnabled = panelById('nes_state_extraction').checked;
     if (panelById('nes_stm_resolve_reversal'))
         settings.stmResolveReversal = panelById('nes_stm_resolve_reversal').checked;
     if (panelById('nes_meta_ltm_enabled'))
@@ -812,6 +822,13 @@ function saveSettingsTab() {
     if (panelById('nes_secondary_url')) {
         settings.memoryConfig.url = panelById('nes_secondary_url').value.trim();
         settings.memoryConfig.model = getModelValue('nes_secondary');
+    }
+
+    // State 开关 OFF→ON：打刷新标记，使重开后首轮跳过注入（vault 仍是关闭前的旧 state），
+    // 直到一次抽取完成才解除（见 events.js triggerPerRoundExtraction）
+    if (settings.stateExtractionEnabled !== false && settingsPrev.stateExtractionEnabled === false) {
+        var _stateChatId = typeof _currentGetChatId === 'function' ? _currentGetChatId() : _currentGetChatId;
+        if (_stateChatId) markStateRefreshPending(_stateChatId);
     }
 
     // ── 增量保存：仅设置实际变化时才落盘 + 精确同步（API 通道配置由各拆分函数独立保存） ──

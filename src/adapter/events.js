@@ -28,6 +28,7 @@ import { enqueueStateWrite, enqueueStmWrite, enqueueLtmWrite, getState, reset, i
 import { t_narrative } from '../core/i18n.js';
 import { neSync } from '../core/settings-adapter.js';
 import { readNeSetting, readNeSettingsObject } from '../core/settings.js';
+import { isStateExtractionEnabled, isStateRefreshPending, clearStateRefreshPending } from './state-toggle.js';
 
 var _neCheckTag = '';
 
@@ -519,7 +520,7 @@ export async function onMessageReceived(messageIndex) {
             var shouldRunPipeline = pendingMessages.length >= await getStmBatchSize()
                 || (pressureVal >= 0.50 && pressureVal > 0);
 
-            if (isStateSchemaEnabled() && (pendingMessages.length >= 2 || (rbResult && rbResult.rolledBackState > 0))) {
+            if (isStateSchemaEnabled() && isStateExtractionEnabled() && (pendingMessages.length >= 2 || (rbResult && rbResult.rolledBackState > 0))) {
                 triggerPerRoundExtraction(assistantMsg);
             }
             if (shouldRunPipeline) {
@@ -796,6 +797,10 @@ function triggerPerRoundExtraction(assistantMsg) {
         console.log('[NE] State: skipped (State Schema disabled — enable in NE Memory settings)');
         return;
     }
+    if (!isStateExtractionEnabled()) {
+        console.log('[NE] State: skipped (State extraction disabled by toggle)');
+        return;
+    }
     var userMsg = pendingMessages.length >= 2 ? pendingMessages[pendingMessages.length - 2] : null;
     var chatId = getChatIdFn ? getChatIdFn() : 'default';
     _neCheckChatIntegrity('triggerPerRoundExtraction:before');
@@ -803,6 +808,8 @@ function triggerPerRoundExtraction(assistantMsg) {
         try {
             _neCheckChatIntegrity('enqueueStateWrite:entry');
             var stateResult = await extractStateChangesOnly(chatId, userMsg, assistantMsg);
+            // 抽取完成 → 解除「重开首轮跳过注入」标记（下轮起注入新 state）
+            clearStateRefreshPending(chatId);
             if (stateResult && stateResult.vault && stateResult.vault.content && stateResult.vault.content._templateInitSignal) {
                 var sig = stateResult.vault.content._templateInitSignal;
                 var schemeCount = (sig.schemes && sig.schemes.length) || 0;
@@ -1079,8 +1086,12 @@ export async function onBeforeGenerate(type, _options, dryRun) {
             return;
         }
 
+        // State 注入门控：Schema 总闸 + State 开关 + 重开首轮刷新标记
+        // （重开的那一轮 vault 仍是关闭前的旧 state，注入即误导，故跳过）
+        var stateInjectionOn = isStateSchemaEnabled() && isStateExtractionEnabled() && !isStateRefreshPending(chatId);
+
         // State table injection — independent from SmartPush
-        if (isStateSchemaEnabled()) {
+        if (stateInjectionOn) {
             var content = vault.content || {};
             var state = content.state || {};
             var stateTable = buildStateInjectionTable(state, chatMessages, undefined, content, state.protagonist_name);
@@ -1102,6 +1113,9 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                     : stateTable;
                 runtime.injectPrompt('ne_state_table', markedStateTable, 'in_chat', 2, 'system');
             }
+        } else {
+            // 空串覆盖清除历史残留（setExtensionPrompt 为覆盖语义，跳过会让旧注入持续生效）
+            runtime.injectPrompt('ne_state_table', '', 'in_chat', 2, 'system');
         }
 
         // Write faction state for test monitor
@@ -1141,7 +1155,7 @@ export async function onBeforeGenerate(type, _options, dryRun) {
                 runtime.injectPrompt('ne_memory_vault', markedMemory, 'in_chat', 3, 'system');
             }
             // State block instruction — Main LLM outputs pre-built banner HTML at reply start
-            if (isStateSchemaEnabled()) {
+            if (stateInjectionOn) {
                 var dayInfo = vault.content.story_date || '第1天';
                 var timeInfo = vault.content.story_time || '';
                 var sceneInfo = vault.content.story_scene || '';
@@ -1196,7 +1210,11 @@ export async function onBeforeGenerate(type, _options, dryRun) {
     '- \u6bcf\u4e2a\u89d2\u8272\u4e00\u4e2a\u72ec\u7acb NE-CHAR \u5757\u3002\n' +
     '- \u653e\u5728\u56de\u590d\u672b\u5c3e\u3002';
                 runtime.injectPrompt('ne_char_block', charBlockInstr, 'in_chat', 0, 'system');
-                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' isSchemaEnabled=true');
+                if (__NE_DEV_MODE) console.log('[NE-DEBUG] onBeforeGenerate: ne_char_block injected ok, protagonist=' + protagonistName + ' stateInjectionOn=true');
+            } else {
+                // 空串覆盖清除历史残留（含 banner 指令与角色状态栏指令）
+                runtime.injectPrompt('ne_state_block', '', 'in_chat', 0, 'system');
+                runtime.injectPrompt('ne_char_block', '', 'in_chat', 0, 'system');
             }
             // Log SmartPush injection to LLM log
             var charEstimate = formatted ? countTokens(formatted) : 0;

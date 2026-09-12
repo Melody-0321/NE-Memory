@@ -28,6 +28,7 @@ import { renderUsageIntoContainer } from './panel-usage.js';
 import { renderSettingsIntoSlide } from './panel-settings.js';
 import { renderTemplatesIntoSlide } from './panel-templates.js';
 import { renderVersionHistoryPanel, initVersionNavButtons } from './panel-version-history.js';
+import { getChatStateExtractOverride, setChatStateExtractOverride, markStateRefreshPending } from './state-toggle.js';
 
 function _onVaultUpdated(payload) {
     var gc = payload && payload.getChatId;
@@ -123,6 +124,22 @@ export async function renderVaultPanel(getChatId) {
             '<div id="narrative_vault_panel_storage_warn" class="ne-text-warning" style="display:none;font-size:var(--ne-text-sm);margin-bottom:var(--ne-space-xs);border:1px solid var(--ne-warning);padding:var(--ne-space-xs);border-radius:var(--ne-radius-sm);"></div>' +
             // ── State tab ──
             '<div id="tab-state" class="ne-vault-tab-content active">' +
+            // ── State 抽取会话级开关（成本控制；默认继承全局）──
+            '<div style="display:flex;align-items:center;gap:var(--ne-space-sm);margin-bottom:var(--ne-space-xs);font-size:var(--ne-text-sm);">' +
+            '<span class="ne-text-soft">' + t('state_extract_chat_override') + '</span>' +
+            '<select id="ne_chat_state_extract" style="flex:1;font-size:var(--ne-text-sm);padding:var(--ne-space-xs) var(--ne-space-sm);border-radius:var(--ne-radius-sm);border:1px solid var(--ne-input-line);background:var(--ne-input-bg);color:var(--ne-input-ink);">' +
+            '<option value="inherit">' + t('state_extract_follow_global') + '</option>' +
+            '<option value="on">' + t('state_extract_chat_on') + '</option>' +
+            '<option value="off">' + t('state_extract_chat_off') + '</option>' +
+            '</select>' +
+            '</div>' +
+            '<div id="ne_state_off_notice" class="ne-summary-only-notice" style="display:none;">' +
+                '<span class="ne-summary-only-icon">\u23F8</span>' +
+                '<div class="ne-summary-only-copy">' +
+                    '<strong>' + t('state_extraction_notice_title') + '</strong>' +
+                    '<p>' + t('state_extraction_off_notice') + '</p>' +
+                '</div>' +
+            '</div>' +
             '<div id="ne-state-search-bar" class="ne-search-bar">' +
             '<input type="text" id="ne-state-search-input" class="ne-search-input" placeholder="' + t('Search') + '..." aria-label="' + t('Search characters, factions, quests') + '">' +
             '</div>' +
@@ -595,6 +612,22 @@ export async function renderVaultPanel(getChatId) {
         if (stateHistoryBtn) stateHistoryBtn.onclick = function() { openNavPage('versions'); };
         var memHistoryBtn = panelById('ne-memory-history-btn');
         if (memHistoryBtn) memHistoryBtn.onclick = function() { openNavPage('versions'); };
+
+        // ── State 抽取会话级开关（成本控制）──
+        var stateExtractSel = panelById('ne_chat_state_extract');
+        if (stateExtractSel) {
+            var _stateOverride = getChatStateExtractOverride();
+            stateExtractSel.value = _stateOverride === true ? 'on' : (_stateOverride === false ? 'off' : 'inherit');
+            stateExtractSel.onchange = function() {
+                var sel = stateExtractSel.value;
+                var next = sel === 'on' ? true : (sel === 'off' ? false : undefined);
+                setChatStateExtractOverride(next);
+                // 重开 → 打刷新标记：本会话首轮跳过注入（vault 仍是关闭前的旧 state），
+                // 直到一次抽取完成才解除；busEmit 会立刻刷新提示条
+                if (next === true) markStateRefreshPending(typeof getChatId === 'function' ? getChatId() : getChatId);
+                busEmit('vault:updated', { getChatId: _currentGetChatId });
+            };
+        }
 
         var chatId = typeof getChatId === 'function' ? getChatId() : getChatId;
         if (chatId) {

@@ -11,6 +11,7 @@ import { _pendingInlineStorage, _lazyRendered,
   applyStateSearchFilter, applyMemorySearchFilter } from './panel-drawer.js';
 import { renderCharacterPanelHTML, renderFactionPanelHTML, renderQuestPanelHTML, renderSuspensePanelHTML,
   renderMemoryTable, enterCardEditMode, enterSchemeEditMode, getCharacterSchemaForPanel } from './panel-state-cards.js';
+import { isStateExtractionEnabled, getChatStateExtractOverride } from './state-toggle.js';
 
 // ── UIP-1: 区块渲染输入签名缓存（undefined = 从未渲染，首次必渲染） ──
 var _renderCache = {};
@@ -103,6 +104,17 @@ export async function updateVaultViewerPopout(getChatId) {
             summaryNoticeEl.style.display = _neSettings.summaryOnlyMode === true ? '' : 'none';
         }
     } catch (e) { _logSection('header', e); }
+
+    // ── State 抽取开关：提示条 + 会话级下拉同步 ──
+    try {
+        var stateNoticeEl = panelById('ne_state_off_notice');
+        var stateExtractSelEl = panelById('ne_chat_state_extract');
+        if (stateNoticeEl) stateNoticeEl.style.display = isStateExtractionEnabled() ? 'none' : '';
+        if (stateExtractSelEl) {
+            var _stateOv = getChatStateExtractOverride();
+            stateExtractSelEl.value = _stateOv === true ? 'on' : (_stateOv === false ? 'off' : 'inherit');
+        }
+    } catch (e) { _logSection('state-toggle', e); }
 
     // ── Section A: Scene info (State tab) ──
     try {

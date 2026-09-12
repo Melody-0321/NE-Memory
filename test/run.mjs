@@ -62,7 +62,8 @@ var testMap = {
     'gesture-math': 'gesture-math.test.js',
     'orb': 'orb.test.js',
     'ne-theme': 'ne-theme.test.js',
-    'reroll-plan': 'reroll-plan.test.js'
+    'reroll-plan': 'reroll-plan.test.js',
+    'state-toggle': 'state-toggle.test.js'
 };
 
 var batchMap = {
